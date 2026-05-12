@@ -1,0 +1,16 @@
+services:
+  contactbook-api:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    container_name: contactbook-api
+    restart: unless-stopped
+    env_file:
+      - ./supabase/.env
+    environment:
+      PORT: 8000
+      # Keep consistent with the Nest template default
+      CORS_ORIGIN: "http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000,http://127.0.0.1:8000,http://localhost:8001,http://127.0.0.1:8001"
+      JWT_SECRET: "change-me-in-production"
+    ports:
+      - "8001:8000"
