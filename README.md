@@ -1,6 +1,6 @@
 # ContactBook
 
-This repository contains the **ContactBook** application: a pnpm monorepo with **Next.js** (`apps/web`) and **NestJS** (`apps/api`), copied from the internal monorepo template. Local Supabase and a production-style API container are configured under `docker/`.
+This repository contains **ContactBook**: a pnpm workspace with **Next.js** (`apps/web`) and **NestJS** (`apps/api`) for syncing contacts via web and WhatsApp. Local Supabase and a production-style API container are configured under `docker/`.
 
 ### Local API + Supabase (Docker)
 
@@ -14,9 +14,9 @@ cd .. && docker compose up -d --build
 
 ---
 
-# Monorepo (stack overview)
+# Stack overview
 
-pnpm workspace using the same stack as the reference **alooofone** project (Next + Nest + Prisma + pnpm workspaces): **Next.js 16** (App Router, React 19, Tailwind v4, shadcn base-nova, Supabase client), **NestJS 11** (Swagger, CORS, URI versioning, ValidationPipe), **Prisma 7** with **PostgreSQL** via `@prisma/adapter-pg`, and shared packages **`@repo/types`** / **`@repo/utils`**.
+pnpm workspace for **ContactBook**: **Next.js 16** (App Router, React 19, Tailwind v4, shadcn base-nova, Supabase client), **NestJS 11** (Swagger, CORS, URI versioning, ValidationPipe), **Prisma 7** with **PostgreSQL** via `@prisma/adapter-pg`, and shared packages **`@repo/types`** / **`@repo/utils`**.
 
 ## Requirements
 
@@ -79,7 +79,7 @@ Targets: `make up`, `make down`, `make logs`, `make prisma` (host `pnpm` against
 **Production-style API image** (uses root `pnpm-lock.yaml`):
 
 ```bash
-docker build -f apps/api/Dockerfile -t monorepo-api .
+docker build -f apps/api/Dockerfile -t contactbook-api .
 ```
 
 Compose file for a single API container: [docker/docker-compose.yml](docker/docker-compose.yml) (build context is the repo root; `dockerfile` is relative to that context).

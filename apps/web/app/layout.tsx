@@ -17,8 +17,8 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Monorepo template",
-  description: "Next.js + NestJS + Prisma monorepo",
+  title: "ContactBook",
+  description: "ContactBook — sync professional and personal contacts via web and WhatsApp.",
 };
 
 export default function RootLayout({

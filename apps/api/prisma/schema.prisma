@@ -6,12 +6,294 @@ datasource db {
   provider = "postgresql"
 }
 
+enum ConnectionStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  REVOKED
+}
+
+enum ContactImportSource {
+  GOOGLE
+  ICLOUD
+  CSV
+}
+
+enum ContactImportStatus {
+  PENDING
+  PROCESSED
+  FAILED
+  IGNORED
+}
+
+enum ProfileFieldValueType {
+  STRING
+  URL
+  PHONE
+  EMAIL
+  JSON
+}
+
+enum FieldAccessRequestStatus {
+  PENDING
+  APPROVED
+  DENIED
+  EXPIRED
+}
+
+enum TravelEventSource {
+  GOOGLE_CALENDAR
+}
+
+enum OAuthProvider {
+  GOOGLE
+}
+
+enum WhatsappFlowState {
+  IDLE
+  AWAITING_CONNECTION_ACCEPT
+  AWAITING_SENSITIVE_FIELD_APPROVAL
+}
+
 model User {
+  id               String    @id @default(uuid())
+  email            String    @unique
+  passwordHash     String
+  name             String?
+  phone            String?   @unique
+  phoneVerifiedAt  DateTime?
+  jobTitle         String?
+  company          String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  contactCards                  ContactCard[]
+  tags                          Tag[]
+  contactImports                ContactImport[]
+  travelEvents                  TravelEvent[]
+  googleAccounts                GoogleAccount[]
+  otpSessions                   OtpSession[]
+  whatsappSessions              WhatsappSession[]
+
+  initiatedConnections   Connection[] @relation("ConnectionInitiator")
+  receivedConnections      Connection[] @relation("ConnectionRecipient")
+
+  sensitiveRequestsAsRequester SensitiveFieldAccessRequest[] @relation("SensitiveRequestRequester")
+  sensitiveRequestsAsOwner     SensitiveFieldAccessRequest[] @relation("SensitiveRequestOwner")
+
+  @@map("users")
+}
+
+model ContactCard {
+  id         String   @id @default(uuid())
+  userId     String
+  name       String
+  sortOrder  Int      @default(0)
+  isArchived Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  profileFields ProfileField[]
+  cardTags      ContactCardTag[]
+
+  initiatorConnections Connection[] @relation("InitiatorSharedCard")
+  recipientConnections Connection[] @relation("RecipientSharedCard")
+
+  @@index([userId])
+  @@map("contact_cards")
+}
+
+model ProfileField {
+  id           String               @id @default(uuid())
+  contactCardId String
+  key          String
+  label        String
+  value        String?
+  valueType    ProfileFieldValueType @default(STRING)
+  isSensitive  Boolean              @default(false)
+  sortOrder    Int                  @default(0)
+  metadata     Json?
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  contactCard ContactCard @relation(fields: [contactCardId], references: [id], onDelete: Cascade)
+
+  sensitiveFieldAccessRequests SensitiveFieldAccessRequest[]
+
+  @@index([contactCardId])
+  @@map("profile_fields")
+}
+
+model Tag {
   id        String   @id @default(uuid())
-  email     String   @unique
-  name      String?
+  userId    String
+  name      String
+  slug      String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@map("users")
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cardTags  ContactCardTag[]
+
+  @@unique([userId, slug])
+  @@index([userId])
+  @@map("tags")
+}
+
+model ContactCardTag {
+  contactCardId String
+  tagId         String
+
+  contactCard ContactCard @relation(fields: [contactCardId], references: [id], onDelete: Cascade)
+  tag         Tag         @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([contactCardId, tagId])
+  @@map("contact_card_tags")
+}
+
+model Connection {
+  id                     String           @id @default(uuid())
+  initiatorId            String
+  recipientId            String
+  status                 ConnectionStatus @default(PENDING)
+  initiatorSharedCardId  String
+  recipientSharedCardId  String?
+  acceptedAt             DateTime?
+  shareExpiresAt         DateTime?
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt
+
+  initiator           User        @relation("ConnectionInitiator", fields: [initiatorId], references: [id], onDelete: Cascade)
+  recipient           User        @relation("ConnectionRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  initiatorSharedCard ContactCard @relation("InitiatorSharedCard", fields: [initiatorSharedCardId], references: [id], onDelete: Restrict)
+  recipientSharedCard ContactCard? @relation("RecipientSharedCard", fields: [recipientSharedCardId], references: [id], onDelete: SetNull)
+
+  whatsappSessions WhatsappSession[]
+
+  @@index([initiatorId, status])
+  @@index([recipientId, status])
+  @@map("connections")
+}
+
+model ContactImport {
+  id                    String             @id @default(uuid())
+  userId                String
+  source                ContactImportSource
+  status                ContactImportStatus @default(PENDING)
+  externalResourceName  String
+  etag                  String?
+  displayNameSnapshot   String?
+  rawPerson             Json
+  userOverrides         Json?
+  lastSyncedAt          DateTime?
+  processedAt           DateTime?
+  errorMessage          String?
+  deletedAt             DateTime?
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, source, externalResourceName])
+  @@index([userId, source, deletedAt])
+  @@map("contact_imports")
+}
+
+model GoogleAccount {
+  id               String        @id @default(uuid())
+  userId           String
+  provider         OAuthProvider
+  scopes           String
+  accessToken      String
+  refreshToken     String
+  expiresAt        DateTime?
+  peopleSyncToken  String?
+  calendarSyncToken String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, provider])
+  @@map("oauth_accounts")
+}
+
+model TravelEvent {
+  id              String            @id @default(uuid())
+  userId          String
+  source          TravelEventSource @default(GOOGLE_CALENDAR)
+  calendarEventId String
+  title           String?
+  start           DateTime
+  end             DateTime
+  city            String?
+  location        String?
+  timeZone        String?
+  raw             Json?
+  detectedAt      DateTime          @default(now())
+  whatsappSentAt  DateTime?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, calendarEventId])
+  @@index([userId, start])
+  @@map("travel_events")
+}
+
+model SensitiveFieldAccessRequest {
+  id                 String                   @id @default(uuid())
+  requesterId        String
+  ownerId            String
+  profileFieldId     String
+  status             FieldAccessRequestStatus @default(PENDING)
+  expiresAt          DateTime?
+  resolvedAt         DateTime?
+  twilioCorrelationId String?
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+
+  requester    User         @relation("SensitiveRequestRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  owner        User         @relation("SensitiveRequestOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  profileField ProfileField @relation(fields: [profileFieldId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId, status])
+  @@index([profileFieldId])
+  @@map("sensitive_field_access_requests")
+}
+
+model OtpSession {
+  id             String   @id @default(uuid())
+  userId         String?
+  phoneE164      String
+  codeHash       String
+  expiresAt      DateTime
+  consumedAt     DateTime?
+  createdAt      DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([phoneE164, expiresAt])
+  @@map("otp_sessions")
+}
+
+model WhatsappSession {
+  id             String             @id @default(uuid())
+  userId         String?
+  phoneE164      String
+  state          WhatsappFlowState  @default(IDLE)
+  connectionId   String?
+  correlationId  String?
+  metadata       Json?
+  expiresAt      DateTime
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  user       User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  connection Connection? @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+
+  @@index([phoneE164, state])
+  @@map("whatsapp_sessions")
 }

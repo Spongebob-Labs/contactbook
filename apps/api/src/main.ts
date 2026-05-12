@@ -5,7 +5,9 @@ import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import { AppModule } from "./app.module";
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    rawBody: true,
+  });
 
   const allowedOrigins = (
     process.env.CORS_ORIGIN ??
@@ -26,15 +28,17 @@ async function bootstrap(): Promise<void> {
   });
 
   const swaggerConfig = new DocumentBuilder()
-    .setTitle("Monorepo API")
-    .setDescription("HTTP API template (NestJS + Prisma + PostgreSQL).")
+    .setTitle("ContactBook API")
+    .setDescription(
+      "ContactBook backend: NestJS, Prisma, PostgreSQL, Google integrations, and Twilio (WhatsApp).",
+    )
     .setVersion("1.0")
     .addBearerAuth(
       {
         type: "http",
         scheme: "bearer",
         bearerFormat: "JWT",
-        description: "Bearer token (add auth routes as needed).",
+        description: "JWT access token from ContactBook auth endpoints.",
       },
       "access-token",
     )
