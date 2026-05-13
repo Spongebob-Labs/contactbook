@@ -1,12 +1,12 @@
 .PHONY: help up down reload reset logs ps build prisma
 
 COMPOSE ?= docker compose
-COMPOSE_FILE ?= docker/docker-compose.dev.yml
-COMPOSE_PROJECT ?= monorepo-dev
+COMPOSE_FILE ?= docker/docker-compose.yml
+COMPOSE_PROJECT ?= contactbook-dev
 COMPOSE_CMD := $(COMPOSE) -f $(COMPOSE_FILE) -p $(COMPOSE_PROJECT)
 
 help:
-	@echo "Monorepo dev stack (docker/docker-compose.dev.yml)"
+	@echo "ContactBook dev stack (docker/docker-compose.yml)"
 	@echo ""
 	@echo "Targets:"
 	@echo "  up      Build + start stack (detached)"
