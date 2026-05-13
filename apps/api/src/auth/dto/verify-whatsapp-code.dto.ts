@@ -1,7 +1,7 @@
 import { ApiProperty } from "@nestjs/swagger";
 import { IsString, Length, Matches } from "class-validator";
 
-export class VerifyPhoneOtpDto {
+export class VerifyWhatsappCodeDto {
   @ApiProperty()
   @IsString()
   @Matches(/^\+\d{10,15}$/)

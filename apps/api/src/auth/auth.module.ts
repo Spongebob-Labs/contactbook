@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { JwtModule } from "@nestjs/jwt";
+import type { SignOptions } from "jsonwebtoken";
 import { PassportModule } from "@nestjs/passport";
 import { PrismaModule } from "../prisma/prisma.module";
 import { TwilioNestModule } from "../integration/twilio.module";
@@ -20,7 +21,9 @@ import { OtpService } from "./otp.service";
       useFactory: (config: ConfigService) => ({
         secret: config.get<string>("JWT_SECRET", "change-me-in-production"),
         signOptions: {
-          expiresIn: 60 * 60 * 24 * 7,
+          expiresIn: config.get<string>("JWT_EXPIRES_IN", "7d") as NonNullable<
+            SignOptions["expiresIn"]
+          >,
         },
       }),
     }),
