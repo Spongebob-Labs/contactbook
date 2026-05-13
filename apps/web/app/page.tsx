@@ -16,7 +16,14 @@ export default function HomePage() {
         <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-sm">
           @repo/types
         </code>{" "}
-        are wired. Run the API and open{" "}
+        are wired. Try{" "}
+        <a
+          href="/auth"
+          className="text-primary underline-offset-4 hover:underline"
+        >
+          WhatsApp auth (country + OTP)
+        </a>
+        , run the API, and open{" "}
         <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-sm">
           /api/docs
         </code>{" "}
