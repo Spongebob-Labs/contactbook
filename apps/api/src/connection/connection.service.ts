@@ -27,20 +27,14 @@ export class ConnectionService {
     const initiator = await this.prisma.user.findUnique({
       where: { id: initiatorId },
     });
-    if (
-      initiator &&
-      initiator.email.toLowerCase() === dto.recipientEmail.toLowerCase()
-    ) {
+    if (initiator && initiator.phone === dto.recipientPhoneE164) {
       throw new BadRequestException("Cannot connect to yourself");
     }
     const recipient = await this.prisma.user.findUnique({
-      where: { email: dto.recipientEmail.toLowerCase() },
+      where: { phone: dto.recipientPhoneE164 },
     });
     if (!recipient) {
-      throw new NotFoundException("Recipient not found");
-    }
-    if (!recipient.phone) {
-      throw new BadRequestException("Recipient must have a phone number");
+      throw new NotFoundException("Recipient not found for this phone number");
     }
     const card = await this.prisma.contactCard.findFirst({
       where: { id: dto.initiatorSharedCardId, userId: initiatorId },

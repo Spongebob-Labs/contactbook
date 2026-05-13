@@ -1,4 +1,4 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { BadRequestException, Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import twilio from "twilio";
 
@@ -43,6 +43,25 @@ export class TwilioService {
       this.logger.log(`[dry-run] WhatsApp to ${to}: ${body}`);
       return;
     }
-    await this.client.messages.create({ from, to, body });
+    try {
+      await this.client.messages.create({ from, to, body });
+    } catch (err: unknown) {
+      this.logger.warn(
+        "Twilio WhatsApp send failed",
+        err instanceof Error ? err.stack : err,
+      );
+      const code =
+        err &&
+        typeof err === "object" &&
+        "code" in err &&
+        typeof (err as { code: unknown }).code === "number"
+          ? (err as { code: number }).code
+          : undefined;
+      const message =
+        code === 63003 || code === 21211
+          ? "This number could not receive a WhatsApp message. Install WhatsApp on this phone and try again, or check the number and country code."
+          : "ContactBook sends login codes only over WhatsApp. We could not deliver a WhatsApp message to this number — WhatsApp is required.";
+      throw new BadRequestException(message);
+    }
   }
 }
