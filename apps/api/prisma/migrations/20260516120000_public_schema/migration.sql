@@ -28,10 +28,9 @@ CREATE TYPE "WhatsappFlowState" AS ENUM ('IDLE', 'AWAITING_CONNECTION_ACCEPT', '
 -- CreateTable
 CREATE TABLE "users" (
     "id" TEXT NOT NULL,
-    "email" TEXT NOT NULL,
-    "passwordHash" TEXT NOT NULL,
+    "email" TEXT,
     "name" TEXT,
-    "phone" TEXT,
+    "phone" TEXT NOT NULL,
     "phoneVerifiedAt" TIMESTAMP(3),
     "jobTitle" TEXT,
     "company" TEXT,
