@@ -1,4 +1,4 @@
-# Build from monorepo root: docker build -f apps/api/Dockerfile .
+# Build from repo root: docker build -f apps/api/Dockerfile .
 FROM node:20-alpine
 
 RUN apk add --no-cache openssl
@@ -21,6 +21,9 @@ RUN pnpm --filter api exec prisma generate
 RUN pnpm --filter api build
 
 RUN test -f apps/api/dist/src/main.js || (echo "Build failed: main.js missing" && ls -la apps/api/dist/ && exit 1)
+
+ENV NODE_ENV=production
+ENV PORT=8000
 
 EXPOSE 8000
 

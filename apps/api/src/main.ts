@@ -1,4 +1,3 @@
-import "dotenv/config";
 import { NestFactory } from "@nestjs/core";
 import { ValidationPipe, VersioningType } from "@nestjs/common";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
@@ -11,7 +10,16 @@ async function bootstrap(): Promise<void> {
 
   const allowedOrigins = (
     process.env.CORS_ORIGIN ??
-    "http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000,http://127.0.0.1:8000"
+    [
+      "http://localhost:3000",
+      "http://127.0.0.1:3000",
+      "http://localhost:3002",
+      "http://127.0.0.1:3002",
+      "http://localhost:8000",
+      "http://127.0.0.1:8000",
+      "http://localhost:8001",
+      "http://127.0.0.1:8001",
+    ].join(",")
   )
     .split(",")
     .map((origin) => origin.trim())
@@ -30,7 +38,9 @@ async function bootstrap(): Promise<void> {
   const swaggerConfig = new DocumentBuilder()
     .setTitle("ContactBook API")
     .setDescription(
-      "ContactBook backend: NestJS, Prisma, PostgreSQL, Google integrations, and Twilio (WhatsApp).",
+      [
+        "HTTP API for ContactBook: sync professional and personal contacts via web and WhatsApp.",
+      ].join("\n"),
     )
     .setVersion("1.0")
     .addBearerAuth(
@@ -51,6 +61,7 @@ async function bootstrap(): Promise<void> {
   });
 
   SwaggerModule.setup("api/docs", app, swaggerDocument, {
+    customSiteTitle: "ContactBook API",
     jsonDocumentUrl: "/api/openapi.json",
     swaggerOptions: {
       persistAuthorization: true,
@@ -67,7 +78,9 @@ async function bootstrap(): Promise<void> {
     }),
   );
 
-  const port = Number(process.env.PORT ?? 8000);
+  const port = Number(
+    process.env.PORT ?? (process.env.NODE_ENV === "production" ? 8000 : 8001),
+  );
   await app.listen(port, "0.0.0.0");
 }
 

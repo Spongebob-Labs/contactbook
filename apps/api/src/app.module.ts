@@ -13,7 +13,11 @@ import { TravelModule } from "./travel/travel.module";
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      // `.env.local` overrides `.env` (both gitignored or tracked per your setup)
+      envFilePath: [".env.local", ".env"],
+    }),
     ScheduleModule.forRoot(),
     PrismaModule,
     HealthModule,
