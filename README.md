@@ -129,3 +129,7 @@ pnpm --filter web exec shadcn add button
 ## CI
 
 [.github/workflows/ci.yml](.github/workflows/ci.yml) runs when `apps/api/**`, `packages/**`, `scripts/**`, or monorepo install roots change; it decodes repository secret **`API_ENV_B64`** (base64 of a full `apps/api/.env` matching [.env.example](apps/api/.env.example)) into `apps/api/.env`, installs with a pnpm filter for **api**, then Prisma generate, build, unit tests, and (on push to `main`/`dev`) a Docker build that passes that file as BuildKit secret **`api_env`**. **ESLint is not run in CI**; run **[scripts/validate-api.sh](scripts/validate-api.sh)** locally (`pnpm validate:api` from the repo root) before you push. Optional secret **`API_ENV_CI_B64`**, when set, is used instead of `API_ENV_B64` in CI (e.g. a non-production database URL). Encode a local env file for GitHub: [scripts/encode-env-for-gh.sh](scripts/encode-env-for-gh.sh).
+
+### API GitHub Releases
+
+After a successful **CI** run on a **push** to **`main`** that changes files under **`apps/api/`**, [.github/workflows/release-api.yml](.github/workflows/release-api.yml) creates a **GitHub Release** titled `Contactbook API v<version>`. The git tag is **`api-v<version>`** (for example `api-v0.1.42`) so it does **not** become the newest `v*` tag used by `git describe` for Docker image versioning. Release notes list commits touching **`apps/api/`** since the previous `api-v*` tag (or the last 50 such commits if none). Releases are skipped if that tag already exists (idempotent re-runs).
