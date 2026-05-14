@@ -18,6 +18,7 @@ on:
     paths:
       - ".github/workflows/ci.yml"
       - ".github/workflows/cd.yml"
+      - ".github/workflows/release-api.yml"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
       - "package.json"
@@ -29,6 +30,7 @@ on:
     paths:
       - ".github/workflows/ci.yml"
       - ".github/workflows/cd.yml"
+      - ".github/workflows/release-api.yml"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
       - "package.json"
