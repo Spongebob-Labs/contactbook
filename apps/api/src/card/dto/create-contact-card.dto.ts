@@ -13,4 +13,4 @@ export class CreateContactCardDto {
   @IsOptional()
   @IsEnum(CardType)
   type?: CardType;
-}
+} 

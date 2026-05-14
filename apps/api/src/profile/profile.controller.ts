@@ -9,7 +9,7 @@ import {
   Post,
   UseGuards,
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiOperation, ApiTags } from "@nestjs/swagger";
 import type { JwtUserPayload } from "../common/decorators/current-user.decorator";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
@@ -44,12 +44,43 @@ export class ProfileController {
 
   @Get("field-groups")
   @ApiOperation({ summary: "List field groups" })
+  @ApiOkResponse({
+    description: "List of field groups",
+    schema: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          id: { type: "string" },
+          userId: { type: "string" },
+          category: { type: "string", example: "PERSONAL" },
+          name: { type: "string" },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" },
+        },
+      },
+    },
+  })
   listGroups(@CurrentUser() user: JwtUserPayload) {
     return this.profile.listFieldGroups(user.sub);
   }
 
   @Post("field-groups")
   @ApiOperation({ summary: "Create field group" })
+  @ApiCreatedResponse({
+    description: "Field group created successfully",
+    schema: {
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        userId: { type: "string" },
+        category: { type: "string", example: "PERSONAL" },
+        name: { type: "string" },
+        createdAt: { type: "string", format: "date-time" },
+        updatedAt: { type: "string", format: "date-time" },
+      },
+    },
+  })
   createGroup(
     @CurrentUser() user: JwtUserPayload,
     @Body() dto: CreateFieldGroupDto,
@@ -59,6 +90,20 @@ export class ProfileController {
 
   @Get("field-groups/:groupId")
   @ApiOperation({ summary: "Get field group" })
+  @ApiOkResponse({
+    description: "Field group details",
+    schema: {
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        userId: { type: "string" },
+        category: { type: "string", example: "PERSONAL" },
+        name: { type: "string" },
+        createdAt: { type: "string", format: "date-time" },
+        updatedAt: { type: "string", format: "date-time" },
+      },
+    },
+  })
   getGroup(
     @CurrentUser() user: JwtUserPayload,
     @Param("groupId", ParseUUIDPipe) groupId: string,
@@ -68,6 +113,20 @@ export class ProfileController {
 
   @Patch("field-groups/:groupId")
   @ApiOperation({ summary: "Update field group" })
+  @ApiOkResponse({
+    description: "Field group updated successfully",
+    schema: {
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        userId: { type: "string" },
+        category: { type: "string", example: "PERSONAL" },
+        name: { type: "string" },
+        createdAt: { type: "string", format: "date-time" },
+        updatedAt: { type: "string", format: "date-time" },
+      },
+    },
+  })
   updateGroup(
     @CurrentUser() user: JwtUserPayload,
     @Param("groupId", ParseUUIDPipe) groupId: string,
@@ -78,6 +137,15 @@ export class ProfileController {
 
   @Delete("field-groups/:groupId")
   @ApiOperation({ summary: "Delete field group and its fields" })
+  @ApiOkResponse({
+    description: "Field group deleted successfully",
+    schema: {
+      type: "object",
+      properties: {
+        ok: { type: "boolean" },
+      },
+    },
+  })
   async deleteGroup(
     @CurrentUser() user: JwtUserPayload,
     @Param("groupId", ParseUUIDPipe) groupId: string,
@@ -88,6 +156,22 @@ export class ProfileController {
 
   @Post("field-groups/:groupId/fields")
   @ApiOperation({ summary: "Create profile field (uses transaction for extensions)" })
+  @ApiCreatedResponse({
+    description: "Profile field created successfully",
+    schema: {
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        groupId: { type: "string" },
+        type: { type: "string", example: "PHONE" },
+        label: { type: "string", nullable: true },
+        isSensitive: { type: "boolean" },
+        value: { type: "string", nullable: true },
+        createdAt: { type: "string", format: "date-time" },
+        updatedAt: { type: "string", format: "date-time" },
+      },
+    },
+  })
   createField(
     @CurrentUser() user: JwtUserPayload,
     @Param("groupId", ParseUUIDPipe) groupId: string,
@@ -98,6 +182,22 @@ export class ProfileController {
 
   @Patch("fields/:fieldId")
   @ApiOperation({ summary: "Update profile field" })
+  @ApiOkResponse({
+    description: "Profile field updated successfully",
+    schema: {
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        groupId: { type: "string" },
+        type: { type: "string", example: "PHONE" },
+        label: { type: "string", nullable: true },
+        isSensitive: { type: "boolean" },
+        value: { type: "string", nullable: true },
+        createdAt: { type: "string", format: "date-time" },
+        updatedAt: { type: "string", format: "date-time" },
+      },
+    },
+  })
   updateField(
     @CurrentUser() user: JwtUserPayload,
     @Param("fieldId", ParseUUIDPipe) fieldId: string,
@@ -108,6 +208,15 @@ export class ProfileController {
 
   @Delete("fields/:fieldId")
   @ApiOperation({ summary: "Delete profile field" })
+  @ApiOkResponse({
+    description: "Profile field deleted successfully",
+    schema: {
+      type: "object",
+      properties: {
+        ok: { type: "boolean" },
+      },
+    },
+  })
   async deleteField(
     @CurrentUser() user: JwtUserPayload,
     @Param("fieldId", ParseUUIDPipe) fieldId: string,

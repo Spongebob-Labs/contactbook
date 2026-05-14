@@ -8,7 +8,7 @@ import {
   Post,
   UseGuards,
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiOperation, ApiTags } from "@nestjs/swagger";
 import type { Response } from "express";
 import type { JwtUserPayload } from "../common/decorators/current-user.decorator";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
@@ -27,6 +27,15 @@ export class GoogleController {
   @ApiOperation({
     summary: "Get Google OAuth URL (People + Calendar read-only)",
   })
+  @ApiOkResponse({
+    description: "Returns the OAuth URL",
+    schema: {
+      type: "object",
+      properties: {
+        url: { type: "string" },
+      },
+    },
+  })
   oauthUrl(@CurrentUser() user: JwtUserPayload): { url: string } {
     return { url: this.google.createAuthUrl(user.sub) };
   }
@@ -36,6 +45,15 @@ export class GoogleController {
     summary: "Google OAuth redirect/callback (API-owned client)",
     description:
       "Legacy path when `GOOGLE_REDIRECT_URI` points at this API. Prefer Supabase PKCE + POST /integrations/google/link-provider for browser UX.",
+  })
+  @ApiOkResponse({
+    description: "OAuth callback successful",
+    schema: {
+      type: "object",
+      properties: {
+        ok: { type: "boolean" },
+      },
+    },
   })
   async callback(
     @Query("code") code: string | undefined,
@@ -56,6 +74,15 @@ export class GoogleController {
     summary:
       "Link Google provider tokens (Supabase session) to the current user; stored as OAuthAccount (GOOGLE).",
   })
+  @ApiCreatedResponse({
+    description: "Provider linked successfully",
+    schema: {
+      type: "object",
+      properties: {
+        ok: { type: "boolean" },
+      },
+    },
+  })
   async linkProvider(
     @CurrentUser() user: JwtUserPayload,
     @Body() dto: LinkGoogleProviderDto,
@@ -73,6 +100,12 @@ export class GoogleController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth("access-token")
   @ApiOperation({ summary: "Run Google People contacts sync" })
+  @ApiOkResponse({
+    description: "Contacts synced successfully",
+    schema: {
+      type: "object",
+    },
+  })
   sync(@CurrentUser() user: JwtUserPayload) {
     return this.google.syncContacts(user.sub);
   }

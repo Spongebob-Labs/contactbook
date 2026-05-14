@@ -9,7 +9,7 @@ import {
   Post,
   UseGuards,
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiOperation, ApiTags } from "@nestjs/swagger";
 import type { JwtUserPayload } from "../common/decorators/current-user.decorator";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
@@ -27,18 +27,63 @@ export class CardController {
 
   @Get()
   @ApiOperation({ summary: "List contact cards" })
+  @ApiOkResponse({
+    description: "List of contact cards",
+    schema: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          id: { type: "string" },
+          userId: { type: "string" },
+          name: { type: "string" },
+          type: { type: "string", example: "PERSONAL" },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" },
+        },
+      },
+    },
+  })
   list(@CurrentUser() user: JwtUserPayload) {
     return this.cards.listCards(user.sub);
   }
 
   @Post()
   @ApiOperation({ summary: "Create contact card" })
+  @ApiCreatedResponse({
+    description: "Contact card created successfully",
+    schema: {
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        userId: { type: "string" },
+        name: { type: "string" },
+        type: { type: "string", example: "PERSONAL" },
+        createdAt: { type: "string", format: "date-time" },
+        updatedAt: { type: "string", format: "date-time" },
+      },
+    },
+  })
   create(@CurrentUser() user: JwtUserPayload, @Body() dto: CreateContactCardDto) {
     return this.cards.createCard(user.sub, dto);
   }
 
   @Get(":cardId")
   @ApiOperation({ summary: "Get contact card" })
+  @ApiOkResponse({
+    description: "Contact card details",
+    schema: {
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        userId: { type: "string" },
+        name: { type: "string" },
+        type: { type: "string", example: "PERSONAL" },
+        createdAt: { type: "string", format: "date-time" },
+        updatedAt: { type: "string", format: "date-time" },
+      },
+    },
+  })
   get(
     @CurrentUser() user: JwtUserPayload,
     @Param("cardId", ParseUUIDPipe) cardId: string,
@@ -48,6 +93,20 @@ export class CardController {
 
   @Patch(":cardId")
   @ApiOperation({ summary: "Update contact card" })
+  @ApiOkResponse({
+    description: "Contact card updated successfully",
+    schema: {
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        userId: { type: "string" },
+        name: { type: "string" },
+        type: { type: "string", example: "PERSONAL" },
+        createdAt: { type: "string", format: "date-time" },
+        updatedAt: { type: "string", format: "date-time" },
+      },
+    },
+  })
   update(
     @CurrentUser() user: JwtUserPayload,
     @Param("cardId", ParseUUIDPipe) cardId: string,
@@ -58,6 +117,15 @@ export class CardController {
 
   @Delete(":cardId")
   @ApiOperation({ summary: "Delete contact card" })
+  @ApiOkResponse({
+    description: "Contact card deleted successfully",
+    schema: {
+      type: "object",
+      properties: {
+        ok: { type: "boolean" },
+      },
+    },
+  })
   async delete(
     @CurrentUser() user: JwtUserPayload,
     @Param("cardId", ParseUUIDPipe) cardId: string,
@@ -68,6 +136,19 @@ export class CardController {
 
   @Get(":cardId/field-mappings")
   @ApiOperation({ summary: "List field mappings on a card" })
+  @ApiOkResponse({
+    description: "List of field mappings",
+    schema: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          cardId: { type: "string" },
+          fieldId: { type: "string" },
+        },
+      },
+    },
+  })
   listMappings(
     @CurrentUser() user: JwtUserPayload,
     @Param("cardId", ParseUUIDPipe) cardId: string,
@@ -77,6 +158,16 @@ export class CardController {
 
   @Post(":cardId/field-mappings")
   @ApiOperation({ summary: "Map a profile field onto this card" })
+  @ApiCreatedResponse({
+    description: "Field mapping added successfully",
+    schema: {
+      type: "object",
+      properties: {
+        cardId: { type: "string" },
+        fieldId: { type: "string" },
+      },
+    },
+  })
   addMapping(
     @CurrentUser() user: JwtUserPayload,
     @Param("cardId", ParseUUIDPipe) cardId: string,
@@ -87,6 +178,15 @@ export class CardController {
 
   @Delete(":cardId/field-mappings/:fieldId")
   @ApiOperation({ summary: "Remove a field mapping from this card" })
+  @ApiOkResponse({
+    description: "Field mapping removed successfully",
+    schema: {
+      type: "object",
+      properties: {
+        ok: { type: "boolean" },
+      },
+    },
+  })
   async removeMapping(
     @CurrentUser() user: JwtUserPayload,
     @Param("cardId", ParseUUIDPipe) cardId: string,
