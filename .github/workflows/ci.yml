@@ -1,20 +1,81 @@
+# API-only CI: triggers when the Nest app, shared workspace packages, or install roots change.
+#
+# Secrets (repository Settings → Secrets and variables → Actions):
+# - DATABASE_URL — required for Prisma generate, Nest build, tests, and Docker build (BuildKit secret).
+# - GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_SERVICE_ACCOUNT — required to push images to GAR on push to main/dev.
+# Optional (e.g. future integration tests): JWT_SECRET, TWILIO_*, GOOGLE_*, etc. — add to job `env` when needed.
+#
+# Variables (non-secret): GCP_REGION, GCP_PROJECT_ID — required when pushing images to Artifact Registry.
+
 name: CI
 
 on:
   pull_request:
     branches: [main, dev]
+    paths:
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/cd.yml"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "package.json"
+      - "apps/api/**"
+      - "packages/**"
   push:
     branches: [main, dev]
-
-env:
-  DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ci?sslmode=disable
+    paths:
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/cd.yml"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "package.json"
+      - "apps/api/**"
+      - "packages/**"
 
 jobs:
   api:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Whether to push image to GAR
+        id: garpush
+        run: |
+          if [ "${{ github.event_name }}" = "push" ] && { [ "${{ github.ref }}" = "refs/heads/main" ] || [ "${{ github.ref }}" = "refs/heads/dev" ]; }; then
+            echo "push=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "push=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Container image tags
+        id: imagetags
+        env:
+          PUSH: ${{ steps.garpush.outputs.push }}
+          GCP_REGION: ${{ vars.GCP_REGION }}
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+        run: |
+          if [ "$PUSH" = "true" ]; then
+            if [ -z "$GCP_REGION" ] || [ -z "$GCP_PROJECT_ID" ]; then
+              echo "Set repository variables GCP_REGION and GCP_PROJECT_ID to push images to GAR."
+              exit 1
+            fi
+            BASE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/contactbook/api"
+            {
+              echo "tags<<__EOF__"
+              echo "${BASE}:${{ github.sha }}"
+              if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+                echo "${BASE}:latest"
+              fi
+              echo "__EOF__"
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo "tags=contactbook-api:ci" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -27,8 +88,8 @@ jobs:
           node-version: 20
           cache: pnpm
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - name: Install dependencies (api + workspace deps)
+        run: pnpm install --frozen-lockfile --filter api...
 
       - name: Prisma generate (api)
         run: pnpm -C apps/api prisma:generate
@@ -42,28 +103,33 @@ jobs:
       - name: Test (api)
         run: pnpm -C apps/api test
 
-  web:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+      - name: Authenticate to Google Cloud
+        if: steps.garpush.outputs.push == 'true'
+        uses: google-github-actions/auth@v2
         with:
-          version: 10
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - name: Set up Cloud SDK
+        if: steps.garpush.outputs.push == 'true'
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for GAR
+        if: steps.garpush.outputs.push == 'true'
+        run: gcloud auth configure-docker "${{ vars.GCP_REGION }}-docker.pkg.dev" --quiet
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push container image
+        uses: docker/build-push-action@v6
         with:
-          node-version: 20
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Lint (web)
-        run: pnpm -C apps/web lint
-
-      - name: Build (web)
-        run: pnpm -C apps/web build
+          context: .
+          file: apps/api/Dockerfile
+          push: ${{ steps.garpush.outputs.push == 'true' }}
+          load: ${{ steps.garpush.outputs.push != 'true' }}
+          tags: ${{ steps.imagetags.outputs.tags }}
+          secret-envs: |
+            database_url=DATABASE_URL
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
