@@ -13,7 +13,6 @@ import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { ConnectionService } from "./connection.service";
 import { CreateConnectionRequestDto } from "./dto/create-connection-request.dto";
-import { ShareBackDto } from "./dto/share-back.dto";
 
 @ApiTags("Connections")
 @ApiBearerAuth("access-token")
@@ -60,12 +59,11 @@ export class ConnectionController {
   }
 
   @Post(":id/share-back")
-  @ApiOperation({ summary: "Share back a card after acceptance" })
+  @ApiOperation({ summary: "Mark that the receiver has shared back (hasSharedBack)" })
   shareBack(
     @CurrentUser() user: JwtUserPayload,
     @Param("id", ParseUUIDPipe) id: string,
-    @Body() dto: ShareBackDto,
   ) {
-    return this.connections.shareBack(id, user.sub, dto.recipientSharedCardId);
+    return this.connections.shareBack(id, user.sub);
   }
 }

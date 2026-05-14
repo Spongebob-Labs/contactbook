@@ -46,9 +46,14 @@ export function composeE164(
   const dial = normalizeDialCode(countryCallingPrefix);
   const national = normalizeNationalPhone(nationalPhone);
   assertDialAndNationalFormat(dial, national);
-  return `${dial}${national}`;
+  const parsed = parsePhoneNumberFromString(`${dial}${national}`);
+  if (!parsed?.isValid()) {
+    throw new BadRequestException("Invalid phone number");
+  }
+  return parsed.number;
 }
 
+/** Build E.164 from stored `User.countryCode` + `User.phone` (national digits). */
 export function e164FromStoredUser(user: {
   countryCode: string;
   phone: string;

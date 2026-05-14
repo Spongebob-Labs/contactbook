@@ -1,8 +1,6 @@
-import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { ApiProperty } from "@nestjs/swagger";
 import { Transform } from "class-transformer";
 import {
-  IsISO8601,
-  IsOptional,
   IsString,
   IsUUID,
   Matches,
@@ -33,13 +31,8 @@ export class CreateConnectionRequestDto {
   )
   recipientCountryCode!: string;
 
-  @ApiProperty()
+  @ApiProperty({ description: "Contact card the requester will share when accepted." })
   @IsString()
   @IsUUID()
-  initiatorSharedCardId!: string;
-
-  @ApiPropertyOptional({ description: "ISO datetime when share access ends" })
-  @IsOptional()
-  @IsISO8601()
-  shareExpiresAt?: string;
+  sharedCardId!: string;
 }

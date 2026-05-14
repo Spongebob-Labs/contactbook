@@ -13,11 +13,11 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import type { JwtUserPayload } from "../common/decorators/current-user.decorator";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
-import { CreateContactCardDto } from "./dto/create-contact-card.dto";
+import { CreateFieldGroupDto } from "./dto/create-field-group.dto";
 import { CreateProfileFieldDto } from "./dto/create-profile-field.dto";
-import { CreateSensitiveFieldRequestDto } from "./dto/create-sensitive-field-request.dto";
-import { UpdateContactCardDto } from "./dto/update-contact-card.dto";
+import { UpdateFieldGroupDto } from "./dto/update-field-group.dto";
 import { UpdateProfileFieldDto } from "./dto/update-profile-field.dto";
+import { ProfileMeSerializerService } from "./profile-me.serializer";
 import { ProfileService } from "./profile.service";
 
 @ApiTags("Profile")
@@ -25,69 +25,69 @@ import { ProfileService } from "./profile.service";
 @UseGuards(JwtAuthGuard)
 @Controller({ path: "profile", version: "1" })
 export class ProfileController {
-  constructor(private readonly profile: ProfileService) {}
+  constructor(
+    private readonly profile: ProfileService,
+    private readonly profileMe: ProfileMeSerializerService,
+  ) {}
 
-  @Get("cards")
-  @ApiOperation({ summary: "List contact cards" })
-  listCards(@CurrentUser() user: JwtUserPayload) {
-    return this.profile.listCards(user.sub);
+  @Get("me")
+  @ApiOperation({ summary: "Current user profile (grouped, frontend-optimized)" })
+  getMe(@CurrentUser() user: JwtUserPayload) {
+    return this.profileMe.build(user.sub);
   }
 
-  @Post("cards")
-  @ApiOperation({ summary: "Create contact card" })
-  createCard(
+  @Get("field-groups")
+  @ApiOperation({ summary: "List field groups" })
+  listGroups(@CurrentUser() user: JwtUserPayload) {
+    return this.profile.listFieldGroups(user.sub);
+  }
+
+  @Post("field-groups")
+  @ApiOperation({ summary: "Create field group" })
+  createGroup(
     @CurrentUser() user: JwtUserPayload,
-    @Body() dto: CreateContactCardDto,
+    @Body() dto: CreateFieldGroupDto,
   ) {
-    return this.profile.createCard(user.sub, dto);
+    return this.profile.createFieldGroup(user.sub, dto);
   }
 
-  @Get("cards/:cardId")
-  @ApiOperation({ summary: "Get contact card" })
-  getCard(
+  @Get("field-groups/:groupId")
+  @ApiOperation({ summary: "Get field group" })
+  getGroup(
     @CurrentUser() user: JwtUserPayload,
-    @Param("cardId", ParseUUIDPipe) cardId: string,
+    @Param("groupId", ParseUUIDPipe) groupId: string,
   ) {
-    return this.profile.getCard(user.sub, cardId);
+    return this.profile.getFieldGroup(user.sub, groupId);
   }
 
-  @Patch("cards/:cardId")
-  @ApiOperation({ summary: "Update contact card" })
-  updateCard(
+  @Patch("field-groups/:groupId")
+  @ApiOperation({ summary: "Update field group" })
+  updateGroup(
     @CurrentUser() user: JwtUserPayload,
-    @Param("cardId", ParseUUIDPipe) cardId: string,
-    @Body() dto: UpdateContactCardDto,
+    @Param("groupId", ParseUUIDPipe) groupId: string,
+    @Body() dto: UpdateFieldGroupDto,
   ) {
-    return this.profile.updateCard(user.sub, cardId, dto);
+    return this.profile.updateFieldGroup(user.sub, groupId, dto);
   }
 
-  @Delete("cards/:cardId")
-  @ApiOperation({ summary: "Delete contact card" })
-  async deleteCard(
+  @Delete("field-groups/:groupId")
+  @ApiOperation({ summary: "Delete field group and its fields" })
+  async deleteGroup(
     @CurrentUser() user: JwtUserPayload,
-    @Param("cardId", ParseUUIDPipe) cardId: string,
+    @Param("groupId", ParseUUIDPipe) groupId: string,
   ): Promise<{ ok: true }> {
-    await this.profile.deleteCard(user.sub, cardId);
+    await this.profile.deleteFieldGroup(user.sub, groupId);
     return { ok: true };
   }
 
-  @Get("cards/:cardId/fields")
-  @ApiOperation({ summary: "List profile fields on a card" })
-  listFields(
-    @CurrentUser() user: JwtUserPayload,
-    @Param("cardId", ParseUUIDPipe) cardId: string,
-  ) {
-    return this.profile.listFields(user.sub, cardId);
-  }
-
-  @Post("cards/:cardId/fields")
-  @ApiOperation({ summary: "Add profile field" })
+  @Post("field-groups/:groupId/fields")
+  @ApiOperation({ summary: "Create profile field (uses transaction for extensions)" })
   createField(
     @CurrentUser() user: JwtUserPayload,
-    @Param("cardId", ParseUUIDPipe) cardId: string,
+    @Param("groupId", ParseUUIDPipe) groupId: string,
     @Body() dto: CreateProfileFieldDto,
   ) {
-    return this.profile.createField(user.sub, cardId, dto);
+    return this.profile.createField(user.sub, groupId, dto);
   }
 
   @Patch("fields/:fieldId")
@@ -108,16 +108,5 @@ export class ProfileController {
   ): Promise<{ ok: true }> {
     await this.profile.deleteField(user.sub, fieldId);
     return { ok: true };
-  }
-
-  @Post("sensitive-field-requests")
-  @ApiOperation({
-    summary: "Request access to a sensitive field (WhatsApp approval)",
-  })
-  createSensitiveRequest(
-    @CurrentUser() user: JwtUserPayload,
-    @Body() dto: CreateSensitiveFieldRequestDto,
-  ) {
-    return this.profile.createSensitiveFieldRequest(user.sub, dto);
   }
 }

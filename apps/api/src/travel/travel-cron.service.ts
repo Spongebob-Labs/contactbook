@@ -42,14 +42,14 @@ export class TravelCronService {
       where: {
         userId,
         whatsappSentAt: null,
-        start: { gte: new Date() },
+        startDate: { gte: new Date() },
       },
     });
     for (const event of pending) {
-      const where = `${event.city ?? event.location ?? "your calendar"}`;
+      const where = `${event.city}, ${event.country}`.trim();
       await this.twilio.sendWhatsApp(
         e164FromStoredUser(user),
-        `ContactBook travel: ${event.title ?? "Trip"} — ${where}. Reply if you want to update your shared card.`,
+        `ContactBook travel: ${event.title ?? "Trip"} — ${where || "your calendar"}.`,
       );
       await this.prisma.travelEvent.update({
         where: { id: event.id },

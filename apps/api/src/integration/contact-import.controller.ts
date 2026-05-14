@@ -1,19 +1,15 @@
 import {
-  Body,
   Controller,
   Get,
   Param,
   ParseUUIDPipe,
-  Patch,
   UseGuards,
 } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import type { JwtUserPayload } from "../common/decorators/current-user.decorator";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
-import { Prisma } from "@prisma/client";
 import { ContactImportService } from "./contact-import.service";
-import { PatchContactImportDto } from "./dto/patch-contact-import.dto";
 
 @ApiTags("Integrations / Contact imports")
 @ApiBearerAuth("access-token")
@@ -28,17 +24,12 @@ export class ContactImportController {
     return this.imports.list(user.sub);
   }
 
-  @Patch(":id")
-  @ApiOperation({ summary: "Update userOverrides for merge on next sync" })
-  patch(
+  @Get(":id")
+  @ApiOperation({ summary: "Get one imported contact" })
+  get(
     @CurrentUser() user: JwtUserPayload,
     @Param("id", ParseUUIDPipe) id: string,
-    @Body() dto: PatchContactImportDto,
   ) {
-    return this.imports.patchOverrides(
-      user.sub,
-      id,
-      dto.userOverrides as Prisma.JsonValue,
-    );
+    return this.imports.get(user.sub, id);
   }
 }

@@ -2,7 +2,6 @@ import { Injectable, Logger } from "@nestjs/common";
 import {
   type User,
   ConnectionStatus,
-  FieldAccessRequestStatus,
   WhatsappFlowState,
 } from "@prisma/client";
 import { e164FromStoredUser, inboundE164ToIdentity } from "../common/phone.util";
@@ -18,20 +17,16 @@ export class WhatsappWebhookService {
     private readonly twilio: TwilioService,
   ) {}
 
-  async handleInboundMessage(fromRaw: string, body: string): Promise<void> {
+  /**
+   * Handles inbound WhatsApp messages. `inboundText` should prefer `ButtonText`
+   * (interactive replies) when present, then `Body`.
+   */
+  async handleInboundMessage(
+    fromRaw: string,
+    inboundText: string,
+  ): Promise<void> {
     const from = fromRaw.replace(/^whatsapp:/, "");
-    const text = (body ?? "").trim();
-
-    const sfrApprove = /^APPROVE-SFR-([0-9a-f-]{36})$/i.exec(text);
-    const sfrDecline = /^DECLINE-SFR-([0-9a-f-]{36})$/i.exec(text);
-    if (sfrApprove) {
-      await this.resolveSensitiveRequest(sfrApprove[1], "APPROVED", from);
-      return;
-    }
-    if (sfrDecline) {
-      await this.resolveSensitiveRequest(sfrDecline[1], "DENIED", from);
-      return;
-    }
+    const text = (inboundText ?? "").trim();
 
     const accept = /^ACCEPT-([0-9a-f-]{36})$/i.exec(text);
     const decline = /^DECLINE-([0-9a-f-]{36})$/i.exec(text);
@@ -41,6 +36,13 @@ export class WhatsappWebhookService {
     }
     if (decline) {
       await this.declineConnection(decline[1], from);
+      return;
+    }
+
+    const quickAccept = /^accept$/i.exec(text);
+    const quickDecline = /^decline$/i.exec(text);
+    if (quickAccept || quickDecline) {
+      await this.resolveLatestPendingConnection(from, quickAccept !== null);
       return;
     }
 
@@ -57,54 +59,34 @@ export class WhatsappWebhookService {
     });
   }
 
-  private async resolveSensitiveRequest(
-    id: string,
-    status: "APPROVED" | "DENIED",
+  private async resolveLatestPendingConnection(
     fromPhone: string,
+    accept: boolean,
   ): Promise<void> {
     const user = await this.findUserFromInboundE164(fromPhone);
     if (!user) {
+      return;
+    }
+    const session = await this.prisma.whatsappSession.findFirst({
+      where: {
+        phoneE164: e164FromStoredUser(user),
+        state: WhatsappFlowState.AWAITING_CONNECTION_ACCEPT,
+        expiresAt: { gt: new Date() },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    if (!session?.connectionId) {
       await this.twilio.sendWhatsApp(
         fromPhone,
-        "ContactBook: that request is no longer pending.",
+        "ContactBook: no pending connection invite found. Use the message that contained Accept/Decline.",
       );
       return;
     }
-    const req = await this.prisma.sensitiveFieldAccessRequest.findFirst({
-      where: {
-        id,
-        ownerId: user.id,
-        status: FieldAccessRequestStatus.PENDING,
-      },
-    });
-    if (!req) {
-      await this.twilio.sendWhatsApp(
-        fromPhone,
-        "ContactBook: that request is no longer pending.",
-      );
-      return;
+    if (accept) {
+      await this.acceptConnection(session.connectionId, fromPhone);
+    } else {
+      await this.declineConnection(session.connectionId, fromPhone);
     }
-    await this.prisma.sensitiveFieldAccessRequest.update({
-      where: { id },
-      data: {
-        status:
-          status === "APPROVED"
-            ? FieldAccessRequestStatus.APPROVED
-            : FieldAccessRequestStatus.DENIED,
-        resolvedAt: new Date(),
-      },
-    });
-    await this.prisma.whatsappSession.updateMany({
-      where: {
-        phoneE164: fromPhone,
-        state: WhatsappFlowState.AWAITING_SENSITIVE_FIELD_APPROVAL,
-      },
-      data: { state: WhatsappFlowState.IDLE },
-    });
-    await this.twilio.sendWhatsApp(
-      fromPhone,
-      `ContactBook: access request ${status.toLowerCase()}.`,
-    );
   }
 
   private async acceptConnection(
@@ -122,7 +104,7 @@ export class WhatsappWebhookService {
     const connection = await this.prisma.connection.findFirst({
       where: {
         id: connectionId,
-        recipientId: user.id,
+        receiverId: user.id,
         status: ConnectionStatus.PENDING,
       },
     });
@@ -135,28 +117,25 @@ export class WhatsappWebhookService {
     }
     await this.prisma.connection.update({
       where: { id: connectionId },
-      data: {
-        status: ConnectionStatus.ACCEPTED,
-        acceptedAt: new Date(),
-      },
+      data: { status: ConnectionStatus.ACCEPTED },
     });
     await this.prisma.whatsappSession.updateMany({
       where: {
-        phoneE164: fromPhone,
+        connectionId,
         state: WhatsappFlowState.AWAITING_CONNECTION_ACCEPT,
       },
       data: { state: WhatsappFlowState.IDLE },
     });
-    const initiator = await this.prisma.user.findUnique({
-      where: { id: connection.initiatorId },
+    const requester = await this.prisma.user.findUnique({
+      where: { id: connection.requesterId },
     });
     await this.twilio.sendWhatsApp(
       fromPhone,
       "ContactBook: you accepted the connection.",
     );
-    if (initiator?.phone) {
+    if (requester) {
       await this.twilio.sendWhatsApp(
-        e164FromStoredUser(initiator),
+        e164FromStoredUser(requester),
         "ContactBook: your connection request was accepted.",
       );
     }
@@ -177,7 +156,7 @@ export class WhatsappWebhookService {
     const connection = await this.prisma.connection.findFirst({
       where: {
         id: connectionId,
-        recipientId: user.id,
+        receiverId: user.id,
         status: ConnectionStatus.PENDING,
       },
     });
@@ -194,7 +173,7 @@ export class WhatsappWebhookService {
     });
     await this.prisma.whatsappSession.updateMany({
       where: {
-        phoneE164: fromPhone,
+        connectionId,
         state: WhatsappFlowState.AWAITING_CONNECTION_ACCEPT,
       },
       data: { state: WhatsappFlowState.IDLE },
