@@ -52,7 +52,7 @@ export class GoogleService {
     });
   }
 
-  private async upsertGoogleAccountForUser(
+  private async upsertOAuthAccountForUser(
     userId: string,
     args: {
       accessToken: string;
@@ -61,7 +61,7 @@ export class GoogleService {
       scopes: string;
     },
   ): Promise<void> {
-    await this.prisma.googleAccount.upsert({
+    await this.prisma.oAuthAccount.upsert({
       where: {
         userId_provider: { userId, provider: OAuthProvider.GOOGLE },
       },
@@ -100,7 +100,7 @@ export class GoogleService {
     }
     oauth2.setCredentials(tokens);
     const expiresAt = tokens.expiry_date ? new Date(tokens.expiry_date) : null;
-    await this.upsertGoogleAccountForUser(userId, {
+    await this.upsertOAuthAccountForUser(userId, {
       accessToken: tokens.access_token,
       refreshToken: tokens.refresh_token,
       expiresAt,
@@ -117,7 +117,7 @@ export class GoogleService {
       scope: string | null;
     },
   ): Promise<void> {
-    await this.upsertGoogleAccountForUser(userId, {
+    await this.upsertOAuthAccountForUser(userId, {
       accessToken: args.providerAccessToken,
       refreshToken: args.providerRefreshToken,
       expiresAt: args.expiresAt,
@@ -129,7 +129,7 @@ export class GoogleService {
   }
 
   private async getOAuth2ForUser(userId: string) {
-    const account = await this.prisma.googleAccount.findUnique({
+    const account = await this.prisma.oAuthAccount.findUnique({
       where: {
         userId_provider: { userId, provider: OAuthProvider.GOOGLE },
       },
@@ -151,7 +151,7 @@ export class GoogleService {
       }) => {
         void (async () => {
           if (tokens.access_token) {
-            await this.prisma.googleAccount.update({
+            await this.prisma.oAuthAccount.update({
               where: { id: account.id },
               data: {
                 accessToken: tokens.access_token,

@@ -32,7 +32,11 @@ export class GoogleController {
   }
 
   @Get("callback")
-  @ApiOperation({ summary: "Google OAuth redirect/callback" })
+  @ApiOperation({
+    summary: "Google OAuth redirect/callback (API-owned client)",
+    description:
+      "Legacy path when `GOOGLE_REDIRECT_URI` points at this API. Prefer Supabase PKCE + POST /integrations/google/link-provider for browser UX.",
+  })
   async callback(
     @Query("code") code: string | undefined,
     @Query("state") state: string | undefined,
@@ -50,7 +54,7 @@ export class GoogleController {
   @ApiBearerAuth("access-token")
   @ApiOperation({
     summary:
-      "Link Google provider tokens from Supabase OAuth to the current user.",
+      "Link Google provider tokens (Supabase session) to the current user; stored as OAuthAccount (GOOGLE).",
   })
   async linkProvider(
     @CurrentUser() user: JwtUserPayload,
