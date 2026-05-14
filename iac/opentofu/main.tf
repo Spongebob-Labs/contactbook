@@ -56,6 +56,8 @@ resource "google_cloud_run_v2_service" "api" {
   project  = var.project_id
   location = var.region
 
+  deletion_protection = false
+
   template {
     service_account = local.cloud_run_sa_email
 
@@ -65,7 +67,7 @@ resource "google_cloud_run_v2_service" "api" {
     }
 
     containers {
-      image = local.image_uri
+      image = "us-docker.pkg.dev/cloudrun/container/hello"
 
       resources {
         limits = {
@@ -92,6 +94,14 @@ resource "google_cloud_run_v2_service" "api" {
     google_project_service.enabled,
     google_artifact_registry_repository.docker,
   ]
+
+  lifecycle {
+    ignore_changes = [
+      template[0].containers[0].image,
+      client,
+      client_version,
+    ]
+  }
 }
 
 resource "google_cloud_run_v2_service_iam_member" "public_invoker" {
