@@ -107,6 +107,7 @@ resource "google_cloud_run_v2_service" "api" {
 resource "google_cloud_run_v2_service_iam_member" "public_invoker" {
   count = var.allow_unauthenticated ? 1 : 0
 
+  
   provider = google-beta
 
   project  = var.project_id
