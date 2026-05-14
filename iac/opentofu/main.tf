@@ -1,7 +1,11 @@
 locals {
   image_uri = "${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.docker.repository_id}/${var.image_name}:${var.image_tag}"
 
-  cloud_run_sa_email = var.cloud_run_service_account_email
+  # Revision runtime identity: explicit var or GCP default (Compute Engine default SA).
+  # CD / gcloud must have iam.serviceAccounts.actAs on this SA (granted in github_actions_wif.tf).
+  cloud_run_runtime_sa_email = (
+    var.cloud_run_service_account_email != null && var.cloud_run_service_account_email != ""
+    ) ? var.cloud_run_service_account_email : "${data.google_project.current.number}-compute@developer.gserviceaccount.com"
 
   wif_apis = var.enable_github_actions_wif ? toset([
     "sts.googleapis.com",
@@ -70,7 +74,7 @@ resource "google_cloud_run_v2_service" "api" {
   deletion_protection = false
 
   template {
-    service_account = local.cloud_run_sa_email
+    service_account = local.cloud_run_runtime_sa_email
 
     scaling {
       min_instance_count = var.min_instances
