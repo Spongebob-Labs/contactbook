@@ -29,3 +29,6 @@ yarn-error.log*
 *.pem
 .secrets
 .pnpm-store/
+
+# OpenTofu / Terraform — local backend config (bucket name is not secret but often per-env)
+iac/opentofu/backend.hcl
