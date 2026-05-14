@@ -94,21 +94,24 @@ tofu apply
 
 ### Local Docker build
 
-`prisma generate` in the Dockerfile reads `DATABASE_URL` via a BuildKit secret (not baked into layers). From the **repository root**:
+`prisma generate` in the Dockerfile reads a full dotenv file via BuildKit file secret **`api_env`** (not persisted in image layers). From the **repository root**, with `apps/api/.env` populated (e.g. from `.env.example`):
 
 ```bash
-export DATABASE_URL="postgresql://..."   # any URL Prisma accepts for generate
+./scripts/build-api.sh
+# or:
 docker buildx build -f apps/api/Dockerfile \
-  --secret id=database_url,env=DATABASE_URL \
+  --secret id=api_env,src=apps/api/.env \
   -t contactbook-api:local .
 ```
 
 ## CI/CD (GitHub Actions)
 
-- **CI** (`.github/workflows/ci.yml`) uses repository secret `DATABASE_URL` and OIDC secrets to push images to GAR on push to `main` or `dev`.
-- **CD** (`.github/workflows/cd.yml`) runs after a successful CI run for a **push** to `main` and updates Cloud Run to `…/contactbook/api:<commit-sha>`.
+- **CI** (`.github/workflows/ci.yml`) uses repository secrets **`API_ENV_B64`** (and optionally **`API_ENV_CI_B64`**), **`GCP_WORKLOAD_IDENTITY_PROVIDER`**, **`GCP_SERVICE_ACCOUNT`**, and OIDC to push images to GAR on push to `main` or `dev`.
+- **CD** (`.github/workflows/cd.yml`) runs after a successful CI run for a **push** to `main`: decodes **`API_ENV_B64`**, runs **`prisma migrate deploy`**, then updates Cloud Run to image `…/contactbook/api:<version>` and applies the same env keys via **`--env-vars-file`** (JSON produced by [../../scripts/dotenv-to-gcloud-env-json.py](../../scripts/dotenv-to-gcloud-env-json.py)).
 
-Configure repository **variables**: `GCP_REGION`, `GCP_PROJECT_ID`, and optionally `CLOUD_RUN_SERVICE` (defaults to `contactbook-api`). Configure **secrets**: `DATABASE_URL`, `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_SERVICE_ACCOUNT`.
+Configure repository **variables**: `GCP_REGION`, `GCP_PROJECT_ID`, and optionally `CLOUD_RUN_SERVICE` (defaults to `contactbook-api`). Configure **secrets** as above. The CD runner must be able to reach the database in `DATABASE_URL` for migrations.
+
+Encode `apps/api/.env` for the `API_ENV_B64` secret: [../../scripts/encode-env-for-gh.sh](../../scripts/encode-env-for-gh.sh).
 
 ## Notes
 
