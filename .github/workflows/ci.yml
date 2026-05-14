@@ -1,9 +1,10 @@
 # API-only CI: triggers when the Nest app, shared workspace packages, or install roots change.
 #
 # Secrets (repository Settings → Secrets and variables → Actions):
-# - DATABASE_URL — required for Prisma generate, Nest build, tests, and Docker build (BuildKit secret).
+# - API_ENV_B64 — required. Base64-encoded full `apps/api/.env` (see apps/api/.env.example). Used for
+#   Prisma generate, Nest build, tests, and Docker build (BuildKit file secret `api_env`).
+# - API_ENV_CI_B64 — optional. If set, CI uses this instead of API_ENV_B64 (e.g. CI-only DB URL).
 # - GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_SERVICE_ACCOUNT — required to push images to GAR on push to main/dev.
-# Optional (e.g. future integration tests): JWT_SECRET, TWILIO_*, GOOGLE_*, etc. — add to job `env` when needed.
 #
 # Variables (non-secret): GCP_REGION, GCP_PROJECT_ID — required when pushing images to Artifact Registry.
 
@@ -20,6 +21,7 @@ on:
       - "package.json"
       - "apps/api/**"
       - "packages/**"
+      - "scripts/**"
   push:
     branches: [main, dev]
     paths:
@@ -30,6 +32,7 @@ on:
       - "package.json"
       - "apps/api/**"
       - "packages/**"
+      - "scripts/**"
 
 jobs:
   api:
@@ -37,13 +40,27 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    env:
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Decode API env for CI
+        env:
+          API_ENV_B64: ${{ secrets.API_ENV_B64 }}
+          API_ENV_CI_B64: ${{ secrets.API_ENV_CI_B64 }}
+        run: |
+          set -euo pipefail
+          if [ -n "${API_ENV_CI_B64:-}" ]; then
+            printf '%s' "$API_ENV_CI_B64" | base64 -d > apps/api/.env
+          else
+            printf '%s' "$API_ENV_B64" | base64 -d > apps/api/.env
+          fi
+          test -s apps/api/.env || {
+            echo "Decoded apps/api/.env is empty. Configure repository secret API_ENV_B64 (base64 of a dotenv file)."
+            exit 1
+          }
 
       - name: Whether to push image to GAR
         id: garpush
@@ -134,7 +151,7 @@ jobs:
           push: ${{ steps.garpush.outputs.push == 'true' }}
           load: ${{ steps.garpush.outputs.push != 'true' }}
           tags: ${{ steps.imagetags.outputs.tags }}
-          secret-envs: |
-            database_url=DATABASE_URL
+          secret-files: |
+            api_env=${{ github.workspace }}/apps/api/.env
           cache-from: type=gha
           cache-to: type=gha,mode=max
