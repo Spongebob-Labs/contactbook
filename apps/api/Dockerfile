@@ -41,14 +41,15 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
 COPY apps/api ./apps/api
 COPY packages ./packages
 
-# DATABASE_URL is only needed for prisma generate (not persisted in image layers).
-# CI: build-push-action secret-envs `database_url=DATABASE_URL`.
-# Local: docker buildx build --secret id=database_url,env=DATABASE_URL ...
-RUN --mount=type=secret,id=database_url \
+# Full dotenv for prisma generate (not persisted): BuildKit file secret -> apps/api/.env, then removed.
+# CI: decode API_ENV_B64 to apps/api/.env, then build-push-action `secret-files: api_env=<that path>`.
+# Local: docker buildx build --secret id=api_env,src=apps/api/.env ...
+RUN --mount=type=secret,id=api_env \
     --mount=type=cache,id=pnpm-store,target=/pnpm/store \
-    export DATABASE_URL="$(cat /run/secrets/database_url)" \
+    cp /run/secrets/api_env /workspace/apps/api/.env \
  && pnpm --filter api exec prisma generate \
  && pnpm --filter api build \
+ && rm -f /workspace/apps/api/.env \
  && test -f apps/api/dist/main.js \
     || (echo "Build failed: apps/api/dist/main.js missing" \
         && ls -la apps/api/dist && exit 1)
@@ -76,11 +77,12 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
 # generated client. Regenerate it inside /deploy by pulling the matching prisma
 # CLI on the fly (only @prisma/client needs to be present at runtime).
 WORKDIR /deploy
-RUN --mount=type=secret,id=database_url \
+RUN --mount=type=secret,id=api_env \
     --mount=type=cache,id=pnpm-store,target=/pnpm/store \
-    export DATABASE_URL="$(cat /run/secrets/database_url)" \
+    cp /run/secrets/api_env /deploy/.env \
  && PRISMA_VERSION=$(node -p "require('./node_modules/@prisma/client/package.json').version") \
  && pnpm dlx prisma@${PRISMA_VERSION} generate \
+ && rm -f /deploy/.env \
  && rm -rf /root/.cache /root/.npm /root/.local /tmp/*
 
 # Drop files not needed at runtime to keep the image lean.
