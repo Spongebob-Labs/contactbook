@@ -4,19 +4,32 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001/api";
 
+function redirectImport(
+  origin: string,
+  google: "connected" | "error",
+  reason?: string,
+): NextResponse {
+  const u = new URL("/dashboard/import", origin);
+  u.searchParams.set("google", google);
+  if (reason) {
+    u.searchParams.set("reason", reason);
+  }
+  return NextResponse.redirect(u.toString());
+}
+
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  const next = searchParams.get("next") ?? "/";
+  const next = searchParams.get("next") ?? "/dashboard/import";
 
   if (!code) {
-    return NextResponse.redirect(`${origin}/auth/auth-code-error`);
+    return redirectImport(origin, "error", "missing_code");
   }
 
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.auth.exchangeCodeForSession(code);
   if (error) {
-    return NextResponse.redirect(`${origin}/auth/auth-code-error`);
+    return redirectImport(origin, "error", "session_exchange_failed");
   }
 
   const {
@@ -32,17 +45,13 @@ export async function GET(request: Request) {
       : null;
 
   if (!providerAccessToken || !providerRefreshToken) {
-    return NextResponse.redirect(
-      `${origin}/auth/auth-code-error?reason=missing_provider_tokens`,
-    );
+    return redirectImport(origin, "error", "missing_provider_tokens");
   }
 
   const cookieStore = await cookies();
   const accessToken = cookieStore.get("cb_access_token")?.value ?? null;
   if (!accessToken) {
-    return NextResponse.redirect(
-      `${origin}/auth/auth-code-error?reason=missing_api_session`,
-    );
+    return redirectImport(origin, "error", "missing_api_session");
   }
 
   const r = await fetch(`${apiBase}/v1/integrations/google/link-provider`, {
@@ -60,10 +69,14 @@ export async function GET(request: Request) {
   });
 
   if (!r.ok) {
-    return NextResponse.redirect(`${origin}/auth/auth-code-error?reason=api_link_failed`);
+    return redirectImport(origin, "error", "api_link_failed");
   }
 
-  const safeNext = next.startsWith("/") ? next : "/";
-  return NextResponse.redirect(`${origin}${safeNext}`);
+  const safeNext = next.startsWith("/") ? next : "/dashboard/import";
+  if (safeNext === "/dashboard/import" || safeNext.startsWith("/dashboard/import?")) {
+    return redirectImport(origin, "connected");
+  }
+  const u = new URL(safeNext, origin);
+  u.searchParams.set("google", "connected");
+  return NextResponse.redirect(u.toString());
 }
-

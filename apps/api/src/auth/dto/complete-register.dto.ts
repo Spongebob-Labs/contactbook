@@ -21,8 +21,14 @@ export class CompleteRegisterDto {
   @ApiProperty()
   @IsString()
   @MinLength(1)
-  @MaxLength(200)
-  name!: string;
+  @MaxLength(120)
+  firstName!: string;
+
+  @ApiProperty()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(120)
+  lastName!: string;
 
   @ApiProperty({
     description: "National phone number (digits only, must match verification).",

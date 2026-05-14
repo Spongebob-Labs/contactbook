@@ -128,4 +128,4 @@ pnpm --filter web exec shadcn add button
 
 ## CI
 
-[.github/workflows/ci.yml](.github/workflows/ci.yml) runs when `apps/api/**`, `packages/**`, or monorepo install roots change; it installs with a pnpm filter for **api**, then Prisma generate, lint, build, and unit tests for **api** only. `DATABASE_URL` in CI is a placeholder for Prisma tooling only (no database service is started).
+[.github/workflows/ci.yml](.github/workflows/ci.yml) runs when `apps/api/**`, `packages/**`, `scripts/**`, or monorepo install roots change; it decodes repository secret **`API_ENV_B64`** (base64 of a full `apps/api/.env` matching [.env.example](apps/api/.env.example)) into `apps/api/.env`, installs with a pnpm filter for **api**, then Prisma generate, lint, build, unit tests, and (on push to `main`/`dev`) a Docker build that passes that file as BuildKit secret **`api_env`**. Optional secret **`API_ENV_CI_B64`**, when set, is used instead of `API_ENV_B64` in CI (e.g. a non-production database URL). Encode a local env file for GitHub: [scripts/encode-env-for-gh.sh](scripts/encode-env-for-gh.sh).

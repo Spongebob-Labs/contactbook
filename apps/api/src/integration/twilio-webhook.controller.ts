@@ -53,8 +53,10 @@ export class TwilioWebhookController {
       throw new ForbiddenException("Invalid Twilio signature");
     }
     const from = params.From ?? "";
-    const text = params.Body ?? "";
-    await this.processor.handleInboundMessage(from, text);
+    const inboundText =
+      (params.ButtonText && params.ButtonText.trim()) ||
+      (params.Body ?? "");
+    await this.processor.handleInboundMessage(from, inboundText);
     return "";
   }
 }

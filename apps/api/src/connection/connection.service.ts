@@ -9,9 +9,13 @@ import {
   ConnectionStatus,
   WhatsappFlowState,
 } from "@prisma/client";
+import {
+  e164FromStoredUser,
+  normalizeDialCode,
+  normalizeNationalPhone,
+} from "../common/phone.util";
 import { PrismaService } from "../prisma/prisma.service";
 import { TwilioService } from "../integration/twilio.service";
-import { e164FromStoredUser, normalizeDialCode } from "../common/phone.util";
 import { CreateConnectionRequestDto } from "./dto/create-connection-request.dto";
 
 @Injectable()
@@ -22,17 +26,18 @@ export class ConnectionService {
   ) {}
 
   async createRequest(
-    initiatorId: string,
+    requesterId: string,
     dto: CreateConnectionRequestDto,
   ): Promise<Connection> {
-    const initiator = await this.prisma.user.findUnique({
-      where: { id: initiatorId },
+    const requester = await this.prisma.user.findUnique({
+      where: { id: requesterId },
     });
     const recipientDial = normalizeDialCode(dto.recipientCountryCode);
+    const recipientPhone = normalizeNationalPhone(dto.recipientPhone);
     if (
-      initiator &&
-      initiator.countryCode === recipientDial &&
-      initiator.phone === dto.recipientPhone
+      requester &&
+      requester.countryCode === recipientDial &&
+      requester.phone === recipientPhone
     ) {
       throw new BadRequestException("Cannot connect to yourself");
     }
@@ -40,7 +45,7 @@ export class ConnectionService {
       where: {
         countryCode_phone: {
           countryCode: recipientDial,
-          phone: dto.recipientPhone,
+          phone: recipientPhone,
         },
       },
     });
@@ -48,104 +53,90 @@ export class ConnectionService {
       throw new NotFoundException("Recipient not found for this phone number");
     }
     const card = await this.prisma.contactCard.findFirst({
-      where: { id: dto.initiatorSharedCardId, userId: initiatorId },
+      where: { id: dto.sharedCardId, userId: requesterId },
     });
     if (!card) {
-      throw new ForbiddenException("Card not found for initiator");
+      throw new ForbiddenException("Card not found for requester");
     }
-    const shareExpiresAt = dto.shareExpiresAt
-      ? new Date(dto.shareExpiresAt)
-      : null;
     const connection = await this.prisma.connection.create({
       data: {
-        initiatorId,
-        recipientId: recipient.id,
+        requesterId,
+        receiverId: recipient.id,
         status: ConnectionStatus.PENDING,
-        initiatorSharedCardId: dto.initiatorSharedCardId,
-        shareExpiresAt,
+        sharedCardId: dto.sharedCardId,
       },
     });
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-    const recipientE164 = e164FromStoredUser(recipient);
     await this.prisma.whatsappSession.create({
       data: {
         userId: recipient.id,
-        phoneE164: recipientE164,
+        phoneE164: e164FromStoredUser(recipient),
         state: WhatsappFlowState.AWAITING_CONNECTION_ACCEPT,
         connectionId: connection.id,
         expiresAt,
       },
     });
-    await this.twilio.sendWhatsApp(
-      recipientE164,
-      `ContactBook: ${initiator?.name ?? initiator?.email ?? "Someone"} wants to connect. Reply ACCEPT-${connection.id} or DECLINE-${connection.id}.`,
+    const who = requester
+      ? `${requester.firstName} ${requester.lastName}`.trim()
+      : "Someone";
+    await this.twilio.sendConnectionInvite(
+      e164FromStoredUser(recipient),
+      who || requester?.email || "Someone",
+      connection.id,
     );
     return connection;
   }
 
   async accept(connectionId: string, userId: string): Promise<Connection> {
-    await this.requireRecipient(connectionId, userId);
+    await this.requireReceiver(connectionId, userId);
     return this.prisma.connection.update({
       where: { id: connectionId },
-      data: {
-        status: ConnectionStatus.ACCEPTED,
-        acceptedAt: new Date(),
-      },
+      data: { status: ConnectionStatus.ACCEPTED },
     });
   }
 
   async decline(connectionId: string, userId: string): Promise<Connection> {
-    await this.requireRecipient(connectionId, userId);
+    await this.requireReceiver(connectionId, userId);
     return this.prisma.connection.update({
       where: { id: connectionId },
       data: { status: ConnectionStatus.DECLINED },
     });
   }
 
-  async shareBack(
-    connectionId: string,
-    userId: string,
-    recipientSharedCardId: string,
-  ): Promise<Connection> {
+  async shareBack(connectionId: string, userId: string): Promise<Connection> {
     const c = await this.prisma.connection.findFirst({
       where: {
         id: connectionId,
-        recipientId: userId,
+        receiverId: userId,
         status: ConnectionStatus.ACCEPTED,
       },
     });
     if (!c) {
       throw new NotFoundException("Connection not found");
     }
-    const card = await this.prisma.contactCard.findFirst({
-      where: { id: recipientSharedCardId, userId },
-    });
-    if (!card) {
-      throw new ForbiddenException("Card not found");
-    }
     return this.prisma.connection.update({
       where: { id: connectionId },
-      data: { recipientSharedCardId },
+      data: { hasSharedBack: true },
     });
   }
 
   async listForUser(userId: string): Promise<Connection[]> {
     return this.prisma.connection.findMany({
       where: {
-        OR: [{ initiatorId: userId }, { recipientId: userId }],
+        OR: [{ requesterId: userId }, { receiverId: userId }],
       },
       orderBy: { createdAt: "desc" },
     });
   }
 
-  private async requireRecipient(
+  private async requireReceiver(
     connectionId: string,
     userId: string,
   ): Promise<Connection> {
     const c = await this.prisma.connection.findFirst({
       where: {
         id: connectionId,
-        recipientId: userId,
+        receiverId: userId,
         status: ConnectionStatus.PENDING,
       },
     });

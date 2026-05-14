@@ -5,16 +5,13 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { JwtService } from "@nestjs/jwt";
 import {
-  ContactImportSource,
-  ContactImportStatus,
+  ImportSource,
   OAuthProvider,
-  TravelEventSource,
 } from "@prisma/client";
 import { google, people_v1 } from "googleapis";
-import { JwtService } from "@nestjs/jwt";
 import { PrismaService } from "../prisma/prisma.service";
-import { ContactImportService } from "./contact-import.service";
 
 const GOOGLE_SCOPES = [
   "https://www.googleapis.com/auth/contacts.readonly",
@@ -29,7 +26,6 @@ export class GoogleService {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     private readonly jwt: JwtService,
-    private readonly contactImport: ContactImportService,
   ) {}
 
   buildOAuthClient(): InstanceType<typeof google.auth.OAuth2> {
@@ -56,13 +52,16 @@ export class GoogleService {
     });
   }
 
-  private async upsertGoogleAccountForUser(userId: string, args: {
-    accessToken: string;
-    refreshToken: string;
-    expiresAt: Date | null;
-    scopes: string;
-  }): Promise<void> {
-    await this.prisma.googleAccount.upsert({
+  private async upsertOAuthAccountForUser(
+    userId: string,
+    args: {
+      accessToken: string;
+      refreshToken: string;
+      expiresAt: Date | null;
+      scopes: string;
+    },
+  ): Promise<void> {
+    await this.prisma.oAuthAccount.upsert({
       where: {
         userId_provider: { userId, provider: OAuthProvider.GOOGLE },
       },
@@ -101,7 +100,7 @@ export class GoogleService {
     }
     oauth2.setCredentials(tokens);
     const expiresAt = tokens.expiry_date ? new Date(tokens.expiry_date) : null;
-    await this.upsertGoogleAccountForUser(userId, {
+    await this.upsertOAuthAccountForUser(userId, {
       accessToken: tokens.access_token,
       refreshToken: tokens.refresh_token,
       expiresAt,
@@ -118,18 +117,19 @@ export class GoogleService {
       scope: string | null;
     },
   ): Promise<void> {
-    await this.upsertGoogleAccountForUser(userId, {
+    await this.upsertOAuthAccountForUser(userId, {
       accessToken: args.providerAccessToken,
       refreshToken: args.providerRefreshToken,
       expiresAt: args.expiresAt,
-      scopes: (args.scope && args.scope.trim().length > 0)
-        ? args.scope.trim()
-        : GOOGLE_SCOPES.join(" "),
+      scopes:
+        args.scope && args.scope.trim().length > 0
+          ? args.scope.trim()
+          : GOOGLE_SCOPES.join(" "),
     });
   }
 
   private async getOAuth2ForUser(userId: string) {
-    const account = await this.prisma.googleAccount.findUnique({
+    const account = await this.prisma.oAuthAccount.findUnique({
       where: {
         userId_provider: { userId, provider: OAuthProvider.GOOGLE },
       },
@@ -151,7 +151,7 @@ export class GoogleService {
       }) => {
         void (async () => {
           if (tokens.access_token) {
-            await this.prisma.googleAccount.update({
+            await this.prisma.oAuthAccount.update({
               where: { id: account.id },
               data: {
                 accessToken: tokens.access_token,
@@ -169,12 +169,23 @@ export class GoogleService {
   }
 
   private async getAuthorizedPeopleClient(userId: string) {
-    const { oauth2, account } = await this.getOAuth2ForUser(userId);
-    return { people: google.people({ version: "v1", auth: oauth2 }), account };
+    const { oauth2 } = await this.getOAuth2ForUser(userId);
+    return google.people({ version: "v1", auth: oauth2 });
+  }
+
+  private async peopleIntegrationState(userId: string) {
+    return this.prisma.integrationState.upsert({
+      where: {
+        userId_source: { userId, source: ImportSource.GOOGLE },
+      },
+      create: { userId, source: ImportSource.GOOGLE },
+      update: {},
+    });
   }
 
   async syncContacts(userId: string): Promise<{ imported: number }> {
-    const { people, account } = await this.getAuthorizedPeopleClient(userId);
+    const people = await this.getAuthorizedPeopleClient(userId);
+    const stateRow = await this.peopleIntegrationState(userId);
     let pageToken: string | undefined;
     let nextSyncToken: string | undefined;
     let count = 0;
@@ -186,7 +197,7 @@ export class GoogleService {
         personFields:
           "names,emailAddresses,phoneNumbers,organizations,metadata,etag",
         requestSyncToken: true,
-        syncToken: account.peopleSyncToken ?? undefined,
+        syncToken: stateRow.syncToken ?? undefined,
       });
       const connections = res.data.connections ?? [];
       for (const person of connections) {
@@ -202,12 +213,41 @@ export class GoogleService {
       }
     }
     if (nextSyncToken) {
-      await this.prisma.googleAccount.update({
-        where: { id: account.id },
-        data: { peopleSyncToken: nextSyncToken },
+      await this.prisma.integrationState.update({
+        where: {
+          userId_source: { userId, source: ImportSource.GOOGLE },
+        },
+        data: { syncToken: nextSyncToken, lastSyncAt: new Date() },
       });
     }
     return { imported: count };
+  }
+
+  private primaryPhone(person: people_v1.Schema$Person): string | null {
+    const list = person.phoneNumbers ?? [];
+    const primary =
+      list.find((p) => p.metadata?.primary === true) ?? list[0];
+    return primary?.value?.trim() ?? null;
+  }
+
+  private primaryEmail(person: people_v1.Schema$Person): string | null {
+    const list = person.emailAddresses ?? [];
+    const primary =
+      list.find((e) => e.metadata?.primary === true) ?? list[0];
+    return primary?.value?.trim()?.toLowerCase() ?? null;
+  }
+
+  private nameParts(person: people_v1.Schema$Person): {
+    firstName: string | null;
+    lastName: string | null;
+  } {
+    const names = person.names ?? [];
+    const primary =
+      names.find((n) => n.metadata?.primary === true) ?? names[0];
+    return {
+      firstName: primary?.givenName?.trim() ?? null,
+      lastName: primary?.familyName?.trim() ?? null,
+    };
   }
 
   private async upsertPerson(
@@ -224,59 +264,42 @@ export class GoogleService {
       await this.prisma.contactImport.updateMany({
         where: {
           userId,
-          source: ContactImportSource.GOOGLE,
-          externalResourceName: resourceName,
+          source: ImportSource.GOOGLE,
+          externalId: resourceName,
         },
-        data: {
-          deletedAt: new Date(),
-          lastSyncedAt: new Date(),
-          rawPerson: raw,
-          etag: person.etag ?? undefined,
-        },
+        data: { deletedAt: new Date() },
       });
       return;
     }
-    const existing = await this.prisma.contactImport.findUnique({
-      where: {
-        userId_source_externalResourceName: {
-          userId,
-          source: ContactImportSource.GOOGLE,
-          externalResourceName: resourceName,
-        },
-      },
-    });
-    const mergedName = this.contactImport.mergeDisplayNameSnapshot(
-      person,
-      existing?.userOverrides ?? null,
-    );
+    const { firstName, lastName } = this.nameParts(person);
+    const mainPhone = this.primaryPhone(person);
+    const mainEmail = this.primaryEmail(person);
     await this.prisma.contactImport.upsert({
       where: {
-        userId_source_externalResourceName: {
+        userId_source_externalId: {
           userId,
-          source: ContactImportSource.GOOGLE,
-          externalResourceName: resourceName,
+          source: ImportSource.GOOGLE,
+          externalId: resourceName,
         },
       },
       create: {
         userId,
-        source: ContactImportSource.GOOGLE,
-        status: ContactImportStatus.PROCESSED,
-        externalResourceName: resourceName,
-        etag: person.etag ?? null,
-        displayNameSnapshot: mergedName,
-        rawPerson: raw,
-        lastSyncedAt: new Date(),
-        processedAt: new Date(),
+        source: ImportSource.GOOGLE,
+        externalId: resourceName,
+        firstName,
+        lastName,
+        mainPhone,
+        mainEmail,
+        rawJson: raw,
         deletedAt: null,
       },
       update: {
-        etag: person.etag ?? null,
-        displayNameSnapshot: mergedName,
-        rawPerson: raw,
-        lastSyncedAt: new Date(),
-        processedAt: new Date(),
+        firstName,
+        lastName,
+        mainPhone,
+        mainEmail,
+        rawJson: raw,
         deletedAt: null,
-        status: ContactImportStatus.PROCESSED,
       },
     });
   }
@@ -296,6 +319,14 @@ export class GoogleService {
       "conference",
     ];
     return keys.some((k) => hay.includes(k));
+  }
+
+  private inferCountry(location: string | null | undefined): string {
+    if (!location?.trim()) {
+      return "";
+    }
+    const parts = location.split(",").map((s) => s.trim());
+    return parts[parts.length - 1] ?? "";
   }
 
   async syncTravelEvents(userId: string): Promise<number> {
@@ -322,35 +353,34 @@ export class GoogleService {
       if (!startRaw || !endRaw) {
         continue;
       }
-      const start = new Date(startRaw);
-      const end = new Date(endRaw);
-      const city = ev.location?.split(",")[0]?.trim().slice(0, 120) ?? null;
+      const startDate = new Date(startRaw);
+      const endDate = new Date(endRaw);
+      const city =
+        ev.location?.split(",")[0]?.trim().slice(0, 120) ?? "Unknown";
+      const country = this.inferCountry(ev.location ?? null);
       await this.prisma.travelEvent.upsert({
         where: {
-          userId_calendarEventId: {
+          userId_externalCalendarEventId: {
             userId,
-            calendarEventId: ev.id,
+            externalCalendarEventId: ev.id,
           },
         },
         create: {
           userId,
-          calendarEventId: ev.id,
-          title: ev.summary ?? null,
-          start,
-          end,
           city,
-          location: ev.location ?? null,
-          timeZone: ev.start?.timeZone ?? null,
+          country: country || "Unknown",
+          startDate,
+          endDate,
+          externalCalendarEventId: ev.id,
+          title: ev.summary ?? null,
           raw: (ev as object) ?? {},
-          source: TravelEventSource.GOOGLE_CALENDAR,
         },
         update: {
-          title: ev.summary ?? null,
-          start,
-          end,
           city,
-          location: ev.location ?? null,
-          timeZone: ev.start?.timeZone ?? null,
+          country: country || "Unknown",
+          startDate,
+          endDate,
+          title: ev.summary ?? null,
           raw: (ev as object) ?? {},
         },
       });

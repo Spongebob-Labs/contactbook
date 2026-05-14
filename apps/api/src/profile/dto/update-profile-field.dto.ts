@@ -1,30 +1,23 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
+import { Type } from "class-transformer";
 import {
   IsBoolean,
-  IsEnum,
-  IsInt,
   IsOptional,
   IsString,
-  MinLength,
+  MaxLength,
+  ValidateNested,
 } from "class-validator";
-import { ProfileFieldValueType } from "@prisma/client";
+import { AddressPayloadDto } from "./address-payload.dto";
+import { BankAccountPayloadDto } from "./bank-account-payload.dto";
+import { CryptoWalletPayloadDto } from "./crypto-wallet-payload.dto";
+import { DigitalWalletPayloadDto } from "./digital-wallet-payload.dto";
 
 export class UpdateProfileFieldDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
-  @MinLength(1)
+  @MaxLength(200)
   label?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  value?: string;
-
-  @ApiPropertyOptional({ enum: ProfileFieldValueType })
-  @IsOptional()
-  @IsEnum(ProfileFieldValueType)
-  valueType?: ProfileFieldValueType;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -33,6 +26,31 @@ export class UpdateProfileFieldDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsInt()
-  sortOrder?: number;
+  @IsString()
+  @MaxLength(20_000)
+  value?: string;
+
+  @ApiPropertyOptional({ type: () => AddressPayloadDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => AddressPayloadDto)
+  address?: AddressPayloadDto;
+
+  @ApiPropertyOptional({ type: () => BankAccountPayloadDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BankAccountPayloadDto)
+  bankAccount?: BankAccountPayloadDto;
+
+  @ApiPropertyOptional({ type: () => DigitalWalletPayloadDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => DigitalWalletPayloadDto)
+  digitalWallet?: DigitalWalletPayloadDto;
+
+  @ApiPropertyOptional({ type: () => CryptoWalletPayloadDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CryptoWalletPayloadDto)
+  cryptoWallet?: CryptoWalletPayloadDto;
 }

@@ -2,10 +2,21 @@ locals {
   image_uri = "${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.docker.repository_id}/${var.image_name}:${var.image_tag}"
 
   cloud_run_sa_email = var.cloud_run_service_account_email
+
+  wif_apis = var.enable_github_actions_wif ? toset([
+    "sts.googleapis.com",
+    "iamcredentials.googleapis.com",
+  ]) : toset([])
+
+  # When GitHub WIF is enabled, STS + IAM Credentials APIs are always requested alongside var.apis.
+  enabled_google_apis = setunion(
+    var.enable_apis ? toset(var.apis) : toset([]),
+    local.wif_apis,
+  )
 }
 
 resource "google_project_service" "enabled" {
-  for_each = var.enable_apis ? toset(var.apis) : toset([])
+  for_each = local.enabled_google_apis
 
   project = var.project_id
   service = each.value
@@ -56,6 +67,8 @@ resource "google_cloud_run_v2_service" "api" {
   project  = var.project_id
   location = var.region
 
+  deletion_protection = false
+
   template {
     service_account = local.cloud_run_sa_email
 
@@ -65,7 +78,7 @@ resource "google_cloud_run_v2_service" "api" {
     }
 
     containers {
-      image = local.image_uri
+      image = "us-docker.pkg.dev/cloudrun/container/hello"
 
       resources {
         limits = {
@@ -92,10 +105,19 @@ resource "google_cloud_run_v2_service" "api" {
     google_project_service.enabled,
     google_artifact_registry_repository.docker,
   ]
+
+  lifecycle {
+    ignore_changes = [
+      template[0].containers[0].image,
+      client,
+      client_version,
+    ]
+  }
 }
 
 resource "google_cloud_run_v2_service_iam_member" "public_invoker" {
   count = var.allow_unauthenticated ? 1 : 0
+
 
   provider = google-beta
 

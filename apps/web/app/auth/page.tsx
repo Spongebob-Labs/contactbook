@@ -5,6 +5,8 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { readSessionFromResponseHeaders } from "@/lib/api-auth-headers";
 import { DIAL_COUNTRIES } from "@/lib/dial-countries";
+import { GOOGLE_OAUTH_SCOPES } from "@/lib/google-oauth";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { buildE164 } from "@/lib/phone";
 
 const apiBase =
@@ -140,6 +142,40 @@ export default function AuthPage() {
       toast.error("Unexpected response from server");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Network error");
+    }
+  };
+
+  /**
+   * PKCE Google via Supabase. Requires `cb_access_token` cookie (set after WhatsApp sign-in /
+   * registration) so `/auth/callback` can call Nest `link-provider`.
+   */
+  const startGoogleLink = async () => {
+    try {
+      const supabase = createSupabaseBrowserClient();
+      const appOrigin = window.location.origin;
+      const redirectTo = `${appOrigin}/auth/callback?next=${encodeURIComponent("/dashboard/import")}`;
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo,
+          scopes: GOOGLE_OAUTH_SCOPES,
+          queryParams: {
+            access_type: "offline",
+            prompt: "consent",
+          },
+        },
+      });
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        toast.error("No OAuth URL returned from Supabase");
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Google sign-in failed");
     }
   };
 
@@ -321,6 +357,17 @@ export default function AuthPage() {
       {step === "done" && result && (
         <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4 text-card-foreground">
           <p className="text-sm font-medium">You are in</p>
+          <p className="text-xs text-muted-foreground">
+            Connect Google only after this session is active (cookies below). The auth callback
+            exchanges the Supabase code, then calls the API to store Google tokens.
+          </p>
+          <button
+            type="button"
+            className="rounded-md border border-border bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-muted/50"
+            onClick={() => void startGoogleLink()}
+          >
+            Connect Google (contacts &amp; calendar)
+          </button>
           <p className="text-xs text-muted-foreground">
             userId: <span className="font-mono text-foreground">{result.userId}</span>
           </p>
