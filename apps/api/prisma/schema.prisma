@@ -66,6 +66,8 @@ enum ImportSource {
 
 enum OAuthProvider {
   GOOGLE
+  MICROSOFT
+  ICLOUD
 }
 
 enum WhatsappFlowState {
@@ -99,7 +101,7 @@ model User {
   travelEvents  TravelEvent[]
   tags          Tag[]
 
-  googleAccounts   GoogleAccount[]
+  oauthAccounts    OAuthAccount[]
   otpSessions      OtpSession[]
   whatsappSessions WhatsappSession[]
   refreshTokens    RefreshToken[]
@@ -335,15 +337,18 @@ model Tag {
   @@map("tags")
 }
 
-model GoogleAccount {
-  id                String        @id @default(uuid())
-  userId            String
-  provider          OAuthProvider
-  scopes            String
-  accessToken       String
-  refreshToken      String
-  expiresAt         DateTime?
-  calendarSyncToken String?
+model OAuthAccount {
+  id                  String          @id @default(uuid())
+  userId              String
+  provider            OAuthProvider
+  scopes              String
+  accessToken         String
+  refreshToken        String
+  expiresAt           DateTime?
+  /// Stable id from the provider (e.g. Google `sub`) when available.
+  providerAccountId   String?
+  /// Provider-specific persisted state (e.g. `{ "google": { "calendarSyncToken": "..." } }`).
+  providerState     Json?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
