@@ -1,5 +1,7 @@
 # API-only CI: triggers when the Nest app, shared workspace packages, or install roots change.
 #
+# ESLint is not run in CI; run ./scripts/validate-api.sh locally (requires apps/api/.env) before pushing.
+#
 # Secrets (repository Settings → Secrets and variables → Actions):
 # - API_ENV_B64 — required. Base64-encoded full `apps/api/.env` (see apps/api/.env.example). Used for
 #   Prisma generate, Nest build, tests, and Docker build (BuildKit file secret `api_env`).
@@ -115,9 +117,6 @@ jobs:
 
       - name: Prisma generate (api)
         run: pnpm -C apps/api prisma:generate
-
-      - name: Lint (api)
-        run: pnpm -C apps/api lint
 
       - name: Build (api)
         run: pnpm -C apps/api build
