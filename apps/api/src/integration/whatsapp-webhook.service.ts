@@ -1,10 +1,9 @@
 import { Injectable, Logger } from "@nestjs/common";
+import { type User, ConnectionStatus, WhatsappFlowState } from "@prisma/client";
 import {
-  type User,
-  ConnectionStatus,
-  WhatsappFlowState,
-} from "@prisma/client";
-import { e164FromStoredUser, inboundE164ToIdentity } from "../common/phone.util";
+  e164FromStoredUser,
+  inboundE164ToIdentity,
+} from "../common/phone.util";
 import { PrismaService } from "../prisma/prisma.service";
 import { TwilioService } from "./twilio.service";
 

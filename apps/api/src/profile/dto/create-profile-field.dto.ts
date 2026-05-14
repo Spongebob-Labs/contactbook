@@ -7,7 +7,6 @@ import {
   IsOptional,
   IsString,
   MaxLength,
-  MinLength,
   ValidateNested,
 } from "class-validator";
 import { AddressPayloadDto } from "./address-payload.dto";
@@ -27,7 +26,8 @@ export class CreateProfileFieldDto {
   label?: string;
 
   @ApiPropertyOptional({
-    description: "Ignored for financial field types (always stored as sensitive).",
+    description:
+      "Ignored for financial field types (always stored as sensitive).",
   })
   @IsOptional()
   @IsBoolean()

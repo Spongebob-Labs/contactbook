@@ -6,10 +6,7 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { JwtService } from "@nestjs/jwt";
-import {
-  ImportSource,
-  OAuthProvider,
-} from "@prisma/client";
+import { ImportSource, OAuthProvider } from "@prisma/client";
 import { google, people_v1 } from "googleapis";
 import { PrismaService } from "../prisma/prisma.service";
 
@@ -225,15 +222,13 @@ export class GoogleService {
 
   private primaryPhone(person: people_v1.Schema$Person): string | null {
     const list = person.phoneNumbers ?? [];
-    const primary =
-      list.find((p) => p.metadata?.primary === true) ?? list[0];
+    const primary = list.find((p) => p.metadata?.primary === true) ?? list[0];
     return primary?.value?.trim() ?? null;
   }
 
   private primaryEmail(person: people_v1.Schema$Person): string | null {
     const list = person.emailAddresses ?? [];
-    const primary =
-      list.find((e) => e.metadata?.primary === true) ?? list[0];
+    const primary = list.find((e) => e.metadata?.primary === true) ?? list[0];
     return primary?.value?.trim()?.toLowerCase() ?? null;
   }
 
@@ -242,8 +237,7 @@ export class GoogleService {
     lastName: string | null;
   } {
     const names = person.names ?? [];
-    const primary =
-      names.find((n) => n.metadata?.primary === true) ?? names[0];
+    const primary = names.find((n) => n.metadata?.primary === true) ?? names[0];
     return {
       firstName: primary?.givenName?.trim() ?? null,
       lastName: primary?.familyName?.trim() ?? null,

@@ -30,7 +30,10 @@ export class ProfileMeIdentityDto {
   @ApiProperty()
   primaryEmail!: string;
 
-  @ApiPropertyOptional({ nullable: true, description: "From IDENTITY PHOTO/URL fields." })
+  @ApiPropertyOptional({
+    nullable: true,
+    description: "From IDENTITY PHOTO/URL fields.",
+  })
   profilePhoto?: string | null;
 }
 
@@ -45,7 +48,10 @@ export class ProfileMePersonalDto {
   @ApiPropertyOptional({ type: () => PostalAddressMeDto })
   postalAddress?: PostalAddressMeDto;
 
-  @ApiPropertyOptional({ type: "object", additionalProperties: { type: "string" } })
+  @ApiPropertyOptional({
+    type: "object",
+    additionalProperties: { type: "string" },
+  })
   custom?: Record<string, string>;
 }
 
@@ -68,7 +74,10 @@ export class ProfileMeWorkItemDto {
   @ApiPropertyOptional({ type: () => PostalAddressMeDto })
   workPostalAddress?: PostalAddressMeDto;
 
-  @ApiPropertyOptional({ type: "object", additionalProperties: { type: "string" } })
+  @ApiPropertyOptional({
+    type: "object",
+    additionalProperties: { type: "string" },
+  })
   custom?: Record<string, string>;
 }
 
@@ -91,7 +100,10 @@ export class ProfileMeBusinessItemDto {
   @ApiPropertyOptional({ type: () => PostalAddressMeDto })
   businessPostalAddress?: PostalAddressMeDto;
 
-  @ApiPropertyOptional({ type: "object", additionalProperties: { type: "string" } })
+  @ApiPropertyOptional({
+    type: "object",
+    additionalProperties: { type: "string" },
+  })
   custom?: Record<string, string>;
 }
 
@@ -102,7 +114,10 @@ export class ProfileMeSocialItemDto {
   @ApiProperty()
   tag!: string;
 
-  @ApiPropertyOptional({ type: "object", additionalProperties: { type: "string" } })
+  @ApiPropertyOptional({
+    type: "object",
+    additionalProperties: { type: "string" },
+  })
   custom?: Record<string, string>;
 }
 

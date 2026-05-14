@@ -92,7 +92,9 @@ export class ProfileService {
   private validateCreatePayload(dto: CreateProfileFieldDto): void {
     if (dto.type === FieldType.ADDRESS) {
       if (!dto.address) {
-        throw new BadRequestException("address payload is required for ADDRESS");
+        throw new BadRequestException(
+          "address payload is required for ADDRESS",
+        );
       }
       return;
     }
@@ -139,7 +141,9 @@ export class ProfileService {
   ): Promise<ProfileField> {
     await this.getFieldGroup(userId, groupId);
     this.validateCreatePayload(dto);
-    const isSensitive = isFinancialType(dto.type) ? true : (dto.isSensitive ?? false);
+    const isSensitive = isFinancialType(dto.type)
+      ? true
+      : (dto.isSensitive ?? false);
 
     if (dto.type === FieldType.ADDRESS && dto.address) {
       const a = dto.address;
@@ -281,8 +285,9 @@ export class ProfileService {
     if (!field) {
       throw new NotFoundException("Field not found");
     }
-    const sensitive =
-      isFinancialType(field.type) ? true : (dto.isSensitive ?? field.isSensitive);
+    const sensitive = isFinancialType(field.type)
+      ? true
+      : (dto.isSensitive ?? field.isSensitive);
 
     await this.prisma.$transaction(async (tx) => {
       await tx.profileField.update({

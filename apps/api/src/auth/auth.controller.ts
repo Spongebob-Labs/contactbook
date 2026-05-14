@@ -174,7 +174,10 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<{ ok: true }> {
     const runtime = this.sessionCookieRuntime();
-    const refresh = getCookieFromHeader(req.headers.cookie, CB_REFRESH_TOKEN_COOKIE);
+    const refresh = getCookieFromHeader(
+      req.headers.cookie,
+      CB_REFRESH_TOKEN_COOKIE,
+    );
     await this.auth.logoutByRefreshToken(refresh);
     clearSessionCookies(res, runtime);
     return { ok: true };

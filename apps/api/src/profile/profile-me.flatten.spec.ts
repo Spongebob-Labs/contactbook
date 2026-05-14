@@ -12,7 +12,9 @@ import {
 
 function mkGroup(
   partial: Pick<GroupWithFields, "id" | "name" | "category" | "updatedAt"> &
-    Partial<Omit<GroupWithFields, "fields">> & { fields?: GroupWithFields["fields"] },
+    Partial<Omit<GroupWithFields, "fields">> & {
+      fields?: GroupWithFields["fields"];
+    },
 ): GroupWithFields {
   const now = partial.updatedAt ?? new Date("2024-06-01T12:00:00.000Z");
   return {
@@ -22,7 +24,7 @@ function mkGroup(
     fields: [],
     ...partial,
     fields: partial.fields ?? [],
-  } as GroupWithFields;
+  };
 }
 
 describe("primaryPhoneFromUserSafe", () => {
@@ -119,7 +121,9 @@ describe("flattenFieldForContext work", () => {
       digitalWallet: null,
       cryptoWallet: null,
     };
-    expect(flattenFieldForContext(field, "work")).toEqual({ workTitle: "Architect" });
+    expect(flattenFieldForContext(field, "work")).toEqual({
+      workTitle: "Architect",
+    });
   });
 });
 

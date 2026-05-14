@@ -7,7 +7,13 @@ import {
   Post,
   UseGuards,
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiOperation, ApiTags } from "@nestjs/swagger";
+import {
+  ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from "@nestjs/swagger";
 import type { JwtUserPayload } from "../common/decorators/current-user.decorator";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
@@ -126,7 +132,9 @@ export class ConnectionController {
   }
 
   @Post(":id/share-back")
-  @ApiOperation({ summary: "Mark that the receiver has shared back (hasSharedBack)" })
+  @ApiOperation({
+    summary: "Mark that the receiver has shared back (hasSharedBack)",
+  })
   @ApiCreatedResponse({
     description: "Share back marked successfully",
     schema: {
