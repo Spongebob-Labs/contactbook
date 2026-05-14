@@ -75,7 +75,7 @@ export class TwilioService {
         err &&
         typeof err === "object" &&
         "code" in err &&
-        typeof (err as { code: unknown }).code === "number"
+        typeof err.code === "number"
           ? (err as { code: number }).code
           : undefined;
       const message =

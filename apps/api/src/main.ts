@@ -38,7 +38,7 @@ async function bootstrap(): Promise<void> {
   const swaggerConfig = new DocumentBuilder()
     .setTitle("ContactBook API")
     .setDescription(
-        "HTTP API for ContactBook: sync professional and personal contacts via web and WhatsApp.",
+      "HTTP API for ContactBook: sync professional and personal contacts via web and WhatsApp.",
     )
     .setVersion("1.0")
     .addBearerAuth(

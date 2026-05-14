@@ -4,7 +4,8 @@
   "scripts": {
     "dev": "pnpm --parallel -r dev",
     "build": "pnpm -r build",
-    "lint": "pnpm -r lint"
+    "lint": "pnpm -r lint",
+    "validate:api": "bash scripts/validate-api.sh"
   },
   "engines": {
     "node": ">=20",

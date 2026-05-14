@@ -1,10 +1,6 @@
 import { ApiProperty } from "@nestjs/swagger";
 import { Transform } from "class-transformer";
-import {
-  IsString,
-  IsUUID,
-  Matches,
-} from "class-validator";
+import { IsString, IsUUID, Matches } from "class-validator";
 import { normalizeDialCode } from "../../common/phone.util";
 
 export class CreateConnectionRequestDto {
@@ -16,7 +12,7 @@ export class CreateConnectionRequestDto {
   @IsString()
   @Matches(/^\d{4,15}$/)
   @Transform(({ value }) =>
-    typeof value === "string" ? value.replace(/\D/g, "") : value,
+    typeof value === "string" ? value.replace(/\D/g, "") : (value as unknown),
   )
   recipientPhone!: string;
 
@@ -27,11 +23,13 @@ export class CreateConnectionRequestDto {
   @IsString()
   @Matches(/^\+\d{1,4}$/)
   @Transform(({ value }) =>
-    typeof value === "string" ? normalizeDialCode(value) : value,
+    typeof value === "string" ? normalizeDialCode(value) : (value as unknown),
   )
   recipientCountryCode!: string;
 
-  @ApiProperty({ description: "Contact card the requester will share when accepted." })
+  @ApiProperty({
+    description: "Contact card the requester will share when accepted.",
+  })
   @IsString()
   @IsUUID()
   sharedCardId!: string;

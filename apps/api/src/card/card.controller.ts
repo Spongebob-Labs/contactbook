@@ -9,7 +9,13 @@ import {
   Post,
   UseGuards,
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiOperation, ApiTags } from "@nestjs/swagger";
+import {
+  ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from "@nestjs/swagger";
 import type { JwtUserPayload } from "../common/decorators/current-user.decorator";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
@@ -64,7 +70,10 @@ export class CardController {
       },
     },
   })
-  create(@CurrentUser() user: JwtUserPayload, @Body() dto: CreateContactCardDto) {
+  create(
+    @CurrentUser() user: JwtUserPayload,
+    @Body() dto: CreateContactCardDto,
+  ) {
     return this.cards.createCard(user.sub, dto);
   }
 

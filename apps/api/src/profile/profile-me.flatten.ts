@@ -41,12 +41,18 @@ export function primaryPhoneFromUserSafe(user: UserIdentityRow): string {
   } catch {
     const cc = String(user.countryCode ?? "").trim();
     const n = String(user.phone ?? "").replace(/\D/g, "");
-    const prefix = cc.startsWith("+") ? cc : cc ? `+${cc.replace(/\D/g, "")}` : "";
+    const prefix = cc.startsWith("+")
+      ? cc
+      : cc
+        ? `+${cc.replace(/\D/g, "")}`
+        : "";
     return `${prefix}${n}` || "";
   }
 }
 
-export function extensionPayload(field: FieldWithExtensions): Record<string, unknown> {
+export function extensionPayload(
+  field: FieldWithExtensions,
+): Record<string, unknown> {
   if (field.address) {
     const a = field.address;
     return {
@@ -82,15 +88,12 @@ export function extensionPayload(field: FieldWithExtensions): Record<string, unk
 }
 
 function labelToCamelCase(label: string): string {
-  const parts = label
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
+  const parts = label.trim().split(/\s+/).filter(Boolean);
   if (!parts.length) {
     return "text";
   }
   return (
-    parts[0]!.toLowerCase() +
+    parts[0].toLowerCase() +
     parts
       .slice(1)
       .map((p) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase())
@@ -320,8 +323,7 @@ function mergeGroupFields(
         continue;
       }
       const k =
-        (field.label && field.label.trim()) ||
-        `custom_${field.id.slice(0, 8)}`;
+        (field.label && field.label.trim()) || `custom_${field.id.slice(0, 8)}`;
       customNested[k] = field.value ?? "";
       continue;
     }
@@ -345,7 +347,9 @@ export function groupToWorkItem(group: GroupWithFields): ProfileMeWorkItem {
   };
 }
 
-export function groupToBusinessItem(group: GroupWithFields): ProfileMeBusinessItem {
+export function groupToBusinessItem(
+  group: GroupWithFields,
+): ProfileMeBusinessItem {
   const flat = mergeGroupFields(group, "business");
   return {
     groupId: group.id,
@@ -390,13 +394,15 @@ export function buildIdentity(
  * Primary PERSONAL group = most recently updated. Merges all personal groups
  * (ascending `updatedAt` for field last-wins), then sets `groupId`/`tag` from primary.
  */
-export function mergePersonalGroups(groups: GroupWithFields[]): Record<string, unknown> {
+export function mergePersonalGroups(
+  groups: GroupWithFields[],
+): Record<string, unknown> {
   if (!groups.length) {
     return { groupId: "", tag: "" };
   }
   const primary = [...groups].sort(
     (a, b) => b.updatedAt.getTime() - a.updatedAt.getTime(),
-  )[0]!;
+  )[0];
 
   const ordered = [...groups].sort(
     (a, b) => a.updatedAt.getTime() - b.updatedAt.getTime(),
@@ -439,8 +445,7 @@ export function groupToSocialItem(
   for (const field of group.fields) {
     if (field.type === FieldType.CUSTOM) {
       const k =
-        (field.label && field.label.trim()) ||
-        `custom_${field.id.slice(0, 8)}`;
+        (field.label && field.label.trim()) || `custom_${field.id.slice(0, 8)}`;
       customNested[k] = field.value ?? "";
       continue;
     }
@@ -470,7 +475,14 @@ export function groupToSocialItem(
 
 export function categoryToResponseKey(
   category: FieldCategory,
-): "identity" | "personal" | "work" | "business" | "socials" | "financial" | null {
+):
+  | "identity"
+  | "personal"
+  | "work"
+  | "business"
+  | "socials"
+  | "financial"
+  | null {
   switch (category) {
     case FieldCategory.IDENTITY:
       return "identity";

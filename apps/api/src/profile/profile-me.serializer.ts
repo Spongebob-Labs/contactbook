@@ -88,7 +88,7 @@ export class ProfileMeSerializerService {
       if (g.category === FieldCategory.CUSTOM) {
         continue;
       }
-      const gw = g as GroupWithFields;
+      const gw = g;
 
       if (g.category === FieldCategory.PERSONAL) {
         personalGroups.push(gw);
@@ -131,7 +131,9 @@ export class ProfileMeSerializerService {
 
     return {
       identity: buildIdentity(user, identityGroups),
-      personal: mergePersonalGroups(personalGroups) as ProfileMeResponse["personal"],
+      personal: mergePersonalGroups(
+        personalGroups,
+      ) as ProfileMeResponse["personal"],
       work,
       business,
       socials,

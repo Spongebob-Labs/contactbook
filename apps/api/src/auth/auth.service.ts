@@ -200,7 +200,10 @@ export class AuthService {
     let payload: unknown;
     try {
       payload = this.jwt.verify(token, {
-        secret: this.config.get<string>("JWT_SECRET", "change-me-in-production"),
+        secret: this.config.get<string>(
+          "JWT_SECRET",
+          "change-me-in-production",
+        ),
       });
     } catch {
       throw new UnauthorizedException(
@@ -216,11 +219,7 @@ export class AuthService {
     ) {
       throw new UnauthorizedException("Invalid phone verification token");
     }
-    const p = payload as {
-      typ: unknown;
-      phone: unknown;
-      countryCode: unknown;
-    };
+    const p = payload;
     if (
       p.typ !== PHONE_VERIFICATION_JWT_TYP ||
       typeof p.phone !== "string" ||

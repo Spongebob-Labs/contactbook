@@ -42,7 +42,10 @@ export class OtpService {
    * when `userId` was present on the session. Returns that user id, or null when the session
    * had no user (phone not registered at code request time).
    */
-  async verifyPhoneOtp(phoneE164: string, code: string): Promise<string | null> {
+  async verifyPhoneOtp(
+    phoneE164: string,
+    code: string,
+  ): Promise<string | null> {
     const session = await this.prisma.otpSession.findFirst({
       where: {
         phoneE164,

@@ -58,7 +58,7 @@ describe("ProfileMeSerializerService", () => {
     const out = await svc.build("u1");
 
     expect(out.financial.bankAccounts).toHaveLength(1);
-    const row = out.financial.bankAccounts[0]!;
+    const row = out.financial.bankAccounts[0];
     expect(row.isSensitive).toBe(true);
     expect("fieldId" in row).toBe(false);
     expect(row.groupId).toBe("fg-fin");

@@ -54,8 +54,7 @@ export class TwilioWebhookController {
     }
     const from = params.From ?? "";
     const inboundText =
-      (params.ButtonText && params.ButtonText.trim()) ||
-      (params.Body ?? "");
+      (params.ButtonText && params.ButtonText.trim()) || (params.Body ?? "");
     await this.processor.handleInboundMessage(from, inboundText);
     return "";
   }

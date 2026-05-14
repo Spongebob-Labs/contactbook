@@ -5,7 +5,10 @@ import { ExtractJwt, Strategy } from "passport-jwt";
 import type { Request } from "express";
 import type { JwtUserPayload } from "../common/decorators/current-user.decorator";
 import { PrismaService } from "../prisma/prisma.service";
-import { CB_ACCESS_TOKEN_COOKIE, getCookieFromHeader } from "./session-cookie.util";
+import {
+  CB_ACCESS_TOKEN_COOKIE,
+  getCookieFromHeader,
+} from "./session-cookie.util";
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -16,7 +19,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     super({
       jwtFromRequest: ExtractJwt.fromExtractors([
         (req: Request) =>
-          getCookieFromHeader(req.headers.cookie, CB_ACCESS_TOKEN_COOKIE) ?? null,
+          getCookieFromHeader(req.headers.cookie, CB_ACCESS_TOKEN_COOKIE) ??
+          null,
         ExtractJwt.fromAuthHeaderAsBearerToken(),
       ]),
       ignoreExpiration: false,
