@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "strict": true,
+    "paths": {
+      "@repo/types": ["packages/types/index.ts"],
+      "@repo/utils": ["packages/utils/index.ts"]
+    }
+  }
+}

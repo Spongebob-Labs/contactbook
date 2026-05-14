@@ -1,0 +1,23 @@
+/** ISO2 + display name + E.164 country calling code (no trunk prefix). */
+export const DIAL_COUNTRIES = [
+  { iso2: "US", name: "United States", dial: "+1" },
+  { iso2: "CA", name: "Canada", dial: "+1" },
+  { iso2: "GB", name: "United Kingdom", dial: "+44" },
+  { iso2: "AU", name: "Australia", dial: "+61" },
+  { iso2: "NZ", name: "New Zealand", dial: "+64" },
+  { iso2: "IN", name: "India", dial: "+91" },
+  { iso2: "DE", name: "Germany", dial: "+49" },
+  { iso2: "FR", name: "France", dial: "+33" },
+  { iso2: "ES", name: "Spain", dial: "+34" },
+  { iso2: "IT", name: "Italy", dial: "+39" },
+  { iso2: "NL", name: "Netherlands", dial: "+31" },
+  { iso2: "SE", name: "Sweden", dial: "+46" },
+  { iso2: "NO", name: "Norway", dial: "+47" },
+  { iso2: "BR", name: "Brazil", dial: "+55" },
+  { iso2: "MX", name: "Mexico", dial: "+52" },
+  { iso2: "JP", name: "Japan", dial: "+81" },
+  { iso2: "KR", name: "South Korea", dial: "+82" },
+  { iso2: "SG", name: "Singapore", dial: "+65" },
+  { iso2: "AE", name: "United Arab Emirates", dial: "+971" },
+  { iso2: "ZA", name: "South Africa", dial: "+27" },
+] as const;

@@ -1,0 +1,60 @@
+# Build context is the repo root; keep it small and reproducible.
+
+# Dependencies & package manager caches
+**/node_modules
+**/.pnpm-store
+.pnpm-store
+
+# Build outputs (rebuilt inside the image)
+**/dist
+**/build
+**/.next
+**/out
+**/.turbo
+**/.cache
+**/coverage
+**/*.tsbuildinfo
+
+# Env files — runtime config is injected by Cloud Run, never bake secrets in
+**/.env
+**/.env.*
+!**/.env.example
+docker/.env
+
+# VCS / CI / IDE / OS
+.git
+.github
+**/.gitignore
+**/.gitattributes
+**/.DS_Store
+**/.idea
+**/.vscode
+**/.cursor
+.cursor
+
+# Logs
+**/*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Tests (not needed at runtime)
+**/test
+**/__tests__
+**/*.spec.ts
+**/*.test.ts
+**/*.spec.js
+**/*.test.js
+
+# Docs / meta
+**/README.md
+**/CHANGELOG.md
+**/LICENSE*
+Makefile
+docker/docker-compose.yml
+
+# Misc
+**/*.pem
+**/.secrets
+**/Dockerfile.*
+!apps/api/Dockerfile

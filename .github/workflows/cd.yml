@@ -1,0 +1,59 @@
+# Deploys the API image built and pushed by CI to Cloud Run (after a successful push to main).
+#
+# Requires the same GCP OIDC secrets as CI (`GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_SERVICE_ACCOUNT`)
+# and repository variables `GCP_REGION`, `GCP_PROJECT_ID`. Optional: `CLOUD_RUN_SERVICE` (default: contactbook-api).
+
+name: CD
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+concurrency:
+  group: cd-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout at CI commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy to Cloud Run
+        env:
+          REGION: ${{ vars.GCP_REGION }}
+          PROJECT: ${{ vars.GCP_PROJECT_ID }}
+          SERVICE: ${{ vars.CLOUD_RUN_SERVICE }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          if [ -z "$REGION" ] || [ -z "$PROJECT" ]; then
+            echo "Set repository variables GCP_REGION and GCP_PROJECT_ID."
+            exit 1
+          fi
+          SERVICE_NAME="${SERVICE:-contactbook-api}"
+          IMAGE="${REGION}-docker.pkg.dev/${PROJECT}/contactbook/api:${SHA}"
+          gcloud run services update "${SERVICE_NAME}" \
+            --project="${PROJECT}" \
+            --region="${REGION}" \
+            --image="${IMAGE}" \
+            --quiet
