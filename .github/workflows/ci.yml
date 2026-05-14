@@ -42,6 +42,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Whether to push image to GAR
         id: garpush
@@ -64,12 +66,15 @@ jobs:
               echo "Set repository variables GCP_REGION and GCP_PROJECT_ID to push images to GAR."
               exit 1
             fi
+            LATEST_TAG=$(git describe --tags --match "v*" --abbrev=0 2>/dev/null || echo "v0.1")
+            BASE_VERSION=${LATEST_TAG#v}
+            VERSION_TAG="${BASE_VERSION}.${RUN_NUMBER}"
             BASE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/contactbook/api"
             {
               echo "tags<<__EOF__"
               echo "${BASE}:${{ github.sha }}"
               if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-                echo "${BASE}:latest"
+                echo "${BASE}:${VERSION_TAG}"
               fi
               echo "__EOF__"
             } >> "$GITHUB_OUTPUT"

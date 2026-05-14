@@ -29,6 +29,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
@@ -45,13 +46,17 @@ jobs:
           PROJECT: ${{ vars.GCP_PROJECT_ID }}
           SERVICE: ${{ vars.CLOUD_RUN_SERVICE }}
           SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
         run: |
           if [ -z "$REGION" ] || [ -z "$PROJECT" ]; then
             echo "Set repository variables GCP_REGION and GCP_PROJECT_ID."
             exit 1
           fi
           SERVICE_NAME="${SERVICE:-contactbook-api}"
-          IMAGE="${REGION}-docker.pkg.dev/${PROJECT}/contactbook/api:${SHA}"
+          LATEST_TAG=$(git describe --tags --match "v*" --abbrev=0 2>/dev/null || echo "v0.1")
+          BASE_VERSION=${LATEST_TAG#v}
+          VERSION_TAG="${BASE_VERSION}.${RUN_NUMBER}"
+          IMAGE="${REGION}-docker.pkg.dev/${PROJECT}/contactbook/api:${VERSION_TAG}"
           gcloud run services update "${SERVICE_NAME}" \
             --project="${PROJECT}" \
             --region="${REGION}" \
