@@ -86,7 +86,7 @@ variable "allow_unauthenticated" {
 }
 
 variable "cloud_run_service_account_email" {
-  description = "Optional service account email to run the Cloud Run service as. If null, Cloud Run uses its default identity."
+  description = "Service account email for the Cloud Run revision runtime identity. If null, the module uses the project default Compute Engine SA (PROJECT_NUMBER-compute@developer.gserviceaccount.com), matching GCP’s default when unspecified."
   type        = string
   default     = null
 }
