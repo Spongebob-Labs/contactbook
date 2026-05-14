@@ -20,7 +20,7 @@ import type { CompleteRegisterDto } from "./dto/complete-register.dto";
 import { OtpService } from "./otp.service";
 import { parseRelativeMs } from "./parse-relative-ms";
 
-/** Public JSON body for verify-code (credentials are sent in response headers). */
+/** Public JSON body for verify-code (session cookies set on the response when registered). */
 export type VerifyWhatsappCodeResponse =
   | { registered: true }
   | {
@@ -29,7 +29,7 @@ export type VerifyWhatsappCodeResponse =
       phoneVerificationToken: string;
     };
 
-/** Service result before the controller strips credentials into headers. */
+/** Service result before the controller sets session cookies. */
 export type VerifyWhatsappCodeResult =
   | {
       registered: true;
@@ -137,6 +137,21 @@ export class AuthService {
     });
     const tokens = await this.issueTokenPair(user.id);
     return { userId: user.id, ...tokens };
+  }
+
+  /**
+   * Revokes the refresh token row if the raw token matches an active session.
+   * Used on logout; missing or invalid tokens are ignored.
+   */
+  async logoutByRefreshToken(refreshToken: string | undefined): Promise<void> {
+    if (!refreshToken) {
+      return;
+    }
+    const tokenHash = createHash("sha256").update(refreshToken).digest("hex");
+    await this.prisma.refreshToken.updateMany({
+      where: { tokenHash, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
   }
 
   async refreshSession(refreshToken: string): Promise<{

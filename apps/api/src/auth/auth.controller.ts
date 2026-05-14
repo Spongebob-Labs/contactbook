@@ -1,24 +1,21 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   HttpCode,
   HttpStatus,
   Post,
+  Req,
   Res,
 } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import {
   ApiCreatedResponse,
-  ApiHeader,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
 } from "@nestjs/swagger";
-import type { Response } from "express";
-import {
-  CONTACTBOOK_ACCESS_TOKEN_HEADER,
-  CONTACTBOOK_REFRESH_TOKEN_HEADER,
-  CONTACTBOOK_USER_ID_HEADER,
-} from "./auth.constants";
+import type { Request, Response } from "express";
 import { AuthService } from "./auth.service";
 import type {
   VerifyWhatsappCodeResponse,
@@ -28,20 +25,25 @@ import { CompleteRegisterDto } from "./dto/complete-register.dto";
 import { RefreshSessionDto } from "./dto/refresh-session.dto";
 import { RequestWhatsappCodeDto } from "./dto/request-whatsapp-code.dto";
 import { VerifyWhatsappCodeDto } from "./dto/verify-whatsapp-code.dto";
-
-function setSessionHeaders(
-  res: Response,
-  session: { userId: string; accessToken: string; refreshToken: string },
-): void {
-  res.setHeader(CONTACTBOOK_USER_ID_HEADER, session.userId);
-  res.setHeader(CONTACTBOOK_ACCESS_TOKEN_HEADER, session.accessToken);
-  res.setHeader(CONTACTBOOK_REFRESH_TOKEN_HEADER, session.refreshToken);
-}
+import {
+  CB_REFRESH_TOKEN_COOKIE,
+  clearSessionCookies,
+  getCookieFromHeader,
+  resolveSessionCookieRuntime,
+  setSessionCookies,
+} from "./session-cookie.util";
 
 @ApiTags("Auth")
 @Controller({ path: "auth", version: "1" })
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly config: ConfigService,
+  ) {}
+
+  private sessionCookieRuntime() {
+    return resolveSessionCookieRuntime(this.config);
+  }
 
   @Post("whatsapp/request-code")
   @ApiOperation({
@@ -56,25 +58,13 @@ export class AuthController {
   }
 
   @Post("whatsapp/verify-code")
-  @ApiHeader({
-    name: CONTACTBOOK_USER_ID_HEADER,
-    description: "Present when the JSON body has `registered: true`.",
-  })
-  @ApiHeader({
-    name: CONTACTBOOK_ACCESS_TOKEN_HEADER,
-    description: "JWT access token when `registered: true`.",
-  })
-  @ApiHeader({
-    name: CONTACTBOOK_REFRESH_TOKEN_HEADER,
-    description: "Opaque refresh token when `registered: true`.",
-  })
   @ApiOperation({
     summary:
-      "Verify WhatsApp OTP. Returns session headers if the phone is registered; otherwise a short-lived token to complete registration in the JSON body.",
+      "Verify WhatsApp OTP. Sets httpOnly session cookies if the phone is registered; otherwise returns a short-lived token in the JSON body to complete registration.",
   })
   @ApiOkResponse({
     description:
-      "Either `{ registered: true }` with session headers (`X-Contactbook-*`), or `{ registered: false, message, phoneVerificationToken }`.",
+      "Either `{ registered: true }` with `Set-Cookie` (`cb_access_token`, `cb_refresh_token`, `cb_user_id`), or `{ registered: false, message, phoneVerificationToken }`.",
   })
   async verifyWhatsappCode(
     @Body() dto: VerifyWhatsappCodeDto,
@@ -86,7 +76,7 @@ export class AuthController {
       dto.code,
     );
     if (result.registered) {
-      setSessionHeaders(res, result);
+      setSessionCookies(res, result, this.sessionCookieRuntime());
       return { registered: true };
     }
     return result;
@@ -94,61 +84,67 @@ export class AuthController {
 
   @Post("register")
   @HttpCode(HttpStatus.CREATED)
-  @ApiHeader({
-    name: CONTACTBOOK_USER_ID_HEADER,
-    description: "Created user id.",
-  })
-  @ApiHeader({
-    name: CONTACTBOOK_ACCESS_TOKEN_HEADER,
-    description: "JWT access token.",
-  })
-  @ApiHeader({
-    name: CONTACTBOOK_REFRESH_TOKEN_HEADER,
-    description: "Opaque refresh token.",
-  })
   @ApiOperation({
     summary:
       "Complete registration after OTP (use `phoneVerificationToken` from verify-code when not registered).",
   })
   @ApiCreatedResponse({
     description:
-      "User created; empty JSON body `{}`. Session credentials are in `X-Contactbook-*` response headers.",
+      "User created; empty JSON body `{}`. Session cookies set via `Set-Cookie` (`cb_access_token`, `cb_refresh_token`, `cb_user_id`).",
   })
   async completeRegister(
     @Body() dto: CompleteRegisterDto,
     @Res({ passthrough: true }) res: Response,
   ): Promise<Record<string, never>> {
     const session = await this.auth.completeRegister(dto);
-    setSessionHeaders(res, session);
+    setSessionCookies(res, session, this.sessionCookieRuntime());
     return {};
   }
 
   @Post("refresh")
-  @ApiHeader({
-    name: CONTACTBOOK_USER_ID_HEADER,
-    description: "User id for the rotated session.",
-  })
-  @ApiHeader({
-    name: CONTACTBOOK_ACCESS_TOKEN_HEADER,
-    description: "New JWT access token.",
-  })
-  @ApiHeader({
-    name: CONTACTBOOK_REFRESH_TOKEN_HEADER,
-    description: "New opaque refresh token.",
-  })
   @ApiOperation({
-    summary: "Exchange a refresh token for a new access + refresh token pair (rotation).",
+    summary:
+      "Rotate refresh token and issue a new access token. Reads `cb_refresh_token` cookie first, then optional body `refreshToken` (for API clients).",
   })
   @ApiOkResponse({
     description:
-      "Empty JSON body `{}`. New credentials are in `X-Contactbook-*` response headers.",
+      "Empty JSON body `{}`. New session cookies set via `Set-Cookie` (`cb_access_token`, `cb_refresh_token`, `cb_user_id`).",
   })
   async refresh(
     @Body() dto: RefreshSessionDto,
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<Record<string, never>> {
-    const session = await this.auth.refreshSession(dto.refreshToken);
-    setSessionHeaders(res, session);
+    const fromCookie = getCookieFromHeader(
+      req.headers.cookie,
+      CB_REFRESH_TOKEN_COOKIE,
+    );
+    const refreshRaw = fromCookie ?? dto.refreshToken;
+    if (!refreshRaw) {
+      throw new BadRequestException(
+        "Refresh token required in cb_refresh_token cookie or request body",
+      );
+    }
+    const session = await this.auth.refreshSession(refreshRaw);
+    setSessionCookies(res, session, this.sessionCookieRuntime());
     return {};
+  }
+
+  @Post("logout")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      "Clear session cookies and revoke the current refresh token when `cb_refresh_token` is present.",
+  })
+  @ApiOkResponse({ description: "`{ ok: true }`. Session cookies cleared." })
+  async logout(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ ok: true }> {
+    const runtime = this.sessionCookieRuntime();
+    const refresh = getCookieFromHeader(req.headers.cookie, CB_REFRESH_TOKEN_COOKIE);
+    await this.auth.logoutByRefreshToken(refresh);
+    clearSessionCookies(res, runtime);
+    return { ok: true };
   }
 }
