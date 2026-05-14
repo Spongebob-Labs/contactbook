@@ -113,6 +113,25 @@ Configure repository **variables**: `GCP_REGION`, `GCP_PROJECT_ID`, and optional
 
 Encode `apps/api/.env` for the `API_ENV_B64` secret: [../../scripts/encode-env-for-gh.sh](../../scripts/encode-env-for-gh.sh).
 
+## GitHub Workload Identity Federation (OpenTofu)
+
+When **`enable_github_actions_wif`** is `true` in [`terraform.tfvars`](terraform.tfvars), OpenTofu creates:
+
+- A **Workload Identity Pool** + **GitHub OIDC provider** (`token.actions.githubusercontent.com`) scoped with `attribute_condition` to your **`github_repository`** (`owner/repo`).
+- A **service account** used by GitHub Actions, with **`roles/artifactregistry.writer`** on this module’s Artifact Registry repo and **`roles/run.developer`** on the project (Cloud Run deploy/update).
+- **`roles/iam.serviceAccountUser`** on **`cloud_run_service_account_email`** when that variable is set (so deploy can attach the runtime SA to new revisions). If Cloud Run still uses the default identity, set `cloud_run_service_account_email` to a dedicated runtime SA and apply, or grant `serviceAccountUser` manually for the default compute SA.
+
+Also enables **`sts.googleapis.com`** and **`iamcredentials.googleapis.com`** whenever WIF is enabled (merged with `apis`).
+
+After `tofu apply`, copy outputs into GitHub **Actions** repository secrets:
+
+| Output | GitHub secret name |
+|--------|--------------------|
+| `github_actions_workload_identity_provider` | `GCP_WORKLOAD_IDENTITY_PROVIDER` |
+| `github_actions_service_account_email` | `GCP_SERVICE_ACCOUNT` |
+
+Workflows already use `permissions: id-token: write` for OIDC.
+
 ## Notes
 
 - **Secrets**: pass non-sensitive config via `var.env`. For secrets, prefer Secret Manager + Cloud Run secret env var wiring (can be added later).

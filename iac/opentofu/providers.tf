@@ -1,7 +1,7 @@
 provider "google" {
   project = var.project_id
   region  = var.region
-  
+
   # Explicitly use the Service Account key file
   credentials = file("/Users/khanf/opentofu-key.json")
 
@@ -12,7 +12,7 @@ provider "google" {
 provider "google-beta" {
   project = var.project_id
   region  = var.region
-  
+
   # Explicitly use the Service Account key file
   credentials = file("/Users/khanf/opentofu-key.json")
 

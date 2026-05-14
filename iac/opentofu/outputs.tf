@@ -28,3 +28,13 @@ output "cloud_run_service_url" {
   value       = google_cloud_run_v2_service.api.uri
 }
 
+output "github_actions_workload_identity_provider" {
+  description = "Full resource name for GitHub secret GCP_WORKLOAD_IDENTITY_PROVIDER (empty when enable_github_actions_wif is false)."
+  value       = var.enable_github_actions_wif ? google_iam_workload_identity_pool_provider.github[0].name : ""
+}
+
+output "github_actions_service_account_email" {
+  description = "Email for GitHub secret GCP_SERVICE_ACCOUNT (empty when enable_github_actions_wif is false)."
+  value       = var.enable_github_actions_wif ? google_service_account.github_actions[0].email : ""
+}
+
