@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { readSessionFromResponseHeaders } from "@/lib/api-auth-headers";
 import { DIAL_COUNTRIES } from "@/lib/dial-countries";
 import { buildE164 } from "@/lib/phone";
 
@@ -24,12 +25,15 @@ function formatApiError(data: unknown): string {
   return JSON.stringify(data);
 }
 
+function nationalDigits(raw: string): string {
+  return raw.replace(/\D/g, "").replace(/^0+/, "");
+}
+
 export default function AuthPage() {
   const [step, setStep] = useState<Step>("phone");
   const [countryIso, setCountryIso] = useState("US");
   const [national, setNational] = useState("");
   const [code, setCode] = useState("");
-  const [phoneE164, setPhoneE164] = useState("");
   const [phoneVerifyToken, setPhoneVerifyToken] = useState("");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -38,19 +42,39 @@ export default function AuthPage() {
     accessToken: string;
     refreshToken: string;
   } | null>(null);
+  const persistApiTokens = (accessToken: string, refreshToken: string) => {
+    // Keep it simple for now: a cookie for server routes (oauth callback),
+    // and localStorage for client usage.
+    document.cookie = `cb_access_token=${encodeURIComponent(accessToken)}; Path=/; SameSite=Lax`;
+    document.cookie = `cb_refresh_token=${encodeURIComponent(refreshToken)}; Path=/; SameSite=Lax`;
+    localStorage.setItem("cb_access_token", accessToken);
+    localStorage.setItem("cb_refresh_token", refreshToken);
+  };
 
   const dial = useMemo(() => {
     return DIAL_COUNTRIES.find((c) => c.iso2 === countryIso)?.dial ?? "+1";
   }, [countryIso]);
 
+  const phone = useMemo(() => nationalDigits(national), [national]);
+
+  const displayNumber = useMemo(() => {
+    try {
+      return buildE164(dial, national);
+    } catch {
+      return `${countryIso} ${dial} ${phone || "…"}`;
+    }
+  }, [countryIso, dial, national, phone]);
+
   const requestCode = async () => {
     try {
-      const e164 = buildE164(dial, national);
-      setPhoneE164(e164);
+      if (phone.length < 4) {
+        toast.error("Enter a valid local phone number");
+        return;
+      }
       const r = await fetch(`${apiBase}/v1/auth/whatsapp/request-code`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phoneE164: e164, countryCode: countryIso }),
+        body: JSON.stringify({ phone, countryCode: dial }),
       });
       const data: unknown = await r.json().catch(() => ({}));
       if (!r.ok) {
@@ -73,7 +97,7 @@ export default function AuthPage() {
       const r = await fetch(`${apiBase}/v1/auth/whatsapp/verify-code`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phoneE164, code }),
+        body: JSON.stringify({ phone, countryCode: dial, code }),
       });
       const data: unknown = await r.json().catch(() => ({}));
       if (!r.ok) {
@@ -86,16 +110,13 @@ export default function AuthPage() {
         "registered" in data &&
         (data as { registered: unknown }).registered === true
       ) {
-        const d = data as unknown as {
-          userId: string;
-          accessToken: string;
-          refreshToken: string;
-        };
-        setResult({
-          userId: d.userId,
-          accessToken: d.accessToken,
-          refreshToken: d.refreshToken,
-        });
+        const session = readSessionFromResponseHeaders(r.headers);
+        if (!session) {
+          toast.error("Missing session headers from server");
+          return;
+        }
+        setResult(session);
+        persistApiTokens(session.accessToken, session.refreshToken);
         setStep("done");
         toast.success("Signed in");
         return;
@@ -130,8 +151,8 @@ export default function AuthPage() {
         body: JSON.stringify({
           phoneVerificationToken: phoneVerifyToken,
           name,
-          phoneE164,
-          countryCode: countryIso,
+          phone,
+          countryCode: dial,
           email,
         }),
       });
@@ -140,28 +161,15 @@ export default function AuthPage() {
         toast.error(formatApiError(data));
         return;
       }
-      if (
-        data &&
-        typeof data === "object" &&
-        "accessToken" in data &&
-        "refreshToken" in data &&
-        "userId" in data
-      ) {
-        const d = data as unknown as {
-          userId: string;
-          accessToken: string;
-          refreshToken: string;
-        };
-        setResult({
-          userId: d.userId,
-          accessToken: d.accessToken,
-          refreshToken: d.refreshToken,
-        });
+      const session = readSessionFromResponseHeaders(r.headers);
+      if (session) {
+        setResult(session);
+        persistApiTokens(session.accessToken, session.refreshToken);
         setStep("done");
         toast.success("Account created");
         return;
       }
-      toast.error("Unexpected response from server");
+      toast.error("Missing session headers from server");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Network error");
     }
@@ -222,7 +230,11 @@ export default function AuthPage() {
       {step === "otp" && (
         <div className="flex flex-col gap-4">
           <p className="text-sm text-muted-foreground">
-            Code sent to <span className="font-mono text-foreground">{phoneE164}</span>
+            Code sent to{" "}
+            <span className="font-mono text-foreground">{displayNumber}</span>{" "}
+            <span className="text-muted-foreground">
+              ({dial}, {countryIso})
+            </span>
           </p>
           <label className="flex flex-col gap-1 text-sm font-medium">
             6-digit code
@@ -261,7 +273,7 @@ export default function AuthPage() {
         <div className="flex flex-col gap-4">
           <p className="text-sm text-muted-foreground">
             No account for{" "}
-            <span className="font-mono text-foreground">{phoneE164}</span>. Add your
+            <span className="font-mono text-foreground">{displayNumber}</span>. Add your
             details to finish registration.
           </p>
           <label className="flex flex-col gap-1 text-sm font-medium">
@@ -284,8 +296,8 @@ export default function AuthPage() {
             />
           </label>
           <p className="text-xs text-muted-foreground">
-            Country: {countryIso} · Phone:{" "}
-            <span className="font-mono">{phoneE164}</span>
+            Calling code: <span className="font-mono">{dial}</span> · National:{" "}
+            <span className="font-mono">{phone || "—"}</span> · Region: {countryIso}
           </p>
           <div className="flex gap-2">
             <button

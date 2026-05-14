@@ -1,9 +1,11 @@
 import { Injectable, Logger } from "@nestjs/common";
 import {
+  type User,
   ConnectionStatus,
   FieldAccessRequestStatus,
   WhatsappFlowState,
 } from "@prisma/client";
+import { e164FromStoredUser, inboundE164ToIdentity } from "../common/phone.util";
 import { PrismaService } from "../prisma/prisma.service";
 import { TwilioService } from "./twilio.service";
 
@@ -45,15 +47,37 @@ export class WhatsappWebhookService {
     this.logger.log(`Unhandled WhatsApp message from ${from}: ${text}`);
   }
 
+  private async findUserFromInboundE164(e164: string): Promise<User | null> {
+    const keys = inboundE164ToIdentity(e164);
+    if (!keys) {
+      return null;
+    }
+    return this.prisma.user.findUnique({
+      where: { countryCode_phone: keys },
+    });
+  }
+
   private async resolveSensitiveRequest(
     id: string,
     status: "APPROVED" | "DENIED",
     fromPhone: string,
   ): Promise<void> {
+    const user = await this.findUserFromInboundE164(fromPhone);
+    if (!user) {
+      await this.twilio.sendWhatsApp(
+        fromPhone,
+        "ContactBook: that request is no longer pending.",
+      );
+      return;
+    }
     const req = await this.prisma.sensitiveFieldAccessRequest.findFirst({
-      where: { id, owner: { phone: fromPhone } },
+      where: {
+        id,
+        ownerId: user.id,
+        status: FieldAccessRequestStatus.PENDING,
+      },
     });
-    if (!req || req.status !== FieldAccessRequestStatus.PENDING) {
+    if (!req) {
       await this.twilio.sendWhatsApp(
         fromPhone,
         "ContactBook: that request is no longer pending.",
@@ -87,10 +111,18 @@ export class WhatsappWebhookService {
     connectionId: string,
     fromPhone: string,
   ): Promise<void> {
+    const user = await this.findUserFromInboundE164(fromPhone);
+    if (!user) {
+      await this.twilio.sendWhatsApp(
+        fromPhone,
+        "ContactBook: no pending request found for that code.",
+      );
+      return;
+    }
     const connection = await this.prisma.connection.findFirst({
       where: {
         id: connectionId,
-        recipient: { phone: fromPhone },
+        recipientId: user.id,
         status: ConnectionStatus.PENDING,
       },
     });
@@ -124,7 +156,7 @@ export class WhatsappWebhookService {
     );
     if (initiator?.phone) {
       await this.twilio.sendWhatsApp(
-        initiator.phone,
+        e164FromStoredUser(initiator),
         "ContactBook: your connection request was accepted.",
       );
     }
@@ -134,10 +166,18 @@ export class WhatsappWebhookService {
     connectionId: string,
     fromPhone: string,
   ): Promise<void> {
+    const user = await this.findUserFromInboundE164(fromPhone);
+    if (!user) {
+      await this.twilio.sendWhatsApp(
+        fromPhone,
+        "ContactBook: no pending request found for that code.",
+      );
+      return;
+    }
     const connection = await this.prisma.connection.findFirst({
       where: {
         id: connectionId,
-        recipient: { phone: fromPhone },
+        recipientId: user.id,
         status: ConnectionStatus.PENDING,
       },
     });

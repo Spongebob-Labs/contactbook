@@ -16,7 +16,7 @@ import { JwtService } from "@nestjs/jwt";
 import { PrismaService } from "../prisma/prisma.service";
 import { ContactImportService } from "./contact-import.service";
 
-const PEOPLE_SCOPES = [
+const GOOGLE_SCOPES = [
   "https://www.googleapis.com/auth/contacts.readonly",
   "https://www.googleapis.com/auth/calendar.readonly",
 ];
@@ -51,8 +51,35 @@ export class GoogleService {
     return oauth2.generateAuthUrl({
       access_type: "offline",
       prompt: "consent",
-      scope: PEOPLE_SCOPES,
+      scope: GOOGLE_SCOPES,
       state,
+    });
+  }
+
+  private async upsertGoogleAccountForUser(userId: string, args: {
+    accessToken: string;
+    refreshToken: string;
+    expiresAt: Date | null;
+    scopes: string;
+  }): Promise<void> {
+    await this.prisma.googleAccount.upsert({
+      where: {
+        userId_provider: { userId, provider: OAuthProvider.GOOGLE },
+      },
+      create: {
+        userId,
+        provider: OAuthProvider.GOOGLE,
+        scopes: args.scopes,
+        accessToken: args.accessToken,
+        refreshToken: args.refreshToken,
+        expiresAt: args.expiresAt,
+      },
+      update: {
+        scopes: args.scopes,
+        accessToken: args.accessToken,
+        refreshToken: args.refreshToken,
+        expiresAt: args.expiresAt,
+      },
     });
   }
 
@@ -74,24 +101,30 @@ export class GoogleService {
     }
     oauth2.setCredentials(tokens);
     const expiresAt = tokens.expiry_date ? new Date(tokens.expiry_date) : null;
-    await this.prisma.googleAccount.upsert({
-      where: {
-        userId_provider: { userId, provider: OAuthProvider.GOOGLE },
-      },
-      create: {
-        userId,
-        provider: OAuthProvider.GOOGLE,
-        scopes: PEOPLE_SCOPES.join(" "),
-        accessToken: tokens.access_token,
-        refreshToken: tokens.refresh_token,
-        expiresAt,
-      },
-      update: {
-        scopes: PEOPLE_SCOPES.join(" "),
-        accessToken: tokens.access_token,
-        refreshToken: tokens.refresh_token,
-        expiresAt,
-      },
+    await this.upsertGoogleAccountForUser(userId, {
+      accessToken: tokens.access_token,
+      refreshToken: tokens.refresh_token,
+      expiresAt,
+      scopes: GOOGLE_SCOPES.join(" "),
+    });
+  }
+
+  async linkProviderTokensForUser(
+    userId: string,
+    args: {
+      providerAccessToken: string;
+      providerRefreshToken: string;
+      expiresAt: Date | null;
+      scope: string | null;
+    },
+  ): Promise<void> {
+    await this.upsertGoogleAccountForUser(userId, {
+      accessToken: args.providerAccessToken,
+      refreshToken: args.providerRefreshToken,
+      expiresAt: args.expiresAt,
+      scopes: (args.scope && args.scope.trim().length > 0)
+        ? args.scope.trim()
+        : GOOGLE_SCOPES.join(" "),
     });
   }
 

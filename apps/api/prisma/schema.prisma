@@ -59,9 +59,11 @@ model User {
   id           String   @id @default(uuid())
   email        String   @unique
   name         String?
-  phone        String   @unique
-  countryCode  String   @db.Char(2)
-  isActive     Boolean  @default(false)
+  /** National significant number (digits only, no country calling code). */
+  phone       String
+  /** E.164 country calling prefix (e.g. +1, +44). */
+  countryCode String   @db.VarChar(8)
+  isActive    Boolean  @default(false)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -80,6 +82,7 @@ model User {
   sensitiveRequestsAsRequester SensitiveFieldAccessRequest[] @relation("SensitiveRequestRequester")
   sensitiveRequestsAsOwner     SensitiveFieldAccessRequest[] @relation("SensitiveRequestOwner")
 
+  @@unique([countryCode, phone])
   @@map("users")
 }
 

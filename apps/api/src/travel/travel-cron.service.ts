@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { Cron, CronExpression } from "@nestjs/schedule";
 import { OAuthProvider } from "@prisma/client";
+import { e164FromStoredUser } from "../common/phone.util";
 import { PrismaService } from "../prisma/prisma.service";
 import { GoogleService } from "../integration/google.service";
 import { TwilioService } from "../integration/twilio.service";
@@ -47,7 +48,7 @@ export class TravelCronService {
     for (const event of pending) {
       const where = `${event.city ?? event.location ?? "your calendar"}`;
       await this.twilio.sendWhatsApp(
-        user.phone,
+        e164FromStoredUser(user),
         `ContactBook travel: ${event.title ?? "Trip"} — ${where}. Reply if you want to update your shared card.`,
       );
       await this.prisma.travelEvent.update({

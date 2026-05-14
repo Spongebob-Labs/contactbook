@@ -102,7 +102,17 @@ docker build -f apps/api/Dockerfile -t contactbook-api .
 
 ## Optional Supabase client (web)
 
-`@supabase/supabase-js` is included in `apps/web` for future client work. Add `NEXT_PUBLIC_SUPABASE_*` in `apps/web/.env` when you wire it. Database access for the API is via Prisma and `DATABASE_URL` only.
+`@supabase/supabase-js` is included in `apps/web` for client-side Auth. Add `NEXT_PUBLIC_SUPABASE_*` in `apps/web/.env` when you wire it.
+
+Google OAuth (Supabase → API linking):
+
+- **Redirect URL**: add `http://localhost:3002/auth/callback` (and your production equivalent) to Supabase Auth Redirect URLs.
+- **Offline refresh**: include `queryParams: { access_type: 'offline', prompt: 'consent' }` so Google returns a refresh token.
+- **Scopes**: request Google scopes needed by the API integrations:
+  - `https://www.googleapis.com/auth/contacts.readonly`
+  - `https://www.googleapis.com/auth/calendar.readonly`
+
+The callback route exchanges the code for a Supabase session, then forwards Google `provider_token` / `provider_refresh_token` to the API endpoint `POST /api/v1/integrations/google/link-provider` for the currently logged-in ContactBook user.
 
 ## shadcn components
 
@@ -118,4 +128,4 @@ pnpm --filter web exec shadcn add button
 
 ## CI
 
-[.github/workflows/ci.yml](.github/workflows/ci.yml) runs install, Prisma generate, lint, build, and unit tests for **api**, and lint + build for **web**. `DATABASE_URL` in CI is a placeholder for Prisma tooling only (no database service is started).
+[.github/workflows/ci.yml](.github/workflows/ci.yml) runs when `apps/api/**`, `packages/**`, or monorepo install roots change; it installs with a pnpm filter for **api**, then Prisma generate, lint, build, and unit tests for **api** only. `DATABASE_URL` in CI is a placeholder for Prisma tooling only (no database service is started).

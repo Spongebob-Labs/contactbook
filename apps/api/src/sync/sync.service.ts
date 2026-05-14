@@ -1,4 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
+import { e164FromStoredUser } from "../common/phone.util";
 import { PrismaService } from "../prisma/prisma.service";
 import { TwilioService } from "../integration/twilio.service";
 
@@ -26,13 +27,13 @@ export class SyncService {
       try {
         if (c.initiatorSharedCardId === contactCardId && c.recipient.phone) {
           await this.twilio.sendWhatsApp(
-            c.recipient.phone,
+            e164FromStoredUser(c.recipient),
             `ContactBook: ${c.initiator.name ?? "Your connection"} updated a shared contact card.`,
           );
         }
         if (c.recipientSharedCardId === contactCardId && c.initiator.phone) {
           await this.twilio.sendWhatsApp(
-            c.initiator.phone,
+            e164FromStoredUser(c.initiator),
             `ContactBook: ${c.recipient.name ?? "Your connection"} updated a shared contact card.`,
           );
         }

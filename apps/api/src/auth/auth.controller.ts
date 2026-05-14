@@ -1,16 +1,42 @@
-import { Body, Controller, HttpCode, HttpStatus, Post } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  HttpCode,
+  HttpStatus,
+  Post,
+  Res,
+} from "@nestjs/common";
 import {
   ApiCreatedResponse,
+  ApiHeader,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
 } from "@nestjs/swagger";
+import type { Response } from "express";
+import {
+  CONTACTBOOK_ACCESS_TOKEN_HEADER,
+  CONTACTBOOK_REFRESH_TOKEN_HEADER,
+  CONTACTBOOK_USER_ID_HEADER,
+} from "./auth.constants";
 import { AuthService } from "./auth.service";
-import type { VerifyWhatsappCodeResponse } from "./auth.service";
+import type {
+  VerifyWhatsappCodeResponse,
+  VerifyWhatsappCodeResult,
+} from "./auth.service";
 import { CompleteRegisterDto } from "./dto/complete-register.dto";
 import { RefreshSessionDto } from "./dto/refresh-session.dto";
 import { RequestWhatsappCodeDto } from "./dto/request-whatsapp-code.dto";
 import { VerifyWhatsappCodeDto } from "./dto/verify-whatsapp-code.dto";
+
+function setSessionHeaders(
+  res: Response,
+  session: { userId: string; accessToken: string; refreshToken: string },
+): void {
+  res.setHeader(CONTACTBOOK_USER_ID_HEADER, session.userId);
+  res.setHeader(CONTACTBOOK_ACCESS_TOKEN_HEADER, session.accessToken);
+  res.setHeader(CONTACTBOOK_REFRESH_TOKEN_HEADER, session.refreshToken);
+}
 
 @ApiTags("Auth")
 @Controller({ path: "auth", version: "1" })
@@ -26,47 +52,103 @@ export class AuthController {
   async requestWhatsappCode(
     @Body() dto: RequestWhatsappCodeDto,
   ): Promise<{ message: string }> {
-    return this.auth.requestWhatsappCode(dto.phoneE164, dto.countryCode);
+    return this.auth.requestWhatsappCode(dto.phone, dto.countryCode);
   }
 
   @Post("whatsapp/verify-code")
+  @ApiHeader({
+    name: CONTACTBOOK_USER_ID_HEADER,
+    description: "Present when the JSON body has `registered: true`.",
+  })
+  @ApiHeader({
+    name: CONTACTBOOK_ACCESS_TOKEN_HEADER,
+    description: "JWT access token when `registered: true`.",
+  })
+  @ApiHeader({
+    name: CONTACTBOOK_REFRESH_TOKEN_HEADER,
+    description: "Opaque refresh token when `registered: true`.",
+  })
   @ApiOperation({
     summary:
-      "Verify WhatsApp OTP. Returns tokens if the phone is registered; otherwise a short-lived token to complete registration.",
+      "Verify WhatsApp OTP. Returns session headers if the phone is registered; otherwise a short-lived token to complete registration in the JSON body.",
   })
   @ApiOkResponse({
     description:
-      "Either `{ registered: true, userId, accessToken, refreshToken }` or `{ registered: false, message, phoneVerificationToken }`.",
+      "Either `{ registered: true }` with session headers (`X-Contactbook-*`), or `{ registered: false, message, phoneVerificationToken }`.",
   })
   async verifyWhatsappCode(
     @Body() dto: VerifyWhatsappCodeDto,
+    @Res({ passthrough: true }) res: Response,
   ): Promise<VerifyWhatsappCodeResponse> {
-    return this.auth.verifyWhatsappCode(dto.phoneE164, dto.code);
+    const result: VerifyWhatsappCodeResult = await this.auth.verifyWhatsappCode(
+      dto.phone,
+      dto.countryCode,
+      dto.code,
+    );
+    if (result.registered) {
+      setSessionHeaders(res, result);
+      return { registered: true };
+    }
+    return result;
   }
 
   @Post("register")
   @HttpCode(HttpStatus.CREATED)
+  @ApiHeader({
+    name: CONTACTBOOK_USER_ID_HEADER,
+    description: "Created user id.",
+  })
+  @ApiHeader({
+    name: CONTACTBOOK_ACCESS_TOKEN_HEADER,
+    description: "JWT access token.",
+  })
+  @ApiHeader({
+    name: CONTACTBOOK_REFRESH_TOKEN_HEADER,
+    description: "Opaque refresh token.",
+  })
   @ApiOperation({
     summary:
       "Complete registration after OTP (use `phoneVerificationToken` from verify-code when not registered).",
   })
   @ApiCreatedResponse({
-    description: "User created; returns user id and token pair.",
+    description:
+      "User created; empty JSON body `{}`. Session credentials are in `X-Contactbook-*` response headers.",
   })
   async completeRegister(
     @Body() dto: CompleteRegisterDto,
-  ): Promise<{ userId: string; accessToken: string; refreshToken: string }> {
-    return this.auth.completeRegister(dto);
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<Record<string, never>> {
+    const session = await this.auth.completeRegister(dto);
+    setSessionHeaders(res, session);
+    return {};
   }
 
   @Post("refresh")
+  @ApiHeader({
+    name: CONTACTBOOK_USER_ID_HEADER,
+    description: "User id for the rotated session.",
+  })
+  @ApiHeader({
+    name: CONTACTBOOK_ACCESS_TOKEN_HEADER,
+    description: "New JWT access token.",
+  })
+  @ApiHeader({
+    name: CONTACTBOOK_REFRESH_TOKEN_HEADER,
+    description: "New opaque refresh token.",
+  })
   @ApiOperation({
     summary: "Exchange a refresh token for a new access + refresh token pair (rotation).",
   })
-  @ApiOkResponse({ description: "New access and refresh tokens." })
+  @ApiOkResponse({
+    description:
+      "Empty JSON body `{}`. New credentials are in `X-Contactbook-*` response headers.",
+  })
   async refresh(
     @Body() dto: RefreshSessionDto,
-  ): Promise<{ userId: string; accessToken: string; refreshToken: string }> {
-    return this.auth.refreshSession(dto.refreshToken);
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<Record<string, never>> {
+    const session = await this.auth.refreshSession(dto.refreshToken);
+    setSessionHeaders(res, session);
+    return {};
   }
 }

@@ -2,6 +2,18 @@ import { BadRequestException, Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import twilio from "twilio";
 
+/**
+ * Twilio WhatsApp Messages API expects `whatsapp:` + E.164 for both `from` and `to`.
+ * Strips any repeated leading `whatsapp:` (case-insensitive), then adds exactly one prefix.
+ */
+function toWhatsAppChannelAddress(raw: string): string {
+  let s = raw.trim();
+  while (/^whatsapp:/i.test(s)) {
+    s = s.replace(/^whatsapp:/i, "").trim();
+  }
+  return `whatsapp:${s}`;
+}
+
 @Injectable()
 export class TwilioService {
   private readonly logger = new Logger(TwilioService.name);
@@ -11,13 +23,22 @@ export class TwilioService {
   constructor(private readonly config: ConfigService) {
     const sid = this.config.get<string>("TWILIO_ACCOUNT_SID");
     const token = this.config.get<string>("TWILIO_AUTH_TOKEN");
-    this.whatsappFrom = this.config.get<string>("TWILIO_WHATSAPP_FROM");
+    const rawFrom = this.config.get<string>("TWILIO_WHATSAPP_FROM");
+    this.whatsappFrom =
+      rawFrom && rawFrom.trim().length > 0
+        ? toWhatsAppChannelAddress(rawFrom)
+        : undefined;
     this.client = sid && token ? twilio(sid, token) : null;
     if (!this.client) {
       this.logger.warn(
         "Twilio credentials missing; outbound WhatsApp is disabled.",
       );
     }
+  }
+
+  /** True when `TWILIO_ACCOUNT_SID` and `TWILIO_AUTH_TOKEN` are both set (real sends). */
+  isClientConfigured(): boolean {
+    return this.client !== null;
   }
 
   validateWebhookSignature(
@@ -37,7 +58,7 @@ export class TwilioService {
   }
 
   async sendWhatsApp(toE164: string, body: string): Promise<void> {
-    const to = toE164.startsWith("whatsapp:") ? toE164 : `whatsapp:${toE164}`;
+    const to = toWhatsAppChannelAddress(toE164);
     const from = this.whatsappFrom;
     if (!this.client || !from) {
       this.logger.log(`[dry-run] WhatsApp to ${to}: ${body}`);

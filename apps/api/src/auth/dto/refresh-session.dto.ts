@@ -6,4 +6,4 @@ export class RefreshSessionDto {
   @IsString()
   @MinLength(10)
   refreshToken!: string;
-}
+} 

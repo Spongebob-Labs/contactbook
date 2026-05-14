@@ -1,6 +1,7 @@
 import { NestFactory } from "@nestjs/core";
 import { ValidationPipe, VersioningType } from "@nestjs/common";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
+import { CONTACTBOOK_AUTH_EXPOSED_HEADERS } from "./auth/auth.constants";
 import { AppModule } from "./app.module";
 
 async function bootstrap(): Promise<void> {
@@ -28,6 +29,7 @@ async function bootstrap(): Promise<void> {
   app.enableCors({
     origin: allowedOrigins,
     credentials: true,
+    exposedHeaders: [...CONTACTBOOK_AUTH_EXPOSED_HEADERS],
   });
 
   app.setGlobalPrefix("api");

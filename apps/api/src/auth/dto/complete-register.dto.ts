@@ -3,11 +3,11 @@ import { Transform } from "class-transformer";
 import {
   IsEmail,
   IsString,
-  Length,
   Matches,
   MaxLength,
   MinLength,
 } from "class-validator";
+import { normalizeDialCode } from "../../common/phone.util";
 
 export class CompleteRegisterDto {
   @ApiProperty({
@@ -24,20 +24,25 @@ export class CompleteRegisterDto {
   @MaxLength(200)
   name!: string;
 
-  @ApiProperty({ description: "E.164 phone number", example: "+15551234567" })
-  @IsString()
-  @Matches(/^\+\d{10,15}$/)
-  phoneE164!: string;
-
   @ApiProperty({
-    description: "ISO 3166-1 alpha-2 country code for the phone (e.g. US, GB).",
-    example: "US",
+    description: "National phone number (digits only, must match verification).",
+    example: "5551234567",
   })
   @IsString()
-  @Length(2, 2)
-  @Matches(/^[a-zA-Z]{2}$/)
+  @Matches(/^\d{4,15}$/)
   @Transform(({ value }) =>
-    typeof value === "string" ? value.toUpperCase() : value,
+    typeof value === "string" ? value.replace(/\D/g, "") : value,
+  )
+  phone!: string;
+
+  @ApiProperty({
+    description: "E.164 country calling code prefix (e.g. +1, +44).",
+    example: "+1",
+  })
+  @IsString()
+  @Matches(/^\+\d{1,4}$/)
+  @Transform(({ value }) =>
+    typeof value === "string" ? normalizeDialCode(value) : value,
   )
   countryCode!: string;
 

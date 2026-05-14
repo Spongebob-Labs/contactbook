@@ -7,8 +7,10 @@ import {
   ContactCard,
   ProfileField,
   SensitiveFieldAccessRequest,
+  WhatsappFlowState,
 } from "@prisma/client";
 import { randomUUID } from "node:crypto";
+import { e164FromStoredUser } from "../common/phone.util";
 import { PrismaService } from "../prisma/prisma.service";
 import { TwilioService } from "../integration/twilio.service";
 import { SyncService } from "../sync/sync.service";
@@ -176,18 +178,19 @@ export class ProfileService {
         twilioCorrelationId: correlationId,
       },
     });
+    const ownerE164 = e164FromStoredUser(owner);
     await this.prisma.whatsappSession.create({
       data: {
         userId: ownerId,
-        phoneE164: owner.phone,
-        state: "AWAITING_SENSITIVE_FIELD_APPROVAL",
+        phoneE164: ownerE164,
+        state: WhatsappFlowState.AWAITING_SENSITIVE_FIELD_APPROVAL,
         correlationId,
         metadata: { sensitiveRequestId: request.id },
         expiresAt,
       },
     });
     await this.twilio.sendWhatsApp(
-      owner.phone,
+      ownerE164,
       `ContactBook: someone requested access to a sensitive field (${field.label}). Reply APPROVE-SFR-${request.id} or DECLINE-SFR-${request.id}.`,
     );
     return request;

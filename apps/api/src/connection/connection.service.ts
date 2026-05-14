@@ -11,6 +11,7 @@ import {
 } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { TwilioService } from "../integration/twilio.service";
+import { e164FromStoredUser, normalizeDialCode } from "../common/phone.util";
 import { CreateConnectionRequestDto } from "./dto/create-connection-request.dto";
 
 @Injectable()
@@ -27,11 +28,21 @@ export class ConnectionService {
     const initiator = await this.prisma.user.findUnique({
       where: { id: initiatorId },
     });
-    if (initiator && initiator.phone === dto.recipientPhoneE164) {
+    const recipientDial = normalizeDialCode(dto.recipientCountryCode);
+    if (
+      initiator &&
+      initiator.countryCode === recipientDial &&
+      initiator.phone === dto.recipientPhone
+    ) {
       throw new BadRequestException("Cannot connect to yourself");
     }
     const recipient = await this.prisma.user.findUnique({
-      where: { phone: dto.recipientPhoneE164 },
+      where: {
+        countryCode_phone: {
+          countryCode: recipientDial,
+          phone: dto.recipientPhone,
+        },
+      },
     });
     if (!recipient) {
       throw new NotFoundException("Recipient not found for this phone number");
@@ -55,17 +66,18 @@ export class ConnectionService {
       },
     });
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const recipientE164 = e164FromStoredUser(recipient);
     await this.prisma.whatsappSession.create({
       data: {
         userId: recipient.id,
-        phoneE164: recipient.phone,
+        phoneE164: recipientE164,
         state: WhatsappFlowState.AWAITING_CONNECTION_ACCEPT,
         connectionId: connection.id,
         expiresAt,
       },
     });
     await this.twilio.sendWhatsApp(
-      recipient.phone,
+      recipientE164,
       `ContactBook: ${initiator?.name ?? initiator?.email ?? "Someone"} wants to connect. Reply ACCEPT-${connection.id} or DECLINE-${connection.id}.`,
     );
     return connection;

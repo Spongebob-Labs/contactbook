@@ -8,13 +8,29 @@ import { JwtService } from "@nestjs/jwt";
 import type { SignOptions } from "jsonwebtoken";
 import type { User } from "@prisma/client";
 import { createHash, randomBytes } from "node:crypto";
+import {
+  composeE164,
+  normalizeDialCode,
+  normalizeNationalPhone,
+  type PhoneIdentity,
+} from "../common/phone.util";
 import { PrismaService } from "../prisma/prisma.service";
 import { PHONE_VERIFICATION_JWT_TYP } from "./auth.constants";
 import type { CompleteRegisterDto } from "./dto/complete-register.dto";
 import { OtpService } from "./otp.service";
 import { parseRelativeMs } from "./parse-relative-ms";
 
+/** Public JSON body for verify-code (credentials are sent in response headers). */
 export type VerifyWhatsappCodeResponse =
+  | { registered: true }
+  | {
+      registered: false;
+      message: string;
+      phoneVerificationToken: string;
+    };
+
+/** Service result before the controller strips credentials into headers. */
+export type VerifyWhatsappCodeResult =
   | {
       registered: true;
       userId: string;
@@ -37,25 +53,32 @@ export class AuthService {
   ) {}
 
   /**
-   * Sends a WhatsApp OTP for any E.164 number (registered or not). Twilio errors surface as
+   * Sends a WhatsApp OTP for any phone (registered or not). Twilio errors surface as
    * 400 when WhatsApp cannot receive the message.
    */
   async requestWhatsappCode(
-    phoneE164: string,
-    _countryCode: string,
+    phoneRaw: string,
+    countryCallingPrefix: string,
   ): Promise<{ message: string }> {
+    const phone = normalizeNationalPhone(phoneRaw);
+    const countryCode = normalizeDialCode(countryCallingPrefix);
+    const e164 = composeE164(countryCode, phone);
     const user = await this.prisma.user.findUnique({
-      where: { phone: phoneE164 },
+      where: { countryCode_phone: { countryCode, phone } },
     });
-    await this.otp.sendPhoneOtp(phoneE164, user?.id ?? null);
+    await this.otp.sendPhoneOtp(e164, user?.id ?? null);
     return { message: "Verification code sent to your WhatsApp number." };
   }
 
   async verifyWhatsappCode(
-    phoneE164: string,
+    phoneRaw: string,
+    countryCallingPrefix: string,
     code: string,
-  ): Promise<VerifyWhatsappCodeResponse> {
-    const userId = await this.otp.verifyPhoneOtp(phoneE164, code);
+  ): Promise<VerifyWhatsappCodeResult> {
+    const phone = normalizeNationalPhone(phoneRaw);
+    const countryCode = normalizeDialCode(countryCallingPrefix);
+    const e164 = composeE164(countryCode, phone);
+    const userId = await this.otp.verifyPhoneOtp(e164, code);
     if (userId) {
       const user = await this.prisma.user.findUnique({ where: { id: userId } });
       if (!user) {
@@ -72,24 +95,27 @@ export class AuthService {
       registered: false,
       message:
         "No account for this phone number. Register with your name, email, and the same phone number.",
-      phoneVerificationToken: this.signPhoneVerificationJwt(phoneE164),
+      phoneVerificationToken: this.signPhoneVerificationJwt({
+        phone,
+        countryCode,
+      }),
     };
   }
 
   async completeRegister(
     dto: CompleteRegisterDto,
   ): Promise<{ userId: string; accessToken: string; refreshToken: string }> {
-    const phoneFromJwt = this.verifyPhoneVerificationJwt(
-      dto.phoneVerificationToken,
-    );
-    if (phoneFromJwt !== dto.phoneE164) {
+    const claims = this.verifyPhoneVerificationJwt(dto.phoneVerificationToken);
+    const phone = normalizeNationalPhone(dto.phone);
+    const countryCode = normalizeDialCode(dto.countryCode);
+    if (claims.phone !== phone || claims.countryCode !== countryCode) {
       throw new UnauthorizedException(
         "Phone number does not match verification",
       );
     }
     const email = dto.email.trim().toLowerCase();
     const existingPhone = await this.prisma.user.findUnique({
-      where: { phone: dto.phoneE164 },
+      where: { countryCode_phone: { countryCode, phone } },
     });
     if (existingPhone) {
       throw new ConflictException("This phone number is already registered");
@@ -102,10 +128,10 @@ export class AuthService {
     }
     const user = await this.prisma.user.create({
       data: {
-        phone: dto.phoneE164,
+        phone,
         name: dto.name.trim(),
         email,
-        countryCode: dto.countryCode.toUpperCase(),
+        countryCode,
         isActive: true,
       },
     });
@@ -134,12 +160,17 @@ export class AuthService {
       sub: user.id,
       email: user.email,
       phone: user.phone,
+      countryCode: user.countryCode,
     });
   }
 
-  private signPhoneVerificationJwt(phoneE164: string): string {
+  private signPhoneVerificationJwt(identity: PhoneIdentity): string {
     return this.jwt.sign(
-      { typ: PHONE_VERIFICATION_JWT_TYP, phoneE164 },
+      {
+        typ: PHONE_VERIFICATION_JWT_TYP,
+        phone: identity.phone,
+        countryCode: identity.countryCode,
+      },
       {
         expiresIn: this.config.get<string>(
           "JWT_PHONE_VERIFY_EXPIRES_IN",
@@ -149,7 +180,7 @@ export class AuthService {
     );
   }
 
-  private verifyPhoneVerificationJwt(token: string): string {
+  private verifyPhoneVerificationJwt(token: string): PhoneIdentity {
     let payload: unknown;
     try {
       payload = this.jwt.verify(token, {
@@ -164,18 +195,27 @@ export class AuthService {
       typeof payload !== "object" ||
       payload === null ||
       !("typ" in payload) ||
-      !("phoneE164" in payload)
+      !("phone" in payload) ||
+      !("countryCode" in payload)
     ) {
       throw new UnauthorizedException("Invalid phone verification token");
     }
-    const p = payload as { typ: unknown; phoneE164: unknown };
+    const p = payload as {
+      typ: unknown;
+      phone: unknown;
+      countryCode: unknown;
+    };
     if (
       p.typ !== PHONE_VERIFICATION_JWT_TYP ||
-      typeof p.phoneE164 !== "string"
+      typeof p.phone !== "string" ||
+      typeof p.countryCode !== "string"
     ) {
       throw new UnauthorizedException("Invalid phone verification token");
     }
-    return p.phoneE164;
+    return {
+      phone: normalizeNationalPhone(p.phone),
+      countryCode: normalizeDialCode(p.countryCode),
+    };
   }
 
   private async issueTokenPair(
