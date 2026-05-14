@@ -81,6 +81,7 @@ jobs:
           PUSH: ${{ steps.garpush.outputs.push }}
           GCP_REGION: ${{ vars.GCP_REGION }}
           GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          RUN_NUMBER: ${{ github.run_number }}
         run: |
           if [ "$PUSH" = "true" ]; then
             if [ -z "$GCP_REGION" ] || [ -z "$GCP_PROJECT_ID" ]; then
