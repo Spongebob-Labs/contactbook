@@ -18,7 +18,7 @@ export class TravelCronService {
 
   @Cron(CronExpression.EVERY_6_HOURS)
   async pollCalendar(): Promise<void> {
-    const accounts = await this.prisma.googleAccount.findMany({
+    const accounts = await this.prisma.oAuthAccount.findMany({
       where: { provider: OAuthProvider.GOOGLE },
     });
     for (const account of accounts) {
