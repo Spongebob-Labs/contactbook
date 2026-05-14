@@ -4,9 +4,6 @@
 #   GCP_SERVICE_ACCOUNT
 # Variables: GCP_REGION, GCP_PROJECT_ID — optional CLOUD_RUN_SERVICE (default: contactbook-api)
 #
-# Prisma migrate deploy runs here once per deploy. The GitHub Actions runner must be able to reach
-# the database host in DATABASE_URL (public IP, authorized network, or equivalent).
-
 name: CD
 
 on:
@@ -59,9 +56,6 @@ jobs:
 
       - name: Install dependencies (api + workspace deps)
         run: pnpm install --frozen-lockfile --filter api...
-
-      - name: Prisma migrate deploy
-        run: pnpm --filter api prisma:migrate:deploy
 
       - name: Convert .env to Cloud Run env JSON
         run: python3 scripts/dotenv-to-gcloud-env-json.py apps/api/.env "${RUNNER_TEMP}/cloudrun-env.json"
