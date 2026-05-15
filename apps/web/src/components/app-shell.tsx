@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import {
   ContactRound,
@@ -6,12 +6,15 @@ import {
   Import,
   LogOut,
   Menu,
+  UserCircle,
   UserRound,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useAuth } from "@/context/auth-context";
+import { apiFetch } from "@/lib/api";
+import type { ProfileMeResponse } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const nav = [
@@ -21,17 +24,49 @@ const nav = [
 
 export function AppShell({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [profileSummary, setProfileSummary] = useState<ProfileMeResponse["identity"] | null>(
+    null,
+  );
   const navigate = useNavigate();
   const { logout, userId } = useAuth();
 
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadProfileSummary = async () => {
+      try {
+        const profile = await apiFetch<ProfileMeResponse>("/v1/profile/me");
+        if (isMounted) {
+          setProfileSummary(profile.identity);
+        }
+      } catch {
+        if (isMounted) {
+          setProfileSummary(null);
+        }
+      }
+    };
+
+    void loadProfileSummary();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const handleLogout = async () => {
+    setProfileMenuOpen(false);
     await logout();
     navigate("/auth", { replace: true });
   };
 
+  const closeMenus = () => {
+    setOpen(false);
+    setProfileMenuOpen(false);
+  };
+
   const sidebar = (
-    <aside className="flex h-full flex-col border-r border-border bg-card">
-      <div className="flex h-16 items-center gap-2 border-b border-border px-5">
+    <aside className="flex h-full flex-col bg-card">
+      <div className="flex h-16 items-center gap-2 border-b border-border bg-background/90 px-5 backdrop-blur">
         <ContactRound className="h-5 w-5 text-primary" aria-hidden="true" />
         <Link to="/dashboard" className="font-semibold tracking-normal">
           ContactBook
@@ -56,24 +91,6 @@ export function AppShell({ children }: { children: ReactNode }) {
           </NavLink>
         ))}
       </nav>
-      <div className="border-t border-border p-3">
-        <div className="mb-3 flex items-center gap-3 rounded-md bg-muted px-3 py-2">
-          <UserRound className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-          <div className="min-w-0">
-            <p className="text-sm font-medium">Signed in</p>
-            <p className="truncate text-xs text-muted-foreground">{userId}</p>
-          </div>
-        </div>
-        <Button
-          type="button"
-          variant="ghost"
-          className="w-full justify-start"
-          onClick={() => void handleLogout()}
-        >
-          <LogOut className="h-4 w-4" aria-hidden="true" />
-          Sign out
-        </Button>
-      </div>
     </aside>
   );
 
@@ -104,13 +121,67 @@ export function AppShell({ children }: { children: ReactNode }) {
             >
               {open ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
             </Button>
-            <div>
-              <p className="text-sm font-semibold">Contact workspace</p>
-              <p className="text-xs text-muted-foreground">Profile and imports</p>
-            </div>
           </div>
           <div className="flex items-center gap-2">
             <ThemeToggle />
+            <div className="relative">
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                aria-label="Open profile menu"
+                aria-expanded={profileMenuOpen}
+                onClick={() => setProfileMenuOpen((value) => !value)}
+              >
+                <UserCircle className="h-4 w-4" aria-hidden="true" />
+              </Button>
+              {profileMenuOpen && (
+                <>
+                  <button
+                    type="button"
+                    aria-label="Close profile menu"
+                    className="fixed inset-0 z-40 cursor-default"
+                    onClick={() => setProfileMenuOpen(false)}
+                  />
+                  <div className="absolute right-0 top-12 z-50 w-72 rounded-lg border border-border bg-popover p-3 text-popover-foreground shadow-lg">
+                    <div className="mb-3 flex items-center gap-3 rounded-md bg-muted px-3 py-2">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
+                        <UserRound className="h-4 w-4" aria-hidden="true" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">
+                          {profileSummary
+                            ? `${profileSummary.firstName} ${profileSummary.lastName}`.trim()
+                            : "Signed in"}
+                        </p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {profileSummary?.primaryEmail ?? userId ?? "Active session"}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="grid gap-1">
+                      <Link
+                        to="/profile"
+                        onClick={closeMenus}
+                        className="flex h-10 items-center gap-2 rounded-md px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+                      >
+                          <UserRound className="h-4 w-4" aria-hidden="true" />
+                          Profile
+                      </Link>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="w-full justify-start text-destructive hover:text-destructive"
+                        onClick={() => void handleLogout()}
+                      >
+                        <LogOut className="h-4 w-4" aria-hidden="true" />
+                        Sign out
+                      </Button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </header>
         <main className="mx-auto flex max-w-7xl flex-col gap-6 p-4 md:p-6">

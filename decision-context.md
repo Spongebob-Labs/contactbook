@@ -59,3 +59,39 @@
 - Decision: Route newly registered users to a skippable `/onboarding/profile` flow that captures identity, personal, work, business, social, and financial profile details.
 - Reason: Registration only collects compulsory identity fields. A separate onboarding flow lets the product demo the broader ContactBook profile model without blocking account creation.
 - Notes: The frontend saves optional sections through the documented `field-groups` and `fields` APIs, creating groups only for sections with entered data. Financial rows are labeled sensitive.
+
+## 2026-05-15 - Add Profile Menu And Profile Detail Page
+
+- Decision: Add a top-bar profile menu with user details, profile navigation, edit-profile navigation, and logout, plus a `/profile` page backed by `GET /api/v1/profile/me`.
+- Reason: Authenticated users need a persistent account control surface and a place to review the profile data collected during onboarding.
+- Notes: Editing routes to the existing profile builder because the current nested profile response does not expose individual field IDs needed for safe inline patch updates.
+
+## 2026-05-15 - Centralize Account Controls In Top Bar
+
+- Decision: Remove signed-in details and logout controls from the sidebar bottom after adding the top-bar profile menu.
+- Reason: Account actions now have a dedicated location, so keeping them in the sidebar duplicates controls and distracts from navigation.
+- Notes: Sidebar remains focused on workspace navigation only.
+
+## 2026-05-15 - Simplify Profile Menu Actions
+
+- Decision: Rename the profile menu's "View profile" action to "Profile" and remove the separate "Edit profile" action.
+- Reason: The profile page already owns the edit entry point, so the top-bar menu should stay compact and avoid duplicate profile actions.
+- Notes: Users can still edit from `/profile` via the page-level edit button.
+
+## 2026-05-15 - Remove Redundant Topbar Context Copy
+
+- Decision: Remove the "Contact workspace" and "Profile and imports" text block from the topbar left side.
+- Reason: The sidebar already provides workspace and navigation context, while the topbar is now focused on mobile navigation and account controls.
+- Notes: The mobile menu button remains on the left and theme/profile controls remain on the right.
+
+## 2026-05-15 - Remove Sidebar Vertical Divider
+
+- Decision: Remove the hard right border from the sidebar container.
+- Reason: The divider created an unwanted vertical cut after the logo area and made the top chrome feel visually split.
+- Notes: The sidebar header keeps its bottom border for local structure.
+
+## 2026-05-15 - Unify Top Chrome Background
+
+- Decision: Match the sidebar logo strip background to the main topbar background treatment.
+- Reason: The topbar should feel full-width and continuous instead of reading as separate left and right surfaces.
+- Notes: The vertical divider stays removed while both top strips keep their shared bottom border.
