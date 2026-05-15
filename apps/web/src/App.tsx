@@ -8,6 +8,7 @@ const AuthPage = lazy(() => import("@/pages/auth-page"));
 const AuthCallbackPage = lazy(() => import("@/pages/auth-callback-page"));
 const DashboardPage = lazy(() => import("@/pages/dashboard-page"));
 const ImportPage = lazy(() => import("@/pages/import-page"));
+const LandingPage = lazy(() => import("@/pages/landing-page"));
 const ProfilePage = lazy(() => import("@/pages/profile-page"));
 const ProfileOnboardingPage = lazy(() => import("@/pages/profile-onboarding-page"));
 
@@ -16,7 +17,7 @@ export default function App() {
     <AppErrorBoundary>
       <Suspense fallback={<PageLoader />}>
         <Routes>
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/" element={<LandingPage />} />
           <Route path="/auth" element={<AuthPage />} />
           <Route path="/auth/callback" element={<AuthCallbackPage />} />
           <Route

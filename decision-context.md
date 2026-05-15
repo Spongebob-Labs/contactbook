@@ -95,3 +95,9 @@
 - Decision: Match the sidebar logo strip background to the main topbar background treatment.
 - Reason: The topbar should feel full-width and continuous instead of reading as separate left and right surfaces.
 - Notes: The vertical divider stays removed while both top strips keep their shared bottom border.
+
+## 2026-05-15 - Add Public Landing Page Separate From Auth
+
+- Decision: Make `/` a publicly accessible marketing landing page and keep sign-in/sign-up on the separate `/auth` route.
+- Reason: Marketing needs a measurable public funnel while the product authentication flow remains focused on account access.
+- Notes: The landing page should use ContactBook as the product name with a refreshed visual style, primary `Get started` CTA, secondary `Sign in` CTA, and no pricing or testimonial sections in the first pass.
