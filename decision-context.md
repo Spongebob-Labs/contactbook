@@ -41,3 +41,15 @@
 - Decision: Remove leftover empty Next.js directories and update repository documentation/config references to the current Vite React frontend.
 - Reason: `apps/web` is now a Vite app on port `5173`; keeping Next.js wording, `NEXT_PUBLIC_*` env names, and port `3002` references would mislead local setup and reviews.
 - Notes: The current Vite frontend remains in place. API CORS defaults now include Vite dev origins on `localhost:5173` and `127.0.0.1:5173`.
+
+## 2026-05-15 - Align Registration Payload With Live API Docs
+
+- Decision: Update the frontend registration form and request body to send top-level `firstName` and `lastName` instead of a single `name` field.
+- Reason: The live backend OpenAPI document for `POST /api/v1/auth/register` requires `phoneVerificationToken`, `firstName`, `lastName`, `phone`, `countryCode`, and `email`.
+- Notes: This is a frontend-only contract alignment. No backend files were changed.
+
+## 2026-05-15 - Decouple Route Auth From Readable User Cookie
+
+- Decision: Add a frontend route-authenticated state that can be marked after successful OTP login or registration, while keeping `userId` populated from `cb_user_id` only when that cookie is readable.
+- Reason: The backend can successfully set session cookies while the browser route guard still sees no readable `cb_user_id`, causing an immediate redirect back to `/auth`.
+- Notes: API security still depends on backend cookies. The frontend flag only controls client-side route gating after a successful auth response.

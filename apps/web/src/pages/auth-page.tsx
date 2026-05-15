@@ -26,7 +26,8 @@ const otpSchema = z.object({
 });
 
 const registerSchema = z.object({
-  name: z.string().min(1, "Enter your name.").max(200),
+  firstName: z.string().min(1, "Enter your first name.").max(120),
+  lastName: z.string().min(1, "Enter your last name.").max(120),
   email: z.string().email("Enter a valid email."),
 });
 
@@ -46,7 +47,7 @@ export default function AuthPage() {
   });
   const navigate = useNavigate();
   const location = useLocation();
-  const { refreshUser } = useAuth();
+  const { markAuthenticated } = useAuth();
   const redirectTo =
     typeof location.state === "object" &&
     location.state !== null &&
@@ -65,7 +66,7 @@ export default function AuthPage() {
   });
   const registerForm = useForm<RegisterForm>({
     resolver: zodResolver(registerSchema),
-    defaultValues: { name: "", email: "" },
+    defaultValues: { firstName: "", lastName: "", email: "" },
   });
 
   const countryIso = phoneForm.watch("countryIso");
@@ -112,7 +113,7 @@ export default function AuthPage() {
         },
       });
       if (result.registered) {
-        refreshUser();
+        markAuthenticated();
         toast.success("Signed in.");
         navigate(redirectTo, { replace: true });
         return;
@@ -134,13 +135,14 @@ export default function AuthPage() {
         method: "POST",
         body: {
           phoneVerificationToken,
-          name: values.name,
+          firstName: values.firstName,
+          lastName: values.lastName,
           email: values.email,
           phone: phoneContext.phone,
           countryCode: phoneContext.countryCode,
         },
       });
-      refreshUser();
+      markAuthenticated();
       toast.success("Account created.");
       navigate(redirectTo, { replace: true });
     } catch (error) {
@@ -277,8 +279,12 @@ export default function AuthPage() {
             {step === "register" && (
               <form className="space-y-4" onSubmit={registerForm.handleSubmit(onRegister)}>
                 <label className="space-y-2 text-sm font-medium">
-                  <span>Full name</span>
-                  <Input autoComplete="name" {...registerForm.register("name")} />
+                  <span>First name</span>
+                  <Input autoComplete="given-name" {...registerForm.register("firstName")} />
+                </label>
+                <label className="space-y-2 text-sm font-medium">
+                  <span>Last name</span>
+                  <Input autoComplete="family-name" {...registerForm.register("lastName")} />
                 </label>
                 <label className="space-y-2 text-sm font-medium">
                   <span>Email</span>
@@ -288,10 +294,12 @@ export default function AuthPage() {
                     {...registerForm.register("email")}
                   />
                 </label>
-                {(registerForm.formState.errors.name ||
+                {(registerForm.formState.errors.firstName ||
+                  registerForm.formState.errors.lastName ||
                   registerForm.formState.errors.email) && (
                   <p className="text-sm text-destructive">
-                    {registerForm.formState.errors.name?.message ??
+                    {registerForm.formState.errors.firstName?.message ??
+                      registerForm.formState.errors.lastName?.message ??
                       registerForm.formState.errors.email?.message}
                   </p>
                 )}

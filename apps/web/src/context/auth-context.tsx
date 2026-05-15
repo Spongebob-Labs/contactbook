@@ -12,6 +12,7 @@ type AuthContextValue = {
   userId: string | null;
   isAuthenticated: boolean;
   refreshUser: () => void;
+  markAuthenticated: () => void;
   logout: () => Promise<void>;
 };
 
@@ -19,9 +20,19 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [userId, setUserId] = useState<string | null>(() => getCookie("cb_user_id"));
+  const [isAuthenticated, setIsAuthenticated] = useState(() =>
+    Boolean(getCookie("cb_user_id")),
+  );
 
   const refreshUser = useCallback(() => {
+    const nextUserId = getCookie("cb_user_id");
+    setUserId(nextUserId);
+    setIsAuthenticated(Boolean(nextUserId));
+  }, []);
+
+  const markAuthenticated = useCallback(() => {
     setUserId(getCookie("cb_user_id"));
+    setIsAuthenticated(true);
   }, []);
 
   const logout = useCallback(async () => {
@@ -33,17 +44,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
     } finally {
       setUserId(null);
+      setIsAuthenticated(false);
     }
   }, []);
 
   const value = useMemo<AuthContextValue>(
     () => ({
       userId,
-      isAuthenticated: Boolean(userId),
+      isAuthenticated,
       refreshUser,
+      markAuthenticated,
       logout,
     }),
-    [logout, refreshUser, userId],
+    [isAuthenticated, logout, markAuthenticated, refreshUser, userId],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
