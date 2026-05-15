@@ -32,3 +32,4 @@ yarn-error.log*
 
 # OpenTofu / Terraform — local backend config (bucket name is not secret but often per-env)
 iac/opentofu/backend.hcl
+scripts/**
