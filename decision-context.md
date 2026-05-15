@@ -53,3 +53,9 @@
 - Decision: Add a frontend route-authenticated state that can be marked after successful OTP login or registration, while keeping `userId` populated from `cb_user_id` only when that cookie is readable.
 - Reason: The backend can successfully set session cookies while the browser route guard still sees no readable `cb_user_id`, causing an immediate redirect back to `/auth`.
 - Notes: API security still depends on backend cookies. The frontend flag only controls client-side route gating after a successful auth response.
+
+## 2026-05-15 - Add Skippable Full Profile Onboarding
+
+- Decision: Route newly registered users to a skippable `/onboarding/profile` flow that captures identity, personal, work, business, social, and financial profile details.
+- Reason: Registration only collects compulsory identity fields. A separate onboarding flow lets the product demo the broader ContactBook profile model without blocking account creation.
+- Notes: The frontend saves optional sections through the documented `field-groups` and `fields` APIs, creating groups only for sections with entered data. Financial rows are labeled sensitive.

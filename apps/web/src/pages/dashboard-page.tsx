@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { ArrowRight, Import, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowRight, Import, ShieldCheck, Sparkles, UserRound } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,6 +27,13 @@ export default function DashboardPage() {
           </div>
           <div className="mt-6 flex flex-col gap-3 sm:flex-row">
             <Link
+              to="/onboarding/profile"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border bg-background px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              Complete profile
+              <UserRound className="h-4 w-4" aria-hidden="true" />
+            </Link>
+            <Link
               to="/dashboard/import"
               className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
@@ -43,6 +50,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             {[
+              { icon: UserRound, label: "Complete profile", state: "Optional" },
               { icon: Import, label: "Connect Google", state: "Ready" },
               { icon: Sparkles, label: "Sync imports", state: "After connect" },
               { icon: ShieldCheck, label: "Review privacy", state: "Enabled" },

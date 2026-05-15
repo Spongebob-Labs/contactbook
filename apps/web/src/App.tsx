@@ -8,6 +8,7 @@ const AuthPage = lazy(() => import("@/pages/auth-page"));
 const AuthCallbackPage = lazy(() => import("@/pages/auth-callback-page"));
 const DashboardPage = lazy(() => import("@/pages/dashboard-page"));
 const ImportPage = lazy(() => import("@/pages/import-page"));
+const ProfileOnboardingPage = lazy(() => import("@/pages/profile-onboarding-page"));
 
 export default function App() {
   return (
@@ -17,6 +18,14 @@ export default function App() {
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/auth" element={<AuthPage />} />
           <Route path="/auth/callback" element={<AuthCallbackPage />} />
+          <Route
+            path="/onboarding/profile"
+            element={
+              <ProtectedRoute>
+                <ProfileOnboardingPage />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/dashboard"
             element={

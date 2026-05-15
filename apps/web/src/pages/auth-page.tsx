@@ -144,7 +144,7 @@ export default function AuthPage() {
       });
       markAuthenticated();
       toast.success("Account created.");
-      navigate(redirectTo, { replace: true });
+      navigate("/onboarding/profile", { replace: true });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not create account.");
     } finally {
