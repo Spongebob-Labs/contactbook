@@ -13,8 +13,8 @@ async function bootstrap(): Promise<void> {
     [
       "http://localhost:3000",
       "http://127.0.0.1:3000",
-      "http://localhost:3002",
-      "http://127.0.0.1:3002",
+      "http://localhost:5173",
+      "http://127.0.0.1:5173",
       "http://localhost:8000",
       "http://127.0.0.1:8000",
       "http://localhost:8001",
@@ -38,7 +38,7 @@ async function bootstrap(): Promise<void> {
   const swaggerConfig = new DocumentBuilder()
     .setTitle("ContactBook API")
     .setDescription(
-        "HTTP API for ContactBook: sync professional and personal contacts via web and WhatsApp.",
+      "HTTP API for ContactBook: sync professional and personal contacts via web and WhatsApp.",
     )
     .setVersion("1.0")
     .addBearerAuth(
