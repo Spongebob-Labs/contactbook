@@ -1,0 +1,251 @@
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { AlertCircle, CheckCircle2, RefreshCw, Search, UploadCloud } from "lucide-react";
+import { toast } from "sonner";
+import { AppShell } from "@/components/app-shell";
+import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import { apiFetch } from "@/lib/api";
+import { isSupabaseConfigured, supabase } from "@/lib/supabase";
+import type { ContactImport, GoogleSyncResponse } from "@/lib/types";
+
+const googleScopes = [
+  "openid",
+  "email",
+  "profile",
+  "https://www.googleapis.com/auth/contacts.readonly",
+  "https://www.googleapis.com/auth/calendar.readonly",
+].join(" ");
+
+function formatDate(value: string | null) {
+  if (!value) {
+    return "Not synced";
+  }
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
+export default function ImportPage() {
+  const [searchParams] = useSearchParams();
+  const [imports, setImports] = useState<ContactImport[]>([]);
+  const [query, setQuery] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) {
+      return imports;
+    }
+    return imports.filter((item) =>
+      (item.displayNameSnapshot ?? "Unknown").toLowerCase().includes(q),
+    );
+  }, [imports, query]);
+
+  const loadImports = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const data = await apiFetch<ContactImport[]>("/v1/integrations/contact-imports");
+      setImports(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load imports.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadImports();
+  }, []);
+
+  useEffect(() => {
+    if (searchParams.get("google") === "connected") {
+      toast.success("Google connected. You can sync contacts now.");
+    }
+    if (searchParams.get("google") === "error") {
+      toast.error("Google connection failed.");
+    }
+  }, [searchParams]);
+
+  const connectGoogle = async () => {
+    if (!isSupabaseConfigured || !supabase) {
+      toast.error("Google sign-in is not configured yet.");
+      return;
+    }
+
+    const appOrigin = window.location.origin;
+    const redirectTo = `${appOrigin}/auth/callback?next=${encodeURIComponent(
+      "/dashboard/import",
+    )}`;
+    const { error: oauthError } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo,
+        scopes: googleScopes,
+        queryParams: {
+          access_type: "offline",
+          prompt: "consent",
+        },
+      },
+    });
+
+    if (oauthError) {
+      toast.error(oauthError.message);
+    }
+  };
+
+  const syncGoogle = async () => {
+    setIsSyncing(true);
+    try {
+      const result = await apiFetch<GoogleSyncResponse>("/v1/integrations/google/sync");
+      toast.success(`Synced ${result.imported} contacts.`);
+      await loadImports();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not sync Google contacts.");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  return (
+    <AppShell>
+      <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="rounded-lg border border-border bg-card p-6 md:p-8">
+          <Badge variant="secondary">Google import</Badge>
+          <div className="mt-5 max-w-3xl space-y-4">
+            <h1 className="text-3xl font-semibold tracking-normal md:text-4xl">
+              Bring your Google contacts into ContactBook.
+            </h1>
+            <p className="text-base text-muted-foreground">
+              Connect Google through Supabase OAuth, then sync contacts into your
+              ContactBook import queue.
+            </p>
+          </div>
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+            <Button type="button" onClick={() => void connectGoogle()}>
+              <UploadCloud className="h-4 w-4" aria-hidden="true" />
+              Connect Google
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void syncGoogle()}
+              disabled={isSyncing}
+            >
+              <RefreshCw className="h-4 w-4" aria-hidden="true" />
+              Sync contacts
+            </Button>
+          </div>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Import status</CardTitle>
+            <CardDescription>Current Google import snapshot</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex items-center justify-between rounded-md border border-border p-3">
+              <span className="text-sm text-muted-foreground">Imported contacts</span>
+              <span className="text-lg font-semibold">{imports.length}</span>
+            </div>
+            <div className="flex items-center justify-between rounded-md border border-border p-3">
+              <span className="text-sm text-muted-foreground">Processed</span>
+              <span className="text-lg font-semibold">
+                {imports.filter((item) => item.status === "PROCESSED").length}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+      </section>
+
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <CardTitle>Imported contacts</CardTitle>
+              <CardDescription>Review contacts brought in from Google.</CardDescription>
+            </div>
+            <div className="relative w-full md:w-72">
+              <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <Input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search contacts"
+                className="pl-9"
+              />
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {isLoading && (
+            <div className="space-y-3">
+              {Array.from({ length: 5 }).map((_, index) => (
+                <Skeleton key={index} className="h-16 w-full" />
+              ))}
+            </div>
+          )}
+
+          {!isLoading && error && (
+            <Alert className="flex items-start gap-3">
+              <AlertCircle className="mt-0.5 h-4 w-4 text-destructive" />
+              <div>
+                <p className="font-medium">Could not load imports</p>
+                <p className="mt-1 text-sm text-muted-foreground">{error}</p>
+              </div>
+            </Alert>
+          )}
+
+          {!isLoading && !error && filtered.length === 0 && (
+            <div className="flex min-h-56 flex-col items-center justify-center rounded-lg border border-dashed border-border p-6 text-center">
+              <CheckCircle2 className="mb-3 h-8 w-8 text-primary" />
+              <h3 className="font-semibold">No imported contacts yet</h3>
+              <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+                Connect Google and run a sync to populate this list.
+              </p>
+            </div>
+          )}
+
+          {!isLoading && !error && filtered.length > 0 && (
+            <div className="overflow-hidden rounded-lg border border-border">
+              <div className="hidden grid-cols-[1fr_120px_220px] border-b border-border bg-muted px-4 py-3 text-xs font-medium uppercase text-muted-foreground md:grid">
+                <span>Name</span>
+                <span>Status</span>
+                <span>Last synced</span>
+              </div>
+              {filtered.map((item) => (
+                <div
+                  key={item.id}
+                  className="grid gap-2 border-b border-border px-4 py-4 last:border-b-0 md:grid-cols-[1fr_120px_220px] md:items-center"
+                >
+                  <div>
+                    <p className="font-medium">
+                      {item.displayNameSnapshot ?? "Unknown contact"}
+                    </p>
+                    <p className="text-xs text-muted-foreground">{item.source}</p>
+                  </div>
+                  <Badge
+                    variant={item.status === "PROCESSED" ? "success" : "warning"}
+                    className="w-fit"
+                  >
+                    {item.status.toLowerCase()}
+                  </Badge>
+                  <p className="text-sm text-muted-foreground">
+                    {formatDate(item.lastSyncedAt)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </AppShell>
+  );
+}
