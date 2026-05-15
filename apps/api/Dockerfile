@@ -6,7 +6,6 @@
 # Build context MUST be the repository root (pnpm workspace):
 #   docker build -f apps/api/Dockerfile -t contactbook-api .
 #
-#
 ARG NODE_VERSION=20-alpine
 
 # =============================================================================
@@ -14,8 +13,8 @@ ARG NODE_VERSION=20-alpine
 # =============================================================================
 FROM node:${NODE_VERSION} AS base
 RUN apk add --no-cache openssl libc6-compat \
- && corepack enable \
- && corepack prepare pnpm@10 --activate
+    && corepack enable \
+    && corepack prepare pnpm@10 --activate
 ENV PNPM_HOME=/pnpm \
     PATH=/pnpm:$PATH \
     CI=true
@@ -35,8 +34,8 @@ COPY packages/utils/package.json ./packages/utils/
 
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm install --frozen-lockfile \
-      --filter api... \
-      --filter "./packages/*"
+    --filter api... \
+    --filter "./packages/*"
 
 # Source for the api and its workspace deps.
 COPY apps/api ./apps/api
@@ -48,12 +47,12 @@ COPY packages ./packages
 RUN --mount=type=secret,id=api_env \
     --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     cp /run/secrets/api_env /workspace/apps/api/.env \
- && pnpm --filter api exec prisma generate \
- && pnpm --filter api build \
- && rm -f /workspace/apps/api/.env \
- && test -f apps/api/dist/main.js \
+    && pnpm --filter api exec prisma generate \
+    && pnpm --filter api build \
+    && rm -f /workspace/apps/api/.env \
+    && test -f apps/api/dist/main.js \
     || (echo "Build failed: apps/api/dist/main.js missing" \
-        && ls -la apps/api/dist && exit 1)
+    && ls -la apps/api/dist && exit 1)
 
 # =============================================================================
 # Stage 3: deployer — produce a self-contained prod-only deployment tree
@@ -68,7 +67,7 @@ COPY --from=builder /workspace/packages /workspace/packages
 
 # Drop pre-built node_modules — pnpm deploy installs a fresh prod-only tree.
 RUN rm -rf /workspace/node_modules /workspace/apps/api/node_modules \
-           /workspace/packages/*/node_modules
+    /workspace/packages/*/node_modules
 
 # Create the deployable bundle (apps/api + its prod deps, workspace deps inlined).
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
@@ -81,15 +80,15 @@ WORKDIR /deploy
 RUN --mount=type=secret,id=api_env \
     --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     cp /run/secrets/api_env /deploy/.env \
- && PRISMA_VERSION=$(node -p "require('./node_modules/@prisma/client/package.json').version") \
- && pnpm dlx prisma@${PRISMA_VERSION} generate \
- && rm -f /deploy/.env \
- && rm -rf /root/.cache /root/.npm /root/.local /tmp/*
+    && PRISMA_VERSION=$(node -p "require('./node_modules/@prisma/client/package.json').version") \
+    && pnpm dlx prisma@${PRISMA_VERSION} generate \
+    && rm -f /deploy/.env \
+    && rm -rf /root/.cache /root/.npm /root/.local /tmp/*
 
 # Drop files not needed at runtime to keep the image lean.
 RUN rm -rf src test eslint.config.mjs nest-cli.json \
-           tsconfig.json tsconfig.build.json tsconfig.build.tsbuildinfo \
-           Dockerfile cloudbuild.yaml .env.example .gitignore
+    tsconfig.json tsconfig.build.json tsconfig.build.tsbuildinfo \
+    Dockerfile cloudbuild.yaml .env.example .gitignore
 
 # =============================================================================
 # Stage 4: runtime — minimal image for Cloud Run
