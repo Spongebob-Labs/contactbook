@@ -115,6 +115,26 @@ jobs:
           node-version: 20
           cache: pnpm
 
+      - name: Cache Prisma Engine
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules/.prisma
+            node_modules/@prisma/engines
+          key: ${{ runner.os }}-prisma-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-prisma-
+
+      - name: Cache TS Build Output (api)
+        uses: actions/cache@v4
+        with:
+          path: |
+            apps/api/.tsbuildinfo
+            apps/api/dist
+          key: ${{ runner.os }}-tsbuild-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-tsbuild-
+
       - name: Install dependencies (api + workspace deps)
         run: pnpm install --frozen-lockfile --filter api...
 
