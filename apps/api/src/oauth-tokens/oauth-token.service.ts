@@ -1,8 +1,13 @@
-import { Injectable, Logger, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from "@nestjs/common";
 import { OAuthAccount, OAuthProvider } from "@prisma/client";
 
 import { PrismaService } from "../prisma/prisma.service";
-import { decryptOAuthToken, encryptOAuthToken } from "./crypto.util";
+import { decryptOAuthTokenStored, encryptOAuthToken } from "./crypto.util";
 
 export type OAuthTokenUpsertInput = {
   refreshToken: string;
@@ -149,14 +154,26 @@ export class OAuthTokenService {
     row: OAuthAccount,
     provider: string,
   ): DecryptedOAuthCredential {
-    return {
-      id: row.id,
-      userId: row.userId,
-      provider,
-      scope: row.scopes || null,
-      refreshToken: decryptOAuthToken(row.refreshToken),
-      accessToken: row.accessToken ? decryptOAuthToken(row.accessToken) : null,
-      accessTokenExpiresAt: row.expiresAt,
-    };
+    try {
+      return {
+        id: row.id,
+        userId: row.userId,
+        provider,
+        scope: row.scopes || null,
+        refreshToken: decryptOAuthTokenStored(row.refreshToken),
+        accessToken: row.accessToken
+          ? decryptOAuthTokenStored(row.accessToken)
+          : null,
+        accessTokenExpiresAt: row.expiresAt,
+      };
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "unknown error";
+      this.logger.error(
+        `Failed to decrypt ${provider} OAuth tokens for user ${row.userId}: ${reason}`,
+      );
+      throw new BadRequestException(
+        `Stored ${provider} credentials could not be read. Disconnect and reconnect the account.`,
+      );
+    }
   }
 }
