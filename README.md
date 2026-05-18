@@ -112,7 +112,9 @@ Google OAuth (Supabase → API linking):
   - `https://www.googleapis.com/auth/contacts.readonly`
   - `https://www.googleapis.com/auth/calendar.readonly`
 
-The callback route exchanges the code for a Supabase session, then forwards Google `provider_token` / `provider_refresh_token` to the API endpoint `POST /api/v1/integrations/google/link-provider` for the currently logged-in ContactBook user.
+The callback route exchanges the code for a Supabase session, then forwards Google `provider_token` / `provider_refresh_token` to `POST /api/v1/integrations/google/link-provider` for the currently logged-in ContactBook user. Tokens are encrypted at rest in `oauth_accounts` (set `OAUTH_TOKEN_ENCRYPTION_KEY_BASE64` in the API env; generate with `openssl rand -base64 32`). After a successful link, the callback signs out the Supabase session so only ContactBook JWTs remain active.
+
+**Note:** Existing plaintext Google tokens in the database cannot be read after enabling encryption; users must re-link Google once.
 
 ## shadcn components
 
