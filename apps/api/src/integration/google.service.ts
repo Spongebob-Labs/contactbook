@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, Logger } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+} from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { ImportSource } from "@prisma/client";
 import { google, people_v1 } from "googleapis";
@@ -150,6 +155,24 @@ export class GoogleService {
   }
 
   async syncContacts(userId: string): Promise<{ imported: number }> {
+    try {
+      return await this.runContactsSync(userId);
+    } catch (error) {
+      if (this.isInvalidSyncTokenError(error)) {
+        this.logger.warn(
+          `Google People sync token invalid for user ${userId}; retrying full sync`,
+        );
+        await this.prisma.integrationState.updateMany({
+          where: { userId, source: ImportSource.GOOGLE },
+          data: { syncToken: null },
+        });
+        return await this.runContactsSync(userId);
+      }
+      throw this.mapSyncError(userId, error);
+    }
+  }
+
+  private async runContactsSync(userId: string): Promise<{ imported: number }> {
     const people = await this.getAuthorizedPeopleClient(userId);
     const stateRow = await this.peopleIntegrationState(userId);
     let pageToken: string | undefined;
@@ -187,6 +210,45 @@ export class GoogleService {
       });
     }
     return { imported: count };
+  }
+
+  private googleErrorStatus(error: unknown): number | undefined {
+    if (error && typeof error === "object" && "response" in error) {
+      const status = (error as { response?: { status?: number } }).response
+        ?.status;
+      if (typeof status === "number") {
+        return status;
+      }
+    }
+    if (error && typeof error === "object" && "code" in error) {
+      const code = (error as { code: unknown }).code;
+      if (typeof code === "number") {
+        return code;
+      }
+    }
+    return undefined;
+  }
+
+  private isInvalidSyncTokenError(error: unknown): boolean {
+    return this.googleErrorStatus(error) === 410;
+  }
+
+  private mapSyncError(userId: string, error: unknown): Error {
+    if (error instanceof BadRequestException) {
+      return error;
+    }
+    const status = this.googleErrorStatus(error);
+    if (status === 401 || status === 403) {
+      return new BadRequestException(
+        "Google authorization expired or was revoked. Reconnect your Google account.",
+      );
+    }
+    const reason = error instanceof Error ? error.message : String(error);
+    this.logger.error(
+      `Google contacts sync failed for user ${userId}: ${reason}`,
+      error instanceof Error ? error.stack : undefined,
+    );
+    return new InternalServerErrorException("Google contacts sync failed");
   }
 
   private primaryPhone(person: people_v1.Schema$Person): string | null {

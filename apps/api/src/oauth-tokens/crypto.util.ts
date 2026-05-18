@@ -46,6 +46,14 @@ export function encryptOAuthToken(plaintext: string): string {
   ].join(".");
 }
 
+/** Decrypt v1 ciphertext, or return legacy plaintext tokens stored before encryption. */
+export function decryptOAuthTokenStored(stored: string): string {
+  if (!stored.startsWith(`${PACK_VERSION}.`)) {
+    return stored;
+  }
+  return decryptOAuthToken(stored);
+}
+
 export function decryptOAuthToken(packed: string): string {
   const parts = packed.split(".");
   if (parts.length !== 4) {
