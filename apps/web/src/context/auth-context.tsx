@@ -2,15 +2,18 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from "react";
 import { apiFetch, getCookie } from "@/lib/api";
+import type { ProfileMeResponse } from "@/lib/types";
 
 type AuthContextValue = {
   userId: string | null;
   isAuthenticated: boolean;
+  isLoading: boolean;
   refreshUser: () => void;
   markAuthenticated: () => void;
   logout: () => Promise<void>;
@@ -20,19 +23,50 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [userId, setUserId] = useState<string | null>(() => getCookie("cb_user_id"));
-  const [isAuthenticated, setIsAuthenticated] = useState(() =>
-    Boolean(getCookie("cb_user_id")),
-  );
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const bootstrapSession = async () => {
+      try {
+        const profile = await apiFetch<ProfileMeResponse>("/v1/profile/me");
+        if (!isMounted) {
+          return;
+        }
+        setUserId(getCookie("cb_user_id") ?? profile.identity.primaryEmail);
+        setIsAuthenticated(true);
+      } catch {
+        if (!isMounted) {
+          return;
+        }
+        setUserId(null);
+        setIsAuthenticated(false);
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    void bootstrapSession();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const refreshUser = useCallback(() => {
     const nextUserId = getCookie("cb_user_id");
     setUserId(nextUserId);
     setIsAuthenticated(Boolean(nextUserId));
+    setIsLoading(false);
   }, []);
 
   const markAuthenticated = useCallback(() => {
     setUserId(getCookie("cb_user_id"));
     setIsAuthenticated(true);
+    setIsLoading(false);
   }, []);
 
   const logout = useCallback(async () => {
@@ -45,6 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setUserId(null);
       setIsAuthenticated(false);
+      setIsLoading(false);
     }
   }, []);
 
@@ -52,11 +87,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       userId,
       isAuthenticated,
+      isLoading,
       refreshUser,
       markAuthenticated,
       logout,
     }),
-    [isAuthenticated, logout, markAuthenticated, refreshUser, userId],
+    [isAuthenticated, isLoading, logout, markAuthenticated, refreshUser, userId],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

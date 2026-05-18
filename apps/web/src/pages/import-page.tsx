@@ -10,16 +10,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
-import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import type { ContactImport, GoogleSyncResponse } from "@/lib/types";
 
-const googleScopes = [
-  "openid",
-  "email",
-  "profile",
-  "https://www.googleapis.com/auth/contacts.readonly",
-  "https://www.googleapis.com/auth/calendar.readonly",
-].join(" ");
+const GOOGLE_OAUTH_PENDING_KEY = "contactbook:google-oauth-pending";
 
 function formatDate(value: string | null) {
   if (!value) {
@@ -67,38 +60,51 @@ export default function ImportPage() {
   }, []);
 
   useEffect(() => {
-    if (searchParams.get("google") === "connected") {
+    const googleState = searchParams.get("google");
+    if (googleState === "connected") {
+      sessionStorage.removeItem(GOOGLE_OAUTH_PENDING_KEY);
       toast.success("Google connected. You can sync contacts now.");
     }
-    if (searchParams.get("google") === "error") {
+    if (googleState === "error") {
+      sessionStorage.removeItem(GOOGLE_OAUTH_PENDING_KEY);
       toast.error("Google connection failed.");
     }
   }, [searchParams]);
 
+  useEffect(() => {
+    const reloadIfReturnedFromFailedGoogleOAuth = (event: PageTransitionEvent) => {
+      const hasPendingGoogleOAuth =
+        sessionStorage.getItem(GOOGLE_OAUTH_PENDING_KEY) === "1";
+      if (!hasPendingGoogleOAuth) {
+        return;
+      }
+
+      const navigation = performance.getEntriesByType("navigation")[0] as
+        | PerformanceNavigationTiming
+        | undefined;
+      const restoredFromHistory = event.persisted || navigation?.type === "back_forward";
+      if (!restoredFromHistory) {
+        return;
+      }
+
+      sessionStorage.removeItem(GOOGLE_OAUTH_PENDING_KEY);
+      window.location.reload();
+    };
+
+    window.addEventListener("pageshow", reloadIfReturnedFromFailedGoogleOAuth);
+    return () => {
+      window.removeEventListener("pageshow", reloadIfReturnedFromFailedGoogleOAuth);
+    };
+  }, []);
+
   const connectGoogle = async () => {
-    if (!isSupabaseConfigured || !supabase) {
-      toast.error("Google sign-in is not configured yet.");
-      return;
-    }
-
-    const appOrigin = window.location.origin;
-    const redirectTo = `${appOrigin}/auth/callback?next=${encodeURIComponent(
-      "/dashboard/import",
-    )}`;
-    const { error: oauthError } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo,
-        scopes: googleScopes,
-        queryParams: {
-          access_type: "offline",
-          prompt: "consent",
-        },
-      },
-    });
-
-    if (oauthError) {
-      toast.error(oauthError.message);
+    try {
+      const { url } = await apiFetch<{ url: string }>("/v1/integrations/google/oauth-url");
+      sessionStorage.setItem(GOOGLE_OAUTH_PENDING_KEY, "1");
+      window.location.assign(url);
+    } catch (err) {
+      sessionStorage.removeItem(GOOGLE_OAUTH_PENDING_KEY);
+      toast.error(err instanceof Error ? err.message : "Could not start Google connection.");
     }
   };
 
@@ -125,8 +131,8 @@ export default function ImportPage() {
               Bring your Google contacts into ContactBook.
             </h1>
             <p className="text-base text-muted-foreground">
-              Connect Google through Supabase OAuth, then sync contacts into your
-              ContactBook import queue.
+              Choose the Google account you want to connect, then sync contacts into
+              your ContactBook import queue.
             </p>
           </div>
           <div className="mt-6 flex flex-col gap-3 sm:flex-row">

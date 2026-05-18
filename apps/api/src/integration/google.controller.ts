@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Body,
   Controller,
   Get,
@@ -9,6 +8,7 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ConfigService } from "@nestjs/config";
 import type { Response } from "express";
 import type { JwtUserPayload } from "../common/decorators/current-user.decorator";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
@@ -19,7 +19,10 @@ import { LinkGoogleProviderDto } from "./dto/link-google-provider.dto";
 @ApiTags("Integrations / Google")
 @Controller({ path: "integrations/google", version: "1" })
 export class GoogleController {
-  constructor(private readonly google: GoogleService) {}
+  constructor(
+    private readonly google: GoogleService,
+    private readonly config: ConfigService,
+  ) {}
 
   @Get("oauth-url")
   @UseGuards(JwtAuthGuard)
@@ -38,11 +41,23 @@ export class GoogleController {
     @Query("state") state: string | undefined,
     @Res() res: Response,
   ): Promise<void> {
+    const webAppUrl =
+      this.config.get<string>("WEB_APP_URL") ?? "http://localhost:5173";
+    const redirectBase = new URL("/dashboard/import", webAppUrl);
+
     if (!code || !state) {
-      throw new BadRequestException("Missing code or state");
+      redirectBase.searchParams.set("google", "error");
+      res.redirect(redirectBase.toString());
+      return;
     }
-    await this.google.handleOAuthCallback(code, state);
-    res.status(200).json({ ok: true });
+
+    try {
+      await this.google.handleOAuthCallback(code, state);
+      redirectBase.searchParams.set("google", "connected");
+    } catch {
+      redirectBase.searchParams.set("google", "error");
+    }
+    res.redirect(redirectBase.toString());
   }
 
   @Post("link-provider")

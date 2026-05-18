@@ -50,7 +50,7 @@ export class GoogleService {
     );
     return oauth2.generateAuthUrl({
       access_type: "offline",
-      prompt: "consent",
+      prompt: "consent select_account",
       scope: GOOGLE_SCOPES,
       state,
     });

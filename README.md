@@ -104,7 +104,40 @@ docker build -f apps/api/Dockerfile -t contactbook-api .
 
 `@supabase/supabase-js` is included in `apps/web` for client-side Auth. Add `VITE_SUPABASE_*` in `apps/web/.env` when you wire it.
 
-Google OAuth (Supabase → API linking):
+## Google contact import
+
+Google contact import uses the API-owned OAuth flow:
+
+1. The web app calls `GET /api/v1/integrations/google/oauth-url` from `/dashboard/import`.
+2. The browser redirects to Google consent.
+3. Google redirects to `GOOGLE_REDIRECT_URI`.
+4. The API stores Google tokens for the signed-in ContactBook user.
+5. The API redirects back to `${WEB_APP_URL}/dashboard/import?google=connected`.
+6. The web app calls `GET /api/v1/integrations/google/sync` to import contacts.
+
+Local API env:
+
+```bash
+WEB_APP_URL="http://localhost:5173"
+GOOGLE_CLIENT_ID=""
+GOOGLE_CLIENT_SECRET=""
+GOOGLE_REDIRECT_URI="http://localhost:8001/api/v1/integrations/google/callback"
+```
+
+Google Cloud setup:
+
+- Enable the People API for the Google Cloud project.
+- Configure the OAuth consent screen and include the contact import scopes.
+- Add this authorized redirect URI for local dev:
+  `http://localhost:8001/api/v1/integrations/google/callback`
+- Add the production API callback URL before deploying production Google import.
+
+The API requests:
+
+- `https://www.googleapis.com/auth/contacts.readonly`
+- `https://www.googleapis.com/auth/calendar.readonly`
+
+Legacy Supabase Google OAuth notes, if you choose to re-enable browser-owned provider linking later:
 
 - **Redirect URL**: add `http://localhost:5173/auth/callback` (and your production equivalent) to Supabase Auth Redirect URLs.
 - **Offline refresh**: include `queryParams: { access_type: 'offline', prompt: 'consent' }` so Google returns a refresh token.

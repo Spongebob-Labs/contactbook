@@ -101,3 +101,27 @@
 - Decision: Make `/` a publicly accessible marketing landing page and keep sign-in/sign-up on the separate `/auth` route.
 - Reason: Marketing needs a measurable public funnel while the product authentication flow remains focused on account access.
 - Notes: The landing page should use ContactBook as the product name with a refreshed visual style, primary `Get started` CTA, secondary `Sign in` CTA, and no pricing or testimonial sections in the first pass.
+
+## 2026-05-15 - Use API-Owned Google OAuth For Imports
+
+- Decision: Change the imports page Google connection flow to request an API-generated Google OAuth URL and let the API callback store Google tokens before redirecting back to the web import page.
+- Reason: Google contact import is a backend-owned integration that needs durable OAuth tokens for People API sync, so the token exchange and refresh path should use the same Google OAuth client configured on the API.
+- Notes: The frontend remains responsible for starting the flow from `/dashboard/import`; the API redirects back to `WEB_APP_URL` with `google=connected` or `google=error`.
+
+## 2026-05-15 - Force Google Account Selection During Import Linking
+
+- Decision: Add `select_account` to the Google OAuth prompt used by the API-owned import connection flow.
+- Reason: Google can otherwise reuse the active Gmail session and link the wrong account for contact import.
+- Notes: The OAuth flow still requests consent and offline access so the API can store refreshable Google tokens for People API sync.
+
+## 2026-05-15 - Bootstrap Frontend Auth From Existing Protected API
+
+- Decision: Have the frontend initialize route auth by calling existing protected API data instead of relying only on the readable `cb_user_id` cookie.
+- Reason: The web app can run on a different origin from the API, so JavaScript cannot reliably read the API-owned `cb_user_id` cookie after page reloads or Google OAuth redirects even when credentialed API calls still work.
+- Notes: This avoids backend changes by using the existing `GET /profile/me` request as the session validation check.
+
+## 2026-05-18 - Refresh Import Page After Failed Google Browser Back
+
+- Decision: Track when Google import OAuth is started and force a clean reload if the import page is restored from browser back/forward cache while that flow is still pending.
+- Reason: Failed Google OAuth can leave the browser on an external Google error page; using the back button can restore stale React state instead of re-running the import page cleanly.
+- Notes: The reload guard is frontend-only, scoped to `/dashboard/import`, and clears itself on known `google=connected` or `google=error` returns.
