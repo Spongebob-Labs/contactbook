@@ -2,7 +2,7 @@ import { FieldCategory, FieldType } from "@prisma/client";
 import { ProfileMeSerializerService } from "./profile-me.serializer";
 
 describe("ProfileMeSerializerService", () => {
-  it("includes isSensitive on financial rows and omits fieldId", async () => {
+  it("includes isSensitive and fieldId on financial rows", async () => {
     const prisma = {
       user: {
         findUnique: jest.fn().mockResolvedValue({
@@ -60,8 +60,8 @@ describe("ProfileMeSerializerService", () => {
     expect(out.financial.bankAccounts).toHaveLength(1);
     const row = out.financial.bankAccounts[0];
     expect(row.isSensitive).toBe(true);
-    expect("fieldId" in row).toBe(false);
     expect(row.groupId).toBe("fg-fin");
+    expect(row.fieldId).toBe("bank-field-1");
     expect(row.bankName).toBe("Test Bank");
   });
 });

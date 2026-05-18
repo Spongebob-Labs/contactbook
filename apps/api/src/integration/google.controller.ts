@@ -1,13 +1,4 @@
-import {
-  BadRequestException,
-  Body,
-  Controller,
-  Get,
-  Query,
-  Res,
-  Post,
-  UseGuards,
-} from "@nestjs/common";
+import { Body, Controller, Delete, Get, Post, UseGuards } from "@nestjs/common";
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
@@ -15,7 +6,6 @@ import {
   ApiOperation,
   ApiTags,
 } from "@nestjs/swagger";
-import type { Response } from "express";
 import type { JwtUserPayload } from "../common/decorators/current-user.decorator";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
@@ -27,58 +17,14 @@ import { LinkGoogleProviderDto } from "./dto/link-google-provider.dto";
 export class GoogleController {
   constructor(private readonly google: GoogleService) {}
 
-  @Get("oauth-url")
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth("access-token")
-  @ApiOperation({
-    summary: "Get Google OAuth URL (People + Calendar read-only)",
-  })
-  @ApiOkResponse({
-    description: "Returns the OAuth URL",
-    schema: {
-      type: "object",
-      properties: {
-        url: { type: "string" },
-      },
-    },
-  })
-  oauthUrl(@CurrentUser() user: JwtUserPayload): { url: string } {
-    return { url: this.google.createAuthUrl(user.sub) };
-  }
-
-  @Get("callback")
-  @ApiOperation({
-    summary: "Google OAuth redirect/callback (API-owned client)",
-    description:
-      "Legacy path when `GOOGLE_REDIRECT_URI` points at this API. Prefer Supabase PKCE + POST /integrations/google/link-provider for browser UX.",
-  })
-  @ApiOkResponse({
-    description: "OAuth callback successful",
-    schema: {
-      type: "object",
-      properties: {
-        ok: { type: "boolean" },
-      },
-    },
-  })
-  async callback(
-    @Query("code") code: string | undefined,
-    @Query("state") state: string | undefined,
-    @Res() res: Response,
-  ): Promise<void> {
-    if (!code || !state) {
-      throw new BadRequestException("Missing code or state");
-    }
-    await this.google.handleOAuthCallback(code, state);
-    res.status(200).json({ ok: true });
-  }
-
   @Post("link-provider")
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth("access-token")
   @ApiOperation({
     summary:
-      "Link Google provider tokens (Supabase session) to the current user; stored as OAuthAccount (GOOGLE).",
+      "Link Google provider tokens (Supabase session) to the current user.",
+    description:
+      "Provider tokens are encrypted at rest (AES-256-GCM) and never returned to the client. Requires a refresh token to persist credentials.",
   })
   @ApiCreatedResponse({
     description: "Provider linked successfully",
@@ -94,11 +40,29 @@ export class GoogleController {
     @Body() dto: LinkGoogleProviderDto,
   ): Promise<{ ok: true }> {
     await this.google.linkProviderTokensForUser(user.sub, {
-      providerAccessToken: dto.providerAccessToken,
-      providerRefreshToken: dto.providerRefreshToken,
+      providerAccessToken: dto.providerAccessToken ?? "",
+      providerRefreshToken: dto.providerRefreshToken ?? null,
       expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null,
       scope: dto.scope ?? null,
     });
+    return { ok: true };
+  }
+
+  @Delete("disconnect")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth("access-token")
+  @ApiOperation({ summary: "Disconnect linked Google account" })
+  @ApiOkResponse({
+    description: "Google account disconnected",
+    schema: {
+      type: "object",
+      properties: {
+        ok: { type: "boolean" },
+      },
+    },
+  })
+  async disconnect(@CurrentUser() user: JwtUserPayload): Promise<{ ok: true }> {
+    await this.google.disconnectGoogle(user.sub);
     return { ok: true };
   }
 

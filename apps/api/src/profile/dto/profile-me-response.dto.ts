@@ -125,6 +125,9 @@ export class ProfileMeBankRowDto {
   @ApiProperty()
   groupId!: string;
 
+  @ApiPropertyOptional()
+  fieldId?: string;
+
   @ApiProperty()
   tag!: string;
 
@@ -151,6 +154,9 @@ export class ProfileMeDigitalWalletRowDto {
   @ApiProperty()
   groupId!: string;
 
+  @ApiPropertyOptional()
+  fieldId?: string;
+
   @ApiProperty()
   tag!: string;
 
@@ -167,6 +173,9 @@ export class ProfileMeDigitalWalletRowDto {
 export class ProfileMeCryptoWalletRowDto {
   @ApiProperty()
   groupId!: string;
+
+  @ApiPropertyOptional()
+  fieldId?: string;
 
   @ApiProperty()
   tag!: string;

@@ -98,6 +98,7 @@ export class ProfileMeSerializerService {
         for (const field of gw.fields) {
           const base = {
             groupId: g.id,
+            fieldId: field.id,
             tag: g.name,
             isSensitive: field.isSensitive,
             ...extensionPayload(field),

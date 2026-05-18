@@ -72,6 +72,8 @@ export async function GET(request: Request) {
     return redirectImport(origin, "error", "api_link_failed");
   }
 
+  await supabase.auth.signOut();
+
   const safeNext = next.startsWith("/") ? next : "/dashboard/import";
   if (safeNext === "/dashboard/import" || safeNext.startsWith("/dashboard/import?")) {
     return redirectImport(origin, "connected");

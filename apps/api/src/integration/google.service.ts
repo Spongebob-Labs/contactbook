@@ -1,19 +1,19 @@
-import {
-  BadRequestException,
-  Injectable,
-  Logger,
-  UnauthorizedException,
-} from "@nestjs/common";
+import { BadRequestException, Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { JwtService } from "@nestjs/jwt";
-import { ImportSource, OAuthProvider } from "@prisma/client";
+import { ImportSource } from "@prisma/client";
 import { google, people_v1 } from "googleapis";
+import { OAuthTokenService } from "../oauth-tokens/oauth-token.service";
 import { PrismaService } from "../prisma/prisma.service";
+
+const GOOGLE_PROVIDER = "google";
 
 const GOOGLE_SCOPES = [
   "https://www.googleapis.com/auth/contacts.readonly",
   "https://www.googleapis.com/auth/calendar.readonly",
 ];
+
+/** Placeholder redirect URI; only used for token refresh via googleapis, not authorization-code flow. */
+const OAUTH2_REDIRECT_PLACEHOLDER = "urn:ietf:wg:oauth:2.0:oob";
 
 @Injectable()
 export class GoogleService {
@@ -22,122 +22,69 @@ export class GoogleService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
-    private readonly jwt: JwtService,
+    private readonly oauthTokenService: OAuthTokenService,
   ) {}
 
   buildOAuthClient(): InstanceType<typeof google.auth.OAuth2> {
     const clientId = this.config.get<string>("GOOGLE_CLIENT_ID");
     const clientSecret = this.config.get<string>("GOOGLE_CLIENT_SECRET");
-    const redirectUri = this.config.get<string>("GOOGLE_REDIRECT_URI");
-    if (!clientId || !clientSecret || !redirectUri) {
+    if (!clientId || !clientSecret) {
       throw new BadRequestException("Google OAuth is not configured");
     }
-    return new google.auth.OAuth2(clientId, clientSecret, redirectUri);
-  }
-
-  createAuthUrl(userId: string): string {
-    const oauth2 = this.buildOAuthClient();
-    const state = this.jwt.sign(
-      { sub: userId, typ: "google_oauth" },
-      { expiresIn: "10m" },
+    return new google.auth.OAuth2(
+      clientId,
+      clientSecret,
+      OAUTH2_REDIRECT_PLACEHOLDER,
     );
-    return oauth2.generateAuthUrl({
-      access_type: "offline",
-      prompt: "consent",
-      scope: GOOGLE_SCOPES,
-      state,
-    });
-  }
-
-  private async upsertOAuthAccountForUser(
-    userId: string,
-    args: {
-      accessToken: string;
-      refreshToken: string;
-      expiresAt: Date | null;
-      scopes: string;
-    },
-  ): Promise<void> {
-    await this.prisma.oAuthAccount.upsert({
-      where: {
-        userId_provider: { userId, provider: OAuthProvider.GOOGLE },
-      },
-      create: {
-        userId,
-        provider: OAuthProvider.GOOGLE,
-        scopes: args.scopes,
-        accessToken: args.accessToken,
-        refreshToken: args.refreshToken,
-        expiresAt: args.expiresAt,
-      },
-      update: {
-        scopes: args.scopes,
-        accessToken: args.accessToken,
-        refreshToken: args.refreshToken,
-        expiresAt: args.expiresAt,
-      },
-    });
-  }
-
-  async handleOAuthCallback(code: string, state: string): Promise<void> {
-    let userId: string;
-    try {
-      const payload = this.jwt.verify<{ sub: string; typ?: string }>(state);
-      if (payload.typ !== "google_oauth") {
-        throw new Error("Invalid state type");
-      }
-      userId = payload.sub;
-    } catch {
-      throw new UnauthorizedException("Invalid OAuth state");
-    }
-    const oauth2 = this.buildOAuthClient();
-    const { tokens } = await oauth2.getToken(code);
-    if (!tokens.refresh_token || !tokens.access_token) {
-      throw new BadRequestException("Google did not return tokens");
-    }
-    oauth2.setCredentials(tokens);
-    const expiresAt = tokens.expiry_date ? new Date(tokens.expiry_date) : null;
-    await this.upsertOAuthAccountForUser(userId, {
-      accessToken: tokens.access_token,
-      refreshToken: tokens.refresh_token,
-      expiresAt,
-      scopes: GOOGLE_SCOPES.join(" "),
-    });
   }
 
   async linkProviderTokensForUser(
     userId: string,
     args: {
       providerAccessToken: string;
-      providerRefreshToken: string;
+      providerRefreshToken?: string | null;
       expiresAt: Date | null;
       scope: string | null;
     },
   ): Promise<void> {
-    await this.upsertOAuthAccountForUser(userId, {
-      accessToken: args.providerAccessToken,
-      refreshToken: args.providerRefreshToken,
-      expiresAt: args.expiresAt,
-      scopes:
-        args.scope && args.scope.trim().length > 0
-          ? args.scope.trim()
-          : GOOGLE_SCOPES.join(" "),
-    });
+    if (!args.providerRefreshToken) {
+      return;
+    }
+
+    const scope =
+      args.scope && args.scope.trim().length > 0
+        ? args.scope.trim()
+        : GOOGLE_SCOPES.join(" ");
+
+    try {
+      await this.oauthTokenService.upsertForUser(userId, GOOGLE_PROVIDER, {
+        refreshToken: args.providerRefreshToken,
+        accessToken: args.providerAccessToken ?? null,
+        accessTokenExpiresAt: args.expiresAt,
+        scope,
+      });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "unknown error";
+      this.logger.error(
+        `Failed to persist Google OAuth credentials for user ${userId}: ${reason}`,
+      );
+      throw error;
+    }
+  }
+
+  async disconnectGoogle(userId: string): Promise<void> {
+    await this.oauthTokenService.deleteForUser(userId, GOOGLE_PROVIDER);
   }
 
   private async getOAuth2ForUser(userId: string) {
-    const account = await this.prisma.oAuthAccount.findUnique({
-      where: {
-        userId_provider: { userId, provider: OAuthProvider.GOOGLE },
-      },
-    });
-    if (!account) {
-      throw new BadRequestException("Google account not linked");
-    }
+    const credential = await this.oauthTokenService.requireForUser(
+      userId,
+      GOOGLE_PROVIDER,
+    );
     const oauth2 = this.buildOAuthClient();
     oauth2.setCredentials({
-      access_token: account.accessToken,
-      refresh_token: account.refreshToken,
+      access_token: credential.accessToken ?? undefined,
+      refresh_token: credential.refreshToken,
     });
     oauth2.on(
       "tokens",
@@ -147,26 +94,48 @@ export class GoogleService {
         expiry_date?: number | null;
       }) => {
         void (async () => {
-          if (tokens.access_token) {
-            await this.prisma.oAuthAccount.update({
-              where: { id: account.id },
-              data: {
+          if (!tokens.access_token) {
+            return;
+          }
+          try {
+            await this.oauthTokenService.updateAccessToken(
+              userId,
+              GOOGLE_PROVIDER,
+              {
                 accessToken: tokens.access_token,
-                expiresAt: tokens.expiry_date
+                accessTokenExpiresAt: tokens.expiry_date
                   ? new Date(tokens.expiry_date)
-                  : account.expiresAt,
-                refreshToken: tokens.refresh_token ?? account.refreshToken,
+                  : new Date(Date.now() + 3600 * 1000),
               },
-            });
+            );
+            if (tokens.refresh_token) {
+              await this.oauthTokenService.upsertForUser(
+                userId,
+                GOOGLE_PROVIDER,
+                {
+                  refreshToken: tokens.refresh_token,
+                  accessToken: tokens.access_token,
+                  accessTokenExpiresAt: tokens.expiry_date
+                    ? new Date(tokens.expiry_date)
+                    : null,
+                  scope: credential.scope,
+                },
+              );
+            }
+          } catch (error) {
+            this.logger.warn(
+              `Failed to persist refreshed Google tokens for user ${userId}`,
+              error instanceof Error ? error.stack : undefined,
+            );
           }
         })();
       },
     );
-    return { oauth2, account };
+    return oauth2;
   }
 
   private async getAuthorizedPeopleClient(userId: string) {
-    const { oauth2 } = await this.getOAuth2ForUser(userId);
+    const oauth2 = await this.getOAuth2ForUser(userId);
     return google.people({ version: "v1", auth: oauth2 });
   }
 
@@ -324,7 +293,7 @@ export class GoogleService {
   }
 
   async syncTravelEvents(userId: string): Promise<number> {
-    const { oauth2 } = await this.getOAuth2ForUser(userId);
+    const oauth2 = await this.getOAuth2ForUser(userId);
     const calendar = google.calendar({ version: "v3", auth: oauth2 });
     const timeMin = new Date();
     const timeMax = new Date(Date.now() + 120 * 24 * 60 * 60 * 1000);
