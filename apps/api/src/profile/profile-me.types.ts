@@ -40,6 +40,7 @@ export type ProfileMeSocialItem = {
 
 export type ProfileMeBankRow = {
   groupId: string;
+  fieldId?: string;
   tag: string;
   bankName: string;
   accountHolder: string;
@@ -54,6 +55,7 @@ export type ProfileMeBankRow = {
 
 export type ProfileMeWalletRow = {
   groupId: string;
+  fieldId?: string;
   tag: string;
   platform: string;
   handleOrLink: string;
@@ -62,6 +64,7 @@ export type ProfileMeWalletRow = {
 
 export type ProfileMeCryptoRow = {
   groupId: string;
+  fieldId?: string;
   tag: string;
   network: string;
   address: string;
