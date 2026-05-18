@@ -8,6 +8,13 @@ import { PageLoader } from "@/components/page-loader";
 
 type CallbackState = "loading" | "success" | "error";
 
+function buildGoogleResultUrl(next: string, state: "connected" | "error") {
+  const safeNext = next.startsWith("/") && !next.startsWith("//")
+    ? next
+    : "/dashboard/import";
+  return `${safeNext}${safeNext.includes("?") ? "&" : "?"}google=${state}`;
+}
+
 export default function AuthCallbackPage() {
   const [state, setState] = useState<CallbackState>("loading");
   const [message, setMessage] = useState("Connecting your Google account.");
@@ -27,6 +34,7 @@ export default function AuthCallbackPage() {
       if (!code || !isSupabaseConfigured || !supabase) {
         setState("error");
         setMessage("Google could not be connected. Please try again.");
+        navigate(buildGoogleResultUrl(next, "error"), { replace: true });
         return;
       }
 
@@ -34,6 +42,7 @@ export default function AuthCallbackPage() {
       if (error) {
         setState("error");
         setMessage("Google could not be connected. Please try again.");
+        navigate(buildGoogleResultUrl(next, "error"), { replace: true });
         return;
       }
 
@@ -51,6 +60,7 @@ export default function AuthCallbackPage() {
       if (!providerAccessToken || !providerRefreshToken) {
         setState("error");
         setMessage("Google did not provide the required access. Please reconnect.");
+        navigate(buildGoogleResultUrl(next, "error"), { replace: true });
         return;
       }
 
@@ -64,12 +74,10 @@ export default function AuthCallbackPage() {
             scope: providerScope,
           },
         });
+        await supabase.auth.signOut().catch(() => undefined);
         setState("success");
         setMessage("Google is connected.");
-        const safeNext = next.startsWith("/") ? next : "/dashboard/import";
-        navigate(`${safeNext}${safeNext.includes("?") ? "&" : "?"}google=connected`, {
-          replace: true,
-        });
+        navigate(buildGoogleResultUrl(next, "connected"), { replace: true });
       } catch (error) {
         setState("error");
         setMessage(
@@ -77,6 +85,7 @@ export default function AuthCallbackPage() {
             ? error.message
             : "Google could not be linked to ContactBook.",
         );
+        navigate(buildGoogleResultUrl(next, "error"), { replace: true });
       }
     };
 

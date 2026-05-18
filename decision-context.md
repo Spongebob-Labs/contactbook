@@ -125,3 +125,15 @@
 - Decision: Track when Google import OAuth is started and force a clean reload if the import page is restored from browser back/forward cache while that flow is still pending.
 - Reason: Failed Google OAuth can leave the browser on an external Google error page; using the back button can restore stale React state instead of re-running the import page cleanly.
 - Notes: The reload guard is frontend-only, scoped to `/dashboard/import`, and clears itself on known `google=connected` or `google=error` returns.
+
+## 2026-05-18 - Move Google Import OAuth Back To Frontend Supabase Flow
+
+- Decision: Start Google import linking from the frontend with Supabase `signInWithOAuth`, exchange the callback code in the frontend route, then call the backend only once through `POST /v1/integrations/google/link-provider`.
+- Reason: The latest backend on `origin/main` removed the API-owned Google `oauth-url` and `callback` endpoints while keeping encrypted provider-token persistence behind `link-provider`.
+- Notes: The frontend requests offline Google access with contacts, calendar, and profile scopes, requires a Supabase `provider_refresh_token` before linking, and signs out the temporary Supabase session after the backend stores credentials.
+
+## 2026-05-18 - Convert Profile Onboarding To Modal Wizard
+
+- Decision: Present profile onboarding as an always-open modal-style wizard on the onboarding route instead of a full-page form/sidebar layout.
+- Reason: The user requested a multi-step modal, and keeping it route-owned preserves existing skip/save navigation without introducing a dismissible empty page state.
+- Notes: The existing onboarding form state, validation, and frontend API save flow remain unchanged; only the presentation changes.

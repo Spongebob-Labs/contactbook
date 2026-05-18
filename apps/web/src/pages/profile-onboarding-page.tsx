@@ -16,7 +16,6 @@ import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { apiFetch } from "@/lib/api";
@@ -764,58 +763,74 @@ export default function ProfileOnboardingPage() {
 
   return (
     <AppShell>
-      <section className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
-        <Card className="h-fit">
-          <CardHeader>
-            <Badge variant="secondary" className="w-fit">
-              Optional onboarding
-            </Badge>
-            <CardTitle>Build your profile</CardTitle>
-            <CardDescription>
-              {completion} of {steps.length} sections have draft details.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {steps.map((item, index) => (
-              <button
-                key={item.key}
-                type="button"
-                onClick={() => setStepIndex(index)}
-                className={cn(
-                  "flex w-full items-center gap-3 rounded-md border border-transparent px-3 py-2 text-left text-sm transition-colors hover:bg-muted",
-                  index === stepIndex && "border-border bg-secondary text-secondary-foreground",
-                )}
-              >
-                <item.icon className="h-4 w-4 text-primary" aria-hidden="true" />
-                <span className="min-w-0 flex-1">
-                  <span className="block font-medium">{item.title}</span>
-                  <span className="block truncate text-xs text-muted-foreground">
-                    {item.description}
-                  </span>
-                </span>
-              </button>
-            ))}
-          </CardContent>
-        </Card>
-
-        <div className="space-y-4">
-          <div className="rounded-lg border border-border bg-card p-6">
+      <section className="flex min-h-[calc(100vh-7rem)] items-center justify-center py-4">
+        <div className="flex max-h-[calc(100vh-8rem)] w-full max-w-5xl flex-col overflow-hidden rounded-lg border border-border bg-card shadow-xl">
+          <div className="border-b border-border px-5 py-4 md:px-6">
             <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-              <div>
-                <Badge variant="success" className="mb-4">
-                  Step {stepIndex + 1} of {steps.length}
-                </Badge>
-                <h1 className="text-3xl font-semibold tracking-normal">{step.title}</h1>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="secondary">Optional onboarding</Badge>
+                  <Badge variant="success">
+                    Step {stepIndex + 1} of {steps.length}
+                  </Badge>
+                </div>
+                <h1 className="mt-3 text-2xl font-semibold tracking-normal">
+                  {step.title}
+                </h1>
                 <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
                   {step.description}
                 </p>
               </div>
-              <Button type="button" variant="ghost" onClick={skipProfile} disabled={isSaving}>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={skipProfile}
+                disabled={isSaving}
+                className="self-start"
+              >
                 Skip for now
               </Button>
             </div>
+
+            <div className="mt-5 grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
+              {steps.map((item, index) => {
+                const isActive = index === stepIndex;
+                const isComplete = index < stepIndex;
+                return (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => setStepIndex(index)}
+                    className={cn(
+                      "flex min-h-20 flex-col justify-between rounded-md border border-border bg-background p-3 text-left transition-colors hover:bg-muted",
+                      isActive && "border-primary bg-secondary text-secondary-foreground",
+                    )}
+                    aria-current={isActive ? "step" : undefined}
+                  >
+                    <span className="flex items-center justify-between gap-2">
+                      <item.icon
+                        className={cn(
+                          "h-4 w-4 text-muted-foreground",
+                          (isActive || isComplete) && "text-primary",
+                        )}
+                        aria-hidden="true"
+                      />
+                      {isComplete && (
+                        <Check className="h-4 w-4 text-success" aria-hidden="true" />
+                      )}
+                    </span>
+                    <span className="mt-3 text-sm font-medium">{item.title}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <p className="mt-3 text-xs text-muted-foreground">
+              {completion} of {steps.length} sections have draft details.
+            </p>
           </div>
 
+          <div className="min-h-0 flex-1 overflow-y-auto p-5 md:p-6">
           {step.key === "identity" && (
             <ProfileSection
               title="Identity details"
@@ -1358,8 +1373,9 @@ export default function ProfileOnboardingPage() {
               </div>
             </ProfileSection>
           )}
+          </div>
 
-          <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-3 border-t border-border bg-card px-5 py-4 sm:flex-row sm:items-center sm:justify-between md:px-6">
             <Button
               type="button"
               variant="outline"
@@ -1405,13 +1421,13 @@ function ProfileSection({
   children: ReactNode;
 }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        <CardDescription>{description}</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-5">{children}</CardContent>
-    </Card>
+    <section className="space-y-5">
+      <div>
+        <h2 className="text-lg font-semibold tracking-normal">{title}</h2>
+        <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+      </div>
+      {children}
+    </section>
   );
 }
 

@@ -10,6 +10,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
+import { GOOGLE_OAUTH_SCOPES } from "@/lib/google-oauth";
+import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import type { ContactImport, GoogleSyncResponse } from "@/lib/types";
 
 const GOOGLE_OAUTH_PENDING_KEY = "contactbook:google-oauth-pending";
@@ -29,6 +31,7 @@ export default function ImportPage() {
   const [imports, setImports] = useState<ContactImport[]>([]);
   const [query, setQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [isConnecting, setIsConnecting] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -98,13 +101,41 @@ export default function ImportPage() {
   }, []);
 
   const connectGoogle = async () => {
+    if (!isSupabaseConfigured || !supabase) {
+      toast.error("Google connection is not configured.");
+      return;
+    }
+
+    setIsConnecting(true);
     try {
-      const { url } = await apiFetch<{ url: string }>("/v1/integrations/google/oauth-url");
+      const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(
+        "/dashboard/import",
+      )}`;
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo,
+          scopes: GOOGLE_OAUTH_SCOPES,
+          queryParams: {
+            access_type: "offline",
+            prompt: "consent select_account",
+          },
+        },
+      });
+
+      if (error) {
+        throw error;
+      }
+      if (!data.url) {
+        throw new Error("Could not start Google connection.");
+      }
+
       sessionStorage.setItem(GOOGLE_OAUTH_PENDING_KEY, "1");
-      window.location.assign(url);
+      window.location.assign(data.url);
     } catch (err) {
       sessionStorage.removeItem(GOOGLE_OAUTH_PENDING_KEY);
       toast.error(err instanceof Error ? err.message : "Could not start Google connection.");
+      setIsConnecting(false);
     }
   };
 
@@ -136,9 +167,13 @@ export default function ImportPage() {
             </p>
           </div>
           <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-            <Button type="button" onClick={() => void connectGoogle()}>
+            <Button
+              type="button"
+              onClick={() => void connectGoogle()}
+              disabled={isConnecting}
+            >
               <UploadCloud className="h-4 w-4" aria-hidden="true" />
-              Connect Google
+              {isConnecting ? "Connecting" : "Connect Google"}
             </Button>
             <Button
               type="button"
