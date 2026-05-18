@@ -1,11 +1,13 @@
+import { ConflictException } from "@nestjs/common";
 import { FieldCategory, FieldType } from "@prisma/client";
 import { ProfileMeUpsertService } from "./profile-me.upsert.service";
 
 describe("ProfileMeUpsertService", () => {
   const userId = "user-1";
   let prisma: {
-    user: { update: jest.Mock };
+    user: { update: jest.Mock; findUnique: jest.Mock };
     fieldGroup: {
+      count: jest.Mock;
       findMany: jest.Mock;
       create: jest.Mock;
       update: jest.Mock;
@@ -36,8 +38,18 @@ describe("ProfileMeUpsertService", () => {
 
   beforeEach(() => {
     prisma = {
-      user: { update: jest.fn().mockResolvedValue({}) },
+      user: {
+        update: jest.fn().mockResolvedValue({}),
+        findUnique: jest.fn().mockResolvedValue({
+          firstName: "Jane",
+          lastName: "Doe",
+          email: "jane@example.com",
+          phone: "5551234567",
+          countryCode: "+1",
+        }),
+      },
       fieldGroup: {
+        count: jest.fn().mockResolvedValue(0),
         findMany: jest.fn(),
         create: jest.fn(),
         update: jest.fn(),
@@ -161,5 +173,87 @@ describe("ProfileMeUpsertService", () => {
       "bank-field-1",
       expect.objectContaining({ type: FieldType.BANK_ACCOUNT }),
     );
+  });
+
+  describe("completeOnboarding", () => {
+    it("returns 409 when field groups already exist", async () => {
+      prisma.fieldGroup.count.mockResolvedValue(2);
+      const svc = new ProfileMeUpsertService(
+        prisma as never,
+        persistence as never,
+        serializer as never,
+      );
+      await expect(
+        svc.completeOnboarding(userId, {
+          personal: { tag: "Primary", mobile: "+15551234567" },
+        }),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it("rejects empty onboarding body", async () => {
+      const svc = new ProfileMeUpsertService(
+        prisma as never,
+        persistence as never,
+        serializer as never,
+      );
+      await expect(svc.completeOnboarding(userId, {})).rejects.toThrow(
+        "Provide at least one profile section",
+      );
+    });
+
+    it("rejects identity mismatch with registration", async () => {
+      const svc = new ProfileMeUpsertService(
+        prisma as never,
+        persistence as never,
+        serializer as never,
+      );
+      await expect(
+        svc.completeOnboarding(userId, {
+          personal: { tag: "Primary" },
+          identity: { firstName: "Wrong" },
+        }),
+      ).rejects.toThrow("identity.firstName does not match registration");
+    });
+
+    it("initializes profile via put when no field groups exist", async () => {
+      const svc = new ProfileMeUpsertService(
+        prisma as never,
+        persistence as never,
+        serializer as never,
+      );
+      const putSpy = jest.spyOn(svc, "put").mockResolvedValue({
+        identity: {
+          firstName: "Jane",
+          lastName: "Doe",
+          primaryPhone: "+15551234567",
+          primaryEmail: "jane@example.com",
+        },
+        personal: { groupId: "p1", tag: "Primary Personal" },
+        work: [],
+        business: [],
+        socials: [],
+        financial: {
+          bankAccounts: [],
+          digitalWallets: [],
+          cryptoWallets: [],
+        },
+      });
+
+      await svc.completeOnboarding(userId, {
+        personal: { tag: "Primary Personal", mobile: "+15551234567" },
+        identity: {
+          profilePhoto: "https://example.com/photo.jpg",
+          firstName: "Jane",
+        },
+      });
+
+      expect(prisma.fieldGroup.count).toHaveBeenCalledWith({
+        where: { userId },
+      });
+      expect(putSpy).toHaveBeenCalledWith(userId, {
+        personal: { tag: "Primary Personal", mobile: "+15551234567" },
+        identity: { profilePhoto: "https://example.com/photo.jpg" },
+      });
+    });
   });
 });
