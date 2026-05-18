@@ -9,11 +9,18 @@ import {
   type ProfileField,
 } from "@prisma/client";
 import { e164FromStoredUser } from "../common/phone.util";
+import {
+  labelToCamelCase,
+  normalizeLabelKey,
+  SOCIAL_LABEL_TO_FIELD,
+} from "./profile-me.maps";
 import type {
   ProfileMeBusinessItem,
   ProfileMeIdentity,
   ProfileMeWorkItem,
 } from "./profile-me.types";
+
+export { labelToCamelCase, normalizeLabelKey, SOCIAL_LABEL_TO_FIELD };
 
 export type FieldWithExtensions = ProfileField & {
   address: AddressDetail | null;
@@ -86,45 +93,6 @@ export function extensionPayload(
   }
   return {};
 }
-
-function labelToCamelCase(label: string): string {
-  const parts = label.trim().split(/\s+/).filter(Boolean);
-  if (!parts.length) {
-    return "text";
-  }
-  return (
-    parts[0].toLowerCase() +
-    parts
-      .slice(1)
-      .map((p) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase())
-      .join("")
-  );
-}
-
-function normalizeLabelKey(label: string | null | undefined): string {
-  return String(label ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, " ");
-}
-
-/** Known social labels → fixed JSON keys (label compared lowercase). */
-const SOCIAL_LABEL_TO_FIELD: Record<string, string> = {
-  skype: "skype",
-  facebook: "facebook",
-  twitter: "twitter",
-  "x (twitter)": "twitter",
-  x: "twitter",
-  "bbm pin": "bbmPin",
-  bbm: "bbmPin",
-  whatsapp: "whatsApp",
-  asw: "asw",
-  bebo: "bebo",
-  blog: "blog",
-  website: "website",
-  site: "website",
-  homepage: "website",
-};
 
 function scalarValue(field: FieldWithExtensions): string | null {
   if (field.value === null || field.value === undefined) {
