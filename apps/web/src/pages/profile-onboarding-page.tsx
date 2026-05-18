@@ -21,36 +21,6 @@ import { Select } from "@/components/ui/select";
 import { apiFetch } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
-type FieldGroupCategory =
-  | "IDENTITY"
-  | "PERSONAL"
-  | "WORK"
-  | "BUSINESS"
-  | "SOCIAL"
-  | "FINANCIAL";
-
-type ProfileFieldType =
-  | "PHONE"
-  | "LANDLINE"
-  | "FAX"
-  | "EMAIL"
-  | "ADDRESS"
-  | "URL"
-  | "SOCIAL_LINK"
-  | "PHOTO"
-  | "TEXT"
-  | "DATE"
-  | "JOB_TITLE"
-  | "COMPANY"
-  | "REG_NUMBER"
-  | "RELATION"
-  | "STATUS"
-  | "LOCATION_TRACKING"
-  | "BANK_ACCOUNT"
-  | "DIGITAL_WALLET"
-  | "CRYPTO_WALLET"
-  | "CUSTOM";
-
 type AddressForm = {
   street: string;
   city: string;
@@ -146,36 +116,79 @@ type OnboardingForm = {
   };
 };
 
-type CreateGroupResponse = {
-  id: string;
+type AddressPayload = {
+  street: string;
+  city: string;
+  state?: string;
+  pincode?: string;
+  country: string;
 };
 
-type CreateFieldPayload = {
-  type: ProfileFieldType;
-  label?: string;
-  isSensitive?: boolean;
-  value?: string;
-  address?: {
-    street: string;
-    city: string;
-    state?: string;
-    pincode?: string;
-    country: string;
+type ProfileOnboardingPayload = {
+  identity?: {
+    profilePhoto?: string | null;
   };
-  bankAccount?: {
-    bankName: string;
-    accountHolder: string;
-    accountNumber: string;
-    ifsc?: string;
-    currency?: string;
+  personal?: {
+    tag?: string;
+    postalAddress?: AddressPayload;
+    mobile?: string;
+    landline?: string;
+    email?: string;
+    dateOfBirth?: string;
+    yearOfBirth?: string;
+    currentLocation?: string;
+    relationshipStatus?: string;
+    custom?: Record<string, string>;
   };
-  digitalWallet?: {
-    platform: string;
-    handleOrLink: string;
-  };
-  cryptoWallet?: {
-    network: string;
-    address: string;
+  work?: Array<{
+    tag?: string;
+    companyName?: string;
+    companyLogo?: string;
+    companyRegNumber?: string;
+    workTitle?: string;
+    workMobile?: string;
+    workLandline?: string;
+    workFax?: string;
+    workEmail?: string;
+    workPostalAddress?: AddressPayload;
+    custom?: Record<string, string>;
+  }>;
+  business?: Array<{
+    tag?: string;
+    businessName?: string;
+    businessLogo?: string;
+    businessRegNumber?: string;
+    businessTitle?: string;
+    businessMobile?: string;
+    businessLandline?: string;
+    businessFax?: string;
+    businessEmail?: string;
+    businessPostalAddress?: AddressPayload;
+    custom?: Record<string, string>;
+  }>;
+  socials?: Array<{
+    tag?: string;
+    custom?: Record<string, string>;
+  }>;
+  financial?: {
+    bankAccounts?: Array<{
+      tag?: string;
+      bankName: string;
+      accountHolder: string;
+      accountNumber: string;
+      ifsc?: string;
+      currency?: string;
+    }>;
+    digitalWallets?: Array<{
+      tag?: string;
+      platform: string;
+      handleOrLink: string;
+    }>;
+    cryptoWallets?: Array<{
+      tag?: string;
+      network: string;
+      address: string;
+    }>;
   };
 };
 
@@ -329,7 +342,7 @@ function addressHasAny(address: AddressForm): boolean {
   ]);
 }
 
-function toAddressPayload(address: AddressForm): CreateFieldPayload["address"] {
+function toAddressPayload(address: AddressForm): AddressPayload {
   return {
     street: clean(address.street),
     city: clean(address.city),
@@ -349,52 +362,20 @@ function validateAddress(label: string, address: AddressForm): string | null {
   return null;
 }
 
-function textField(
-  type: ProfileFieldType,
-  label: string,
-  value: string,
-  isSensitive = false,
-): CreateFieldPayload | null {
+function optionalText(value: string): string | undefined {
   const next = clean(value);
-  if (!next) {
-    return null;
-  }
-  return { type, label, value: next, isSensitive };
+  return next || undefined;
 }
 
-function compactFields(fields: Array<CreateFieldPayload | null>): CreateFieldPayload[] {
-  return fields.filter((field): field is CreateFieldPayload => Boolean(field));
+function compactObject<T extends Record<string, unknown>>(value: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, item]) => item !== undefined),
+  ) as Partial<T>;
 }
 
-async function createGroup(
-  category: FieldGroupCategory,
-  name: string,
-): Promise<CreateGroupResponse> {
-  return apiFetch<CreateGroupResponse>("/v1/profile/field-groups", {
-    method: "POST",
-    body: { category, name },
-  });
-}
-
-async function createField(groupId: string, field: CreateFieldPayload): Promise<void> {
-  await apiFetch<unknown>(`/v1/profile/field-groups/${groupId}/fields`, {
-    method: "POST",
-    body: field,
-  });
-}
-
-async function saveGroup(
-  category: FieldGroupCategory,
-  name: string,
-  fields: CreateFieldPayload[],
-): Promise<void> {
-  if (fields.length === 0) {
-    return;
-  }
-  const group = await createGroup(category, name);
-  for (const field of fields) {
-    await createField(group.id, field);
-  }
+function compactCustom(values: Record<string, string>): Record<string, string> | undefined {
+  const custom = compactObject(values);
+  return Object.keys(custom).length > 0 ? (custom as Record<string, string>) : undefined;
 }
 
 export default function ProfileOnboardingPage() {
@@ -566,151 +547,186 @@ export default function ProfileOnboardingPage() {
     return null;
   };
 
-  const buildPersonalFields = (): CreateFieldPayload[] => {
-    const fields = compactFields([
-      textField("TEXT", "Title", form.personal.title),
-      textField("TEXT", "Nickname", form.personal.nickname),
-      textField("PHONE", "Mobile", form.personal.mobile),
-      textField("LANDLINE", "Landline", form.personal.landline),
-      textField("EMAIL", "Email", form.personal.email),
-      textField("DATE", "Date of birth", form.personal.dateOfBirth),
-      textField("TEXT", "Year of birth", form.personal.yearOfBirth),
-      textField("LOCATION_TRACKING", "Current location", form.personal.currentLocation),
-      textField("TEXT", "Kids names", form.personal.kidsNames),
-      textField("RELATION", "Partner name", form.personal.partnerName),
-      textField("TEXT", "Pet names", form.personal.petNames),
-      textField("STATUS", "Relationship status", form.personal.relationshipStatus),
-      textField("CUSTOM", "Blood Group", form.personal.bloodGroup),
-    ]);
-    if (addressHasAny(form.personal.postalAddress)) {
-      fields.push({
-        type: "ADDRESS",
-        label: "Postal address",
-        address: toAddressPayload(form.personal.postalAddress),
-      });
+  const buildProfilePayload = (): ProfileOnboardingPayload => {
+    const payload: ProfileOnboardingPayload = {};
+
+    const profilePhoto = optionalText(form.identity.profilePhoto);
+    if (profilePhoto) {
+      payload.identity = { profilePhoto };
     }
-    return fields;
-  };
 
-  const buildWorkFields = (): CreateFieldPayload[] => {
-    const fields = compactFields([
-      textField("COMPANY", "Company name", form.work.companyName),
-      textField("PHOTO", "Company logo", form.work.companyLogo),
-      textField("REG_NUMBER", "Company registration number", form.work.companyRegNumber),
-      textField("JOB_TITLE", "Work title", form.work.workTitle),
-      textField("PHONE", "Work mobile", form.work.workMobile),
-      textField("LANDLINE", "Work landline", form.work.workLandline),
-      textField("FAX", "Work fax", form.work.workFax),
-      textField("EMAIL", "Work email", form.work.workEmail),
-      textField("CUSTOM", "Employee ID", form.work.employeeId),
-    ]);
-    if (addressHasAny(form.work.workPostalAddress)) {
-      fields.push({
-        type: "ADDRESS",
-        label: "Work postal address",
-        address: toAddressPayload(form.work.workPostalAddress),
-      });
+    const personalCustom = compactCustom({
+      title: form.personal.title,
+      nickname: form.personal.nickname,
+      kidsNames: form.personal.kidsNames,
+      partnerName: form.personal.partnerName,
+      petNames: form.personal.petNames,
+      bloodGroup: form.personal.bloodGroup,
+    });
+    const hasPersonalDetails =
+      Boolean(personalCustom) ||
+      hasAny([
+        form.personal.mobile,
+        form.personal.landline,
+        form.personal.email,
+        form.personal.dateOfBirth,
+        form.personal.yearOfBirth,
+        form.personal.currentLocation,
+        form.personal.relationshipStatus,
+      ]) ||
+      addressHasAny(form.personal.postalAddress);
+    const personal = compactObject({
+      tag: optionalText(form.personal.tag),
+      mobile: optionalText(form.personal.mobile),
+      landline: optionalText(form.personal.landline),
+      email: optionalText(form.personal.email),
+      dateOfBirth: optionalText(form.personal.dateOfBirth),
+      yearOfBirth: optionalText(form.personal.yearOfBirth),
+      currentLocation: optionalText(form.personal.currentLocation),
+      relationshipStatus: optionalText(form.personal.relationshipStatus),
+      postalAddress: addressHasAny(form.personal.postalAddress)
+        ? toAddressPayload(form.personal.postalAddress)
+        : undefined,
+      custom: personalCustom,
+    });
+    if (hasPersonalDetails) {
+      payload.personal = personal;
     }
-    return fields;
-  };
 
-  const buildBusinessFields = (): CreateFieldPayload[] => {
-    const fields = compactFields([
-      textField("COMPANY", "Business name", form.business.businessName),
-      textField("PHOTO", "Business logo", form.business.businessLogo),
-      textField("REG_NUMBER", "Business registration number", form.business.businessRegNumber),
-      textField("JOB_TITLE", "Business title", form.business.businessTitle),
-      textField("PHONE", "Business mobile", form.business.businessMobile),
-      textField("LANDLINE", "Business landline", form.business.businessLandline),
-      textField("FAX", "Business fax", form.business.businessFax),
-      textField("EMAIL", "Business email", form.business.businessEmail),
-      textField("CUSTOM", "Business Type", form.business.businessType),
-      textField("CUSTOM", "GSTIN", form.business.gstin),
-    ]);
-    if (addressHasAny(form.business.businessPostalAddress)) {
-      fields.push({
-        type: "ADDRESS",
-        label: "Business postal address",
-        address: toAddressPayload(form.business.businessPostalAddress),
-      });
+    const workCustom = compactCustom({ employeeId: form.work.employeeId });
+    const hasWorkDetails =
+      Boolean(workCustom) ||
+      hasAny([
+        form.work.companyName,
+        form.work.companyLogo,
+        form.work.companyRegNumber,
+        form.work.workTitle,
+        form.work.workMobile,
+        form.work.workLandline,
+        form.work.workFax,
+        form.work.workEmail,
+      ]) ||
+      addressHasAny(form.work.workPostalAddress);
+    const work = compactObject({
+      tag: optionalText(form.work.tag),
+      companyName: optionalText(form.work.companyName),
+      companyLogo: optionalText(form.work.companyLogo),
+      companyRegNumber: optionalText(form.work.companyRegNumber),
+      workTitle: optionalText(form.work.workTitle),
+      workMobile: optionalText(form.work.workMobile),
+      workLandline: optionalText(form.work.workLandline),
+      workFax: optionalText(form.work.workFax),
+      workEmail: optionalText(form.work.workEmail),
+      workPostalAddress: addressHasAny(form.work.workPostalAddress)
+        ? toAddressPayload(form.work.workPostalAddress)
+        : undefined,
+      custom: workCustom,
+    });
+    if (hasWorkDetails) {
+      payload.work = [work];
     }
-    return fields;
-  };
 
-  const buildSocialFields = (): CreateFieldPayload[] =>
-    compactFields([
-      textField("SOCIAL_LINK", "Skype", form.socials.skype),
-      textField("SOCIAL_LINK", "Facebook", form.socials.facebook),
-      textField("SOCIAL_LINK", "Twitter", form.socials.twitter),
-      textField("SOCIAL_LINK", "WhatsApp", form.socials.whatsapp),
-      textField("URL", "Blog", form.socials.blog),
-      textField("URL", "Website", form.socials.website),
-      textField("SOCIAL_LINK", "LinkedIn", form.socials.linkedin),
-      textField("SOCIAL_LINK", "GitHub", form.socials.github),
-    ]);
+    const businessCustom = compactCustom({
+      businessType: form.business.businessType,
+      gstin: form.business.gstin,
+    });
+    const hasBusinessDetails =
+      Boolean(businessCustom) ||
+      hasAny([
+        form.business.businessName,
+        form.business.businessLogo,
+        form.business.businessRegNumber,
+        form.business.businessTitle,
+        form.business.businessMobile,
+        form.business.businessLandline,
+        form.business.businessFax,
+        form.business.businessEmail,
+      ]) ||
+      addressHasAny(form.business.businessPostalAddress);
+    const business = compactObject({
+      tag: optionalText(form.business.tag),
+      businessName: optionalText(form.business.businessName),
+      businessLogo: optionalText(form.business.businessLogo),
+      businessRegNumber: optionalText(form.business.businessRegNumber),
+      businessTitle: optionalText(form.business.businessTitle),
+      businessMobile: optionalText(form.business.businessMobile),
+      businessLandline: optionalText(form.business.businessLandline),
+      businessFax: optionalText(form.business.businessFax),
+      businessEmail: optionalText(form.business.businessEmail),
+      businessPostalAddress: addressHasAny(form.business.businessPostalAddress)
+        ? toAddressPayload(form.business.businessPostalAddress)
+        : undefined,
+      custom: businessCustom,
+    });
+    if (hasBusinessDetails) {
+      payload.business = [business];
+    }
 
-  const buildFinancialGroups = (): Array<{
-    name: string;
-    fields: CreateFieldPayload[];
-  }> => {
-    const groups: Array<{ name: string; fields: CreateFieldPayload[] }> = [];
+    const socialsCustom = compactCustom({
+      skype: form.socials.skype,
+      facebook: form.socials.facebook,
+      twitter: form.socials.twitter,
+      whatsApp: form.socials.whatsapp,
+      blog: form.socials.blog,
+      website: form.socials.website,
+      linkedin: form.socials.linkedin,
+      github: form.socials.github,
+    });
+    if (socialsCustom) {
+      payload.socials = [
+        {
+          tag: optionalText(form.socials.tag),
+          custom: socialsCustom,
+        },
+      ];
+    }
+
+    const financial: NonNullable<ProfileOnboardingPayload["financial"]> = {};
     const bank = form.financial.bank;
     if (hasAny([bank.bankName, bank.accountHolder, bank.accountNumber, bank.ifsc])) {
-      groups.push({
-        name: clean(form.financial.bankTag) || "Bank account",
-        fields: [
-          {
-            type: "BANK_ACCOUNT",
-            label: "Bank account",
-            isSensitive: true,
-            bankAccount: {
-              bankName: clean(bank.bankName),
-              accountHolder: clean(bank.accountHolder),
-              accountNumber: clean(bank.accountNumber),
-              ifsc: clean(bank.ifsc) || undefined,
-              currency: clean(bank.currency) || undefined,
-            },
-          },
-        ],
-      });
+      financial.bankAccounts = [
+        {
+          tag: optionalText(form.financial.bankTag),
+          bankName: clean(bank.bankName),
+          accountHolder: clean(bank.accountHolder),
+          accountNumber: clean(bank.accountNumber),
+          ifsc: optionalText(bank.ifsc),
+          currency: optionalText(bank.currency),
+        },
+      ];
     }
 
     const wallet = form.financial.wallet;
     if (hasAny([wallet.platform, wallet.handleOrLink])) {
-      groups.push({
-        name: clean(form.financial.walletTag) || "Digital wallet",
-        fields: [
-          {
-            type: "DIGITAL_WALLET",
-            label: "Digital wallet",
-            isSensitive: true,
-            digitalWallet: {
-              platform: clean(wallet.platform),
-              handleOrLink: clean(wallet.handleOrLink),
-            },
-          },
-        ],
-      });
+      financial.digitalWallets = [
+        {
+          tag: optionalText(form.financial.walletTag),
+          platform: clean(wallet.platform),
+          handleOrLink: clean(wallet.handleOrLink),
+        },
+      ];
     }
 
     const crypto = form.financial.crypto;
     if (hasAny([crypto.network, crypto.address])) {
-      groups.push({
-        name: clean(form.financial.cryptoTag) || "Crypto wallet",
-        fields: [
-          {
-            type: "CRYPTO_WALLET",
-            label: "Crypto wallet",
-            isSensitive: true,
-            cryptoWallet: {
-              network: clean(crypto.network),
-              address: clean(crypto.address),
-            },
-          },
-        ],
-      });
+      financial.cryptoWallets = [
+        {
+          tag: optionalText(form.financial.cryptoTag),
+          network: clean(crypto.network),
+          address: clean(crypto.address),
+        },
+      ];
     }
-    return groups;
+
+    if (
+      financial.bankAccounts?.length ||
+      financial.digitalWallets?.length ||
+      financial.cryptoWallets?.length
+    ) {
+      payload.financial = financial;
+    }
+
+    return payload;
   };
 
   const saveProfile = async () => {
@@ -722,33 +738,15 @@ export default function ProfileOnboardingPage() {
 
     setIsSaving(true);
     try {
-      await saveGroup(
-        "IDENTITY",
-        "Identity",
-        compactFields([textField("PHOTO", "Profile photo", form.identity.profilePhoto)]),
-      );
-      await saveGroup(
-        "PERSONAL",
-        clean(form.personal.tag) || "Primary Personal Details",
-        buildPersonalFields(),
-      );
-      await saveGroup("WORK", clean(form.work.tag) || "Current Work", buildWorkFields());
-      await saveGroup(
-        "BUSINESS",
-        clean(form.business.tag) || "Primary Business",
-        buildBusinessFields(),
-      );
-      await saveGroup(
-        "SOCIAL",
-        clean(form.socials.tag) || "Main Digital Presence",
-        buildSocialFields(),
-      );
-      for (const group of buildFinancialGroups()) {
-        await saveGroup("FINANCIAL", group.name, group.fields);
-      }
+      const payload = buildProfilePayload();
+      const sectionKeys = Object.keys(payload).filter((key) => key !== "identity");
+      const endpoint =
+        sectionKeys.length > 0 ? "/v1/profile/onboarding" : "/v1/profile/me";
+      const method = sectionKeys.length > 0 ? "POST" : "PATCH";
+      await apiFetch<unknown>(endpoint, { method, body: payload });
 
       toast.success("Profile saved.");
-      navigate("/dashboard", { replace: true });
+      navigate("/onboarding/import", { replace: true });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not save profile.");
     } finally {
@@ -758,7 +756,7 @@ export default function ProfileOnboardingPage() {
 
   const skipProfile = () => {
     toast.info("You can complete your profile later.");
-    navigate("/dashboard", { replace: true });
+    navigate("/onboarding/import", { replace: true });
   };
 
   return (

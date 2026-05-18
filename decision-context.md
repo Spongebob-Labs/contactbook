@@ -161,3 +161,15 @@
 - Decision: Redirect authenticated users away from `/auth` after the frontend session bootstrap confirms an active backend session.
 - Reason: Signed-in users should not see the sign-in/register page when directly visiting `/auth`.
 - Notes: The auth page waits for the shared auth context loading state to finish, then redirects to the original protected route when present or `/dashboard` by default.
+
+## 2026-05-18 - Add Post-Onboarding Contact Import Choice
+
+- Decision: Route users from profile onboarding into an import-choice screen with Google active and iCloud/VCF shown as disabled coming-soon options.
+- Reason: Users should be prompted to bring contacts in immediately after signup/profile setup, while unsupported import methods should be visible without implying they are functional.
+- Notes: This is frontend-only. Google uses the existing OAuth flow and iCloud/VCF do not call backend endpoints until contracts exist.
+
+## 2026-05-18 - Use Consolidated Profile Onboarding API
+
+- Decision: Save profile onboarding through the new nested `POST /v1/profile/onboarding` API, falling back to `PATCH /v1/profile/me` for photo-only onboarding.
+- Reason: Backend simplified profile setup into major profile APIs and removed the need for frontend field-group/field orchestration.
+- Notes: The onboarding UI remains unchanged; the frontend now maps form state into the same nested shape returned by `GET /v1/profile/me`.

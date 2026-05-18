@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { AlertCircle, CheckCircle2, RefreshCw, Search, UploadCloud } from "lucide-react";
+import { AlertCircle, CheckCircle2, RefreshCw, Search } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
+import { ContactImportOptions } from "@/components/contact-import-options";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,8 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
-import { GOOGLE_OAUTH_SCOPES } from "@/lib/google-oauth";
-import { isSupabaseConfigured, supabase } from "@/lib/supabase";
+import { startGoogleImportConnection } from "@/lib/google-import";
 import type { ContactImport, GoogleSyncResponse } from "@/lib/types";
 
 const GOOGLE_OAUTH_PENDING_KEY = "contactbook:google-oauth-pending";
@@ -126,37 +126,11 @@ export default function ImportPage() {
   }, []);
 
   const connectGoogle = async () => {
-    if (!isSupabaseConfigured || !supabase) {
-      toast.error("Google connection is not configured.");
-      return;
-    }
-
     setIsConnecting(true);
     try {
-      const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(
-        "/dashboard/import",
-      )}`;
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          redirectTo,
-          scopes: GOOGLE_OAUTH_SCOPES,
-          queryParams: {
-            access_type: "offline",
-            prompt: "consent select_account",
-          },
-        },
-      });
-
-      if (error) {
-        throw error;
-      }
-      if (!data.url) {
-        throw new Error("Could not start Google connection.");
-      }
-
+      const url = await startGoogleImportConnection("/dashboard/import");
       sessionStorage.setItem(GOOGLE_OAUTH_PENDING_KEY, "1");
-      window.location.assign(data.url);
+      window.location.assign(url);
     } catch (err) {
       sessionStorage.removeItem(GOOGLE_OAUTH_PENDING_KEY);
       toast.error(err instanceof Error ? err.message : "Could not start Google connection.");
@@ -178,15 +152,7 @@ export default function ImportPage() {
               your ContactBook import queue.
             </p>
           </div>
-          <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-            <Button
-              type="button"
-              onClick={() => void connectGoogle()}
-              disabled={isConnecting}
-            >
-              <UploadCloud className="h-4 w-4" aria-hidden="true" />
-              {isConnecting ? "Connecting" : "Connect Google"}
-            </Button>
+          <div className="mt-6">
             <Button
               type="button"
               variant="outline"
@@ -218,6 +184,11 @@ export default function ImportPage() {
           </CardContent>
         </Card>
       </section>
+
+      <ContactImportOptions
+        onConnectGoogle={() => void connectGoogle()}
+        isConnectingGoogle={isConnecting}
+      />
 
       <Card>
         <CardHeader>
