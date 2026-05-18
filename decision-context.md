@@ -173,3 +173,99 @@
 - Decision: Save profile onboarding through the new nested `POST /v1/profile/onboarding` API, falling back to `PATCH /v1/profile/me` for photo-only onboarding.
 - Reason: Backend simplified profile setup into major profile APIs and removed the need for frontend field-group/field orchestration.
 - Notes: The onboarding UI remains unchanged; the frontend now maps form state into the same nested shape returned by `GET /v1/profile/me`.
+
+## 2026-05-18 - Simplify Auth Phone Entry
+
+- Decision: Replace the login country selector with a direct country calling code input plus a separate phone number input.
+- Reason: The login page only needs the backend `countryCode` and `phone` values, and the user requested not to ask for country.
+- Notes: This is frontend-only. The auth requests still send `{ phone, countryCode }`, and the auth panel now uses explicit bottom padding below the card.
+
+## 2026-05-18 - Use Country Code Combobox On Auth
+
+- Decision: Change the auth country code field from free text to a searchable combobox of de-duplicated dialing codes.
+- Reason: The user requested a shadcn-style combobox for country code selection while still not asking for country name.
+- Notes: The combobox remains frontend-only and continues to submit the selected dialing code as `countryCode`.
+
+## 2026-05-18 - Show Countries In Auth Code Dropdown
+
+- Decision: Display country names beside dialing codes in the auth country code dropdown while keeping the selected input value as the code only.
+- Reason: Country names make shared dialing codes easier to identify without reintroducing a separate country field.
+- Notes: Duplicate dialing codes can appear for different countries in the dropdown, but auth requests still submit only the selected `dial` value as `countryCode`.
+
+## 2026-05-18 - Unify Auth Combobox Focus Ring
+
+- Decision: Move the auth country code combobox focus ring from the inner input to the full input/button wrapper.
+- Reason: The previous focus highlight ended before the dropdown button, making the active state look visually cut off.
+- Notes: The combobox filter now also matches combined labels such as `Canada +1` so selected display text still returns the expected dropdown row.
+
+## 2026-05-18 - Refine Auth Form Spacing
+
+- Decision: Increase and normalize login form spacing by using explicit card padding, larger form gaps, and flex-column labels.
+- Reason: The auth form spacing was visually uneven, and inline labels made label/control spacing unreliable.
+- Notes: This is frontend-only and keeps the existing auth request payloads unchanged.
+
+## 2026-05-18 - Fold Identity Upload Into Personal Onboarding
+
+- Decision: Remove the standalone Identity onboarding step and move profile photo capture into the Personal step as an image upload control.
+- Reason: The user requested removing step one and replacing pasted image URL entry with an upload experience.
+- Notes: Backend upload/storage was not added. The selected image is read client-side into the existing `identity.profilePhoto` string field with a 1 MB guard.
+
+## 2026-05-18 - Simplify Onboarding Step Presentation
+
+- Decision: Remove step icons and duplicate section headings/subtitles from the onboarding wizard content.
+- Reason: The outer wizard header already provides the active step title and description, and the stepper should be lighter.
+- Notes: The wizard now has five steps: Personal, Work, Business, Socials, and Financial.
+
+## 2026-05-18 - Make Onboarding Stepper Text Only
+
+- Decision: Remove the remaining completed-step check icon from the onboarding step navigation.
+- Reason: The user requested the stepper show only the step names.
+- Notes: Active state remains communicated through border/background styling.
+
+## 2026-05-18 - Center Onboarding Modal In Shell Viewport
+
+- Decision: Adjust the onboarding wrapper to center the modal within the available shell viewport using balanced page padding.
+- Reason: The previous shortened height calculation made the modal feel off-center relative to the whole screen.
+- Notes: The modal keeps its max width, max height, and internal scroll behavior.
+
+## 2026-05-18 - Remove Onboarding Step Box Navigation
+
+- Decision: Remove the step box navigation and draft-count line below the onboarding heading/subtitle.
+- Reason: The user wanted the step boxes removed from the UI.
+- Notes: Users still move through onboarding with the footer Back and Next buttons, while the top badge shows the current step number.
+
+## 2026-05-18 - Center Onboarding Modal Against Viewport
+
+- Decision: Render the onboarding modal in a fixed full-viewport overlay instead of centering it inside the app shell content column.
+- Reason: The shell sidebar made the modal appear shifted right when it was centered only within the main content area.
+- Notes: The modal keeps internal scrolling and now uses a subtle backdrop over the app chrome.
+
+## 2026-05-18 - Compact Onboarding Form Density
+
+- Decision: Reduce onboarding modal padding, input heights, field gaps, panel padding, and use three-column field grids on wide screens.
+- Reason: The user wanted more of each onboarding step visible without needing modal scrolling.
+- Notes: Compact sizing is scoped to the onboarding modal; internal scrolling remains as a fallback for smaller screens or dense steps.
+
+## 2026-05-18 - Present Import Onboarding As Modal
+
+- Decision: Convert `/onboarding/import` into a fixed viewport-centered modal overlay and add a compact mode for import option cards.
+- Reason: The user wanted the import contacts wizard to match the modal-style onboarding experience.
+- Notes: Google OAuth behavior, skip navigation, and disabled iCloud/VCF options remain unchanged.
+
+## 2026-05-18 - Feature Google Import In Modal Layout
+
+- Decision: Widen the import onboarding modal and add a featured Google layout where Google spans the full first row and iCloud/VCF split the second row.
+- Reason: The user wanted the Google option full width and the remaining two options as half-width stacked rows beneath it.
+- Notes: The featured layout is opt-in for onboarding import and does not change the default import options grid elsewhere.
+
+## 2026-05-18 - Narrow Import Onboarding Modal
+
+- Decision: Reduce the import onboarding modal max width while preserving the featured Google layout.
+- Reason: The user wanted the modal overall width decreased after the featured layout change.
+- Notes: Google remains full-width above the half-width iCloud and VCF cards.
+
+## 2026-05-18 - Further Narrow Import Onboarding Modal
+
+- Decision: Reduce the import onboarding modal max width to `max-w-4xl`.
+- Reason: The user wanted the modal overall width decreased further.
+- Notes: The featured Google row and half-width iCloud/VCF row remain unchanged.

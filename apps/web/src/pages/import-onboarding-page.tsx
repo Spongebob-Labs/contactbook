@@ -31,31 +31,40 @@ export default function ImportOnboardingPage() {
 
   return (
     <AppShell>
-      <section className="space-y-6">
-        <div className="flex flex-col gap-4 rounded-lg border border-border bg-card p-6 md:flex-row md:items-start md:justify-between md:p-8">
-          <div className="max-w-3xl">
-            <Badge variant="secondary">Import contacts</Badge>
-            <h1 className="mt-4 text-3xl font-semibold tracking-normal md:text-4xl">
-              Bring your contacts into ContactBook.
-            </h1>
-            <p className="mt-3 text-base text-muted-foreground">
-              Choose a source now, or skip and import contacts from the dashboard later.
-            </p>
+      <section className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 px-4 py-8 backdrop-blur-sm md:px-6">
+        <div className="flex max-h-[calc(100vh-4rem)] w-full max-w-4xl flex-col overflow-hidden rounded-lg border border-border bg-card shadow-xl">
+          <div className="border-b border-border px-4 py-3 md:px-5">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div className="max-w-3xl">
+                <Badge variant="secondary">Import contacts</Badge>
+                <h1 className="mt-2 text-2xl font-semibold tracking-normal">
+                  Bring your contacts into ContactBook.
+                </h1>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Choose a source now, or skip and import contacts from the dashboard later.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => navigate("/dashboard", { replace: true })}
+                className="self-start"
+              >
+                Skip for now
+                <ArrowRight className="h-4 w-4" aria-hidden="true" />
+              </Button>
+            </div>
           </div>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => navigate("/dashboard", { replace: true })}
-          >
-            Skip for now
-            <ArrowRight className="h-4 w-4" aria-hidden="true" />
-          </Button>
-        </div>
 
-        <ContactImportOptions
-          onConnectGoogle={() => void connectGoogle()}
-          isConnectingGoogle={isConnectingGoogle}
-        />
+          <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-5">
+            <ContactImportOptions
+              onConnectGoogle={() => void connectGoogle()}
+              isConnectingGoogle={isConnectingGoogle}
+              compact
+              featuredGoogle
+            />
+          </div>
+        </div>
       </section>
     </AppShell>
   );

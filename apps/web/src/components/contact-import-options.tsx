@@ -42,39 +42,58 @@ export function ContactImportOptions({
   onConnectGoogle,
   isConnectingGoogle,
   className,
+  compact = false,
+  featuredGoogle = false,
 }: {
   onConnectGoogle: () => void;
   isConnectingGoogle: boolean;
   className?: string;
+  compact?: boolean;
+  featuredGoogle?: boolean;
 }) {
   return (
-    <div className={cn("grid gap-4 lg:grid-cols-3", className)}>
+    <div
+      className={cn(
+        "grid gap-4",
+        featuredGoogle ? "lg:grid-cols-2" : "lg:grid-cols-3",
+        className,
+      )}
+    >
       {options.map((option) => {
         const Icon = option.icon;
         return (
           <div
             key={option.key}
             className={cn(
-              "flex min-h-64 flex-col rounded-lg border border-border bg-card p-5",
+              "flex flex-col rounded-lg border border-border bg-card",
+              compact ? "min-h-52 p-4" : "min-h-64 p-5",
+              featuredGoogle && option.key === "google" && "lg:col-span-2 lg:min-h-44",
               option.disabled && "bg-muted/30",
             )}
           >
             <div className="flex items-start justify-between gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-md bg-secondary text-primary">
-                <Icon className="h-5 w-5" aria-hidden="true" />
+              <div
+                className={cn(
+                  "flex items-center justify-center rounded-md bg-secondary text-primary",
+                  compact ? "h-9 w-9" : "h-11 w-11",
+                )}
+              >
+                <Icon className={cn(compact ? "h-4 w-4" : "h-5 w-5")} aria-hidden="true" />
               </div>
               <Badge variant={option.disabled ? "outline" : "success"}>
                 {option.badge}
               </Badge>
             </div>
-            <div className="mt-5 flex-1">
-              <h2 className="text-lg font-semibold tracking-normal">{option.title}</h2>
+            <div className={cn("flex-1", compact ? "mt-4" : "mt-5")}>
+              <h2 className={cn("font-semibold tracking-normal", compact ? "text-base" : "text-lg")}>
+                {option.title}
+              </h2>
               <p className="mt-2 text-sm text-muted-foreground">{option.description}</p>
             </div>
             {option.key === "google" ? (
               <Button
                 type="button"
-                className="mt-5 w-full"
+                className={cn("w-full", compact ? "mt-4" : "mt-5")}
                 onClick={onConnectGoogle}
                 disabled={isConnectingGoogle}
               >
@@ -82,7 +101,12 @@ export function ContactImportOptions({
                 {isConnectingGoogle ? "Connecting" : "Connect Google"}
               </Button>
             ) : (
-              <Button type="button" className="mt-5 w-full" variant="outline" disabled>
+              <Button
+                type="button"
+                className={cn("w-full", compact ? "mt-4" : "mt-5")}
+                variant="outline"
+                disabled
+              >
                 {option.key === "vcf" ? "Upload unavailable" : "Connector unavailable"}
               </Button>
             )}

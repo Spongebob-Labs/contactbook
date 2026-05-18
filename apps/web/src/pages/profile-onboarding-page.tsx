@@ -1,16 +1,12 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
   ArrowRight,
-  BriefcaseBusiness,
-  Building2,
   Check,
-  Landmark,
-  LinkIcon,
-  ShieldCheck,
-  UserRound,
+  UploadCloud,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
@@ -19,7 +15,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { apiFetch } from "@/lib/api";
-import { cn } from "@/lib/utils";
 
 type AddressForm = {
   street: string;
@@ -283,40 +278,29 @@ const initialForm: OnboardingForm = {
 
 const steps = [
   {
-    key: "identity",
-    title: "Identity",
-    description: "Add the visual identity details people recognize first.",
-    icon: UserRound,
-  },
-  {
     key: "personal",
     title: "Personal",
     description: "Capture the personal details you may choose to share.",
-    icon: ShieldCheck,
   },
   {
     key: "work",
     title: "Work",
     description: "Add your current professional profile.",
-    icon: BriefcaseBusiness,
   },
   {
     key: "business",
     title: "Business",
     description: "Show business ownership or public company details.",
-    icon: Building2,
   },
   {
     key: "socials",
     title: "Socials",
     description: "Connect your public digital presence.",
-    icon: LinkIcon,
   },
   {
     key: "financial",
     title: "Financial",
     description: "Store sensitive payment rails securely.",
-    icon: Landmark,
   },
 ] as const;
 
@@ -378,6 +362,8 @@ function compactCustom(values: Record<string, string>): Record<string, string> |
   return Object.keys(custom).length > 0 ? (custom as Record<string, string>) : undefined;
 }
 
+const MAX_PROFILE_PHOTO_BYTES = 1024 * 1024;
+
 export default function ProfileOnboardingPage() {
   const [form, setForm] = useState<OnboardingForm>(initialForm);
   const [stepIndex, setStepIndex] = useState(0);
@@ -385,51 +371,32 @@ export default function ProfileOnboardingPage() {
   const navigate = useNavigate();
   const step = steps[stepIndex];
 
-  const completion = useMemo(() => {
-    const sections = [
-      hasText(form.identity.profilePhoto),
-      hasAny([
-        form.personal.title,
-        form.personal.nickname,
-        form.personal.mobile,
-        form.personal.email,
-        form.personal.dateOfBirth,
-        form.personal.relationshipStatus,
-        form.personal.bloodGroup,
-      ]) || addressHasAny(form.personal.postalAddress),
-      hasAny([
-        form.work.companyName,
-        form.work.workTitle,
-        form.work.workEmail,
-        form.work.employeeId,
-      ]) || addressHasAny(form.work.workPostalAddress),
-      hasAny([
-        form.business.businessName,
-        form.business.businessTitle,
-        form.business.businessEmail,
-        form.business.businessType,
-      ]) || addressHasAny(form.business.businessPostalAddress),
-      hasAny([
-        form.socials.skype,
-        form.socials.facebook,
-        form.socials.twitter,
-        form.socials.blog,
-        form.socials.website,
-        form.socials.linkedin,
-        form.socials.github,
-      ]),
-      hasAny([
-        form.financial.bank.bankName,
-        form.financial.bank.accountHolder,
-        form.financial.bank.accountNumber,
-        form.financial.wallet.platform,
-        form.financial.wallet.handleOrLink,
-        form.financial.crypto.network,
-        form.financial.crypto.address,
-      ]),
-    ];
-    return sections.filter(Boolean).length;
-  }, [form]);
+  const uploadProfilePhoto = (file: File | undefined) => {
+    if (!file) {
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      toast.error("Choose an image file.");
+      return;
+    }
+
+    if (file.size > MAX_PROFILE_PHOTO_BYTES) {
+      toast.error("Choose an image under 1 MB.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        setSectionValue("identity", "profilePhoto", reader.result);
+      }
+    };
+    reader.onerror = () => {
+      toast.error("Could not read image.");
+    };
+    reader.readAsDataURL(file);
+  };
 
   const setSectionValue = <Section extends keyof OnboardingForm>(
     section: Section,
@@ -761,10 +728,10 @@ export default function ProfileOnboardingPage() {
 
   return (
     <AppShell>
-      <section className="flex min-h-[calc(100vh-7rem)] items-center justify-center py-4">
-        <div className="flex max-h-[calc(100vh-8rem)] w-full max-w-5xl flex-col overflow-hidden rounded-lg border border-border bg-card shadow-xl">
-          <div className="border-b border-border px-5 py-4 md:px-6">
-            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+      <section className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 px-4 py-8 backdrop-blur-sm md:px-6">
+        <div className="flex max-h-[calc(100vh-3rem)] w-full max-w-6xl flex-col overflow-hidden rounded-lg border border-border bg-card shadow-xl">
+          <div className="border-b border-border px-4 py-3 md:px-5">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant="secondary">Optional onboarding</Badge>
@@ -772,10 +739,10 @@ export default function ProfileOnboardingPage() {
                     Step {stepIndex + 1} of {steps.length}
                   </Badge>
                 </div>
-                <h1 className="mt-3 text-2xl font-semibold tracking-normal">
+                <h1 className="mt-2 text-2xl font-semibold tracking-normal">
                   {step.title}
                 </h1>
-                <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+                <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
                   {step.description}
                 </p>
               </div>
@@ -790,67 +757,16 @@ export default function ProfileOnboardingPage() {
               </Button>
             </div>
 
-            <div className="mt-5 grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
-              {steps.map((item, index) => {
-                const isActive = index === stepIndex;
-                const isComplete = index < stepIndex;
-                return (
-                  <button
-                    key={item.key}
-                    type="button"
-                    onClick={() => setStepIndex(index)}
-                    className={cn(
-                      "flex min-h-20 flex-col justify-between rounded-md border border-border bg-background p-3 text-left transition-colors hover:bg-muted",
-                      isActive && "border-primary bg-secondary text-secondary-foreground",
-                    )}
-                    aria-current={isActive ? "step" : undefined}
-                  >
-                    <span className="flex items-center justify-between gap-2">
-                      <item.icon
-                        className={cn(
-                          "h-4 w-4 text-muted-foreground",
-                          (isActive || isComplete) && "text-primary",
-                        )}
-                        aria-hidden="true"
-                      />
-                      {isComplete && (
-                        <Check className="h-4 w-4 text-success" aria-hidden="true" />
-                      )}
-                    </span>
-                    <span className="mt-3 text-sm font-medium">{item.title}</span>
-                  </button>
-                );
-              })}
-            </div>
-
-            <p className="mt-3 text-xs text-muted-foreground">
-              {completion} of {steps.length} sections have draft details.
-            </p>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto p-5 md:p-6">
-          {step.key === "identity" && (
-            <ProfileSection
-              title="Identity details"
-              description="Registration already covers your legal name, phone, and email. Add a profile photo URL if you want the profile to feel complete in demos."
-            >
-              <Field label="Profile photo URL">
-                <Input
-                  value={form.identity.profilePhoto}
-                  onChange={(event) =>
-                    setSectionValue("identity", "profilePhoto", event.target.value)
-                  }
-                  placeholder="https://storage.example.com/profile.jpg"
-                />
-              </Field>
-            </ProfileSection>
-          )}
-
+          <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-5 [&_input]:h-9 [&_input]:py-1.5 [&_select]:h-9 [&_select]:py-1.5">
           {step.key === "personal" && (
-            <ProfileSection
-              title="Personal profile"
-              description="These details are optional. Fill what you want ContactBook to remember."
-            >
+            <ProfileSection>
+              <ProfilePhotoUpload
+                value={form.identity.profilePhoto}
+                onUpload={uploadProfilePhoto}
+                onClear={() => setSectionValue("identity", "profilePhoto", "")}
+              />
               <Field label="Group tag">
                 <Input
                   value={form.personal.tag}
@@ -986,7 +902,7 @@ export default function ProfileOnboardingPage() {
           )}
 
           {step.key === "work" && (
-            <ProfileSection title="Work profile" description="Add your current role and company.">
+            <ProfileSection>
               <Field label="Group tag">
                 <Input
                   value={form.work.tag}
@@ -1077,10 +993,7 @@ export default function ProfileOnboardingPage() {
           )}
 
           {step.key === "business" && (
-            <ProfileSection
-              title="Business profile"
-              description="Add founder, owner, or public company details."
-            >
+            <ProfileSection>
               <Field label="Group tag">
                 <Input
                   value={form.business.tag}
@@ -1181,10 +1094,7 @@ export default function ProfileOnboardingPage() {
           )}
 
           {step.key === "socials" && (
-            <ProfileSection
-              title="Social presence"
-              description="Add social links, handles, and public websites."
-            >
+            <ProfileSection>
               <Field label="Group tag">
                 <Input
                   value={form.socials.tag}
@@ -1261,11 +1171,8 @@ export default function ProfileOnboardingPage() {
           )}
 
           {step.key === "financial" && (
-            <ProfileSection
-              title="Financial details"
-              description="Financial rows are treated as sensitive by the API. Fill only the payment rails you want to store."
-            >
-              <div className="grid gap-4 xl:grid-cols-3">
+            <ProfileSection>
+              <div className="grid gap-3 xl:grid-cols-3">
                 <SensitivePanel title="Bank account">
                   <Field label="Group tag">
                     <Input
@@ -1373,7 +1280,7 @@ export default function ProfileOnboardingPage() {
           )}
           </div>
 
-          <div className="flex flex-col gap-3 border-t border-border bg-card px-5 py-4 sm:flex-row sm:items-center sm:justify-between md:px-6">
+          <div className="flex flex-col gap-3 border-t border-border bg-card px-4 py-3 sm:flex-row sm:items-center sm:justify-between md:px-5">
             <Button
               type="button"
               variant="outline"
@@ -1409,29 +1316,64 @@ export default function ProfileOnboardingPage() {
   );
 }
 
-function ProfileSection({
-  title,
-  description,
-  children,
+function ProfileSection({ children }: { children: ReactNode }) {
+  return <section className="space-y-4">{children}</section>;
+}
+
+function ProfilePhotoUpload({
+  onClear,
+  onUpload,
+  value,
 }: {
-  title: string;
-  description: string;
-  children: ReactNode;
+  onClear: () => void;
+  onUpload: (file: File | undefined) => void;
+  value: string;
 }) {
   return (
-    <section className="space-y-5">
-      <div>
-        <h2 className="text-lg font-semibold tracking-normal">{title}</h2>
-        <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+    <div className="space-y-2 rounded-md border border-border p-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-muted">
+            {value ? (
+              <img src={value} alt="" className="h-full w-full object-cover" />
+            ) : (
+              <UploadCloud className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
+            )}
+          </div>
+          <div>
+            <p className="text-sm font-semibold">Profile photo</p>
+            <p className="mt-1 text-sm text-muted-foreground">Upload an image under 1 MB.</p>
+          </div>
+        </div>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Button type="button" variant="outline" className="relative overflow-hidden">
+            <UploadCloud className="h-4 w-4" aria-hidden="true" />
+            Upload
+            <input
+              type="file"
+              accept="image/*"
+              className="absolute inset-0 cursor-pointer opacity-0"
+              onChange={(event) => {
+                onUpload(event.target.files?.[0]);
+                event.target.value = "";
+              }}
+            />
+          </Button>
+          {value && (
+            <Button type="button" variant="ghost" onClick={onClear}>
+              <X className="h-4 w-4" aria-hidden="true" />
+              Remove
+            </Button>
+          )}
+        </div>
       </div>
-      {children}
-    </section>
+    </div>
   );
 }
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <label className="space-y-2 text-sm font-medium">
+    <label className="flex flex-col gap-1.5 text-sm font-medium">
       <span>{label}</span>
       {children}
     </label>
@@ -1439,7 +1381,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 }
 
 function TwoColumn({ children }: { children: ReactNode }) {
-  return <div className="grid gap-4 md:grid-cols-2">{children}</div>;
+  return <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{children}</div>;
 }
 
 function AddressFields({
@@ -1452,7 +1394,7 @@ function AddressFields({
   onChange: (key: keyof AddressForm, value: string) => void;
 }) {
   return (
-    <div className="space-y-4 rounded-md border border-border p-4">
+    <div className="space-y-3 rounded-md border border-border p-3">
       <p className="text-sm font-semibold">{title}</p>
       <TwoColumn>
         <Field label="Street">
@@ -1489,7 +1431,7 @@ function SensitivePanel({
   children: ReactNode;
 }) {
   return (
-    <div className="space-y-4 rounded-md border border-border p-4">
+    <div className="space-y-3 rounded-md border border-border p-3">
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm font-semibold">{title}</p>
         <Badge variant="warning">Sensitive</Badge>

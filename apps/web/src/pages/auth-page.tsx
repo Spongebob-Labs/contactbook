@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowLeft, Check, MessageCircle } from "lucide-react";
+import { ArrowLeft, Check, ChevronsUpDown, MessageCircle } from "lucide-react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -9,7 +9,6 @@ import { PageLoader } from "@/components/page-loader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Select } from "@/components/ui/select";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useAuth } from "@/context/auth-context";
 import { apiFetch } from "@/lib/api";
@@ -18,7 +17,10 @@ import { buildE164, nationalDigits } from "@/lib/phone";
 import type { VerifyCodeResponse } from "@/lib/types";
 
 const phoneSchema = z.object({
-  countryIso: z.string().min(2),
+  countryCode: z
+    .string()
+    .trim()
+    .regex(/^\+\d{1,4}$/, "Enter a valid country code."),
   national: z.string().min(4, "Enter a valid phone number."),
 });
 
@@ -36,13 +38,23 @@ type PhoneForm = z.infer<typeof phoneSchema>;
 type OtpForm = z.infer<typeof otpSchema>;
 type RegisterForm = z.infer<typeof registerSchema>;
 type Step = "phone" | "otp" | "register";
+type CountryCodeOption = (typeof DIAL_COUNTRIES)[number];
+
+const COUNTRY_CODE_OPTIONS = [...DIAL_COUNTRIES].sort((current, next) => {
+  const codeOrder = Number(current.dial.slice(1)) - Number(next.dial.slice(1));
+
+  if (codeOrder !== 0) {
+    return codeOrder;
+  }
+
+  return current.name.localeCompare(next.name);
+});
 
 export default function AuthPage() {
   const [step, setStep] = useState<Step>("phone");
   const [isBusy, setIsBusy] = useState(false);
   const [phoneVerificationToken, setPhoneVerificationToken] = useState("");
   const [phoneContext, setPhoneContext] = useState({
-    countryIso: "US",
     countryCode: "+1",
     phone: "",
   });
@@ -59,7 +71,7 @@ export default function AuthPage() {
 
   const phoneForm = useForm<PhoneForm>({
     resolver: zodResolver(phoneSchema),
-    defaultValues: { countryIso: "US", national: "" },
+    defaultValues: { countryCode: "+1", national: "" },
   });
   const otpForm = useForm<OtpForm>({
     resolver: zodResolver(otpSchema),
@@ -69,12 +81,7 @@ export default function AuthPage() {
     resolver: zodResolver(registerSchema),
     defaultValues: { firstName: "", lastName: "", email: "" },
   });
-
-  const countryIso = phoneForm.watch("countryIso");
-  const dial = useMemo(
-    () => DIAL_COUNTRIES.find((country) => country.iso2 === countryIso)?.dial ?? "+1",
-    [countryIso],
-  );
+  const selectedCountryCode = phoneForm.watch("countryCode");
 
   if (isLoading) {
     return <PageLoader />;
@@ -86,10 +93,9 @@ export default function AuthPage() {
 
   const onRequestCode = async (values: PhoneForm) => {
     const phone = nationalDigits(values.national);
-    const selectedDial =
-      DIAL_COUNTRIES.find((country) => country.iso2 === values.countryIso)?.dial ?? "+1";
+    const countryCode = values.countryCode.trim();
     try {
-      buildE164(selectedDial, values.national);
+      buildE164(countryCode, values.national);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Enter a valid phone number.");
       return;
@@ -98,9 +104,9 @@ export default function AuthPage() {
     try {
       await apiFetch<{ message: string }>("/v1/auth/whatsapp/request-code", {
         method: "POST",
-        body: { phone, countryCode: selectedDial },
+        body: { phone, countryCode },
       });
-      setPhoneContext({ countryIso: values.countryIso, countryCode: selectedDial, phone });
+      setPhoneContext({ countryCode, phone });
       setStep("otp");
       toast.success("Verification code sent.");
     } catch (error) {
@@ -190,12 +196,12 @@ export default function AuthPage() {
         </div>
       </section>
 
-      <section className="flex min-h-screen items-center justify-center p-4 md:p-8">
+      <section className="flex min-h-screen items-center justify-center px-4 pb-16 pt-24 md:px-8 md:pb-20 md:pt-28 lg:pb-24 lg:pt-24">
         <div className="absolute right-4 top-4">
           <ThemeToggle />
         </div>
         <Card className="w-full max-w-md">
-          <CardHeader>
+          <CardHeader className="gap-2 p-6 pb-4">
             <CardTitle>
               {step === "phone" && "Sign in or create account"}
               {step === "otp" && "Enter WhatsApp code"}
@@ -207,47 +213,52 @@ export default function AuthPage() {
               {step === "register" && "Add the details that identify your contact profile."}
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-6 pt-2">
             {step === "phone" && (
-              <form className="space-y-4" onSubmit={phoneForm.handleSubmit(onRequestCode)}>
-                <label className="space-y-2 text-sm font-medium">
-                  <span>Country</span>
-                  <Select {...phoneForm.register("countryIso")}>
-                    {DIAL_COUNTRIES.map((country) => (
-                      <option key={country.iso2} value={country.iso2}>
-                        {country.name} ({country.dial})
-                      </option>
-                    ))}
-                  </Select>
+              <form className="space-y-5" onSubmit={phoneForm.handleSubmit(onRequestCode)}>
+                <label className="flex flex-col gap-2 text-sm font-medium">
+                  <span>Country code</span>
+                  <CountryCodeCombobox
+                    value={selectedCountryCode}
+                    options={COUNTRY_CODE_OPTIONS}
+                    disabled={isBusy}
+                    onChange={(countryCode) =>
+                      phoneForm.setValue("countryCode", countryCode, {
+                        shouldDirty: true,
+                        shouldTouch: true,
+                        shouldValidate: true,
+                      })
+                    }
+                  />
                 </label>
-                <label className="space-y-2 text-sm font-medium">
+                <label className="flex flex-col gap-2 text-sm font-medium">
                   <span>Phone number</span>
-                  <div className="flex gap-2">
-                    <div className="flex h-10 min-w-16 items-center justify-center rounded-md border border-input bg-muted px-3 text-sm text-muted-foreground">
-                      {dial}
-                    </div>
-                    <Input
-                      inputMode="tel"
-                      autoComplete="tel-national"
-                      placeholder="5551234567"
-                      {...phoneForm.register("national")}
-                    />
-                  </div>
+                  <Input
+                    inputMode="tel"
+                    autoComplete="tel-national"
+                    placeholder="5551234567"
+                    {...phoneForm.register("national")}
+                  />
                 </label>
+                {phoneForm.formState.errors.countryCode && (
+                  <p className="text-sm text-destructive">
+                    {phoneForm.formState.errors.countryCode.message}
+                  </p>
+                )}
                 {phoneForm.formState.errors.national && (
                   <p className="text-sm text-destructive">
                     {phoneForm.formState.errors.national.message}
                   </p>
                 )}
-                <Button type="submit" className="w-full" disabled={isBusy}>
+                <Button type="submit" className="mt-1 w-full" disabled={isBusy}>
                   Send WhatsApp code
                 </Button>
               </form>
             )}
 
             {step === "otp" && (
-              <form className="space-y-4" onSubmit={otpForm.handleSubmit(onVerifyCode)}>
-                <label className="space-y-2 text-sm font-medium">
+              <form className="space-y-5" onSubmit={otpForm.handleSubmit(onVerifyCode)}>
+                <label className="flex flex-col gap-2 text-sm font-medium">
                   <span>6-digit code</span>
                   <Input
                     inputMode="numeric"
@@ -268,7 +279,7 @@ export default function AuthPage() {
                     {otpForm.formState.errors.code.message}
                   </p>
                 )}
-                <div className="flex gap-2">
+                <div className="flex gap-3 pt-1">
                   <Button
                     type="button"
                     variant="outline"
@@ -286,16 +297,16 @@ export default function AuthPage() {
             )}
 
             {step === "register" && (
-              <form className="space-y-4" onSubmit={registerForm.handleSubmit(onRegister)}>
-                <label className="space-y-2 text-sm font-medium">
+              <form className="space-y-5" onSubmit={registerForm.handleSubmit(onRegister)}>
+                <label className="flex flex-col gap-2 text-sm font-medium">
                   <span>First name</span>
                   <Input autoComplete="given-name" {...registerForm.register("firstName")} />
                 </label>
-                <label className="space-y-2 text-sm font-medium">
+                <label className="flex flex-col gap-2 text-sm font-medium">
                   <span>Last name</span>
                   <Input autoComplete="family-name" {...registerForm.register("lastName")} />
                 </label>
-                <label className="space-y-2 text-sm font-medium">
+                <label className="flex flex-col gap-2 text-sm font-medium">
                   <span>Email</span>
                   <Input
                     type="email"
@@ -312,7 +323,7 @@ export default function AuthPage() {
                       registerForm.formState.errors.email?.message}
                   </p>
                 )}
-                <div className="flex gap-2">
+                <div className="flex gap-3 pt-1">
                   <Button
                     type="button"
                     variant="outline"
@@ -332,5 +343,129 @@ export default function AuthPage() {
         </Card>
       </section>
     </main>
+  );
+}
+
+function CountryCodeCombobox({
+  disabled,
+  onChange,
+  options,
+  value,
+}: {
+  disabled?: boolean;
+  onChange: (value: string) => void;
+  options: CountryCodeOption[];
+  value: string;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [query, setQuery] = useState(value);
+  const selectedOption = options.find((option) => option.dial === value);
+  const filteredOptions = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+
+    if (!normalizedQuery) {
+      return options;
+    }
+
+    return options.filter(
+      (option) => {
+        const label = `${option.name} ${option.dial}`.toLowerCase();
+
+        return label.includes(normalizedQuery) || option.dial.includes(normalizedQuery);
+      },
+    );
+  }, [options, query]);
+
+  const selectOption = (option: CountryCodeOption) => {
+    onChange(option.dial);
+    setQuery(option.dial);
+    setIsOpen(false);
+  };
+
+  return (
+    <div className="relative">
+      <div className="flex rounded-md border border-input bg-background shadow-xs transition-colors focus-within:ring-2 focus-within:ring-ring">
+        <Input
+          inputMode="tel"
+          autoComplete="tel-country-code"
+          disabled={disabled}
+          value={isOpen ? query : value}
+          onBlur={() => {
+            const normalizedQuery = query.trim().toLowerCase();
+            const exactMatch = options.find(
+              (option) =>
+                option.dial === query.trim() ||
+                option.name.toLowerCase() === normalizedQuery,
+            );
+
+            if (exactMatch) {
+              selectOption(exactMatch);
+              return;
+            }
+
+            setQuery(value);
+            setIsOpen(false);
+          }}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setIsOpen(true);
+          }}
+          onFocus={() => {
+            setQuery(selectedOption ? `${selectedOption.name} ${selectedOption.dial}` : value);
+            setIsOpen(true);
+          }}
+          placeholder="+1"
+          className="border-0 shadow-none focus-visible:ring-0"
+          role="combobox"
+          aria-expanded={isOpen}
+          aria-controls="country-code-options"
+        />
+        <Button
+          type="button"
+          variant="outline"
+          disabled={disabled}
+          className="rounded-l-none border-y-0 border-r-0 px-3 shadow-none focus-visible:ring-0"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => {
+            setQuery(selectedOption ? `${selectedOption.name} ${selectedOption.dial}` : value);
+            setIsOpen((current) => !current);
+          }}
+          aria-label="Show country codes"
+        >
+          <ChevronsUpDown className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+        </Button>
+      </div>
+
+      {isOpen && (
+        <div
+          id="country-code-options"
+          role="listbox"
+          className="absolute z-20 mt-2 max-h-60 w-full overflow-y-auto rounded-md border border-border bg-popover p-2 text-popover-foreground shadow-md"
+        >
+          {filteredOptions.length > 0 ? (
+            filteredOptions.map((option) => (
+              <button
+                key={`${option.iso2}-${option.dial}`}
+                type="button"
+                role="option"
+                aria-selected={option.dial === value}
+                className="flex h-10 w-full items-center justify-between rounded-sm px-3 text-left text-sm hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => selectOption(option)}
+              >
+                <span className="truncate">
+                  {option.name} <span className="text-muted-foreground">{option.dial}</span>
+                </span>
+                {option.dial === value && (
+                  <Check className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+                )}
+              </button>
+            ))
+          ) : (
+            <div className="px-3 py-2 text-sm text-muted-foreground">No country code found.</div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
