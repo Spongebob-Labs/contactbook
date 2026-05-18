@@ -1,21 +1,23 @@
-import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { ApiPropertyOptional } from "@nestjs/swagger";
 import { IsISO8601, IsOptional, IsString, MinLength } from "class-validator";
 
 export class LinkGoogleProviderDto {
-  @ApiProperty({
+  @ApiPropertyOptional({
     description: "Google OAuth access token (Supabase session.provider_token).",
   })
+  @IsOptional()
   @IsString()
   @MinLength(10)
-  providerAccessToken!: string;
+  providerAccessToken?: string;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     description:
-      "Google OAuth refresh token (Supabase session.provider_refresh_token).",
+      "Google OAuth refresh token (Supabase session.provider_refresh_token). Required to persist credentials.",
   })
+  @IsOptional()
   @IsString()
   @MinLength(10)
-  providerRefreshToken!: string;
+  providerRefreshToken?: string;
 
   @ApiPropertyOptional({
     description:
