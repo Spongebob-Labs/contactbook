@@ -137,3 +137,27 @@
 - Decision: Present profile onboarding as an always-open modal-style wizard on the onboarding route instead of a full-page form/sidebar layout.
 - Reason: The user requested a multi-step modal, and keeping it route-owned preserves existing skip/save navigation without introducing a dismissible empty page state.
 - Notes: The existing onboarding form state, validation, and frontend API save flow remain unchanged; only the presentation changes.
+
+## 2026-05-18 - Add Safe Google OAuth Callback Failure Reasons
+
+- Decision: Preserve non-secret Google OAuth callback failure reasons in the frontend redirect URL during import linking.
+- Reason: The generic `google=error` state hides whether the failure happened during code exchange, provider token extraction, or backend token persistence.
+- Notes: Reasons must not include provider tokens, JWTs, or raw backend payloads; they are only coarse diagnostic labels for development and support.
+
+## 2026-05-18 - Use Supabase PKCE Flow For Google Import OAuth
+
+- Decision: Configure the browser Supabase client with `flowType: "pkce"` for Google import linking.
+- Reason: The frontend callback exchanges an authorization `code` with `exchangeCodeForSession`, so the OAuth start must use Supabase's PKCE flow rather than an implicit response.
+- Notes: This is frontend-only and keeps `detectSessionInUrl` disabled because `/auth/callback` owns the code exchange explicitly.
+
+## 2026-05-18 - Auto-Sync Google Contacts After Successful Link
+
+- Decision: Automatically run the existing Google contact sync after returning from a successful Google OAuth link.
+- Reason: Users expect contacts to appear after connecting Google; previously connection only stored OAuth credentials and required a separate manual sync click.
+- Notes: Auto-sync is gated by the pending OAuth session marker so refreshing `/dashboard/import?google=connected` does not repeatedly sync contacts.
+
+## 2026-05-18 - Redirect Auth Route For Existing Sessions
+
+- Decision: Redirect authenticated users away from `/auth` after the frontend session bootstrap confirms an active backend session.
+- Reason: Signed-in users should not see the sign-in/register page when directly visiting `/auth`.
+- Notes: The auth page waits for the shared auth context loading state to finish, then redirects to the original protected route when present or `/dashboard` by default.

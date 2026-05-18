@@ -8,11 +8,26 @@ import { PageLoader } from "@/components/page-loader";
 
 type CallbackState = "loading" | "success" | "error";
 
-function buildGoogleResultUrl(next: string, state: "connected" | "error") {
+type GoogleResultReason =
+  | "missing_code"
+  | "not_configured"
+  | "exchange_failed"
+  | "missing_provider_tokens"
+  | "api_link_failed";
+
+function buildGoogleResultUrl(
+  next: string,
+  state: "connected" | "error",
+  reason?: GoogleResultReason,
+) {
   const safeNext = next.startsWith("/") && !next.startsWith("//")
     ? next
     : "/dashboard/import";
-  return `${safeNext}${safeNext.includes("?") ? "&" : "?"}google=${state}`;
+  const params = new URLSearchParams({ google: state });
+  if (reason) {
+    params.set("reason", reason);
+  }
+  return `${safeNext}${safeNext.includes("?") ? "&" : "?"}${params.toString()}`;
 }
 
 export default function AuthCallbackPage() {
@@ -31,10 +46,19 @@ export default function AuthCallbackPage() {
     const run = async () => {
       const code = searchParams.get("code");
       const next = searchParams.get("next") ?? "/dashboard/import";
-      if (!code || !isSupabaseConfigured || !supabase) {
+      if (!code) {
         setState("error");
         setMessage("Google could not be connected. Please try again.");
-        navigate(buildGoogleResultUrl(next, "error"), { replace: true });
+        navigate(buildGoogleResultUrl(next, "error", "missing_code"), { replace: true });
+        return;
+      }
+
+      if (!isSupabaseConfigured || !supabase) {
+        setState("error");
+        setMessage("Google could not be connected. Please try again.");
+        navigate(buildGoogleResultUrl(next, "error", "not_configured"), {
+          replace: true,
+        });
         return;
       }
 
@@ -42,7 +66,9 @@ export default function AuthCallbackPage() {
       if (error) {
         setState("error");
         setMessage("Google could not be connected. Please try again.");
-        navigate(buildGoogleResultUrl(next, "error"), { replace: true });
+        navigate(buildGoogleResultUrl(next, "error", "exchange_failed"), {
+          replace: true,
+        });
         return;
       }
 
@@ -60,7 +86,9 @@ export default function AuthCallbackPage() {
       if (!providerAccessToken || !providerRefreshToken) {
         setState("error");
         setMessage("Google did not provide the required access. Please reconnect.");
-        navigate(buildGoogleResultUrl(next, "error"), { replace: true });
+        navigate(buildGoogleResultUrl(next, "error", "missing_provider_tokens"), {
+          replace: true,
+        });
         return;
       }
 
@@ -85,7 +113,9 @@ export default function AuthCallbackPage() {
             ? error.message
             : "Google could not be linked to ContactBook.",
         );
-        navigate(buildGoogleResultUrl(next, "error"), { replace: true });
+        navigate(buildGoogleResultUrl(next, "error", "api_link_failed"), {
+          replace: true,
+        });
       }
     };
 

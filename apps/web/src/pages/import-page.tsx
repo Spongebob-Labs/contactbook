@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { AlertCircle, CheckCircle2, RefreshCw, Search, UploadCloud } from "lucide-react";
 import { toast } from "sonner";
@@ -45,7 +45,7 @@ export default function ImportPage() {
     );
   }, [imports, query]);
 
-  const loadImports = async () => {
+  const loadImports = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
@@ -56,23 +56,48 @@ export default function ImportPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
+
+  const syncGoogle = useCallback(async () => {
+    setIsSyncing(true);
+    try {
+      const result = await apiFetch<GoogleSyncResponse>("/v1/integrations/google/sync");
+      toast.success(`Synced ${result.imported} contacts.`);
+      await loadImports();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not sync Google contacts.");
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [loadImports]);
 
   useEffect(() => {
     void loadImports();
-  }, []);
+  }, [loadImports]);
 
   useEffect(() => {
     const googleState = searchParams.get("google");
+    const reason = searchParams.get("reason");
     if (googleState === "connected") {
+      const shouldAutoSync =
+        sessionStorage.getItem(GOOGLE_OAUTH_PENDING_KEY) === "1";
       sessionStorage.removeItem(GOOGLE_OAUTH_PENDING_KEY);
-      toast.success("Google connected. You can sync contacts now.");
+      if (shouldAutoSync) {
+        toast.success("Google connected. Syncing contacts...");
+        void syncGoogle();
+      } else {
+        toast.success("Google connected. You can sync contacts now.");
+      }
     }
     if (googleState === "error") {
       sessionStorage.removeItem(GOOGLE_OAUTH_PENDING_KEY);
-      toast.error("Google connection failed.");
+      toast.error(
+        reason
+          ? `Google connection failed. Reason: ${reason}.`
+          : "Google connection failed.",
+      );
     }
-  }, [searchParams]);
+  }, [searchParams, syncGoogle]);
 
   useEffect(() => {
     const reloadIfReturnedFromFailedGoogleOAuth = (event: PageTransitionEvent) => {
@@ -136,19 +161,6 @@ export default function ImportPage() {
       sessionStorage.removeItem(GOOGLE_OAUTH_PENDING_KEY);
       toast.error(err instanceof Error ? err.message : "Could not start Google connection.");
       setIsConnecting(false);
-    }
-  };
-
-  const syncGoogle = async () => {
-    setIsSyncing(true);
-    try {
-      const result = await apiFetch<GoogleSyncResponse>("/v1/integrations/google/sync");
-      toast.success(`Synced ${result.imported} contacts.`);
-      await loadImports();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not sync Google contacts.");
-    } finally {
-      setIsSyncing(false);
     }
   };
 

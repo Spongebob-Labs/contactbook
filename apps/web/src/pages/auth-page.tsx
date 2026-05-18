@@ -2,9 +2,10 @@ import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ArrowLeft, Check, MessageCircle } from "lucide-react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { z } from "zod";
+import { PageLoader } from "@/components/page-loader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -47,7 +48,7 @@ export default function AuthPage() {
   });
   const navigate = useNavigate();
   const location = useLocation();
-  const { markAuthenticated } = useAuth();
+  const { isAuthenticated, isLoading, markAuthenticated } = useAuth();
   const redirectTo =
     typeof location.state === "object" &&
     location.state !== null &&
@@ -74,6 +75,14 @@ export default function AuthPage() {
     () => DIAL_COUNTRIES.find((country) => country.iso2 === countryIso)?.dial ?? "+1",
     [countryIso],
   );
+
+  if (isLoading) {
+    return <PageLoader />;
+  }
+
+  if (isAuthenticated) {
+    return <Navigate to={redirectTo} replace />;
+  }
 
   const onRequestCode = async (values: PhoneForm) => {
     const phone = nationalDigits(values.national);
