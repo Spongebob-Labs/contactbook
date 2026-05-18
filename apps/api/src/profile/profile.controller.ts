@@ -1,6 +1,17 @@
-import { Body, Controller, Get, Patch, Put, UseGuards } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Patch,
+  Post,
+  Put,
+  UseGuards,
+} from "@nestjs/common";
 import {
   ApiBearerAuth,
+  ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
@@ -8,6 +19,7 @@ import {
 import type { JwtUserPayload } from "../common/decorators/current-user.decorator";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
+import { ProfileMeOnboardingDto } from "./dto/profile-me-onboarding.dto";
 import {
   ProfileMePatchDto,
   ProfileMePutDto,
@@ -25,6 +37,21 @@ export class ProfileController {
     private readonly profileMe: ProfileMeSerializerService,
     private readonly profileMeUpsert: ProfileMeUpsertService,
   ) {}
+
+  @Post("onboarding")
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: "First-time profile setup after registration",
+    description:
+      "Submit personal, work, business, social, and financial sections in one nested JSON body. Core identity fields come from registration; only `identity.profilePhoto` is optional here. Returns 409 if profile data already exists.",
+  })
+  @ApiCreatedResponse({ type: ProfileMeResponseDto })
+  completeOnboarding(
+    @CurrentUser() user: JwtUserPayload,
+    @Body() dto: ProfileMeOnboardingDto,
+  ) {
+    return this.profileMeUpsert.completeOnboarding(user.sub, dto);
+  }
 
   @Get("me")
   @ApiOperation({

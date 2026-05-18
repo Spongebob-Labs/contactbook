@@ -1,8 +1,20 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+} from "@nestjs/common";
 import { FieldCategory, FieldType } from "@prisma/client";
-import { inboundE164ToIdentity, normalizeDialCode } from "../common/phone.util";
+import {
+  e164FromStoredUser,
+  inboundE164ToIdentity,
+  normalizeDialCode,
+} from "../common/phone.util";
 import { PrismaService } from "../prisma/prisma.service";
-import type { ProfileMePatchDto } from "./dto/profile-me-upsert.dto";
+import type { ProfileMeOnboardingDto } from "./dto/profile-me-onboarding.dto";
+import type {
+  ProfileMeIdentityUpsertDto,
+  ProfileMePatchDto,
+} from "./dto/profile-me-upsert.dto";
 import type {
   InflatedFinancialRow,
   InflatedGroupItem,
@@ -42,6 +54,123 @@ export class ProfileMeUpsertService {
     dto: ProfileMePatchDto,
   ): Promise<ProfileMeResponse> {
     return this.apply(userId, dto);
+  }
+
+  async completeOnboarding(
+    userId: string,
+    dto: ProfileMeOnboardingDto,
+  ): Promise<ProfileMeResponse> {
+    const count = await this.prisma.fieldGroup.count({ where: { userId } });
+    if (count > 0) {
+      throw new ConflictException("Profile already initialized");
+    }
+
+    this.assertHasOnboardingSection(dto);
+    await this.assertIdentityMatchesUser(userId, dto.identity);
+
+    const { identity, ...rest } = dto;
+    const payload: ProfileMePatchDto = { ...rest };
+    if (identity?.profilePhoto !== undefined) {
+      payload.identity = { profilePhoto: identity.profilePhoto };
+    }
+
+    return this.put(userId, payload);
+  }
+
+  private assertHasOnboardingSection(dto: ProfileMeOnboardingDto): void {
+    const hasPersonal = dto.personal !== undefined && dto.personal !== null;
+    const hasWork = Array.isArray(dto.work) && dto.work.length > 0;
+    const hasBusiness = Array.isArray(dto.business) && dto.business.length > 0;
+    const hasSocials = Array.isArray(dto.socials) && dto.socials.length > 0;
+    const hasFinancial =
+      dto.financial !== undefined &&
+      dto.financial !== null &&
+      ((dto.financial.bankAccounts?.length ?? 0) > 0 ||
+        (dto.financial.digitalWallets?.length ?? 0) > 0 ||
+        (dto.financial.cryptoWallets?.length ?? 0) > 0);
+
+    if (
+      !hasPersonal &&
+      !hasWork &&
+      !hasBusiness &&
+      !hasSocials &&
+      !hasFinancial
+    ) {
+      throw new BadRequestException(
+        "Provide at least one profile section: personal, work, business, socials, or financial",
+      );
+    }
+  }
+
+  private async assertIdentityMatchesUser(
+    userId: string,
+    identity?: ProfileMeIdentityUpsertDto,
+  ): Promise<void> {
+    if (!identity) {
+      return;
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        firstName: true,
+        lastName: true,
+        email: true,
+        phone: true,
+        countryCode: true,
+      },
+    });
+    if (!user) {
+      throw new BadRequestException("User not found");
+    }
+
+    if (
+      identity.firstName !== undefined &&
+      identity.firstName.trim() !== user.firstName
+    ) {
+      throw new BadRequestException(
+        "identity.firstName does not match registration",
+      );
+    }
+    if (
+      identity.lastName !== undefined &&
+      identity.lastName.trim() !== user.lastName
+    ) {
+      throw new BadRequestException(
+        "identity.lastName does not match registration",
+      );
+    }
+    if (
+      identity.primaryEmail !== undefined &&
+      identity.primaryEmail.trim().toLowerCase() !== user.email.toLowerCase()
+    ) {
+      throw new BadRequestException(
+        "identity.primaryEmail does not match registration",
+      );
+    }
+    if (identity.primaryPhone !== undefined) {
+      const submitted = inboundE164ToIdentity(identity.primaryPhone);
+      if (!submitted) {
+        throw new BadRequestException("Invalid identity.primaryPhone");
+      }
+      let expected: string;
+      try {
+        expected = e164FromStoredUser(user);
+      } catch {
+        throw new BadRequestException(
+          "identity.primaryPhone does not match registration",
+        );
+      }
+      const submittedE164 = e164FromStoredUser({
+        countryCode: submitted.countryCode,
+        phone: submitted.phone,
+      });
+      if (submittedE164 !== expected) {
+        throw new BadRequestException(
+          "identity.primaryPhone does not match registration",
+        );
+      }
+    }
   }
 
   private async apply(
