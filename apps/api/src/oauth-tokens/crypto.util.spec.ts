@@ -8,9 +8,10 @@ describe("decryptOAuthTokenStored", () => {
   const priorKey = process.env.OAUTH_TOKEN_ENCRYPTION_KEY_BASE64;
 
   beforeAll(() => {
-    process.env.OAUTH_TOKEN_ENCRYPTION_KEY_BASE64 = Buffer.alloc(32, 7).toString(
-      "base64",
-    );
+    process.env.OAUTH_TOKEN_ENCRYPTION_KEY_BASE64 = Buffer.alloc(
+      32,
+      7,
+    ).toString("base64");
     __cryptoInternals.resetKeyCache();
   });
 

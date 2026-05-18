@@ -221,7 +221,7 @@ export class GoogleService {
       }
     }
     if (error && typeof error === "object" && "code" in error) {
-      const code = (error as { code: unknown }).code;
+      const code = error.code;
       if (typeof code === "number") {
         return code;
       }

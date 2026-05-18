@@ -7,10 +7,7 @@ import {
 import { OAuthAccount, OAuthProvider } from "@prisma/client";
 
 import { PrismaService } from "../prisma/prisma.service";
-import {
-  decryptOAuthTokenStored,
-  encryptOAuthToken,
-} from "./crypto.util";
+import { decryptOAuthTokenStored, encryptOAuthToken } from "./crypto.util";
 
 export type OAuthTokenUpsertInput = {
   refreshToken: string;
