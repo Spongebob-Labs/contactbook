@@ -200,8 +200,7 @@ export default function ContactsPage() {
     <AppShell>
       <section className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <Badge variant="secondary">Contacts</Badge>
-          <h1 className="mt-3 text-3xl font-semibold tracking-normal">Contacts</h1>
+          <h1 className="text-2xl font-semibold tracking-normal">Contacts</h1>
         </div>
         <div className="flex w-full flex-col gap-3 lg:max-w-2xl lg:items-end">
           <div className="flex flex-col items-start gap-1 lg:items-end">
