@@ -228,38 +228,53 @@ export default function ContactsPage() {
         </Alert>
       )}
 
-      <section className="grid gap-4 xl:grid-cols-[240px_minmax(0,1fr)_360px]">
-        <aside className="space-y-2 rounded-lg border border-border bg-card p-3 xl:sticky xl:top-24 xl:h-fit">
-          <Link
-            to="/dashboard/import"
-            className={cn(buttonVariants({ variant: "default" }), "mb-3 w-full justify-start")}
+      <section className="grid gap-3 rounded-lg border border-border bg-card p-3 sm:grid-cols-2 lg:grid-cols-[auto_repeat(3,minmax(0,1fr))] lg:items-center">
+        <Link
+          to="/dashboard/import"
+          className={cn(buttonVariants({ variant: "default" }), "w-full justify-start")}
+        >
+          <Download className="h-4 w-4" aria-hidden="true" />
+          Import contacts
+        </Link>
+        {[
+          {
+            label: "Contacts",
+            value: contacts.length,
+            icon: UsersRound,
+            active: true,
+          },
+          {
+            label: "Google imports",
+            value: googleCount,
+            icon: Import,
+            active: false,
+          },
+          {
+            label: "Imported",
+            value: importedCount,
+            icon: Tag,
+            active: false,
+          },
+        ].map((item) => (
+          <div
+            key={item.label}
+            className={cn(
+              "flex h-11 items-center justify-between rounded-md px-3 text-sm",
+              item.active
+                ? "bg-secondary font-medium text-secondary-foreground"
+                : "border border-border text-muted-foreground",
+            )}
           >
-            <Download className="h-4 w-4" aria-hidden="true" />
-            Import contacts
-          </Link>
-          <div className="flex h-10 items-center justify-between rounded-md bg-secondary px-3 text-sm font-medium text-secondary-foreground">
-            <span className="inline-flex items-center gap-2">
-              <UsersRound className="h-4 w-4" aria-hidden="true" />
-              Contacts
+            <span className="inline-flex min-w-0 items-center gap-2">
+              <item.icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+              <span className="truncate">{item.label}</span>
             </span>
-            <span>{contacts.length}</span>
+            <span className="font-semibold text-foreground">{item.value}</span>
           </div>
-          <div className="flex h-10 items-center justify-between rounded-md px-3 text-sm text-muted-foreground">
-            <span className="inline-flex items-center gap-2">
-              <Import className="h-4 w-4" aria-hidden="true" />
-              Google imports
-            </span>
-            <span>{googleCount}</span>
-          </div>
-          <div className="flex h-10 items-center justify-between rounded-md px-3 text-sm text-muted-foreground">
-            <span className="inline-flex items-center gap-2">
-              <Tag className="h-4 w-4" aria-hidden="true" />
-              Imported
-            </span>
-            <span>{importedCount}</span>
-          </div>
-        </aside>
+        ))}
+      </section>
 
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
         <Card className="overflow-hidden">
           <CardHeader className="border-b border-border">
             <div className="flex items-end justify-between gap-3">
@@ -269,9 +284,18 @@ export default function ContactsPage() {
                   Synced contact records from your connected sources.
                 </CardDescription>
               </div>
-              <p className="hidden text-sm text-muted-foreground md:block">
-                Last sync {formatDate(googleSummary?.lastSyncAt)}
-              </p>
+              <div className="hidden items-center gap-3 md:flex">
+                <p className="text-sm text-muted-foreground">
+                  Last sync {formatDate(googleSummary?.lastSyncAt)}
+                </p>
+                <Link
+                  to="/dashboard/import"
+                  className={buttonVariants({ variant: "outline", size: "sm" })}
+                >
+                  <Download className="h-4 w-4" aria-hidden="true" />
+                  Import
+                </Link>
+              </div>
             </div>
           </CardHeader>
           <CardContent className="p-0">
