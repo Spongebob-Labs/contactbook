@@ -329,3 +329,9 @@
 - Decision: Replace unavailable wording on locked iCloud and VCF import buttons with the intended future actions, `Connect now` and `Upload`.
 - Reason: Disabled coming-soon cards should preview the action users will eventually take without exposing internal implementation states like connector availability.
 - Notes: The buttons remain disabled and show a lock icon, while the existing `Coming soon` badges continue to communicate feature status.
+
+## 2026-05-19 - Add Mock-Backed Contacts Directory Page
+
+- Decision: Add a frontend-only `/dashboard/contacts` page backed by mock data shaped like the current `GET /v1/contacts` `ContactDetailDto[]` response.
+- Reason: The contacts directory can be built and reviewed before the final API wiring while keeping the page contract-compatible with the backend response.
+- Notes: The page uses TanStack Table for filtering, sorting, and pagination state, shadcn-style combobox filters, and a responsive card view that becomes the default presentation on mobile.

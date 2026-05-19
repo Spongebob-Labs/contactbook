@@ -20,6 +20,28 @@ export type ContactEmail = {
   isPrimary: boolean;
 };
 
+export type ContactOrganization = {
+  companyName?: string | null;
+  department?: string | null;
+  title?: string | null;
+  isPrimary: boolean;
+};
+
+export type ContactAddress = {
+  street?: string | null;
+  city?: string | null;
+  region?: string | null;
+  postalCode?: string | null;
+  country?: string | null;
+  label?: string | null;
+  isPrimary: boolean;
+};
+
+export type ContactUrl = {
+  value: string;
+  label?: string | null;
+};
+
 export type ContactImportSummary = {
   totalActive: number;
   totalDeleted: number;
@@ -43,6 +65,19 @@ export type ContactImport = {
   primaryEmail?: ContactEmail | null;
   createdAt: string;
   updatedAt: string;
+};
+
+export type ContactDetail = ContactImport & {
+  sourceRevision?: string | null;
+  middleName?: string | null;
+  nickname?: string | null;
+  notes?: string | null;
+  phones: ContactPhone[];
+  emails: ContactEmail[];
+  organizations: ContactOrganization[];
+  addresses: ContactAddress[];
+  urls: ContactUrl[];
+  deletedAt?: string | null;
 };
 
 export type GoogleSyncResponse = {

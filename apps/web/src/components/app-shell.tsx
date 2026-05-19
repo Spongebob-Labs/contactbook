@@ -8,6 +8,7 @@ import {
   Menu,
   UserCircle,
   UserRound,
+  UsersRound,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,7 @@ import { cn } from "@/lib/utils";
 
 const nav = [
   { to: "/dashboard", label: "Dashboard", icon: Home },
+  { to: "/dashboard/contacts", label: "Contacts", icon: UsersRound },
   { to: "/dashboard/import", label: "Import", icon: Import },
 ];
 
