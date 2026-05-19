@@ -431,3 +431,33 @@
 - Decision: Show the Contacts directory card beside the iCloud and VCF import option cards once Google is connected.
 - Reason: After Google is connected, the Google sign-in card is hidden, leaving the import option row as the right place for the directory shortcut.
 - Notes: The directory card remains hidden before Google connection and keeps its existing contacts count, error state, and View contacts CTA.
+
+## 2026-05-19 - Replace Dashboard Card List With CTA
+
+- Decision: Remove individual ContactBook card previews from the dashboard and keep a single CTA to `/dashboard/cards`.
+- Reason: The cards page is now the dedicated place for reviewing and managing cards, while the dashboard should stay focused on summary and navigation.
+- Notes: Dashboard card loading remains only for progress counts and setup state; card record display, empty state, and card-list error UI were removed from the home screen.
+
+## 2026-05-19 - Pair Dashboard Stats With Page Links
+
+- Decision: Show only imported contact and card summary stats on the dashboard, each with a direct link to its dedicated page.
+- Reason: Keeping the statistic and navigation together makes the home screen easier to scan and removes the separate profile stat and cards CTA block.
+- Notes: Imported contacts link to `/dashboard/import`, cards link to `/dashboard/cards`, and profile progress remains represented in the Today checklist.
+
+## 2026-05-19 - Link Contact Stat To Contacts Page
+
+- Decision: Point the imported contacts dashboard CTA to `/dashboard/contacts`.
+- Reason: The contacts page is the canonical place to inspect contact records, while import remains focused on connection and sync controls.
+- Notes: The stat keeps the imported contact count and now uses `View contacts` as its action label.
+
+## 2026-05-19 - Redesign Active Dashboard Hero
+
+- Decision: Replace the active workspace hero copy and button row with a compact workspace overview and two action tiles for Contacts and Cards.
+- Reason: Once setup has started, the dashboard should prioritize fast operational navigation over broad introductory messaging.
+- Notes: Inactive setup states keep their onboarding CTAs, while active users see direct links to `/dashboard/contacts` and `/dashboard/cards`.
+
+## 2026-05-19 - Remove Dashboard Hero Card
+
+- Decision: Remove the dashboard workspace hero card and move summary stat cards to the top of the page.
+- Reason: The dashboard already has direct stat cards with links, so the hero duplicated navigation and pushed the primary metrics down.
+- Notes: The Today checklist remains below the stats, and overview data still feeds summary counts and checklist state.
