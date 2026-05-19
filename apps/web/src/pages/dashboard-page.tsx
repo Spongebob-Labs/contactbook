@@ -86,6 +86,7 @@ export default function DashboardPage() {
   const [overviewError, setOverviewError] = useState<string | null>(null);
   const onboardingStep = getOnboardingStep(searchParams.get("onboarding"));
   const returnTo = getSafeReturnPath(searchParams.get("returnTo"));
+  const isSetupFlow = searchParams.get("flow") === "setup";
   const hasProfileDetails = hasInitializedProfile(profile);
   const googleSummary = getGoogleImportSummary(importSummary);
   const hasGoogleImport = Boolean(
@@ -165,8 +166,12 @@ export default function DashboardPage() {
       navigate(returnTo, { replace: true });
       return;
     }
+    if (!isSetupFlow) {
+      setOnboardingStep(null);
+      return;
+    }
     setOnboardingStep("import");
-  }, [navigate, returnTo, setOnboardingStep]);
+  }, [isSetupFlow, navigate, returnTo, setOnboardingStep]);
 
   const loadOverview = useCallback(async (shouldUpdate: () => boolean = () => true) => {
     setIsLoadingOverview(true);

@@ -159,7 +159,7 @@ export default function AuthPage() {
           countryCode: phoneContext.countryCode,
         },
       });
-      const onboardingPath = "/dashboard?onboarding=profile";
+      const onboardingPath = "/dashboard?onboarding=profile&flow=setup";
       setPostAuthRedirect(onboardingPath);
       markAuthenticated();
       toast.success("Account created.");

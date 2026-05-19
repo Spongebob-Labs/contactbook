@@ -26,7 +26,7 @@ export default function App() {
             path="/onboarding/profile"
             element={
               <ProtectedRoute>
-                <Navigate to="/dashboard?onboarding=profile" replace />
+                <Navigate to="/dashboard?onboarding=profile&flow=setup" replace />
               </ProtectedRoute>
             }
           />

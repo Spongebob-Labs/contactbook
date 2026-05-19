@@ -395,3 +395,9 @@
 - Decision: Load profile and import summary state on the dashboard and use it with card state to choose contextual hero copy, checklist status, and stats.
 - Reason: After a user skips profile setup, imports Google contacts, and creates a card, the dashboard should no longer present first-run onboarding CTAs as the primary workspace message.
 - Notes: Profile completion remains optional; imported contacts or created cards are enough to switch the dashboard into an active workspace state.
+
+## 2026-05-19 - Separate Setup Flow From Profile Action
+
+- Decision: Mark first-run profile onboarding links with `flow=setup` and treat plain dashboard profile onboarding as a standalone action.
+- Reason: Skipping profile from the dashboard should close the modal, while skipping profile during signup setup should continue to import contacts.
+- Notes: Signup and legacy `/onboarding/profile` redirects now include `flow=setup`; profile edit and dashboard profile actions stay local unless `returnTo` is present.
