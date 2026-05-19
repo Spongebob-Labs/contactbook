@@ -4,12 +4,10 @@ import {
   AlertCircle,
   CalendarDays,
   Download,
-  Import,
   Mail,
   MapPin,
   Phone,
   Search,
-  Tag,
   UserRound,
   UsersRound,
 } from "lucide-react";
@@ -197,24 +195,31 @@ export default function ContactsPage() {
     [filteredContacts, selectedId],
   );
   const googleSummary = getGoogleSummary(summary);
-  const importedCount = summary?.totalActive ?? contacts.length;
-  const googleCount = googleSummary?.activeCount ?? contacts.filter((item) => item.source === "GOOGLE").length;
 
   return (
     <AppShell>
-      <section className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+      <section className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <Badge variant="secondary">Contacts</Badge>
           <h1 className="mt-3 text-3xl font-semibold tracking-normal">Contacts</h1>
         </div>
-        <div className="relative w-full lg:max-w-2xl">
-          <Search className="pointer-events-none absolute left-4 top-3.5 h-5 w-5 text-muted-foreground" />
-          <Input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search contacts"
-            className="h-12 rounded-full bg-muted pl-12 text-base"
-          />
+        <div className="flex w-full flex-col gap-3 lg:max-w-2xl lg:items-end">
+          <Link
+            to="/dashboard/import"
+            className={buttonVariants({ variant: "default" })}
+          >
+            <Download className="h-4 w-4" aria-hidden="true" />
+            Import contacts
+          </Link>
+          <div className="relative w-full">
+            <Search className="pointer-events-none absolute left-4 top-3.5 h-5 w-5 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search contacts"
+              className="h-12 rounded-full bg-muted pl-12 text-base"
+            />
+          </div>
         </div>
       </section>
 
@@ -227,52 +232,6 @@ export default function ContactsPage() {
           </div>
         </Alert>
       )}
-
-      <section className="grid gap-3 rounded-lg border border-border bg-card p-3 sm:grid-cols-2 lg:grid-cols-[auto_repeat(3,minmax(0,1fr))] lg:items-center">
-        <Link
-          to="/dashboard/import"
-          className={cn(buttonVariants({ variant: "default" }), "w-full justify-start")}
-        >
-          <Download className="h-4 w-4" aria-hidden="true" />
-          Import contacts
-        </Link>
-        {[
-          {
-            label: "Contacts",
-            value: contacts.length,
-            icon: UsersRound,
-            active: true,
-          },
-          {
-            label: "Google imports",
-            value: googleCount,
-            icon: Import,
-            active: false,
-          },
-          {
-            label: "Imported",
-            value: importedCount,
-            icon: Tag,
-            active: false,
-          },
-        ].map((item) => (
-          <div
-            key={item.label}
-            className={cn(
-              "flex h-11 items-center justify-between rounded-md px-3 text-sm",
-              item.active
-                ? "bg-secondary font-medium text-secondary-foreground"
-                : "border border-border text-muted-foreground",
-            )}
-          >
-            <span className="inline-flex min-w-0 items-center gap-2">
-              <item.icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-              <span className="truncate">{item.label}</span>
-            </span>
-            <span className="font-semibold text-foreground">{item.value}</span>
-          </div>
-        ))}
-      </section>
 
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
         <Card className="overflow-hidden">
