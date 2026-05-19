@@ -365,3 +365,9 @@
 - Decision: Have the profile onboarding modal use `PATCH /v1/profile/me` when existing profile groups are already present, while keeping `POST /v1/profile/onboarding` for first-time setup.
 - Reason: The backend intentionally returns `409 Profile already initialized` for repeat calls to the first-time onboarding endpoint.
 - Notes: The frontend also retries once with `PATCH /v1/profile/me` if first-time initialization races into a 409 response.
+
+## 2026-05-19 - Use Contacts Sync Endpoint
+
+- Decision: Change Google contact sync from `/v1/integrations/google/sync` to `/v1/contacts/sync`.
+- Reason: Backend confirmed the integrations Google sync endpoint will be removed and replaced by the contacts sync endpoint.
+- Notes: `GET /v1/contacts/import` was already in use for the import summary/list contract. The remote backend deployment may lag this frontend change until the backend GitHub deployment issue is resolved.
