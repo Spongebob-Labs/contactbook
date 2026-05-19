@@ -1,15 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import { AlertCircle, CheckCircle2, RefreshCw, Search } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { AlertCircle, ArrowRight, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
 import { ContactImportOptions } from "@/components/contact-import-options";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
 import { startGoogleImportConnection } from "@/lib/google-import";
 import {
@@ -39,33 +37,6 @@ function formatDate(value: string | null) {
   }).format(new Date(value));
 }
 
-function getImportDisplayName(item: ContactImport) {
-  if (item.displayName?.trim()) {
-    return item.displayName.trim();
-  }
-  const name = [item.firstName, item.lastName]
-    .map((part) => part?.trim())
-    .filter(Boolean)
-    .join(" ");
-  return name || "Unknown contact";
-}
-
-function getImportSearchText(item: ContactImport) {
-  return [
-    getImportDisplayName(item),
-    item.primaryPhone?.value,
-    item.primaryEmail?.value,
-    item.source,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-}
-
-function getPrimaryContact(item: ContactImport) {
-  return item.primaryEmail?.value ?? item.primaryPhone?.value ?? "No phone or email";
-}
-
 function hasGoogleConnectionEvidence(
   summary: ContactImportSummary,
   contacts: ContactImport[],
@@ -84,20 +55,11 @@ export default function ImportPage() {
   const navigate = useNavigate();
   const [imports, setImports] = useState<ContactImport[]>([]);
   const [summary, setSummary] = useState<ContactImportSummary | null>(null);
-  const [query, setQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isConnectingGoogle, setIsConnectingGoogle] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasConnectedGoogle, setHasConnectedGoogle] = useState(false);
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) {
-      return imports;
-    }
-    return imports.filter((item) => getImportSearchText(item).includes(q));
-  }, [imports, query]);
 
   const loadImports = useCallback(async () => {
     setIsLoading(true);
@@ -292,83 +254,40 @@ export default function ImportPage() {
 
       <Card>
         <CardHeader>
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <CardTitle>Imported contacts</CardTitle>
-              <CardDescription>Review contacts brought in from Google.</CardDescription>
-            </div>
-            <div className="relative w-full md:w-72">
-              <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-              <Input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search contacts"
-                className="pl-9"
-              />
-            </div>
-          </div>
+          <CardTitle>Contacts directory</CardTitle>
+          <CardDescription>
+            Synced contacts are managed from the Contacts page.
+          </CardDescription>
         </CardHeader>
-        <CardContent>
-          {isLoading && (
-            <div className="space-y-3">
-              {Array.from({ length: 5 }).map((_, index) => (
-                <Skeleton key={index} className="h-16 w-full" />
-              ))}
-            </div>
-          )}
-
-          {!isLoading && error && (
+        <CardContent className="space-y-4">
+          {error && (
             <Alert className="flex items-start gap-3">
               <AlertCircle className="mt-0.5 h-4 w-4 text-destructive" />
               <div>
-                <p className="font-medium">Could not load imports</p>
+                <p className="font-medium">Could not load import status</p>
                 <p className="mt-1 text-sm text-muted-foreground">{error}</p>
               </div>
             </Alert>
           )}
-
-          {!isLoading && !error && filtered.length === 0 && (
-            <div className="flex min-h-56 flex-col items-center justify-center rounded-lg border border-dashed border-border p-6 text-center">
-              <CheckCircle2 className="mb-3 h-8 w-8 text-primary" />
-              <h3 className="font-semibold">No imported contacts yet</h3>
-              <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-                Run a sync to populate this list.
+          <div className="flex flex-col gap-4 rounded-lg border border-border p-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="font-medium">
+                {isLoading
+                  ? "Loading contacts status"
+                  : `${summary?.totalActive ?? imports.length} synced contacts`}
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Open the Contacts page to search, inspect, and manage synced records.
               </p>
             </div>
-          )}
-
-          {!isLoading && !error && filtered.length > 0 && (
-            <div className="overflow-hidden rounded-lg border border-border">
-              <div className="hidden grid-cols-[1fr_220px_220px] border-b border-border bg-muted px-4 py-3 text-xs font-medium uppercase text-muted-foreground md:grid">
-                <span>Name</span>
-                <span>Contact</span>
-                <span>Imported</span>
-              </div>
-              {filtered.map((item) => {
-                return (
-                  <div
-                    key={item.id}
-                    className="grid gap-2 border-b border-border px-4 py-4 last:border-b-0 md:grid-cols-[1fr_220px_220px] md:items-center"
-                  >
-                    <div>
-                      <p className="font-medium">
-                        {getImportDisplayName(item)}
-                      </p>
-                      <Badge variant="secondary" className="mt-1 w-fit">
-                        {item.source.toLowerCase()}
-                      </Badge>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      {getPrimaryContact(item)}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {formatDate(item.createdAt)}
-                    </p>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+            <Link
+              to="/dashboard/contacts"
+              className={buttonVariants({ variant: "default" })}
+            >
+              View contacts
+              <ArrowRight className="h-4 w-4" aria-hidden="true" />
+            </Link>
+          </div>
         </CardContent>
       </Card>
     </AppShell>

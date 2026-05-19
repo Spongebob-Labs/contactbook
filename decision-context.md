@@ -413,3 +413,9 @@
 - Decision: Stop using the browser-wide `contactbook:google-connected` localStorage marker as source of truth for Google import UI.
 - Reason: Multiple ContactBook accounts in the same browser can otherwise inherit stale Google-connected UI from another user.
 - Notes: Import status now comes from `GET /v1/contacts/import` plus `GET /v1/contacts?source=GOOGLE`; logout clears stale ContactBook OAuth/import keys and signs out any temporary Supabase OAuth session.
+
+## 2026-05-19 - Move Synced Contacts To Contacts Page
+
+- Decision: Replace mock contacts with `GET /v1/contacts` on `/dashboard/contacts` and remove the duplicated imported-contact list from `/dashboard/import`.
+- Reason: The import page should own provider connection and sync status, while the contacts page should be the canonical synced-contact directory.
+- Notes: Contacts now uses a Google Contacts-inspired layout with left counts, central searchable list, and a right detail panel; Import links to Contacts with a CTA.
