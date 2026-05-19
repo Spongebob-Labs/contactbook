@@ -293,3 +293,9 @@
 - Decision: Merge the latest `origin/dev` relational contacts backend and update the import page to read summary data from `GET /v1/contacts/import` and Google contacts from `GET /v1/contacts?source=GOOGLE`.
 - Reason: The old `GET /v1/integrations/contact-imports` endpoint was removed after Google sync began upserting normalized relational contact records.
 - Notes: The sync toast now uses `processedCount` from `GET /v1/integrations/google/sync`, and the table reads `displayName`, `primaryEmail`, `primaryPhone`, `source`, and timestamps from contact records.
+
+## 2026-05-19 - Prefill Profile Onboarding For Edits
+
+- Decision: Hydrate `/onboarding/profile` from `GET /v1/profile/me` before rendering editable fields.
+- Reason: The profile page routes existing users to the onboarding form for edits, so previously saved profile sections should appear in the form instead of starting from blank defaults.
+- Notes: The current UI supports one work, business, socials, bank, wallet, and crypto row, so the form preloads the first item from each corresponding profile array.

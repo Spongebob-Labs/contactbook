@@ -72,6 +72,13 @@ export type ProfileMeResponse = {
     groupId: string;
     tag: string;
     postalAddress?: PostalAddress;
+    mobile?: string | null;
+    landline?: string | null;
+    email?: string | null;
+    dateOfBirth?: string | null;
+    yearOfBirth?: string | null;
+    currentLocation?: string | null;
+    relationshipStatus?: string | null;
     custom?: Record<string, string>;
   };
   work: Array<{
@@ -79,7 +86,12 @@ export type ProfileMeResponse = {
     tag: string;
     companyName?: string | null;
     companyLogo?: string | null;
+    companyRegNumber?: string | null;
     workTitle?: string | null;
+    workMobile?: string | null;
+    workLandline?: string | null;
+    workFax?: string | null;
+    workEmail?: string | null;
     workPostalAddress?: PostalAddress;
     custom?: Record<string, string>;
   }>;
@@ -88,7 +100,12 @@ export type ProfileMeResponse = {
     tag: string;
     businessName?: string | null;
     businessLogo?: string | null;
+    businessRegNumber?: string | null;
     businessTitle?: string | null;
+    businessMobile?: string | null;
+    businessLandline?: string | null;
+    businessFax?: string | null;
+    businessEmail?: string | null;
     businessPostalAddress?: PostalAddress;
     custom?: Record<string, string>;
   }>;

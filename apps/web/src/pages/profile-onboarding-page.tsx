@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import {
+  AlertCircle,
   ArrowLeft,
   ArrowRight,
   Check,
@@ -10,11 +11,14 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
+import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
+import type { PostalAddress, ProfileMeResponse } from "@/lib/types";
 
 type AddressForm = {
   street: string;
@@ -362,14 +366,165 @@ function compactCustom(values: Record<string, string>): Record<string, string> |
   return Object.keys(custom).length > 0 ? (custom as Record<string, string>) : undefined;
 }
 
+function valueOrEmpty(value: string | null | undefined): string {
+  return value ?? "";
+}
+
+function customValue(
+  custom: Record<string, string> | undefined,
+  key: string,
+): string {
+  return custom?.[key] ?? "";
+}
+
+function addressToForm(address: PostalAddress | undefined): AddressForm {
+  return {
+    street: valueOrEmpty(address?.street),
+    city: valueOrEmpty(address?.city),
+    state: valueOrEmpty(address?.state),
+    pincode: valueOrEmpty(address?.pincode),
+    country: valueOrEmpty(address?.country),
+  };
+}
+
+function profileToForm(profile: ProfileMeResponse): OnboardingForm {
+  const work = profile.work[0];
+  const business = profile.business[0];
+  const socials = profile.socials[0];
+  const bank = profile.financial.bankAccounts[0];
+  const wallet = profile.financial.digitalWallets[0];
+  const crypto = profile.financial.cryptoWallets[0];
+
+  return {
+    identity: {
+      profilePhoto: valueOrEmpty(profile.identity.profilePhoto),
+    },
+    personal: {
+      ...initialForm.personal,
+      tag: valueOrEmpty(profile.personal.tag) || initialForm.personal.tag,
+      title: customValue(profile.personal.custom, "title"),
+      nickname: customValue(profile.personal.custom, "nickname"),
+      mobile: valueOrEmpty(profile.personal.mobile),
+      landline: valueOrEmpty(profile.personal.landline),
+      email: valueOrEmpty(profile.personal.email),
+      postalAddress: addressToForm(profile.personal.postalAddress),
+      dateOfBirth: valueOrEmpty(profile.personal.dateOfBirth),
+      yearOfBirth: valueOrEmpty(profile.personal.yearOfBirth),
+      currentLocation: valueOrEmpty(profile.personal.currentLocation),
+      kidsNames: customValue(profile.personal.custom, "kidsNames"),
+      partnerName: customValue(profile.personal.custom, "partnerName"),
+      petNames: customValue(profile.personal.custom, "petNames"),
+      relationshipStatus: valueOrEmpty(profile.personal.relationshipStatus),
+      bloodGroup: customValue(profile.personal.custom, "bloodGroup"),
+    },
+    work: {
+      ...initialForm.work,
+      tag: valueOrEmpty(work?.tag) || initialForm.work.tag,
+      companyName: valueOrEmpty(work?.companyName),
+      companyLogo: valueOrEmpty(work?.companyLogo),
+      companyRegNumber: valueOrEmpty(work?.companyRegNumber),
+      workTitle: valueOrEmpty(work?.workTitle),
+      workMobile: valueOrEmpty(work?.workMobile),
+      workLandline: valueOrEmpty(work?.workLandline),
+      workFax: valueOrEmpty(work?.workFax),
+      workEmail: valueOrEmpty(work?.workEmail),
+      workPostalAddress: addressToForm(work?.workPostalAddress),
+      employeeId: customValue(work?.custom, "employeeId"),
+    },
+    business: {
+      ...initialForm.business,
+      tag: valueOrEmpty(business?.tag) || initialForm.business.tag,
+      businessName: valueOrEmpty(business?.businessName),
+      businessLogo: valueOrEmpty(business?.businessLogo),
+      businessRegNumber: valueOrEmpty(business?.businessRegNumber),
+      businessTitle: valueOrEmpty(business?.businessTitle),
+      businessMobile: valueOrEmpty(business?.businessMobile),
+      businessLandline: valueOrEmpty(business?.businessLandline),
+      businessFax: valueOrEmpty(business?.businessFax),
+      businessEmail: valueOrEmpty(business?.businessEmail),
+      businessPostalAddress: addressToForm(business?.businessPostalAddress),
+      businessType: customValue(business?.custom, "businessType"),
+      gstin: customValue(business?.custom, "gstin"),
+    },
+    socials: {
+      ...initialForm.socials,
+      tag: valueOrEmpty(socials?.tag) || initialForm.socials.tag,
+      skype: customValue(socials?.custom, "skype"),
+      facebook: customValue(socials?.custom, "facebook"),
+      twitter: customValue(socials?.custom, "twitter"),
+      whatsapp:
+        customValue(socials?.custom, "whatsApp") ||
+        customValue(socials?.custom, "whatsapp"),
+      blog: customValue(socials?.custom, "blog"),
+      website: customValue(socials?.custom, "website"),
+      linkedin: customValue(socials?.custom, "linkedin"),
+      github: customValue(socials?.custom, "github"),
+    },
+    financial: {
+      bankTag: valueOrEmpty(bank?.tag) || initialForm.financial.bankTag,
+      bank: {
+        bankName: valueOrEmpty(bank?.bankName),
+        accountHolder: valueOrEmpty(bank?.accountHolder),
+        accountNumber: valueOrEmpty(bank?.accountNumber),
+        ifsc: valueOrEmpty(bank?.ifsc),
+        currency: valueOrEmpty(bank?.currency) || initialForm.financial.bank.currency,
+      },
+      walletTag: valueOrEmpty(wallet?.tag) || initialForm.financial.walletTag,
+      wallet: {
+        platform: valueOrEmpty(wallet?.platform),
+        handleOrLink: valueOrEmpty(wallet?.handleOrLink),
+      },
+      cryptoTag: valueOrEmpty(crypto?.tag) || initialForm.financial.cryptoTag,
+      crypto: {
+        network: valueOrEmpty(crypto?.network),
+        address: valueOrEmpty(crypto?.address),
+      },
+    },
+  };
+}
+
 const MAX_PROFILE_PHOTO_BYTES = 1024 * 1024;
 
 export default function ProfileOnboardingPage() {
   const [form, setForm] = useState<OnboardingForm>(initialForm);
   const [stepIndex, setStepIndex] = useState(0);
+  const [isLoadingProfile, setIsLoadingProfile] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const navigate = useNavigate();
   const step = steps[stepIndex];
+  const controlsDisabled = isSaving || isLoadingProfile || Boolean(loadError);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadProfile = async () => {
+      setIsLoadingProfile(true);
+      setLoadError(null);
+      try {
+        const profile = await apiFetch<ProfileMeResponse>("/v1/profile/me");
+        if (isMounted) {
+          setForm(profileToForm(profile));
+        }
+      } catch (error) {
+        if (isMounted) {
+          setLoadError(
+            error instanceof Error ? error.message : "Could not load your profile.",
+          );
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingProfile(false);
+        }
+      }
+    };
+
+    void loadProfile();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const uploadProfilePhoto = (file: File | undefined) => {
     if (!file) {
@@ -750,7 +905,7 @@ export default function ProfileOnboardingPage() {
                 type="button"
                 variant="ghost"
                 onClick={skipProfile}
-                disabled={isSaving}
+                disabled={isSaving || isLoadingProfile}
                 className="self-start"
               >
                 Skip for now
@@ -760,7 +915,28 @@ export default function ProfileOnboardingPage() {
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-5 [&_input]:h-9 [&_input]:py-1.5 [&_select]:h-9 [&_select]:py-1.5">
-          {step.key === "personal" && (
+          {isLoadingProfile && (
+            <div className="space-y-4">
+              <Skeleton className="h-24 w-full" />
+              <div className="grid gap-3 md:grid-cols-2">
+                {Array.from({ length: 6 }).map((_, index) => (
+                  <Skeleton key={index} className="h-16 w-full" />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {!isLoadingProfile && loadError && (
+            <Alert className="flex items-start gap-3">
+              <AlertCircle className="mt-0.5 h-4 w-4 text-destructive" />
+              <div>
+                <p className="font-medium">Could not load profile</p>
+                <p className="mt-1 text-sm text-muted-foreground">{loadError}</p>
+              </div>
+            </Alert>
+          )}
+
+          {!isLoadingProfile && !loadError && step.key === "personal" && (
             <ProfileSection>
               <ProfilePhotoUpload
                 value={form.identity.profilePhoto}
@@ -901,7 +1077,7 @@ export default function ProfileOnboardingPage() {
             </ProfileSection>
           )}
 
-          {step.key === "work" && (
+          {!isLoadingProfile && !loadError && step.key === "work" && (
             <ProfileSection>
               <Field label="Group tag">
                 <Input
@@ -992,7 +1168,7 @@ export default function ProfileOnboardingPage() {
             </ProfileSection>
           )}
 
-          {step.key === "business" && (
+          {!isLoadingProfile && !loadError && step.key === "business" && (
             <ProfileSection>
               <Field label="Group tag">
                 <Input
@@ -1093,7 +1269,7 @@ export default function ProfileOnboardingPage() {
             </ProfileSection>
           )}
 
-          {step.key === "socials" && (
+          {!isLoadingProfile && !loadError && step.key === "socials" && (
             <ProfileSection>
               <Field label="Group tag">
                 <Input
@@ -1170,7 +1346,7 @@ export default function ProfileOnboardingPage() {
             </ProfileSection>
           )}
 
-          {step.key === "financial" && (
+          {!isLoadingProfile && !loadError && step.key === "financial" && (
             <ProfileSection>
               <div className="grid gap-3 xl:grid-cols-3">
                 <SensitivePanel title="Bank account">
@@ -1285,7 +1461,7 @@ export default function ProfileOnboardingPage() {
               type="button"
               variant="outline"
               onClick={() => setStepIndex((current) => Math.max(0, current - 1))}
-              disabled={stepIndex === 0 || isSaving}
+              disabled={stepIndex === 0 || controlsDisabled}
             >
               <ArrowLeft className="h-4 w-4" aria-hidden="true" />
               Back
@@ -1297,13 +1473,17 @@ export default function ProfileOnboardingPage() {
                   onClick={() =>
                     setStepIndex((current) => Math.min(steps.length - 1, current + 1))
                   }
-                  disabled={isSaving}
+                  disabled={controlsDisabled}
                 >
                   Next
                   <ArrowRight className="h-4 w-4" aria-hidden="true" />
                 </Button>
               ) : (
-                <Button type="button" onClick={() => void saveProfile()} disabled={isSaving}>
+                <Button
+                  type="button"
+                  onClick={() => void saveProfile()}
+                  disabled={controlsDisabled}
+                >
                   <Check className="h-4 w-4" aria-hidden="true" />
                   Save profile
                 </Button>
