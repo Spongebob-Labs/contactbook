@@ -6,7 +6,13 @@ export type VerifyCodeResponse =
       phoneVerificationToken: string;
     };
 
-export type ContactSource = "GOOGLE" | "ICLOUD" | "CSV" | "MANUAL";
+export type ContactSource =
+  | "GOOGLE"
+  | "ICLOUD"
+  | "CSV"
+  | "VCARD"
+  | "CALDAV"
+  | "MANUAL";
 
 export type ContactPhone = {
   value: string;
@@ -69,6 +75,7 @@ export type ContactImport = {
   id: string;
   source: ContactSource;
   externalId: string;
+  mergeGroupId?: string | null;
   displayName?: string | null;
   firstName?: string | null;
   lastName?: string | null;

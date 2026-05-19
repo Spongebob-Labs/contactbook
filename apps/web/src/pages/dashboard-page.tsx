@@ -11,8 +11,10 @@ import {
 import { AppShell } from "@/components/app-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { apiFetch } from "@/lib/api";
+import { buildContactImportSummary } from "@/lib/contact-summary";
 import type {
   ContactCard,
+  ContactDetail,
   ContactImportSummary,
   ProfileMeResponse,
 } from "@/lib/types";
@@ -142,10 +144,11 @@ export default function DashboardPage() {
 
   const loadOverview = useCallback(async (shouldUpdate: () => boolean = () => true) => {
     try {
-      const [profileData, summaryData] = await Promise.all([
+      const [profileData, contactsData] = await Promise.all([
         apiFetch<ProfileMeResponse>("/v1/profile/me"),
-        apiFetch<ContactImportSummary>("/v1/contacts/import"),
+        apiFetch<ContactDetail[]>("/v1/contacts"),
       ]);
+      const summaryData = buildContactImportSummary(contactsData);
       if (shouldUpdate()) {
         setProfile(profileData);
         setImportSummary(summaryData);
@@ -245,8 +248,11 @@ export default function DashboardPage() {
       {onboardingStep === "card" && (
         <CardOnboardingModal
           mode={isSetupFlow ? "setup" : "create"}
-          onComplete={() => {
-            setOnboardingStep(null);
+          onComplete={(card) => {
+            setCards((current) =>
+              current.some((item) => item.id === card.id) ? current : [card, ...current],
+            );
+            navigate("/dashboard", { replace: true });
             void Promise.all([loadCards(), loadOverview()]);
           }}
           onSkip={() => setOnboardingStep(null)}

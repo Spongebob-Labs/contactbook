@@ -380,9 +380,33 @@
 
 ## 2026-05-19 - Align Sync Method With Live API Docs
 
-- Decision: Call Google contact sync as `POST /v1/contacts/sync?source=GOOGLE`.
-- Reason: Live Swagger documents `POST /api/v1/contacts/sync` with required `source=GOOGLE|ICLOUD`; a GET request falls through to the contact UUID route and returns `Validation failed (uuid is expected)`.
-- Notes: `GET /v1/contacts/import` remains the import summary endpoint and does not trigger provider sync.
+- Decision: Call Google contact sync as `GET /v1/contacts/sync?source=GOOGLE`.
+- Reason: Live OpenAPI documents `GET /api/v1/contacts/sync` with required `source=GOOGLE|ICLOUD`; POST returns `Cannot POST /api/v1/contacts/sync?source=GOOGLE`.
+- Notes: Passive pages should not call `GET /v1/contacts/import`; use contacts list responses for display status and reserve provider endpoints for explicit import/sync actions.
+
+## 2026-05-19 - Avoid Passive Import Endpoint Calls
+
+- Decision: Stop using `GET /v1/contacts/import` for page-load status and derive frontend import summaries from `GET /v1/contacts` or `GET /v1/contacts?source=GOOGLE`.
+- Reason: Live OpenAPI requires `source` on `/api/v1/contacts/import` and describes it as a provider import operation, so calling it without `source` returns `Validation failed (enum string is expected)` and calling it on passive page loads could unintentionally trigger imports.
+- Notes: Explicit Google sync still uses `GET /v1/contacts/sync?source=GOOGLE`; passive counts use active/deleted contact records and the latest contact `updatedAt` as the visible last activity timestamp.
+
+## 2026-05-19 - Close Card Onboarding After Creation
+
+- Decision: After card creation, return the created card from the onboarding modal, optimistically add it to dashboard state, and replace the URL with `/dashboard`.
+- Reason: The modal is query-param controlled, so leaving setup query state around can make it reappear even after a successful card create.
+- Notes: The dashboard still refreshes cards from `GET /v1/cards` after the optimistic update.
+
+## 2026-05-19 - Move Contact Details To Dedicated Page
+
+- Decision: Replace the contacts side pane with a dedicated `/dashboard/contacts/:contactId` detail page and keep the contacts index as a full-width table.
+- Reason: The user requested contact details on a new page, a cleaner table layout, and controls in the table header.
+- Notes: Live OpenAPI only supports `source` on `GET /v1/contacts`, so search, sort, and pagination are client-side for now; the detail page uses `GET /v1/contacts/:id`.
+
+## 2026-05-19 - Use Contact Rows As Detail Links
+
+- Decision: Make each contacts table row navigate to `/dashboard/contacts/:contactId` and remove the separate View action button.
+- Reason: The user requested row clicks to be enough for opening contact details.
+- Notes: Rows support keyboard activation with Enter and Space in addition to pointer clicks.
 
 ## 2026-05-19 - Add Cards Index And Detail Pages
 
