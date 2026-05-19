@@ -269,3 +269,9 @@
 - Decision: Reduce the import onboarding modal max width to `max-w-4xl`.
 - Reason: The user wanted the modal overall width decreased further.
 - Notes: The featured Google row and half-width iCloud/VCF row remain unchanged.
+
+## 2026-05-18 - Align Google Import OAuth Redirect With Working Supabase Flow
+
+- Decision: Use a plain `/auth/callback` Supabase redirect for Google import OAuth, store the post-callback destination in session storage, and pass Google scopes through `queryParams.scope`.
+- Reason: The sibling `alooofone` project successfully uses the same Supabase OAuth pattern with a simple callback URL, while ContactBook's callback query string can require stricter Supabase redirect allow-list entries.
+- Notes: Contacts import keeps `https://www.googleapis.com/auth/contacts.readonly`, preserves calendar/profile scopes, and now reports Supabase callback `error` values as a coarse `oauth_error` reason.

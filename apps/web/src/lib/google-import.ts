@@ -1,22 +1,27 @@
 import { GOOGLE_OAUTH_SCOPES } from "@/lib/google-oauth";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 
+export const GOOGLE_IMPORT_NEXT_KEY = "contactbook:google-import-next";
+
 export async function startGoogleImportConnection(next = "/dashboard/import") {
   if (!isSupabaseConfigured || !supabase) {
     throw new Error("Google connection is not configured.");
   }
 
-  const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(
-    next,
-  )}`;
+  const safeNext = next.startsWith("/") && !next.startsWith("//")
+    ? next
+    : "/dashboard/import";
+  sessionStorage.setItem(GOOGLE_IMPORT_NEXT_KEY, safeNext);
+
+  const redirectTo = `${window.location.origin}/auth/callback`;
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
       redirectTo,
-      scopes: GOOGLE_OAUTH_SCOPES,
       queryParams: {
         access_type: "offline",
         prompt: "consent select_account",
+        scope: GOOGLE_OAUTH_SCOPES,
       },
     },
   });

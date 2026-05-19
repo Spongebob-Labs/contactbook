@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { AlertCircle, CheckCircle2 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
+import { GOOGLE_IMPORT_NEXT_KEY } from "@/lib/google-import";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { Alert } from "@/components/ui/alert";
 import { PageLoader } from "@/components/page-loader";
@@ -9,6 +10,7 @@ import { PageLoader } from "@/components/page-loader";
 type CallbackState = "loading" | "success" | "error";
 
 type GoogleResultReason =
+  | "oauth_error"
   | "missing_code"
   | "not_configured"
   | "exchange_failed"
@@ -44,9 +46,26 @@ export default function AuthCallbackPage() {
     hasRun.current = true;
 
     const run = async () => {
+      const storedNext = sessionStorage.getItem(GOOGLE_IMPORT_NEXT_KEY);
+      const requestedNext = searchParams.get("next") ?? storedNext ?? "/dashboard/import";
+      const next = requestedNext.startsWith("/") && !requestedNext.startsWith("//")
+        ? requestedNext
+        : "/dashboard/import";
+      const oauthError =
+        searchParams.get("error_description") || searchParams.get("error");
+      if (oauthError) {
+        sessionStorage.removeItem(GOOGLE_IMPORT_NEXT_KEY);
+        setState("error");
+        setMessage("Google could not be connected. Please try again.");
+        navigate(buildGoogleResultUrl(next, "error", "oauth_error"), {
+          replace: true,
+        });
+        return;
+      }
+
       const code = searchParams.get("code");
-      const next = searchParams.get("next") ?? "/dashboard/import";
       if (!code) {
+        sessionStorage.removeItem(GOOGLE_IMPORT_NEXT_KEY);
         setState("error");
         setMessage("Google could not be connected. Please try again.");
         navigate(buildGoogleResultUrl(next, "error", "missing_code"), { replace: true });
@@ -54,6 +73,7 @@ export default function AuthCallbackPage() {
       }
 
       if (!isSupabaseConfigured || !supabase) {
+        sessionStorage.removeItem(GOOGLE_IMPORT_NEXT_KEY);
         setState("error");
         setMessage("Google could not be connected. Please try again.");
         navigate(buildGoogleResultUrl(next, "error", "not_configured"), {
@@ -64,6 +84,7 @@ export default function AuthCallbackPage() {
 
       const { error } = await supabase.auth.exchangeCodeForSession(code);
       if (error) {
+        sessionStorage.removeItem(GOOGLE_IMPORT_NEXT_KEY);
         setState("error");
         setMessage("Google could not be connected. Please try again.");
         navigate(buildGoogleResultUrl(next, "error", "exchange_failed"), {
@@ -84,6 +105,7 @@ export default function AuthCallbackPage() {
           : undefined;
 
       if (!providerAccessToken || !providerRefreshToken) {
+        sessionStorage.removeItem(GOOGLE_IMPORT_NEXT_KEY);
         setState("error");
         setMessage("Google did not provide the required access. Please reconnect.");
         navigate(buildGoogleResultUrl(next, "error", "missing_provider_tokens"), {
@@ -103,10 +125,12 @@ export default function AuthCallbackPage() {
           },
         });
         await supabase.auth.signOut().catch(() => undefined);
+        sessionStorage.removeItem(GOOGLE_IMPORT_NEXT_KEY);
         setState("success");
         setMessage("Google is connected.");
         navigate(buildGoogleResultUrl(next, "connected"), { replace: true });
       } catch (error) {
+        sessionStorage.removeItem(GOOGLE_IMPORT_NEXT_KEY);
         setState("error");
         setMessage(
           error instanceof Error
