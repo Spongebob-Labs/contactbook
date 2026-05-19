@@ -1,22 +1,45 @@
 import { Injectable } from "@nestjs/common";
 import type { Contact, ContactSource, Prisma } from "@prisma/client";
+import { ContactDedupService } from "./contact-dedup.service";
 import { PrismaService } from "../prisma/prisma.service";
 import type { NormalizedContact } from "./normalized-contact.types";
+import type {
+  ContactSoftDeleteResult,
+  ContactUpsertResult,
+} from "./contact-upsert.types";
 
 @Injectable()
 export class ContactUpsertService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly dedup: ContactDedupService,
+  ) {}
 
   async upsert(
     userId: string,
     contact: NormalizedContact,
-  ): Promise<Contact | null> {
+  ): Promise<ContactUpsertResult | ContactSoftDeleteResult | null> {
     if (contact.deleted) {
-      await this.softDelete(userId, contact.source, contact.externalId);
-      return null;
+      return this.softDelete(userId, contact.source, contact.externalId);
     }
 
     return this.prisma.$transaction(async (tx) => {
+      const existing = await tx.contact.findUnique({
+        where: {
+          userId_source_externalId: {
+            userId,
+            source: contact.source,
+            externalId: contact.externalId,
+          },
+        },
+      });
+
+      const { mergeGroupId, duplicateFound } = await this.dedup.resolveMergeGroup(
+        userId,
+        contact,
+        tx,
+      );
+
       const row = await tx.contact.upsert({
         where: {
           userId_source_externalId: {
@@ -25,15 +48,29 @@ export class ContactUpsertService {
             externalId: contact.externalId,
           },
         },
-        create: this.contactCreateData(userId, contact),
+        create: {
+          ...this.contactScalarFields(contact),
+          mergeGroupId,
+          userId,
+        },
         update: {
           ...this.contactScalarFields(contact),
+          mergeGroupId,
           deletedAt: null,
         },
       });
 
+      await this.dedup.refreshKeysForContact(
+        userId,
+        row.id,
+        mergeGroupId,
+        contact,
+        tx,
+      );
       await this.replaceChildren(tx, row.id, contact);
-      return row;
+
+      const outcome = existing ? "updated" : "added";
+      return { contact: row, outcome, duplicateFound };
     });
   }
 
@@ -41,11 +78,12 @@ export class ContactUpsertService {
     userId: string,
     source: ContactSource,
     externalId: string,
-  ): Promise<void> {
+  ): Promise<ContactSoftDeleteResult> {
     await this.prisma.contact.updateMany({
       where: { userId, source, externalId },
       data: { deletedAt: new Date() },
     });
+    return { outcome: "deleted", duplicateFound: false };
   }
 
   async countActive(userId: string, source?: ContactSource): Promise<number> {
@@ -71,16 +109,6 @@ export class ContactUpsertService {
       nameSuffix: contact.nameSuffix ?? null,
       nickname: contact.nickname ?? null,
       notes: contact.notes ?? null,
-    };
-  }
-
-  private contactCreateData(
-    userId: string,
-    contact: NormalizedContact,
-  ): Prisma.ContactCreateInput {
-    return {
-      ...this.contactScalarFields(contact),
-      user: { connect: { id: userId } },
     };
   }
 

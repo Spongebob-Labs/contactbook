@@ -13,34 +13,46 @@ describe("ContactsService.getImportSummary", () => {
           ),
       },
       integrationState: {
-        findUnique: jest
-          .fn()
-          .mockImplementation(
-            ({
-              where,
-            }: {
-              where: { userId_source: { userId: string; source: ContactSource } };
-            }) =>
-              Promise.resolve(
-                where.userId_source.source === ContactSource.GOOGLE
-                  ? {
-                      lastSyncAt: new Date("2026-05-18T00:00:00Z"),
-                      syncToken: "token",
-                    }
-                  : null,
-              ),
-          ),
+        findUnique: jest.fn().mockImplementation(
+          ({
+            where,
+          }: {
+            where: {
+              userId_source: { userId: string; source: ContactSource };
+            };
+          }) =>
+            Promise.resolve(
+              where.userId_source.source === ContactSource.GOOGLE
+              ? {
+                  lastSyncAt: new Date("2026-05-18T00:00:00Z"),
+                  syncToken: "token",
+                  lastSyncAdded: 0,
+                  lastSyncUpdated: 0,
+                  lastSyncDeleted: 0,
+                  lastSyncDuplicates: 0,
+                }
+                : null,
+            ),
+        ),
       },
     };
     const svc = new ContactsService(prisma as never, new ContactSerializer());
     const summary = await svc.getImportSummary("user-1");
 
     expect(summary.totalActive).toBeGreaterThan(0);
-    const google = summary.bySource.find((r) => r.source === ContactSource.GOOGLE);
+    const google = summary.bySource.find(
+      (r) => r.source === ContactSource.GOOGLE,
+    );
     expect(google).toMatchObject({
       activeCount: 3,
       deletedCount: 1,
       hasSyncToken: true,
+      lastSyncStats: {
+        added: 0,
+        updated: 0,
+        deleted: 0,
+        duplicatesFound: 0,
+      },
     });
   });
 });

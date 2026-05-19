@@ -1,14 +1,10 @@
 import {
   BadRequestException,
   Injectable,
-  InternalServerErrorException,
   Logger,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { ContactSource } from "@prisma/client";
-import { google, people_v1 } from "googleapis";
-import { ContactUpsertService } from "../contacts/contact-upsert.service";
-import { googlePersonToNormalizedContact } from "../contacts/google-contact.adapter";
+import { google } from "googleapis";
 import { OAuthTokenService } from "../oauth-tokens/oauth-token.service";
 import { PrismaService } from "../prisma/prisma.service";
 
@@ -22,13 +18,6 @@ const GOOGLE_SCOPES = [
 /** Placeholder redirect URI; only used for token refresh via googleapis, not authorization-code flow. */
 const OAUTH2_REDIRECT_PLACEHOLDER = "urn:ietf:wg:oauth:2.0:oob";
 
-export type GoogleContactsSyncResult = {
-  syncMode: "full" | "delta";
-  processedCount: number;
-  totalContacts: number;
-  lastSyncAt: Date | null;
-};
-
 @Injectable()
 export class GoogleService {
   private readonly logger = new Logger(GoogleService.name);
@@ -37,7 +26,6 @@ export class GoogleService {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     private readonly oauthTokenService: OAuthTokenService,
-    private readonly contactUpsert: ContactUpsertService,
   ) {}
 
   buildOAuthClient(): InstanceType<typeof google.auth.OAuth2> {
@@ -147,155 +135,6 @@ export class GoogleService {
       },
     );
     return oauth2;
-  }
-
-  private async getAuthorizedPeopleClient(userId: string) {
-    const oauth2 = await this.getOAuth2ForUser(userId);
-    return google.people({ version: "v1", auth: oauth2 });
-  }
-
-  private async peopleIntegrationState(userId: string) {
-    return this.prisma.integrationState.upsert({
-      where: {
-        userId_source: { userId, source: ContactSource.GOOGLE },
-      },
-      create: { userId, source: ContactSource.GOOGLE },
-      update: {},
-    });
-  }
-
-  async syncContacts(userId: string): Promise<GoogleContactsSyncResult> {
-    try {
-      return await this.runContactsSync(userId);
-    } catch (error) {
-      if (this.isInvalidSyncTokenError(error)) {
-        this.logger.warn(
-          `Google People sync token invalid for user ${userId}; retrying full sync`,
-        );
-        await this.prisma.integrationState.updateMany({
-          where: { userId, source: ContactSource.GOOGLE },
-          data: { syncToken: null },
-        });
-        return await this.runContactsSync(userId);
-      }
-      throw this.mapSyncError(userId, error);
-    }
-  }
-
-  private async runContactsSync(
-    userId: string,
-  ): Promise<GoogleContactsSyncResult> {
-    const people = await this.getAuthorizedPeopleClient(userId);
-    const stateRow = await this.peopleIntegrationState(userId);
-    const syncMode: "full" | "delta" = stateRow.syncToken ? "delta" : "full";
-    let pageToken: string | undefined;
-    let nextSyncToken: string | undefined;
-    let processedCount = 0;
-
-    for (;;) {
-      const res = await people.people.connections.list({
-        resourceName: "people/me",
-        pageSize: 100,
-        pageToken,
-        personFields:
-          "names,emailAddresses,phoneNumbers,organizations,metadata",
-        requestSyncToken: true,
-        syncToken: stateRow.syncToken ?? undefined,
-      });
-      const connections = res.data.connections ?? [];
-      for (const person of connections) {
-        await this.upsertPerson(userId, person);
-        processedCount += 1;
-      }
-      if (res.data.nextSyncToken) {
-        nextSyncToken = res.data.nextSyncToken;
-      }
-      pageToken = res.data.nextPageToken ?? undefined;
-      if (!pageToken) {
-        break;
-      }
-    }
-
-    let lastSyncAt = stateRow.lastSyncAt;
-    if (nextSyncToken) {
-      const updated = await this.prisma.integrationState.update({
-        where: {
-          userId_source: { userId, source: ContactSource.GOOGLE },
-        },
-        data: { syncToken: nextSyncToken, lastSyncAt: new Date() },
-      });
-      lastSyncAt = updated.lastSyncAt;
-    }
-
-    const totalContacts = await this.contactUpsert.countActive(
-      userId,
-      ContactSource.GOOGLE,
-    );
-
-    return {
-      syncMode,
-      processedCount,
-      totalContacts,
-      lastSyncAt,
-    };
-  }
-
-  private googleErrorStatus(error: unknown): number | undefined {
-    if (error && typeof error === "object" && "response" in error) {
-      const status = (error as { response?: { status?: number } }).response
-        ?.status;
-      if (typeof status === "number") {
-        return status;
-      }
-    }
-    if (error && typeof error === "object" && "code" in error) {
-      const code = error.code;
-      if (typeof code === "number") {
-        return code;
-      }
-    }
-    return undefined;
-  }
-
-  private isInvalidSyncTokenError(error: unknown): boolean {
-    return this.googleErrorStatus(error) === 410;
-  }
-
-  private mapSyncError(userId: string, error: unknown): Error {
-    if (error instanceof BadRequestException) {
-      return error;
-    }
-    const status = this.googleErrorStatus(error);
-    if (status === 401 || status === 403) {
-      return new BadRequestException(
-        "Google authorization expired or was revoked. Reconnect your Google account.",
-      );
-    }
-    const reason = error instanceof Error ? error.message : String(error);
-    this.logger.error(
-      `Google contacts sync failed for user ${userId}: ${reason}`,
-      error instanceof Error ? error.stack : undefined,
-    );
-    return new InternalServerErrorException("Google contacts sync failed");
-  }
-
-  private async upsertPerson(
-    userId: string,
-    person: people_v1.Schema$Person,
-  ): Promise<void> {
-    const normalized = googlePersonToNormalizedContact(person);
-    if (!normalized) {
-      return;
-    }
-    if (normalized.deleted) {
-      await this.contactUpsert.softDelete(
-        userId,
-        ContactSource.GOOGLE,
-        normalized.externalId,
-      );
-      return;
-    }
-    await this.contactUpsert.upsert(userId, normalized);
   }
 
   private looksLikeTravel(ev: {

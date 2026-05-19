@@ -7,7 +7,10 @@ import type {
   ContactPhone,
   ContactUrl,
 } from "@prisma/client";
-import type { ContactDetailDto, ContactSummaryDto } from "./dto/contact-response.dto";
+import type {
+  ContactDetailDto,
+  ContactSummaryDto,
+} from "./dto/contact-response.dto";
 
 export type ContactWithRelations = Contact & {
   phones: ContactPhone[];
@@ -29,6 +32,7 @@ export class ContactSerializer {
       id: row.id,
       source: row.source,
       externalId: row.externalId,
+      mergeGroupId: row.mergeGroupId,
       displayName: row.displayName,
       firstName: row.firstName,
       lastName: row.lastName,

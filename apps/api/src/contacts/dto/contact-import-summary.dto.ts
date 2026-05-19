@@ -1,11 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { ContactSource } from "@prisma/client";
+import { ContactSyncStatsDto } from "./contact-sync-stats.dto";
 
 export class ContactSourceImportSummaryDto {
   @ApiProperty({ enum: ContactSource })
   source!: ContactSource;
 
-  @ApiProperty({ description: "Active (non-deleted) contacts for this source." })
+  @ApiProperty({
+    description: "Active (non-deleted) contacts for this source.",
+  })
   activeCount!: number;
 
   @ApiProperty({ description: "Contacts soft-deleted for this source." })
@@ -20,6 +23,12 @@ export class ContactSourceImportSummaryDto {
     description: "Whether a sync cursor is stored (e.g. Google sync token).",
   })
   hasSyncToken?: boolean;
+
+  @ApiPropertyOptional({
+    type: ContactSyncStatsDto,
+    description: "Stats from the most recent successful sync for this source.",
+  })
+  lastSyncStats?: ContactSyncStatsDto;
 }
 
 export class ContactImportSummaryDto {
