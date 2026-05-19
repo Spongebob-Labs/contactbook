@@ -46,6 +46,23 @@ jobs:
             exit 1
           }
 
+      - name: Validate migration database URL
+        run: |
+          set -euo pipefail
+          set -a
+          # shellcheck disable=SC1091
+          source apps/api/.env
+          set +a
+          if [[ -z "${DIRECT_URL:-}" ]]; then
+            echo "API_ENV_B64 must include DIRECT_URL (Supabase direct connection, port 5432)."
+            echo "Re-encode with ./scripts/encode-env-for-gh.sh from apps/api/.env that sets DIRECT_URL."
+            exit 1
+          fi
+          if [[ "${DIRECT_URL}" == *":6543"* ]]; then
+            echo "DIRECT_URL must not use the transaction pooler (port 6543)."
+            exit 1
+          fi
+
       - name: Convert .env to Cloud Run env JSON
         run: python3 scripts/dotenv-to-gcloud-env-json.py apps/api/.env "${RUNNER_TEMP}/cloudrun-env.json"
 
@@ -64,7 +81,7 @@ jobs:
         run: pnpm install --frozen-lockfile --filter api...
 
       - name: Apply Prisma migrations
-        run: pnpm -C apps/api prisma:migrate:deploy
+        run: ./scripts/migrate-api.sh
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
