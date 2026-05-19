@@ -16,16 +16,15 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
-import type { ContactCard, ContactCardType } from "@/lib/types";
+import type {
+  ContactCard,
+  ContactCardType,
+  ContactImportSummary,
+  ProfileMeResponse,
+} from "@/lib/types";
 import { CardOnboardingModal } from "@/pages/card-onboarding-page";
 import { ImportOnboardingModal } from "@/pages/import-onboarding-page";
 import { ProfileOnboardingModal } from "@/pages/profile-onboarding-page";
-
-const stats = [
-  { label: "Contact sources", value: "1", detail: "Google ready" },
-  { label: "Profile status", value: "New", detail: "Set up next" },
-  { label: "Privacy", value: "On", detail: "Cookie session" },
-];
 
 const cardTypeLabels: Record<ContactCardType, string> = {
   BUSINESS: "Business",
@@ -56,14 +55,95 @@ function getSafeReturnPath(value: string | null) {
   return value;
 }
 
+function hasInitializedProfile(profile: ProfileMeResponse | null) {
+  if (!profile) {
+    return false;
+  }
+  return Boolean(
+    profile.personal.groupId ||
+      profile.work.length > 0 ||
+      profile.business.length > 0 ||
+      profile.socials.length > 0 ||
+      profile.financial.bankAccounts.length > 0 ||
+      profile.financial.digitalWallets.length > 0 ||
+      profile.financial.cryptoWallets.length > 0,
+  );
+}
+
+function getGoogleImportSummary(summary: ContactImportSummary | null) {
+  return summary?.bySource.find((item) => item.source === "GOOGLE") ?? null;
+}
+
 export default function DashboardPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const [cards, setCards] = useState<ContactCard[]>([]);
   const [isLoadingCards, setIsLoadingCards] = useState(true);
   const [cardsError, setCardsError] = useState<string | null>(null);
+  const [profile, setProfile] = useState<ProfileMeResponse | null>(null);
+  const [importSummary, setImportSummary] = useState<ContactImportSummary | null>(null);
+  const [isLoadingOverview, setIsLoadingOverview] = useState(true);
+  const [overviewError, setOverviewError] = useState<string | null>(null);
   const onboardingStep = getOnboardingStep(searchParams.get("onboarding"));
   const returnTo = getSafeReturnPath(searchParams.get("returnTo"));
+  const hasProfileDetails = hasInitializedProfile(profile);
+  const googleSummary = getGoogleImportSummary(importSummary);
+  const hasGoogleImport = Boolean(
+    googleSummary?.hasSyncToken ||
+      googleSummary?.lastSyncAt ||
+      googleSummary?.activeCount,
+  );
+  const hasCards = cards.length > 0;
+  const isWorkspaceStarted = hasGoogleImport || hasCards;
+  const nextStep = isWorkspaceStarted
+    ? !hasCards
+      ? "card"
+      : null
+    : !hasProfileDetails
+      ? "profile"
+      : !hasGoogleImport
+        ? "import"
+        : "card";
+  const stats = [
+    {
+      label: "Imported contacts",
+      value: String(importSummary?.totalActive ?? 0),
+      detail: hasGoogleImport ? "Google import active" : "No imports yet",
+    },
+    {
+      label: "Cards",
+      value: String(cards.length),
+      detail: hasCards ? "Ready to share" : "Create your first card",
+    },
+    {
+      label: "Profile",
+      value: hasProfileDetails ? "Started" : "Basic",
+      detail: hasProfileDetails ? "Profile details saved" : "Registration details only",
+    },
+  ];
+  const todayItems = [
+    {
+      icon: UserRound,
+      label: hasProfileDetails ? "Profile details" : "Complete profile",
+      state: hasProfileDetails ? "Started" : "Optional",
+    },
+    {
+      icon: Import,
+      label: hasGoogleImport ? "Google import" : "Connect Google",
+      state: hasGoogleImport ? "Active" : "Ready",
+    },
+    {
+      icon: IdCard,
+      label: hasCards ? "Cards" : "Create card",
+      state: hasCards ? "Done" : "Next",
+    },
+    {
+      icon: Sparkles,
+      label: "Sync imports",
+      state: hasGoogleImport ? "Available" : "After connect",
+    },
+    { icon: ShieldCheck, label: "Privacy", state: "Enabled" },
+  ];
 
   const setOnboardingStep = useCallback(
     (step: OnboardingStep | null) => {
@@ -88,6 +168,33 @@ export default function DashboardPage() {
     setOnboardingStep("import");
   }, [navigate, returnTo, setOnboardingStep]);
 
+  const loadOverview = useCallback(async (shouldUpdate: () => boolean = () => true) => {
+    setIsLoadingOverview(true);
+    setOverviewError(null);
+    try {
+      const [profileData, summaryData] = await Promise.all([
+        apiFetch<ProfileMeResponse>("/v1/profile/me"),
+        apiFetch<ContactImportSummary>("/v1/contacts/import"),
+      ]);
+      if (shouldUpdate()) {
+        setProfile(profileData);
+        setImportSummary(summaryData);
+      }
+    } catch (error) {
+      if (shouldUpdate()) {
+        setOverviewError(
+          error instanceof Error
+            ? error.message
+            : "Could not load workspace overview.",
+        );
+      }
+    } finally {
+      if (shouldUpdate()) {
+        setIsLoadingOverview(false);
+      }
+    }
+  }, []);
+
   const loadCards = useCallback(async (shouldUpdate: () => boolean = () => true) => {
     setIsLoadingCards(true);
     setCardsError(null);
@@ -111,57 +218,110 @@ export default function DashboardPage() {
 
   useEffect(() => {
     let isMounted = true;
-    void loadCards(() => isMounted);
+    void Promise.all([
+      loadCards(() => isMounted),
+      loadOverview(() => isMounted),
+    ]);
     return () => {
       isMounted = false;
     };
-  }, [loadCards]);
+  }, [loadCards, loadOverview]);
 
   return (
     <AppShell>
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="rounded-lg border border-border bg-card p-6 md:p-8">
-          <Badge variant="success">MVP workspace</Badge>
+          <Badge variant={isWorkspaceStarted ? "success" : "secondary"}>
+            {isWorkspaceStarted ? "Workspace active" : "MVP workspace"}
+          </Badge>
           <div className="mt-5 max-w-3xl space-y-4">
             <h1 className="text-3xl font-semibold tracking-normal md:text-4xl">
-              Start with your contact profile, then bring Google contacts in.
+              {isWorkspaceStarted
+                ? "Your ContactBook workspace is taking shape."
+                : "Start with your contact profile, then bring Google contacts in."}
             </h1>
             <p className="text-base text-muted-foreground">
-              ContactBook keeps profile setup and contact import in one focused
-              workflow, so the first useful action is always close at hand.
+              {isWorkspaceStarted
+                ? "Review imported contacts, manage cards, and keep your shareable details current from one place."
+                : "ContactBook keeps profile setup and contact import in one focused workflow, so the first useful action is always close at hand."}
             </p>
           </div>
+          {overviewError && (
+            <Alert className="mt-5 flex items-start gap-3">
+              <AlertCircle className="mt-0.5 h-4 w-4 text-destructive" aria-hidden="true" />
+              <div>
+                <p className="font-medium">Could not load workspace overview</p>
+                <p className="mt-1 text-sm text-muted-foreground">{overviewError}</p>
+              </div>
+            </Alert>
+          )}
           <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-            <Link
-              to="/dashboard?onboarding=profile"
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border bg-background px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              Complete profile
-              <UserRound className="h-4 w-4" aria-hidden="true" />
-            </Link>
-            <Link
-              to="/dashboard?onboarding=import"
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              Import Google contacts
-              <ArrowRight className="h-4 w-4" aria-hidden="true" />
-            </Link>
+            {isLoadingOverview ? (
+              <>
+                <Skeleton className="h-10 w-36" />
+                <Skeleton className="h-10 w-40" />
+              </>
+            ) : (
+              <>
+                {nextStep === "profile" && (
+                  <Link
+                    to="/dashboard?onboarding=profile"
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border bg-background px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    Complete profile
+                    <UserRound className="h-4 w-4" aria-hidden="true" />
+                  </Link>
+                )}
+                {nextStep === "import" && (
+                  <Link
+                    to="/dashboard?onboarding=import"
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    Import Google contacts
+                    <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                  </Link>
+                )}
+                {nextStep === "card" && (
+                  <Link
+                    to="/dashboard?onboarding=card"
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    Create card
+                    <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                  </Link>
+                )}
+                {isWorkspaceStarted && (
+                  <>
+                    <Link
+                      to="/dashboard/cards"
+                      className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      View cards
+                      <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                    </Link>
+                    <Link
+                      to="/dashboard/import"
+                      className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border bg-background px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      Review imports
+                      <Import className="h-4 w-4" aria-hidden="true" />
+                    </Link>
+                  </>
+                )}
+              </>
+            )}
           </div>
         </div>
 
         <Card>
           <CardHeader>
             <CardTitle>Today</CardTitle>
-            <CardDescription>Recommended next steps</CardDescription>
+            <CardDescription>
+              {isWorkspaceStarted ? "Workspace status" : "Recommended next steps"}
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {[
-              { icon: UserRound, label: "Complete profile", state: "Optional" },
-              { icon: Import, label: "Connect Google", state: "Ready" },
-              { icon: IdCard, label: "Create card", state: cards.length > 0 ? "Done" : "Next" },
-              { icon: Sparkles, label: "Sync imports", state: "After connect" },
-              { icon: ShieldCheck, label: "Review privacy", state: "Enabled" },
-            ].map((item) => (
+            {todayItems.map((item) => (
               <div
                 key={item.label}
                 className="flex items-center justify-between rounded-md border border-border p-3"
@@ -291,7 +451,10 @@ export default function DashboardPage() {
 
       {onboardingStep === "profile" && (
         <ProfileOnboardingModal
-          onComplete={finishProfileStep}
+          onComplete={() => {
+            void loadOverview();
+            finishProfileStep();
+          }}
           onSkip={finishProfileStep}
         />
       )}
@@ -302,7 +465,7 @@ export default function DashboardPage() {
         <CardOnboardingModal
           onComplete={() => {
             setOnboardingStep(null);
-            void loadCards();
+            void Promise.all([loadCards(), loadOverview()]);
           }}
           onSkip={() => setOnboardingStep(null)}
         />

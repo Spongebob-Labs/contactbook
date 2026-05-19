@@ -389,3 +389,9 @@
 - Decision: Track the intended post-registration redirect as `/dashboard?onboarding=profile` before marking the auth context authenticated.
 - Reason: Marking the user authenticated can re-render the auth route and trigger its generic authenticated redirect to `/dashboard`, dropping the onboarding query before the dashboard modal opens.
 - Notes: Existing-user login still follows the original protected-route destination, while new signups keep the dashboard-owned onboarding modal flow.
+
+## 2026-05-19 - Make Dashboard Reflect Setup Progress
+
+- Decision: Load profile and import summary state on the dashboard and use it with card state to choose contextual hero copy, checklist status, and stats.
+- Reason: After a user skips profile setup, imports Google contacts, and creates a card, the dashboard should no longer present first-run onboarding CTAs as the primary workspace message.
+- Notes: Profile completion remains optional; imported contacts or created cards are enough to switch the dashboard into an active workspace state.
