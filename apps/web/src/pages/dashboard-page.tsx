@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { useCallback, useEffect, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   AlertCircle,
   ArrowRight,
@@ -17,6 +17,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
 import type { ContactCard, ContactCardType } from "@/lib/types";
+import { CardOnboardingModal } from "@/pages/card-onboarding-page";
+import { ImportOnboardingModal } from "@/pages/import-onboarding-page";
+import { ProfileOnboardingModal } from "@/pages/profile-onboarding-page";
 
 const stats = [
   { label: "Contact sources", value: "1", detail: "Google ready" },
@@ -37,40 +40,82 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
+type OnboardingStep = "profile" | "import" | "card";
+
+function getOnboardingStep(value: string | null): OnboardingStep | null {
+  if (value === "profile" || value === "import" || value === "card") {
+    return value;
+  }
+  return null;
+}
+
+function getSafeReturnPath(value: string | null) {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) {
+    return null;
+  }
+  return value;
+}
+
 export default function DashboardPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [cards, setCards] = useState<ContactCard[]>([]);
   const [isLoadingCards, setIsLoadingCards] = useState(true);
   const [cardsError, setCardsError] = useState<string | null>(null);
+  const onboardingStep = getOnboardingStep(searchParams.get("onboarding"));
+  const returnTo = getSafeReturnPath(searchParams.get("returnTo"));
+
+  const setOnboardingStep = useCallback(
+    (step: OnboardingStep | null) => {
+      setSearchParams((current) => {
+        const next = new URLSearchParams(current);
+        if (step) {
+          next.set("onboarding", step);
+        } else {
+          next.delete("onboarding");
+        }
+        return next;
+      }, { replace: true });
+    },
+    [setSearchParams],
+  );
+
+  const finishProfileStep = useCallback(() => {
+    if (returnTo) {
+      navigate(returnTo, { replace: true });
+      return;
+    }
+    setOnboardingStep("import");
+  }, [navigate, returnTo, setOnboardingStep]);
+
+  const loadCards = useCallback(async (shouldUpdate: () => boolean = () => true) => {
+    setIsLoadingCards(true);
+    setCardsError(null);
+    try {
+      const data = await apiFetch<ContactCard[]>("/v1/cards");
+      if (shouldUpdate()) {
+        setCards(data);
+      }
+    } catch (error) {
+      if (shouldUpdate()) {
+        setCardsError(
+          error instanceof Error ? error.message : "Could not load cards.",
+        );
+      }
+    } finally {
+      if (shouldUpdate()) {
+        setIsLoadingCards(false);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
-
-    const loadCards = async () => {
-      setIsLoadingCards(true);
-      setCardsError(null);
-      try {
-        const data = await apiFetch<ContactCard[]>("/v1/cards");
-        if (isMounted) {
-          setCards(data);
-        }
-      } catch (error) {
-        if (isMounted) {
-          setCardsError(
-            error instanceof Error ? error.message : "Could not load cards.",
-          );
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoadingCards(false);
-        }
-      }
-    };
-
-    void loadCards();
+    void loadCards(() => isMounted);
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [loadCards]);
 
   return (
     <AppShell>
@@ -88,14 +133,14 @@ export default function DashboardPage() {
           </div>
           <div className="mt-6 flex flex-col gap-3 sm:flex-row">
             <Link
-              to="/onboarding/profile"
+              to="/dashboard?onboarding=profile"
               className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border bg-background px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               Complete profile
               <UserRound className="h-4 w-4" aria-hidden="true" />
             </Link>
             <Link
-              to="/dashboard/import"
+              to="/dashboard?onboarding=import"
               className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               Import Google contacts
@@ -155,7 +200,7 @@ export default function DashboardPage() {
             </p>
           </div>
           <Link
-            to="/onboarding/card"
+            to="/dashboard?onboarding=card"
             className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border bg-background px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             Create card
@@ -193,7 +238,7 @@ export default function DashboardPage() {
                 business, or custom use.
               </p>
               <Link
-                to="/onboarding/card"
+                to="/dashboard?onboarding=card"
                 className="mt-5 inline-flex h-10 items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 Start card
@@ -243,6 +288,25 @@ export default function DashboardPage() {
           </div>
         )}
       </section>
+
+      {onboardingStep === "profile" && (
+        <ProfileOnboardingModal
+          onComplete={finishProfileStep}
+          onSkip={finishProfileStep}
+        />
+      )}
+      {onboardingStep === "import" && (
+        <ImportOnboardingModal onSkip={() => setOnboardingStep("card")} />
+      )}
+      {onboardingStep === "card" && (
+        <CardOnboardingModal
+          onComplete={() => {
+            setOnboardingStep(null);
+            void loadCards();
+          }}
+          onSkip={() => setOnboardingStep(null)}
+        />
+      )}
     </AppShell>
   );
 }

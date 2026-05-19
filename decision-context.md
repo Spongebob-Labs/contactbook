@@ -346,4 +346,22 @@
 
 - Decision: Load `GET /v1/cards` on the dashboard and display the user's ContactBook cards in a dedicated card section.
 - Reason: After users create a first card during onboarding, the dashboard should immediately reflect that core product object instead of only showing setup prompts.
-- Notes: The dashboard shows loading, error, empty, and populated card states, with an empty state linking back to `/onboarding/card`.
+- Notes: The dashboard shows loading, error, empty, and populated card states, with an empty state opening the dashboard card onboarding modal.
+
+## 2026-05-19 - Make Dashboard Own Onboarding Modals
+
+- Decision: Move profile, import, and first-card onboarding into dashboard-owned modal steps keyed by `/dashboard?onboarding=profile|import|card`.
+- Reason: Authenticated users should remain anchored on the dashboard while completing setup instead of moving through standalone onboarding routes.
+- Notes: Legacy `/onboarding/profile`, `/onboarding/import`, and `/onboarding/card` paths now redirect to the matching dashboard modal for compatibility.
+
+## 2026-05-19 - Return Profile Edits To Profile Page
+
+- Decision: Open profile editing as `/dashboard?onboarding=profile&returnTo=/profile` when launched from the profile page.
+- Reason: Users editing from their profile should return to that profile view after saving or skipping, while signup/dashboard onboarding should continue through the setup steps.
+- Notes: Dashboard only honors safe internal `returnTo` paths and otherwise advances profile onboarding to the import step.
+
+## 2026-05-19 - Patch Existing Profiles From Onboarding Modal
+
+- Decision: Have the profile onboarding modal use `PATCH /v1/profile/me` when existing profile groups are already present, while keeping `POST /v1/profile/onboarding` for first-time setup.
+- Reason: The backend intentionally returns `409 Profile already initialized` for repeat calls to the first-time onboarding endpoint.
+- Notes: The frontend also retries once with `PATCH /v1/profile/me` if first-time initialization races into a 409 response.

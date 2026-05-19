@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { apiFetch } from "@/lib/api";
+import { ApiError, apiFetch } from "@/lib/api";
 import type { PostalAddress, ProfileMeResponse } from "@/lib/types";
 
 type AddressForm = {
@@ -485,13 +485,33 @@ function profileToForm(profile: ProfileMeResponse): OnboardingForm {
 
 const MAX_PROFILE_PHOTO_BYTES = 1024 * 1024;
 
-export default function ProfileOnboardingPage() {
+function hasInitializedProfile(profile: ProfileMeResponse) {
+  return Boolean(
+    profile.personal.groupId ||
+      profile.work.length > 0 ||
+      profile.business.length > 0 ||
+      profile.socials.length > 0 ||
+      profile.financial.bankAccounts.length > 0 ||
+      profile.financial.digitalWallets.length > 0 ||
+      profile.financial.cryptoWallets.length > 0,
+  );
+}
+
+type ProfileOnboardingModalProps = {
+  onComplete: () => void;
+  onSkip: () => void;
+};
+
+export function ProfileOnboardingModal({
+  onComplete,
+  onSkip,
+}: ProfileOnboardingModalProps) {
   const [form, setForm] = useState<OnboardingForm>(initialForm);
   const [stepIndex, setStepIndex] = useState(0);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const navigate = useNavigate();
+  const [hasExistingProfile, setHasExistingProfile] = useState(false);
   const step = steps[stepIndex];
   const controlsDisabled = isSaving || isLoadingProfile || Boolean(loadError);
 
@@ -505,6 +525,7 @@ export default function ProfileOnboardingPage() {
         const profile = await apiFetch<ProfileMeResponse>("/v1/profile/me");
         if (isMounted) {
           setForm(profileToForm(profile));
+          setHasExistingProfile(hasInitializedProfile(profile));
         }
       } catch (error) {
         if (isMounted) {
@@ -862,13 +883,29 @@ export default function ProfileOnboardingPage() {
     try {
       const payload = buildProfilePayload();
       const sectionKeys = Object.keys(payload).filter((key) => key !== "identity");
-      const endpoint =
-        sectionKeys.length > 0 ? "/v1/profile/onboarding" : "/v1/profile/me";
-      const method = sectionKeys.length > 0 ? "POST" : "PATCH";
-      await apiFetch<unknown>(endpoint, { method, body: payload });
+      const shouldInitialize = sectionKeys.length > 0 && !hasExistingProfile;
+      try {
+        await apiFetch<unknown>(
+          shouldInitialize ? "/v1/profile/onboarding" : "/v1/profile/me",
+          { method: shouldInitialize ? "POST" : "PATCH", body: payload },
+        );
+      } catch (error) {
+        if (
+          shouldInitialize &&
+          error instanceof ApiError &&
+          error.status === 409
+        ) {
+          await apiFetch<unknown>("/v1/profile/me", {
+            method: "PATCH",
+            body: payload,
+          });
+        } else {
+          throw error;
+        }
+      }
 
       toast.success("Profile saved.");
-      navigate("/onboarding/import", { replace: true });
+      onComplete();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not save profile.");
     } finally {
@@ -878,11 +915,10 @@ export default function ProfileOnboardingPage() {
 
   const skipProfile = () => {
     toast.info("You can complete your profile later.");
-    navigate("/onboarding/import", { replace: true });
+    onSkip();
   };
 
   return (
-    <AppShell>
       <section className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 px-4 py-8 backdrop-blur-sm md:px-6">
         <div className="flex max-h-[calc(100vh-3rem)] w-full max-w-6xl flex-col overflow-hidden rounded-lg border border-border bg-card shadow-xl">
           <div className="border-b border-border px-4 py-3 md:px-5">
@@ -1492,6 +1528,18 @@ export default function ProfileOnboardingPage() {
           </div>
         </div>
       </section>
+  );
+}
+
+export default function ProfileOnboardingPage() {
+  const navigate = useNavigate();
+
+  return (
+    <AppShell>
+      <ProfileOnboardingModal
+        onComplete={() => navigate("/dashboard?onboarding=import", { replace: true })}
+        onSkip={() => navigate("/dashboard?onboarding=import", { replace: true })}
+      />
     </AppShell>
   );
 }

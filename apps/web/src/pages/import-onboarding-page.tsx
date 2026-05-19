@@ -10,14 +10,19 @@ import { startGoogleImportConnection } from "@/lib/google-import";
 
 const GOOGLE_OAUTH_PENDING_KEY = "contactbook:google-oauth-pending";
 
-export default function ImportOnboardingPage() {
+type ImportOnboardingModalProps = {
+  onSkip: () => void;
+};
+
+export function ImportOnboardingModal({
+  onSkip,
+}: ImportOnboardingModalProps) {
   const [isConnectingGoogle, setIsConnectingGoogle] = useState(false);
-  const navigate = useNavigate();
 
   const connectGoogle = async () => {
     setIsConnectingGoogle(true);
     try {
-      const url = await startGoogleImportConnection("/dashboard/import?next=/onboarding/card");
+      const url = await startGoogleImportConnection("/dashboard/import?next=/dashboard%3Fonboarding%3Dcard");
       sessionStorage.setItem(GOOGLE_OAUTH_PENDING_KEY, "1");
       window.location.assign(url);
     } catch (error) {
@@ -30,7 +35,6 @@ export default function ImportOnboardingPage() {
   };
 
   return (
-    <AppShell>
       <section className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 px-4 py-8 backdrop-blur-sm md:px-6">
         <div className="flex max-h-[calc(100vh-4rem)] w-full max-w-4xl flex-col overflow-hidden rounded-lg border border-border bg-card shadow-xl">
           <div className="border-b border-border px-4 py-3 md:px-5">
@@ -47,7 +51,7 @@ export default function ImportOnboardingPage() {
               <Button
                 type="button"
                 variant="ghost"
-                onClick={() => navigate("/onboarding/card", { replace: true })}
+                onClick={onSkip}
                 className="self-start"
               >
                 Skip for now
@@ -66,6 +70,17 @@ export default function ImportOnboardingPage() {
           </div>
         </div>
       </section>
+  );
+}
+
+export default function ImportOnboardingPage() {
+  const navigate = useNavigate();
+
+  return (
+    <AppShell>
+      <ImportOnboardingModal
+        onSkip={() => navigate("/dashboard?onboarding=card", { replace: true })}
+      />
     </AppShell>
   );
 }

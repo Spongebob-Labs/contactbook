@@ -148,7 +148,7 @@ export default function ProfilePage() {
               </div>
             </div>
             <Link
-              to="/onboarding/profile"
+              to="/dashboard?onboarding=profile&returnTo=/profile"
               className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
                 <Edit3 className="h-4 w-4" aria-hidden="true" />

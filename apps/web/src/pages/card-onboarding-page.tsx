@@ -33,11 +33,18 @@ const cardTypeOptions: Array<{
   },
 ];
 
-export default function CardOnboardingPage() {
+type CardOnboardingModalProps = {
+  onComplete: () => void;
+  onSkip: () => void;
+};
+
+export function CardOnboardingModal({
+  onComplete,
+  onSkip,
+}: CardOnboardingModalProps) {
   const [name, setName] = useState("My first ContactBook card");
   const [type, setType] = useState<ContactCardType>("PERSONAL");
   const [isSaving, setIsSaving] = useState(false);
-  const navigate = useNavigate();
 
   const selectedType = cardTypeOptions.find((option) => option.value === type);
 
@@ -58,7 +65,7 @@ export default function CardOnboardingPage() {
         },
       });
       toast.success("Your first card is ready.");
-      navigate("/dashboard", { replace: true });
+      onComplete();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not create card.");
     } finally {
@@ -68,11 +75,10 @@ export default function CardOnboardingPage() {
 
   const skipCard = () => {
     toast.info("You can create your first card later.");
-    navigate("/dashboard", { replace: true });
+    onSkip();
   };
 
   return (
-    <AppShell>
       <section className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 px-4 py-8 backdrop-blur-sm md:px-6">
         <div className="grid max-h-[calc(100vh-4rem)] w-full max-w-5xl overflow-hidden rounded-lg border border-border bg-card shadow-xl lg:grid-cols-[minmax(0,1fr)_320px]">
           <div className="min-h-0 overflow-y-auto p-4 md:p-6">
@@ -187,6 +193,18 @@ export default function CardOnboardingPage() {
           </div>
         </div>
       </section>
+  );
+}
+
+export default function CardOnboardingPage() {
+  const navigate = useNavigate();
+
+  return (
+    <AppShell>
+      <CardOnboardingModal
+        onComplete={() => navigate("/dashboard", { replace: true })}
+        onSkip={() => navigate("/dashboard", { replace: true })}
+      />
     </AppShell>
   );
 }
