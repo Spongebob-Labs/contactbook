@@ -9,7 +9,7 @@ export type VerifyCodeResponse =
 export type ContactImport = {
   id: string;
   source: "GOOGLE" | "ICLOUD" | "CSV";
-  status: "PENDING" | "PROCESSED" | "FAILED" | "IGNORED";
+  status?: "PENDING" | "PROCESSED" | "FAILED" | "IGNORED";
   displayNameSnapshot: string | null;
   rawPerson: unknown;
   lastSyncedAt: string | null;

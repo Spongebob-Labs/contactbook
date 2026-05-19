@@ -15,6 +15,7 @@ import { startGoogleImportConnection } from "@/lib/google-import";
 import type { ContactImport, GoogleSyncResponse } from "@/lib/types";
 
 const GOOGLE_OAUTH_PENDING_KEY = "contactbook:google-oauth-pending";
+const DEFAULT_IMPORT_STATUS = "PENDING";
 
 function formatDate(value: string | null) {
   if (!value) {
@@ -24,6 +25,10 @@ function formatDate(value: string | null) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
+}
+
+function getImportStatus(item: ContactImport) {
+  return item.status ?? DEFAULT_IMPORT_STATUS;
 }
 
 export default function ImportPage() {
@@ -244,28 +249,31 @@ export default function ImportPage() {
                 <span>Status</span>
                 <span>Last synced</span>
               </div>
-              {filtered.map((item) => (
-                <div
-                  key={item.id}
-                  className="grid gap-2 border-b border-border px-4 py-4 last:border-b-0 md:grid-cols-[1fr_120px_220px] md:items-center"
-                >
-                  <div>
-                    <p className="font-medium">
-                      {item.displayNameSnapshot ?? "Unknown contact"}
-                    </p>
-                    <p className="text-xs text-muted-foreground">{item.source}</p>
-                  </div>
-                  <Badge
-                    variant={item.status === "PROCESSED" ? "success" : "warning"}
-                    className="w-fit"
+              {filtered.map((item) => {
+                const status = getImportStatus(item);
+                return (
+                  <div
+                    key={item.id}
+                    className="grid gap-2 border-b border-border px-4 py-4 last:border-b-0 md:grid-cols-[1fr_120px_220px] md:items-center"
                   >
-                    {item.status.toLowerCase()}
-                  </Badge>
-                  <p className="text-sm text-muted-foreground">
-                    {formatDate(item.lastSyncedAt)}
-                  </p>
-                </div>
-              ))}
+                    <div>
+                      <p className="font-medium">
+                        {item.displayNameSnapshot ?? "Unknown contact"}
+                      </p>
+                      <p className="text-xs text-muted-foreground">{item.source}</p>
+                    </div>
+                    <Badge
+                      variant={status === "PROCESSED" ? "success" : "warning"}
+                      className="w-fit"
+                    >
+                      {status.toLowerCase()}
+                    </Badge>
+                    <p className="text-sm text-muted-foreground">
+                      {formatDate(item.lastSyncedAt)}
+                    </p>
+                  </div>
+                );
+              })}
             </div>
           )}
         </CardContent>
