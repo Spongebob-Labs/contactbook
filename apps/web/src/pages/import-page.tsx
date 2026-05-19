@@ -122,7 +122,10 @@ export default function ImportPage() {
   const syncGoogle = useCallback(async (nextPath?: string | null) => {
     setIsSyncing(true);
     try {
-      const result = await apiFetch<GoogleSyncResponse>("/v1/contacts/sync");
+      const result = await apiFetch<GoogleSyncResponse>(
+        "/v1/contacts/sync?source=GOOGLE",
+        { method: "POST" },
+      );
       localStorage.setItem(GOOGLE_CONNECTED_KEY, "1");
       setHasConnectedGoogle(true);
       toast.success(`Synced ${result.processedCount} contacts.`);

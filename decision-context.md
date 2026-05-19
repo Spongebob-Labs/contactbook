@@ -371,3 +371,9 @@
 - Decision: Change Google contact sync from `/v1/integrations/google/sync` to `/v1/contacts/sync`.
 - Reason: Backend confirmed the integrations Google sync endpoint will be removed and replaced by the contacts sync endpoint.
 - Notes: `GET /v1/contacts/import` was already in use for the import summary/list contract. The remote backend deployment may lag this frontend change until the backend GitHub deployment issue is resolved.
+
+## 2026-05-19 - Align Sync Method With Live API Docs
+
+- Decision: Call Google contact sync as `POST /v1/contacts/sync?source=GOOGLE`.
+- Reason: Live Swagger documents `POST /api/v1/contacts/sync` with required `source=GOOGLE|ICLOUD`; a GET request falls through to the contact UUID route and returns `Validation failed (uuid is expected)`.
+- Notes: `GET /v1/contacts/import` remains the import summary endpoint and does not trigger provider sync.
