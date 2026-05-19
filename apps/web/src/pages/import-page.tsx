@@ -11,14 +11,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
+import { startGoogleImportConnection } from "@/lib/google-import";
+import {
+  GOOGLE_CONNECTED_KEY,
+  GOOGLE_OAUTH_PENDING_KEY,
+} from "@/lib/session-storage";
 import type {
   ContactImport,
   ContactImportSummary,
   GoogleSyncResponse,
 } from "@/lib/types";
-
-const GOOGLE_OAUTH_PENDING_KEY = "contactbook:google-oauth-pending";
-const GOOGLE_CONNECTED_KEY = "contactbook:google-connected";
 
 function getSafeNextPath(value: string | null) {
   if (!value || !value.startsWith("/") || value.startsWith("//")) {
@@ -84,11 +86,10 @@ export default function ImportPage() {
   const [summary, setSummary] = useState<ContactImportSummary | null>(null);
   const [query, setQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [isConnectingGoogle, setIsConnectingGoogle] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [hasConnectedGoogle, setHasConnectedGoogle] = useState(
-    () => localStorage.getItem(GOOGLE_CONNECTED_KEY) === "1",
-  );
+  const [hasConnectedGoogle, setHasConnectedGoogle] = useState(false);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -108,10 +109,7 @@ export default function ImportPage() {
       ]);
       setSummary(summaryData);
       setImports(contactsData);
-      if (hasGoogleConnectionEvidence(summaryData, contactsData)) {
-        localStorage.setItem(GOOGLE_CONNECTED_KEY, "1");
-        setHasConnectedGoogle(true);
-      }
+      setHasConnectedGoogle(hasGoogleConnectionEvidence(summaryData, contactsData));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load imports.");
     } finally {
@@ -126,7 +124,6 @@ export default function ImportPage() {
         "/v1/contacts/sync?source=GOOGLE",
         { method: "POST" },
       );
-      localStorage.setItem(GOOGLE_CONNECTED_KEY, "1");
       setHasConnectedGoogle(true);
       toast.success(`Synced ${result.processedCount} contacts.`);
       await loadImports();
@@ -137,7 +134,6 @@ export default function ImportPage() {
       const message =
         err instanceof Error ? err.message : "Could not sync Google contacts.";
       if (/authorization expired|revoked|reconnect/i.test(message)) {
-        localStorage.removeItem(GOOGLE_CONNECTED_KEY);
         setHasConnectedGoogle(false);
       }
       toast.error(message);
@@ -145,6 +141,19 @@ export default function ImportPage() {
       setIsSyncing(false);
     }
   }, [loadImports, navigate]);
+
+  const connectGoogle = useCallback(async () => {
+    setIsConnectingGoogle(true);
+    try {
+      const url = await startGoogleImportConnection("/dashboard/import");
+      sessionStorage.setItem(GOOGLE_OAUTH_PENDING_KEY, "1");
+      window.location.assign(url);
+    } catch (err) {
+      sessionStorage.removeItem(GOOGLE_OAUTH_PENDING_KEY);
+      toast.error(err instanceof Error ? err.message : "Could not connect Google.");
+      setIsConnectingGoogle(false);
+    }
+  }, []);
 
   useEffect(() => {
     void loadImports();
@@ -155,7 +164,6 @@ export default function ImportPage() {
     const reason = searchParams.get("reason");
     const nextPath = getSafeNextPath(searchParams.get("next"));
     if (googleState === "connected") {
-      localStorage.setItem(GOOGLE_CONNECTED_KEY, "1");
       setHasConnectedGoogle(true);
       const shouldAutoSync =
         sessionStorage.getItem(GOOGLE_OAUTH_PENDING_KEY) === "1";
@@ -172,6 +180,7 @@ export default function ImportPage() {
     }
     if (googleState === "error") {
       sessionStorage.removeItem(GOOGLE_OAUTH_PENDING_KEY);
+      localStorage.removeItem(GOOGLE_CONNECTED_KEY);
       toast.error(
         reason
           ? `Google connection failed. Reason: ${reason}.`
@@ -224,15 +233,26 @@ export default function ImportPage() {
             </p>
           </div>
           <div className="mt-6">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => void syncGoogle()}
-              disabled={isSyncing}
-            >
-              <RefreshCw className="h-4 w-4" aria-hidden="true" />
-              Sync contacts
-            </Button>
+            {hasConnectedGoogle ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void syncGoogle()}
+                disabled={isSyncing}
+              >
+                <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                Sync contacts
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                onClick={() => void connectGoogle()}
+                disabled={isConnectingGoogle}
+              >
+                <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                {isConnectingGoogle ? "Connecting" : "Connect Google"}
+              </Button>
+            )}
           </div>
         </div>
 
@@ -264,7 +284,11 @@ export default function ImportPage() {
         </Card>
       </section>
 
-      <ContactImportOptions hideGoogle />
+      <ContactImportOptions
+        hideGoogle={hasConnectedGoogle}
+        onConnectGoogle={connectGoogle}
+        isConnectingGoogle={isConnectingGoogle}
+      />
 
       <Card>
         <CardHeader>

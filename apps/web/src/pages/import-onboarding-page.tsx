@@ -7,8 +7,7 @@ import { ContactImportOptions } from "@/components/contact-import-options";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { startGoogleImportConnection } from "@/lib/google-import";
-
-const GOOGLE_OAUTH_PENDING_KEY = "contactbook:google-oauth-pending";
+import { GOOGLE_OAUTH_PENDING_KEY } from "@/lib/session-storage";
 
 type ImportOnboardingModalProps = {
   mode?: "setup" | "create";

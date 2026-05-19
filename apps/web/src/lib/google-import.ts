@@ -1,7 +1,6 @@
 import { GOOGLE_OAUTH_SCOPES } from "@/lib/google-oauth";
+import { GOOGLE_IMPORT_NEXT_KEY } from "@/lib/session-storage";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
-
-export const GOOGLE_IMPORT_NEXT_KEY = "contactbook:google-import-next";
 
 export async function startGoogleImportConnection(next = "/dashboard/import") {
   if (!isSupabaseConfigured || !supabase) {

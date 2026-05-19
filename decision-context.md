@@ -407,3 +407,9 @@
 - Decision: Add setup/create modes to the card modal so first-card language appears only during first-run setup.
 - Reason: Reusing the card modal from dashboard and cards pages should not tell users they are creating their first card after they already have cards.
 - Notes: Setup import links encode `flow=setup` before the Google OAuth callback, while regular dashboard card creation uses generic card copy.
+
+## 2026-05-19 - Derive Import Auth State From Backend
+
+- Decision: Stop using the browser-wide `contactbook:google-connected` localStorage marker as source of truth for Google import UI.
+- Reason: Multiple ContactBook accounts in the same browser can otherwise inherit stale Google-connected UI from another user.
+- Notes: Import status now comes from `GET /v1/contacts/import` plus `GET /v1/contacts?source=GOOGLE`; logout clears stale ContactBook OAuth/import keys and signs out any temporary Supabase OAuth session.
