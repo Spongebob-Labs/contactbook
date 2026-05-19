@@ -3,21 +3,26 @@ import { ContactSource } from "@prisma/client";
 import { ContactsSyncService } from "./contacts-sync.service";
 
 describe("ContactsSyncService", () => {
-  const google = { sync: jest.fn() };
-  const icloud = { sync: jest.fn() };
-  const svc = new ContactsSyncService(
-    google as never,
-    icloud as never,
-  );
+  const google = { sync: jest.fn(), import: jest.fn() };
+  const icloud = { sync: jest.fn(), import: jest.fn() };
+  const svc = new ContactsSyncService(google as never, icloud);
 
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  it("dispatches GOOGLE to google provider", async () => {
+  it("dispatches GOOGLE sync to google provider", async () => {
     google.sync.mockResolvedValue({ source: ContactSource.GOOGLE });
     await svc.sync("user-1", ContactSource.GOOGLE);
     expect(google.sync).toHaveBeenCalledWith("user-1");
+    expect(google.import).not.toHaveBeenCalled();
+  });
+
+  it("dispatches GOOGLE import to google provider", async () => {
+    google.import.mockResolvedValue({ source: ContactSource.GOOGLE });
+    await svc.import("user-1", ContactSource.GOOGLE);
+    expect(google.import).toHaveBeenCalledWith("user-1");
+    expect(google.sync).not.toHaveBeenCalled();
   });
 
   it("rejects CSV sync", async () => {
@@ -26,10 +31,23 @@ describe("ContactsSyncService", () => {
     );
   });
 
-  it("ICLOUD delegates to icloud provider", async () => {
+  it("rejects CSV import", async () => {
+    await expect(
+      svc.import("user-1", ContactSource.CSV),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it("ICLOUD sync delegates to icloud provider", async () => {
     icloud.sync.mockRejectedValue(new NotImplementedException());
     await expect(
       svc.sync("user-1", ContactSource.ICLOUD),
+    ).rejects.toBeInstanceOf(NotImplementedException);
+  });
+
+  it("ICLOUD import delegates to icloud provider", async () => {
+    icloud.import.mockRejectedValue(new NotImplementedException());
+    await expect(
+      svc.import("user-1", ContactSource.ICLOUD),
     ).rejects.toBeInstanceOf(NotImplementedException);
   });
 });

@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Post, UseGuards } from "@nestjs/common";
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
@@ -65,5 +65,4 @@ export class GoogleController {
     await this.google.disconnectGoogle(user.sub);
     return { ok: true };
   }
-
 }

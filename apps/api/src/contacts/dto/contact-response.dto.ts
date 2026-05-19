@@ -79,7 +79,8 @@ export class ContactSummaryDto {
   externalId!: string;
 
   @ApiPropertyOptional({
-    description: "Cross-provider merge group when phone/email matched another source.",
+    description:
+      "Cross-provider merge group when phone/email matched another source.",
   })
   mergeGroupId?: string | null;
 

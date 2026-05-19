@@ -26,7 +26,8 @@ export class ContactSyncResponseDto {
   lastSyncAt?: Date | null;
 
   @ApiPropertyOptional({
-    description: "True when sync recovered from an expired Google sync token (410).",
+    description:
+      "True when sync recovered from an expired Google sync token (410).",
   })
   recoveredFromExpiredToken?: boolean;
 }
