@@ -204,13 +204,18 @@ export default function ContactsPage() {
           <h1 className="mt-3 text-3xl font-semibold tracking-normal">Contacts</h1>
         </div>
         <div className="flex w-full flex-col gap-3 lg:max-w-2xl lg:items-end">
-          <Link
-            to="/dashboard/import"
-            className={buttonVariants({ variant: "default" })}
-          >
-            <Download className="h-4 w-4" aria-hidden="true" />
-            Import contacts
-          </Link>
+          <div className="flex flex-col items-start gap-1 lg:items-end">
+            <Link
+              to="/dashboard/import"
+              className={buttonVariants({ variant: "default" })}
+            >
+              <Download className="h-4 w-4" aria-hidden="true" />
+              Import contacts
+            </Link>
+            <p className="text-xs text-muted-foreground">
+              Last sync {formatDate(googleSummary?.lastSyncAt)}
+            </p>
+          </div>
           <div className="relative w-full">
             <Search className="pointer-events-none absolute left-4 top-3.5 h-5 w-5 text-muted-foreground" />
             <Input
@@ -242,18 +247,6 @@ export default function ContactsPage() {
                 <CardDescription>
                   Synced contact records from your connected sources.
                 </CardDescription>
-              </div>
-              <div className="hidden items-center gap-3 md:flex">
-                <p className="text-sm text-muted-foreground">
-                  Last sync {formatDate(googleSummary?.lastSyncAt)}
-                </p>
-                <Link
-                  to="/dashboard/import"
-                  className={buttonVariants({ variant: "outline", size: "sm" })}
-                >
-                  <Download className="h-4 w-4" aria-hidden="true" />
-                  Import
-                </Link>
               </div>
             </div>
           </CardHeader>
