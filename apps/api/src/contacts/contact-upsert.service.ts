@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import type { Contact, ContactSource, Prisma } from "@prisma/client";
+import type { ContactSource, Prisma } from "@prisma/client";
 import { ContactDedupService } from "./contact-dedup.service";
 import { PrismaService } from "../prisma/prisma.service";
 import type { NormalizedContact } from "./normalized-contact.types";
@@ -7,6 +7,10 @@ import type {
   ContactSoftDeleteResult,
   ContactUpsertResult,
 } from "./contact-upsert.types";
+
+/** Large imports run many dedup queries per contact; default 5s Prisma tx timeout is too low. */
+const CONTACT_UPSERT_TRANSACTION_TIMEOUT_MS = 60_000;
+const CONTACT_UPSERT_TRANSACTION_MAX_WAIT_MS = 10_000;
 
 @Injectable()
 export class ContactUpsertService {
@@ -23,55 +27,58 @@ export class ContactUpsertService {
       return this.softDelete(userId, contact.source, contact.externalId);
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      const existing = await tx.contact.findUnique({
-        where: {
-          userId_source_externalId: {
-            userId,
-            source: contact.source,
-            externalId: contact.externalId,
+    return this.prisma.$transaction(
+      async (tx) => {
+        const existing = await tx.contact.findUnique({
+          where: {
+            userId_source_externalId: {
+              userId,
+              source: contact.source,
+              externalId: contact.externalId,
+            },
           },
-        },
-      });
+        });
 
-      const { mergeGroupId, duplicateFound } = await this.dedup.resolveMergeGroup(
-        userId,
-        contact,
-        tx,
-      );
+        const { mergeGroupId, duplicateFound } =
+          await this.dedup.resolveMergeGroup(userId, contact, tx);
 
-      const row = await tx.contact.upsert({
-        where: {
-          userId_source_externalId: {
-            userId,
-            source: contact.source,
-            externalId: contact.externalId,
+        const row = await tx.contact.upsert({
+          where: {
+            userId_source_externalId: {
+              userId,
+              source: contact.source,
+              externalId: contact.externalId,
+            },
           },
-        },
-        create: {
-          ...this.contactScalarFields(contact),
-          mergeGroupId,
+          create: {
+            ...this.contactScalarFields(contact),
+            mergeGroupId,
+            userId,
+          },
+          update: {
+            ...this.contactScalarFields(contact),
+            mergeGroupId,
+            deletedAt: null,
+          },
+        });
+
+        await this.dedup.refreshKeysForContact(
           userId,
-        },
-        update: {
-          ...this.contactScalarFields(contact),
+          row.id,
           mergeGroupId,
-          deletedAt: null,
-        },
-      });
+          contact,
+          tx,
+        );
+        await this.replaceChildren(tx, row.id, contact);
 
-      await this.dedup.refreshKeysForContact(
-        userId,
-        row.id,
-        mergeGroupId,
-        contact,
-        tx,
-      );
-      await this.replaceChildren(tx, row.id, contact);
-
-      const outcome = existing ? "updated" : "added";
-      return { contact: row, outcome, duplicateFound };
-    });
+        const outcome = existing ? "updated" : "added";
+        return { contact: row, outcome, duplicateFound };
+      },
+      {
+        timeout: CONTACT_UPSERT_TRANSACTION_TIMEOUT_MS,
+        maxWait: CONTACT_UPSERT_TRANSACTION_MAX_WAIT_MS,
+      },
+    );
   }
 
   async softDelete(

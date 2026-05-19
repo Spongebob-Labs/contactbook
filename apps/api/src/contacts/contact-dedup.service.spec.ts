@@ -31,21 +31,11 @@ describe("ContactDedupService", () => {
       contactMergeGroup: {
         create: jest.fn().mockResolvedValue({ id: "group-new" }),
       },
+      contact: {
+        count: jest.fn().mockResolvedValue(1),
+      },
       contactDedupKey: {
-        findMany: jest.fn().mockResolvedValue([
-          {
-            mergeGroupId: groupId,
-            mergeGroup: {
-              contacts: [
-                {
-                  id: "c1",
-                  source: ContactSource.GOOGLE,
-                  externalId: "people/a",
-                },
-              ],
-            },
-          },
-        ]),
+        findMany: jest.fn().mockResolvedValue([{ mergeGroupId: groupId }]),
         upsert: jest.fn(),
       },
     };
