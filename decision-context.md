@@ -377,3 +377,9 @@
 - Decision: Call Google contact sync as `POST /v1/contacts/sync?source=GOOGLE`.
 - Reason: Live Swagger documents `POST /api/v1/contacts/sync` with required `source=GOOGLE|ICLOUD`; a GET request falls through to the contact UUID route and returns `Validation failed (uuid is expected)`.
 - Notes: `GET /v1/contacts/import` remains the import summary endpoint and does not trigger provider sync.
+
+## 2026-05-19 - Add Cards Index And Detail Pages
+
+- Decision: Add `/dashboard/cards` for listing ContactBook cards and `/dashboard/cards/:cardId` for a basic card detail view.
+- Reason: Cards are becoming a first-class product area and need a dedicated route beyond the dashboard summary.
+- Notes: The pages use existing `GET /v1/cards` and `GET /v1/cards/{cardId}` APIs, keep card creation routed through the existing onboarding modal, and do not require backend changes.

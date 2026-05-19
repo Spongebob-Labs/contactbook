@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import {
   ContactRound,
+  CreditCard,
   Home,
   Import,
   LogOut,
@@ -20,6 +21,7 @@ import { cn } from "@/lib/utils";
 
 const nav = [
   { to: "/dashboard", label: "Dashboard", icon: Home },
+  { to: "/dashboard/cards", label: "Cards", icon: CreditCard },
   { to: "/dashboard/contacts", label: "Contacts", icon: UsersRound },
   { to: "/dashboard/import", label: "Import", icon: Import },
 ];
