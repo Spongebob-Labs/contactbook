@@ -1,5 +1,11 @@
 # Decision Context
 
+## 2026-05-19 - Add Signed-In UI Redesign Preview
+
+- Decision: Add a frontend-only signed-in preview route for the proposed setup-console redesign before replacing production dashboard/import/profile screens.
+- Reason: The user wants to see the exact coded UI, not an approximate generated image, and asked to approve changes only after seeing a plan first.
+- Notes: The preview must use mock data, existing React/Tailwind/shadcn-style components, avoid backend changes, leave the public landing page untouched, and not require browser testing.
+
 ## 2026-05-14 - Clone Repository Into Current Folder
 
 - Decision: Cloned `https://github.com/Spongebob-Labs/contactbook` directly into `/Users/rishabhgoyal/Desktop/code/contactbook`.
