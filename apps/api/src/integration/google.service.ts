@@ -5,8 +5,10 @@ import {
   Logger,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { ImportSource } from "@prisma/client";
+import { ContactSource } from "@prisma/client";
 import { google, people_v1 } from "googleapis";
+import { ContactUpsertService } from "../contacts/contact-upsert.service";
+import { googlePersonToNormalizedContact } from "../contacts/google-contact.adapter";
 import { OAuthTokenService } from "../oauth-tokens/oauth-token.service";
 import { PrismaService } from "../prisma/prisma.service";
 
@@ -20,6 +22,13 @@ const GOOGLE_SCOPES = [
 /** Placeholder redirect URI; only used for token refresh via googleapis, not authorization-code flow. */
 const OAUTH2_REDIRECT_PLACEHOLDER = "urn:ietf:wg:oauth:2.0:oob";
 
+export type GoogleContactsSyncResult = {
+  syncMode: "full" | "delta";
+  processedCount: number;
+  totalContacts: number;
+  lastSyncAt: Date | null;
+};
+
 @Injectable()
 export class GoogleService {
   private readonly logger = new Logger(GoogleService.name);
@@ -28,6 +37,7 @@ export class GoogleService {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     private readonly oauthTokenService: OAuthTokenService,
+    private readonly contactUpsert: ContactUpsertService,
   ) {}
 
   buildOAuthClient(): InstanceType<typeof google.auth.OAuth2> {
@@ -147,14 +157,14 @@ export class GoogleService {
   private async peopleIntegrationState(userId: string) {
     return this.prisma.integrationState.upsert({
       where: {
-        userId_source: { userId, source: ImportSource.GOOGLE },
+        userId_source: { userId, source: ContactSource.GOOGLE },
       },
-      create: { userId, source: ImportSource.GOOGLE },
+      create: { userId, source: ContactSource.GOOGLE },
       update: {},
     });
   }
 
-  async syncContacts(userId: string): Promise<{ imported: number }> {
+  async syncContacts(userId: string): Promise<GoogleContactsSyncResult> {
     try {
       return await this.runContactsSync(userId);
     } catch (error) {
@@ -163,7 +173,7 @@ export class GoogleService {
           `Google People sync token invalid for user ${userId}; retrying full sync`,
         );
         await this.prisma.integrationState.updateMany({
-          where: { userId, source: ImportSource.GOOGLE },
+          where: { userId, source: ContactSource.GOOGLE },
           data: { syncToken: null },
         });
         return await this.runContactsSync(userId);
@@ -172,26 +182,30 @@ export class GoogleService {
     }
   }
 
-  private async runContactsSync(userId: string): Promise<{ imported: number }> {
+  private async runContactsSync(
+    userId: string,
+  ): Promise<GoogleContactsSyncResult> {
     const people = await this.getAuthorizedPeopleClient(userId);
     const stateRow = await this.peopleIntegrationState(userId);
+    const syncMode: "full" | "delta" = stateRow.syncToken ? "delta" : "full";
     let pageToken: string | undefined;
     let nextSyncToken: string | undefined;
-    let count = 0;
+    let processedCount = 0;
+
     for (;;) {
       const res = await people.people.connections.list({
         resourceName: "people/me",
         pageSize: 100,
         pageToken,
         personFields:
-          "names,emailAddresses,phoneNumbers,organizations,metadata,etag",
+          "names,emailAddresses,phoneNumbers,organizations,metadata",
         requestSyncToken: true,
         syncToken: stateRow.syncToken ?? undefined,
       });
       const connections = res.data.connections ?? [];
       for (const person of connections) {
         await this.upsertPerson(userId, person);
-        count += 1;
+        processedCount += 1;
       }
       if (res.data.nextSyncToken) {
         nextSyncToken = res.data.nextSyncToken;
@@ -201,15 +215,29 @@ export class GoogleService {
         break;
       }
     }
+
+    let lastSyncAt = stateRow.lastSyncAt;
     if (nextSyncToken) {
-      await this.prisma.integrationState.update({
+      const updated = await this.prisma.integrationState.update({
         where: {
-          userId_source: { userId, source: ImportSource.GOOGLE },
+          userId_source: { userId, source: ContactSource.GOOGLE },
         },
         data: { syncToken: nextSyncToken, lastSyncAt: new Date() },
       });
+      lastSyncAt = updated.lastSyncAt;
     }
-    return { imported: count };
+
+    const totalContacts = await this.contactUpsert.countActive(
+      userId,
+      ContactSource.GOOGLE,
+    );
+
+    return {
+      syncMode,
+      processedCount,
+      totalContacts,
+      lastSyncAt,
+    };
   }
 
   private googleErrorStatus(error: unknown): number | undefined {
@@ -251,82 +279,23 @@ export class GoogleService {
     return new InternalServerErrorException("Google contacts sync failed");
   }
 
-  private primaryPhone(person: people_v1.Schema$Person): string | null {
-    const list = person.phoneNumbers ?? [];
-    const primary = list.find((p) => p.metadata?.primary === true) ?? list[0];
-    return primary?.value?.trim() ?? null;
-  }
-
-  private primaryEmail(person: people_v1.Schema$Person): string | null {
-    const list = person.emailAddresses ?? [];
-    const primary = list.find((e) => e.metadata?.primary === true) ?? list[0];
-    return primary?.value?.trim()?.toLowerCase() ?? null;
-  }
-
-  private nameParts(person: people_v1.Schema$Person): {
-    firstName: string | null;
-    lastName: string | null;
-  } {
-    const names = person.names ?? [];
-    const primary = names.find((n) => n.metadata?.primary === true) ?? names[0];
-    return {
-      firstName: primary?.givenName?.trim() ?? null,
-      lastName: primary?.familyName?.trim() ?? null,
-    };
-  }
-
   private async upsertPerson(
     userId: string,
     person: people_v1.Schema$Person,
   ): Promise<void> {
-    const resourceName = person.resourceName;
-    if (!resourceName) {
+    const normalized = googlePersonToNormalizedContact(person);
+    if (!normalized) {
       return;
     }
-    const deleted = person.metadata?.deleted === true;
-    const raw = person as object;
-    if (deleted) {
-      await this.prisma.contactImport.updateMany({
-        where: {
-          userId,
-          source: ImportSource.GOOGLE,
-          externalId: resourceName,
-        },
-        data: { deletedAt: new Date() },
-      });
-      return;
-    }
-    const { firstName, lastName } = this.nameParts(person);
-    const mainPhone = this.primaryPhone(person);
-    const mainEmail = this.primaryEmail(person);
-    await this.prisma.contactImport.upsert({
-      where: {
-        userId_source_externalId: {
-          userId,
-          source: ImportSource.GOOGLE,
-          externalId: resourceName,
-        },
-      },
-      create: {
+    if (normalized.deleted) {
+      await this.contactUpsert.softDelete(
         userId,
-        source: ImportSource.GOOGLE,
-        externalId: resourceName,
-        firstName,
-        lastName,
-        mainPhone,
-        mainEmail,
-        rawJson: raw,
-        deletedAt: null,
-      },
-      update: {
-        firstName,
-        lastName,
-        mainPhone,
-        mainEmail,
-        rawJson: raw,
-        deletedAt: null,
-      },
-    });
+        ContactSource.GOOGLE,
+        normalized.externalId,
+      );
+      return;
+    }
+    await this.contactUpsert.upsert(userId, normalized);
   }
 
   private looksLikeTravel(ev: {
