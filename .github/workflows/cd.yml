@@ -2,8 +2,7 @@
 # workflow_run uses this file from the repo DEFAULT BRANCH (main) — merge workflow fixes to main
 # before they apply to dev-triggered CI runs.
 #
-# Secrets: API_ENV_B64 (production: base64 full apps/api/.env; must include DIRECT_URL for
-#   migrate deploy — Prisma 7 CLI uses DIRECT_URL via prisma.config.ts), GCP_WORKLOAD_IDENTITY_PROVIDER,
+# Secrets: API_ENV_B64 (production: base64 full apps/api/.env), GCP_WORKLOAD_IDENTITY_PROVIDER,
 #   GCP_SERVICE_ACCOUNT
 # Variables: GCP_REGION, GCP_PROJECT_ID — optional CLOUD_RUN_SERVICE (default: contactbook-api)
 #
@@ -46,42 +45,8 @@ jobs:
             exit 1
           }
 
-      - name: Validate migration database URL
-        run: |
-          set -euo pipefail
-          set -a
-          # shellcheck disable=SC1091
-          source apps/api/.env
-          set +a
-          if [[ -z "${DIRECT_URL:-}" ]]; then
-            echo "API_ENV_B64 must include DIRECT_URL (Supabase direct connection, port 5432)."
-            echo "Re-encode with ./scripts/encode-env-for-gh.sh from apps/api/.env that sets DIRECT_URL."
-            exit 1
-          fi
-          if [[ "${DIRECT_URL}" == *":6543"* ]]; then
-            echo "DIRECT_URL must not use the transaction pooler (port 6543)."
-            exit 1
-          fi
-
       - name: Convert .env to Cloud Run env JSON
         run: python3 scripts/dotenv-to-gcloud-env-json.py apps/api/.env "${RUNNER_TEMP}/cloudrun-env.json"
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: pnpm
-
-      - name: Install dependencies (api)
-        run: pnpm install --frozen-lockfile --filter api...
-
-      - name: Apply Prisma migrations
-        run: ./scripts/migrate-api.sh
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
