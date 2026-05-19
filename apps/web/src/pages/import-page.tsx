@@ -12,7 +12,11 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
 import { startGoogleImportConnection } from "@/lib/google-import";
-import type { ContactImport, GoogleSyncResponse } from "@/lib/types";
+import type {
+  ContactImport,
+  ContactImportSummary,
+  GoogleSyncResponse,
+} from "@/lib/types";
 
 const GOOGLE_OAUTH_PENDING_KEY = "contactbook:google-oauth-pending";
 
@@ -27,6 +31,9 @@ function formatDate(value: string | null) {
 }
 
 function getImportDisplayName(item: ContactImport) {
+  if (item.displayName?.trim()) {
+    return item.displayName.trim();
+  }
   const name = [item.firstName, item.lastName]
     .map((part) => part?.trim())
     .filter(Boolean)
@@ -37,8 +44,8 @@ function getImportDisplayName(item: ContactImport) {
 function getImportSearchText(item: ContactImport) {
   return [
     getImportDisplayName(item),
-    item.mainPhone,
-    item.mainEmail,
+    item.primaryPhone?.value,
+    item.primaryEmail?.value,
     item.source,
   ]
     .filter(Boolean)
@@ -47,12 +54,13 @@ function getImportSearchText(item: ContactImport) {
 }
 
 function getPrimaryContact(item: ContactImport) {
-  return item.mainEmail ?? item.mainPhone ?? "No phone or email";
+  return item.primaryEmail?.value ?? item.primaryPhone?.value ?? "No phone or email";
 }
 
 export default function ImportPage() {
   const [searchParams] = useSearchParams();
   const [imports, setImports] = useState<ContactImport[]>([]);
+  const [summary, setSummary] = useState<ContactImportSummary | null>(null);
   const [query, setQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -71,8 +79,12 @@ export default function ImportPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const data = await apiFetch<ContactImport[]>("/v1/integrations/contact-imports");
-      setImports(data);
+      const [summaryData, contactsData] = await Promise.all([
+        apiFetch<ContactImportSummary>("/v1/contacts/import"),
+        apiFetch<ContactImport[]>("/v1/contacts?source=GOOGLE"),
+      ]);
+      setSummary(summaryData);
+      setImports(contactsData);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load imports.");
     } finally {
@@ -84,7 +96,7 @@ export default function ImportPage() {
     setIsSyncing(true);
     try {
       const result = await apiFetch<GoogleSyncResponse>("/v1/integrations/google/sync");
-      toast.success(`Synced ${result.imported} contacts.`);
+      toast.success(`Synced ${result.processedCount} contacts.`);
       await loadImports();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not sync Google contacts.");
@@ -160,6 +172,8 @@ export default function ImportPage() {
     }
   };
 
+  const googleSummary = summary?.bySource.find((item) => item.source === "GOOGLE");
+
   return (
     <AppShell>
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
@@ -195,12 +209,20 @@ export default function ImportPage() {
           <CardContent className="space-y-3">
             <div className="flex items-center justify-between rounded-md border border-border p-3">
               <span className="text-sm text-muted-foreground">Imported contacts</span>
-              <span className="text-lg font-semibold">{imports.length}</span>
+              <span className="text-lg font-semibold">
+                {summary?.totalActive ?? imports.length}
+              </span>
             </div>
             <div className="flex items-center justify-between rounded-md border border-border p-3">
               <span className="text-sm text-muted-foreground">Google contacts</span>
               <span className="text-lg font-semibold">
-                {imports.filter((item) => item.source === "GOOGLE").length}
+                {googleSummary?.activeCount ?? imports.length}
+              </span>
+            </div>
+            <div className="flex items-center justify-between rounded-md border border-border p-3">
+              <span className="text-sm text-muted-foreground">Last sync</span>
+              <span className="text-sm font-medium">
+                {formatDate(googleSummary?.lastSyncAt ?? null)}
               </span>
             </div>
           </CardContent>

@@ -287,3 +287,9 @@
 - Decision: Merge `origin/dev` into `feat/ui-creation` and update the Vite import page to read `firstName`, `lastName`, `mainPhone`, `mainEmail`, `source`, and `createdAt` from contact import rows.
 - Reason: The deployed backend and `origin/dev` now return the simplified contact import model instead of the older `displayNameSnapshot`, `status`, `rawPerson`, and sync timestamp fields.
 - Notes: The import table now shows contact name, primary phone/email, source, and imported date using frontend fallbacks for missing contact fields.
+
+## 2026-05-19 - Move Import UI To Relational Contacts API
+
+- Decision: Merge the latest `origin/dev` relational contacts backend and update the import page to read summary data from `GET /v1/contacts/import` and Google contacts from `GET /v1/contacts?source=GOOGLE`.
+- Reason: The old `GET /v1/integrations/contact-imports` endpoint was removed after Google sync began upserting normalized relational contact records.
+- Notes: The sync toast now uses `processedCount` from `GET /v1/integrations/google/sync`, and the table reads `displayName`, `primaryEmail`, `primaryPhone`, `source`, and timestamps from contact records.

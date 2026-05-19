@@ -6,22 +6,50 @@ export type VerifyCodeResponse =
       phoneVerificationToken: string;
     };
 
+export type ContactSource = "GOOGLE" | "ICLOUD" | "CSV" | "MANUAL";
+
+export type ContactPhone = {
+  value: string;
+  label?: string | null;
+  isPrimary: boolean;
+};
+
+export type ContactEmail = {
+  value: string;
+  label?: string | null;
+  isPrimary: boolean;
+};
+
+export type ContactImportSummary = {
+  totalActive: number;
+  totalDeleted: number;
+  bySource: Array<{
+    source: ContactSource;
+    activeCount: number;
+    deletedCount: number;
+    lastSyncAt?: string | null;
+    hasSyncToken?: boolean;
+  }>;
+};
+
 export type ContactImport = {
   id: string;
-  userId: string;
-  source: "GOOGLE" | "ICLOUD" | "CSV";
-  externalId: string | null;
-  firstName: string | null;
-  lastName: string | null;
-  mainPhone: string | null;
-  mainEmail: string | null;
-  rawJson: unknown;
-  deletedAt: string | null;
+  source: ContactSource;
+  externalId: string;
+  displayName?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  primaryPhone?: ContactPhone | null;
+  primaryEmail?: ContactEmail | null;
   createdAt: string;
+  updatedAt: string;
 };
 
 export type GoogleSyncResponse = {
-  imported: number;
+  syncMode: "full" | "delta";
+  processedCount: number;
+  totalContacts: number;
+  lastSyncAt: string | null;
 };
 
 export type PostalAddress = {
