@@ -1,5 +1,11 @@
 # Decision Context
 
+## 2026-05-19 - Add Signed-In UI Redesign Preview
+
+- Decision: Add a frontend-only signed-in preview route for the proposed setup-console redesign before replacing production dashboard/import/profile screens.
+- Reason: The user wants to see the exact coded UI, not an approximate generated image, and asked to approve changes only after seeing a plan first.
+- Notes: The preview must use mock data, existing React/Tailwind/shadcn-style components, avoid backend changes, leave the public landing page untouched, and not require browser testing.
+
 ## 2026-05-14 - Clone Repository Into Current Folder
 
 - Decision: Cloned `https://github.com/Spongebob-Labs/contactbook` directly into `/Users/rishabhgoyal/Desktop/code/contactbook`.
@@ -287,3 +293,177 @@
 - Decision: Merge `origin/dev` into `feat/ui-creation` and update the Vite import page to read `firstName`, `lastName`, `mainPhone`, `mainEmail`, `source`, and `createdAt` from contact import rows.
 - Reason: The deployed backend and `origin/dev` now return the simplified contact import model instead of the older `displayNameSnapshot`, `status`, `rawPerson`, and sync timestamp fields.
 - Notes: The import table now shows contact name, primary phone/email, source, and imported date using frontend fallbacks for missing contact fields.
+
+## 2026-05-19 - Move Import UI To Relational Contacts API
+
+- Decision: Merge the latest `origin/dev` relational contacts backend and update the import page to read summary data from `GET /v1/contacts/import` and Google contacts from `GET /v1/contacts?source=GOOGLE`.
+- Reason: The old `GET /v1/integrations/contact-imports` endpoint was removed after Google sync began upserting normalized relational contact records.
+- Notes: The sync toast now uses `processedCount` from `GET /v1/integrations/google/sync`, and the table reads `displayName`, `primaryEmail`, `primaryPhone`, `source`, and timestamps from contact records.
+
+## 2026-05-19 - Prefill Profile Onboarding For Edits
+
+- Decision: Hydrate `/onboarding/profile` from `GET /v1/profile/me` before rendering editable fields.
+- Reason: The profile page routes existing users to the onboarding form for edits, so previously saved profile sections should appear in the form instead of starting from blank defaults.
+- Notes: The current UI supports one work, business, socials, bank, wallet, and crypto row, so the form preloads the first item from each corresponding profile array.
+
+## 2026-05-19 - Hide Google Connect CTA After Import Link
+
+- Decision: Hide the Google authenticate/connect card on the dashboard import page once Google is connected, keeping the sync button as the primary action.
+- Reason: Users who have already linked Google should not see a repeated authenticate CTA because the next expected action is syncing contacts.
+- Notes: The frontend treats a Google summary row with `hasSyncToken` as the persisted connected/synced signal and also marks the page connected immediately after a successful `google=connected` callback.
+
+## 2026-05-19 - Persist Google Import Connected State
+
+- Decision: Store a frontend Google-connected marker after a successful import OAuth callback and hydrate the import page from that marker plus backend import evidence.
+- Reason: A linked Google account can exist before the backend has a sync cursor, so relying only on `hasSyncToken` can leave a stale authenticate CTA visible.
+- Notes: Sync failures that indicate expired or revoked Google authorization clear the marker so the reconnect path can return when it is actually needed.
+
+## 2026-05-19 - Remove Google Auth CTA From Import Page
+
+- Decision: Remove the Google connect/authenticate card from `/dashboard/import` entirely and keep that page focused on syncing and reviewing imported contacts.
+- Reason: The import page should not show duplicate Google authentication entry points after users reach the operational import workflow.
+- Notes: Google authentication remains available through the import onboarding/choice flow, while `/dashboard/import` keeps the sync action as the primary control.
+
+## 2026-05-19 - Keep Non-Google Import Options Visible
+
+- Decision: Show iCloud and VCF import option cards on `/dashboard/import` while hiding only the Google card.
+- Reason: Completing Google import should not remove visibility of other import methods users may want later.
+- Notes: `ContactImportOptions` now supports filtering out Google so onboarding can keep the full source picker and the dashboard import page can show only pending non-Google options.
+
+## 2026-05-19 - Use Future-Action Labels For Locked Imports
+
+- Decision: Replace unavailable wording on locked iCloud and VCF import buttons with the intended future actions, `Connect now` and `Upload`.
+- Reason: Disabled coming-soon cards should preview the action users will eventually take without exposing internal implementation states like connector availability.
+- Notes: The buttons remain disabled and show a lock icon, while the existing `Coming soon` badges continue to communicate feature status.
+
+## 2026-05-19 - Add Mock-Backed Contacts Directory Page
+
+- Decision: Add a frontend-only `/dashboard/contacts` page backed by mock data shaped like the current `GET /v1/contacts` `ContactDetailDto[]` response.
+- Reason: The contacts directory can be built and reviewed before the final API wiring while keeping the page contract-compatible with the backend response.
+- Notes: The page uses TanStack Table for filtering, sorting, and pagination state, shadcn-style combobox filters, and a responsive card view that becomes the default presentation on mobile.
+
+## 2026-05-19 - Add First Card Prompt After Import Onboarding
+
+- Decision: Add `/onboarding/card` as the next onboarding step after profile completion and import choice, using the existing `POST /v1/cards` API.
+- Reason: A first ContactBook card is the next meaningful setup action once a user has created a profile and either imported contacts or skipped import.
+- Notes: The card step stays skippable, Google onboarding redirects to it only after the existing auto-sync succeeds, and no backend code changes are required.
+
+## 2026-05-19 - Show ContactBook Cards On Dashboard
+
+- Decision: Load `GET /v1/cards` on the dashboard and display the user's ContactBook cards in a dedicated card section.
+- Reason: After users create a first card during onboarding, the dashboard should immediately reflect that core product object instead of only showing setup prompts.
+- Notes: The dashboard shows loading, error, empty, and populated card states, with an empty state opening the dashboard card onboarding modal.
+
+## 2026-05-19 - Make Dashboard Own Onboarding Modals
+
+- Decision: Move profile, import, and first-card onboarding into dashboard-owned modal steps keyed by `/dashboard?onboarding=profile|import|card`.
+- Reason: Authenticated users should remain anchored on the dashboard while completing setup instead of moving through standalone onboarding routes.
+- Notes: Legacy `/onboarding/profile`, `/onboarding/import`, and `/onboarding/card` paths now redirect to the matching dashboard modal for compatibility.
+
+## 2026-05-19 - Return Profile Edits To Profile Page
+
+- Decision: Open profile editing as `/dashboard?onboarding=profile&returnTo=/profile` when launched from the profile page.
+- Reason: Users editing from their profile should return to that profile view after saving or skipping, while signup/dashboard onboarding should continue through the setup steps.
+- Notes: Dashboard only honors safe internal `returnTo` paths and otherwise advances profile onboarding to the import step.
+
+## 2026-05-19 - Patch Existing Profiles From Onboarding Modal
+
+- Decision: Have the profile onboarding modal use `PATCH /v1/profile/me` when existing profile groups are already present, while keeping `POST /v1/profile/onboarding` for first-time setup.
+- Reason: The backend intentionally returns `409 Profile already initialized` for repeat calls to the first-time onboarding endpoint.
+- Notes: The frontend also retries once with `PATCH /v1/profile/me` if first-time initialization races into a 409 response.
+
+## 2026-05-19 - Use Contacts Sync Endpoint
+
+- Decision: Change Google contact sync from `/v1/integrations/google/sync` to `/v1/contacts/sync`.
+- Reason: Backend confirmed the integrations Google sync endpoint will be removed and replaced by the contacts sync endpoint.
+- Notes: `GET /v1/contacts/import` was already in use for the import summary/list contract. The remote backend deployment may lag this frontend change until the backend GitHub deployment issue is resolved.
+
+## 2026-05-19 - Align Sync Method With Live API Docs
+
+- Decision: Call Google contact sync as `POST /v1/contacts/sync?source=GOOGLE`.
+- Reason: Live Swagger documents `POST /api/v1/contacts/sync` with required `source=GOOGLE|ICLOUD`; a GET request falls through to the contact UUID route and returns `Validation failed (uuid is expected)`.
+- Notes: `GET /v1/contacts/import` remains the import summary endpoint and does not trigger provider sync.
+
+## 2026-05-19 - Add Cards Index And Detail Pages
+
+- Decision: Add `/dashboard/cards` for listing ContactBook cards and `/dashboard/cards/:cardId` for a basic card detail view.
+- Reason: Cards are becoming a first-class product area and need a dedicated route beyond the dashboard summary.
+- Notes: The pages use existing `GET /v1/cards` and `GET /v1/cards/{cardId}` APIs, keep card creation routed through the existing onboarding modal, and do not require backend changes.
+
+## 2026-05-19 - Preserve Signup Onboarding Redirect
+
+- Decision: Track the intended post-registration redirect as `/dashboard?onboarding=profile` before marking the auth context authenticated.
+- Reason: Marking the user authenticated can re-render the auth route and trigger its generic authenticated redirect to `/dashboard`, dropping the onboarding query before the dashboard modal opens.
+- Notes: Existing-user login still follows the original protected-route destination, while new signups keep the dashboard-owned onboarding modal flow.
+
+## 2026-05-19 - Make Dashboard Reflect Setup Progress
+
+- Decision: Load profile and import summary state on the dashboard and use it with card state to choose contextual hero copy, checklist status, and stats.
+- Reason: After a user skips profile setup, imports Google contacts, and creates a card, the dashboard should no longer present first-run onboarding CTAs as the primary workspace message.
+- Notes: Profile completion remains optional; imported contacts or created cards are enough to switch the dashboard into an active workspace state.
+
+## 2026-05-19 - Separate Setup Flow From Profile Action
+
+- Decision: Mark first-run profile onboarding links with `flow=setup` and treat plain dashboard profile onboarding as a standalone action.
+- Reason: Skipping profile from the dashboard should close the modal, while skipping profile during signup setup should continue to import contacts.
+- Notes: Signup and legacy `/onboarding/profile` redirects now include `flow=setup`; profile edit and dashboard profile actions stay local unless `returnTo` is present.
+
+## 2026-05-19 - Make Card Wizard Copy Context-Aware
+
+- Decision: Add setup/create modes to the card modal so first-card language appears only during first-run setup.
+- Reason: Reusing the card modal from dashboard and cards pages should not tell users they are creating their first card after they already have cards.
+- Notes: Setup import links encode `flow=setup` before the Google OAuth callback, while regular dashboard card creation uses generic card copy.
+
+## 2026-05-19 - Derive Import Auth State From Backend
+
+- Decision: Stop using the browser-wide `contactbook:google-connected` localStorage marker as source of truth for Google import UI.
+- Reason: Multiple ContactBook accounts in the same browser can otherwise inherit stale Google-connected UI from another user.
+- Notes: Import status now comes from `GET /v1/contacts/import` plus `GET /v1/contacts?source=GOOGLE`; logout clears stale ContactBook OAuth/import keys and signs out any temporary Supabase OAuth session.
+
+## 2026-05-19 - Move Synced Contacts To Contacts Page
+
+- Decision: Replace mock contacts with `GET /v1/contacts` on `/dashboard/contacts` and remove the duplicated imported-contact list from `/dashboard/import`.
+- Reason: The import page should own provider connection and sync status, while the contacts page should be the canonical synced-contact directory.
+- Notes: Contacts now uses a Google Contacts-inspired layout with left counts, central searchable list, and a right detail panel; Import links to Contacts with a CTA.
+
+## 2026-05-19 - Simplify Contacts Directory Copy
+
+- Decision: Remove "synced" explanatory copy from the contacts table and import directory CTA.
+- Reason: The contacts directory should present user records plainly without repeating source or synchronization mechanics in table-level copy.
+- Notes: Empty and import-directory states now refer to contacts/importing contacts directly while keeping the existing navigation to Import and Contacts pages.
+
+## 2026-05-19 - Place Contacts Directory With Import Options
+
+- Decision: Show the Contacts directory card beside the iCloud and VCF import option cards once Google is connected.
+- Reason: After Google is connected, the Google sign-in card is hidden, leaving the import option row as the right place for the directory shortcut.
+- Notes: The directory card remains hidden before Google connection and keeps its existing contacts count, error state, and View contacts CTA.
+
+## 2026-05-19 - Replace Dashboard Card List With CTA
+
+- Decision: Remove individual ContactBook card previews from the dashboard and keep a single CTA to `/dashboard/cards`.
+- Reason: The cards page is now the dedicated place for reviewing and managing cards, while the dashboard should stay focused on summary and navigation.
+- Notes: Dashboard card loading remains only for progress counts and setup state; card record display, empty state, and card-list error UI were removed from the home screen.
+
+## 2026-05-19 - Pair Dashboard Stats With Page Links
+
+- Decision: Show only imported contact and card summary stats on the dashboard, each with a direct link to its dedicated page.
+- Reason: Keeping the statistic and navigation together makes the home screen easier to scan and removes the separate profile stat and cards CTA block.
+- Notes: Imported contacts link to `/dashboard/import`, cards link to `/dashboard/cards`, and profile progress remains represented in the Today checklist.
+
+## 2026-05-19 - Link Contact Stat To Contacts Page
+
+- Decision: Point the imported contacts dashboard CTA to `/dashboard/contacts`.
+- Reason: The contacts page is the canonical place to inspect contact records, while import remains focused on connection and sync controls.
+- Notes: The stat keeps the imported contact count and now uses `View contacts` as its action label.
+
+## 2026-05-19 - Redesign Active Dashboard Hero
+
+- Decision: Replace the active workspace hero copy and button row with a compact workspace overview and two action tiles for Contacts and Cards.
+- Reason: Once setup has started, the dashboard should prioritize fast operational navigation over broad introductory messaging.
+- Notes: Inactive setup states keep their onboarding CTAs, while active users see direct links to `/dashboard/contacts` and `/dashboard/cards`.
+
+## 2026-05-19 - Remove Dashboard Hero Card
+
+- Decision: Remove the dashboard workspace hero card and move summary stat cards to the top of the page.
+- Reason: The dashboard already has direct stat cards with links, so the hero duplicated navigation and pushed the primary metrics down.
+- Notes: The Today checklist remains below the stats, and overview data still feeds summary counts and checklist state.

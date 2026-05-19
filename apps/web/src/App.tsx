@@ -6,12 +6,16 @@ import { ProtectedRoute } from "@/components/protected-route";
 
 const AuthPage = lazy(() => import("@/pages/auth-page"));
 const AuthCallbackPage = lazy(() => import("@/pages/auth-callback-page"));
+const CardDetailPage = lazy(() => import("@/pages/card-detail-page"));
+const CardsPage = lazy(() => import("@/pages/cards-page"));
+const ContactsPage = lazy(() => import("@/pages/contacts-page"));
 const DashboardPage = lazy(() => import("@/pages/dashboard-page"));
-const ImportOnboardingPage = lazy(() => import("@/pages/import-onboarding-page"));
 const ImportPage = lazy(() => import("@/pages/import-page"));
 const LandingPage = lazy(() => import("@/pages/landing-page"));
 const ProfilePage = lazy(() => import("@/pages/profile-page"));
-const ProfileOnboardingPage = lazy(() => import("@/pages/profile-onboarding-page"));
+const SignedInRedesignPreviewPage = lazy(
+  () => import("@/pages/signed-in-redesign-preview-page"),
+);
 
 export default function App() {
   return (
@@ -25,7 +29,7 @@ export default function App() {
             path="/onboarding/profile"
             element={
               <ProtectedRoute>
-                <ProfileOnboardingPage />
+                <Navigate to="/dashboard?onboarding=profile&flow=setup" replace />
               </ProtectedRoute>
             }
           />
@@ -33,7 +37,15 @@ export default function App() {
             path="/onboarding/import"
             element={
               <ProtectedRoute>
-                <ImportOnboardingPage />
+                <Navigate to="/dashboard?onboarding=import&flow=setup" replace />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/onboarding/card"
+            element={
+              <ProtectedRoute>
+                <Navigate to="/dashboard?onboarding=card" replace />
               </ProtectedRoute>
             }
           />
@@ -50,6 +62,38 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <DashboardPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/ui-preview/:screen?"
+            element={
+              <ProtectedRoute>
+                <SignedInRedesignPreviewPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/cards"
+            element={
+              <ProtectedRoute>
+                <CardsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/cards/:cardId"
+            element={
+              <ProtectedRoute>
+                <CardDetailPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/contacts"
+            element={
+              <ProtectedRoute>
+                <ContactsPage />
               </ProtectedRoute>
             }
           />

@@ -6,22 +6,96 @@ export type VerifyCodeResponse =
       phoneVerificationToken: string;
     };
 
-export type ContactImport = {
+export type ContactSource = "GOOGLE" | "ICLOUD" | "CSV" | "MANUAL";
+
+export type ContactPhone = {
+  value: string;
+  label?: string | null;
+  isPrimary: boolean;
+};
+
+export type ContactEmail = {
+  value: string;
+  label?: string | null;
+  isPrimary: boolean;
+};
+
+export type ContactOrganization = {
+  companyName?: string | null;
+  department?: string | null;
+  title?: string | null;
+  isPrimary: boolean;
+};
+
+export type ContactAddress = {
+  street?: string | null;
+  city?: string | null;
+  region?: string | null;
+  postalCode?: string | null;
+  country?: string | null;
+  label?: string | null;
+  isPrimary: boolean;
+};
+
+export type ContactUrl = {
+  value: string;
+  label?: string | null;
+};
+
+export type ContactCardType = "BUSINESS" | "PERSONAL" | "PAYMENT" | "CUSTOM";
+
+export type ContactCard = {
   id: string;
   userId: string;
-  source: "GOOGLE" | "ICLOUD" | "CSV";
-  externalId: string | null;
-  firstName: string | null;
-  lastName: string | null;
-  mainPhone: string | null;
-  mainEmail: string | null;
-  rawJson: unknown;
-  deletedAt: string | null;
+  name: string;
+  type: ContactCardType;
   createdAt: string;
+  updatedAt: string;
+};
+
+export type ContactImportSummary = {
+  totalActive: number;
+  totalDeleted: number;
+  bySource: Array<{
+    source: ContactSource;
+    activeCount: number;
+    deletedCount: number;
+    lastSyncAt?: string | null;
+    hasSyncToken?: boolean;
+  }>;
+};
+
+export type ContactImport = {
+  id: string;
+  source: ContactSource;
+  externalId: string;
+  displayName?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  primaryPhone?: ContactPhone | null;
+  primaryEmail?: ContactEmail | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ContactDetail = ContactImport & {
+  sourceRevision?: string | null;
+  middleName?: string | null;
+  nickname?: string | null;
+  notes?: string | null;
+  phones: ContactPhone[];
+  emails: ContactEmail[];
+  organizations: ContactOrganization[];
+  addresses: ContactAddress[];
+  urls: ContactUrl[];
+  deletedAt?: string | null;
 };
 
 export type GoogleSyncResponse = {
-  imported: number;
+  syncMode: "full" | "delta";
+  processedCount: number;
+  totalContacts: number;
+  lastSyncAt: string | null;
 };
 
 export type PostalAddress = {
@@ -44,6 +118,13 @@ export type ProfileMeResponse = {
     groupId: string;
     tag: string;
     postalAddress?: PostalAddress;
+    mobile?: string | null;
+    landline?: string | null;
+    email?: string | null;
+    dateOfBirth?: string | null;
+    yearOfBirth?: string | null;
+    currentLocation?: string | null;
+    relationshipStatus?: string | null;
     custom?: Record<string, string>;
   };
   work: Array<{
@@ -51,7 +132,12 @@ export type ProfileMeResponse = {
     tag: string;
     companyName?: string | null;
     companyLogo?: string | null;
+    companyRegNumber?: string | null;
     workTitle?: string | null;
+    workMobile?: string | null;
+    workLandline?: string | null;
+    workFax?: string | null;
+    workEmail?: string | null;
     workPostalAddress?: PostalAddress;
     custom?: Record<string, string>;
   }>;
@@ -60,7 +146,12 @@ export type ProfileMeResponse = {
     tag: string;
     businessName?: string | null;
     businessLogo?: string | null;
+    businessRegNumber?: string | null;
     businessTitle?: string | null;
+    businessMobile?: string | null;
+    businessLandline?: string | null;
+    businessFax?: string | null;
+    businessEmail?: string | null;
     businessPostalAddress?: PostalAddress;
     custom?: Record<string, string>;
   }>;

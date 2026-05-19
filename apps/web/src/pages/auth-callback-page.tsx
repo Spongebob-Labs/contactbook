@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { AlertCircle, CheckCircle2 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
-import { GOOGLE_IMPORT_NEXT_KEY } from "@/lib/google-import";
+import { GOOGLE_IMPORT_NEXT_KEY } from "@/lib/session-storage";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { Alert } from "@/components/ui/alert";
 import { PageLoader } from "@/components/page-loader";

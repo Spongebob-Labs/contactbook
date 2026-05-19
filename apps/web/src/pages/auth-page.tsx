@@ -58,16 +58,18 @@ export default function AuthPage() {
     countryCode: "+1",
     phone: "",
   });
+  const [postAuthRedirect, setPostAuthRedirect] = useState<string | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
   const { isAuthenticated, isLoading, markAuthenticated } = useAuth();
-  const redirectTo =
+  const locationRedirectTo =
     typeof location.state === "object" &&
     location.state !== null &&
     "from" in location.state &&
     typeof location.state.from === "string"
       ? location.state.from
       : "/dashboard";
+  const redirectTo = postAuthRedirect ?? locationRedirectTo;
 
   const phoneForm = useForm<PhoneForm>({
     resolver: zodResolver(phoneSchema),
@@ -130,7 +132,7 @@ export default function AuthPage() {
       if (result.registered) {
         markAuthenticated();
         toast.success("Signed in.");
-        navigate(redirectTo, { replace: true });
+        navigate(locationRedirectTo, { replace: true });
         return;
       }
       setPhoneVerificationToken(result.phoneVerificationToken);
@@ -157,9 +159,11 @@ export default function AuthPage() {
           countryCode: phoneContext.countryCode,
         },
       });
+      const onboardingPath = "/dashboard?onboarding=profile&flow=setup";
+      setPostAuthRedirect(onboardingPath);
       markAuthenticated();
       toast.success("Account created.");
-      navigate("/onboarding/profile", { replace: true });
+      navigate(onboardingPath, { replace: true });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not create account.");
     } finally {

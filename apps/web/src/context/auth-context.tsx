@@ -8,6 +8,11 @@ import {
   type ReactNode,
 } from "react";
 import { apiFetch, getCookie } from "@/lib/api";
+import {
+  clearContactBookSessionState,
+  GOOGLE_CONNECTED_KEY,
+} from "@/lib/session-storage";
+import { supabase } from "@/lib/supabase";
 import type { ProfileMeResponse } from "@/lib/types";
 
 type AuthContextValue = {
@@ -41,6 +46,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!isMounted) {
           return;
         }
+        clearContactBookSessionState();
         setUserId(null);
         setIsAuthenticated(false);
       } finally {
@@ -64,6 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const markAuthenticated = useCallback(() => {
+    localStorage.removeItem(GOOGLE_CONNECTED_KEY);
     setUserId(getCookie("cb_user_id"));
     setIsAuthenticated(true);
     setIsLoading(false);
@@ -77,6 +84,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         retry: false,
       });
     } finally {
+      clearContactBookSessionState();
+      await supabase?.auth.signOut().catch(() => undefined);
       setUserId(null);
       setIsAuthenticated(false);
       setIsLoading(false);

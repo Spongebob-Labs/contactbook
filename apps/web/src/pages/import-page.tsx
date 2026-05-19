@@ -1,20 +1,31 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
-import { AlertCircle, CheckCircle2, RefreshCw, Search } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { AlertCircle, ArrowRight, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
 import { ContactImportOptions } from "@/components/contact-import-options";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
 import { startGoogleImportConnection } from "@/lib/google-import";
-import type { ContactImport, GoogleSyncResponse } from "@/lib/types";
+import {
+  GOOGLE_CONNECTED_KEY,
+  GOOGLE_OAUTH_PENDING_KEY,
+} from "@/lib/session-storage";
+import type {
+  ContactImport,
+  ContactImportSummary,
+  GoogleSyncResponse,
+} from "@/lib/types";
 
-const GOOGLE_OAUTH_PENDING_KEY = "contactbook:google-oauth-pending";
+function getSafeNextPath(value: string | null) {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) {
+    return null;
+  }
+  return value;
+}
 
 function formatDate(value: string | null) {
   if (!value) {
@@ -26,53 +37,41 @@ function formatDate(value: string | null) {
   }).format(new Date(value));
 }
 
-function getImportDisplayName(item: ContactImport) {
-  const name = [item.firstName, item.lastName]
-    .map((part) => part?.trim())
-    .filter(Boolean)
-    .join(" ");
-  return name || "Unknown contact";
-}
-
-function getImportSearchText(item: ContactImport) {
-  return [
-    getImportDisplayName(item),
-    item.mainPhone,
-    item.mainEmail,
-    item.source,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-}
-
-function getPrimaryContact(item: ContactImport) {
-  return item.mainEmail ?? item.mainPhone ?? "No phone or email";
+function hasGoogleConnectionEvidence(
+  summary: ContactImportSummary,
+  contacts: ContactImport[],
+) {
+  const googleSummary = summary.bySource.find((item) => item.source === "GOOGLE");
+  return Boolean(
+    googleSummary?.hasSyncToken ||
+      googleSummary?.lastSyncAt ||
+      googleSummary?.activeCount ||
+      contacts.length > 0,
+  );
 }
 
 export default function ImportPage() {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [imports, setImports] = useState<ContactImport[]>([]);
-  const [query, setQuery] = useState("");
+  const [summary, setSummary] = useState<ContactImportSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isConnecting, setIsConnecting] = useState(false);
+  const [isConnectingGoogle, setIsConnectingGoogle] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) {
-      return imports;
-    }
-    return imports.filter((item) => getImportSearchText(item).includes(q));
-  }, [imports, query]);
+  const [hasConnectedGoogle, setHasConnectedGoogle] = useState(false);
 
   const loadImports = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const data = await apiFetch<ContactImport[]>("/v1/integrations/contact-imports");
-      setImports(data);
+      const [summaryData, contactsData] = await Promise.all([
+        apiFetch<ContactImportSummary>("/v1/contacts/import"),
+        apiFetch<ContactImport[]>("/v1/contacts?source=GOOGLE"),
+      ]);
+      setSummary(summaryData);
+      setImports(contactsData);
+      setHasConnectedGoogle(hasGoogleConnectionEvidence(summaryData, contactsData));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load imports.");
     } finally {
@@ -80,18 +79,43 @@ export default function ImportPage() {
     }
   }, []);
 
-  const syncGoogle = useCallback(async () => {
+  const syncGoogle = useCallback(async (nextPath?: string | null) => {
     setIsSyncing(true);
     try {
-      const result = await apiFetch<GoogleSyncResponse>("/v1/integrations/google/sync");
-      toast.success(`Synced ${result.imported} contacts.`);
+      const result = await apiFetch<GoogleSyncResponse>(
+        "/v1/contacts/sync?source=GOOGLE",
+        { method: "POST" },
+      );
+      setHasConnectedGoogle(true);
+      toast.success(`Synced ${result.processedCount} contacts.`);
       await loadImports();
+      if (nextPath) {
+        navigate(nextPath, { replace: true });
+      }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not sync Google contacts.");
+      const message =
+        err instanceof Error ? err.message : "Could not sync Google contacts.";
+      if (/authorization expired|revoked|reconnect/i.test(message)) {
+        setHasConnectedGoogle(false);
+      }
+      toast.error(message);
     } finally {
       setIsSyncing(false);
     }
-  }, [loadImports]);
+  }, [loadImports, navigate]);
+
+  const connectGoogle = useCallback(async () => {
+    setIsConnectingGoogle(true);
+    try {
+      const url = await startGoogleImportConnection("/dashboard/import");
+      sessionStorage.setItem(GOOGLE_OAUTH_PENDING_KEY, "1");
+      window.location.assign(url);
+    } catch (err) {
+      sessionStorage.removeItem(GOOGLE_OAUTH_PENDING_KEY);
+      toast.error(err instanceof Error ? err.message : "Could not connect Google.");
+      setIsConnectingGoogle(false);
+    }
+  }, []);
 
   useEffect(() => {
     void loadImports();
@@ -100,26 +124,32 @@ export default function ImportPage() {
   useEffect(() => {
     const googleState = searchParams.get("google");
     const reason = searchParams.get("reason");
+    const nextPath = getSafeNextPath(searchParams.get("next"));
     if (googleState === "connected") {
+      setHasConnectedGoogle(true);
       const shouldAutoSync =
         sessionStorage.getItem(GOOGLE_OAUTH_PENDING_KEY) === "1";
       sessionStorage.removeItem(GOOGLE_OAUTH_PENDING_KEY);
       if (shouldAutoSync) {
         toast.success("Google connected. Syncing contacts...");
-        void syncGoogle();
+        void syncGoogle(nextPath);
       } else {
         toast.success("Google connected. You can sync contacts now.");
+        if (nextPath) {
+          navigate(nextPath, { replace: true });
+        }
       }
     }
     if (googleState === "error") {
       sessionStorage.removeItem(GOOGLE_OAUTH_PENDING_KEY);
+      localStorage.removeItem(GOOGLE_CONNECTED_KEY);
       toast.error(
         reason
           ? `Google connection failed. Reason: ${reason}.`
           : "Google connection failed.",
       );
     }
-  }, [searchParams, syncGoogle]);
+  }, [navigate, searchParams, syncGoogle]);
 
   useEffect(() => {
     const reloadIfReturnedFromFailedGoogleOAuth = (event: PageTransitionEvent) => {
@@ -147,18 +177,7 @@ export default function ImportPage() {
     };
   }, []);
 
-  const connectGoogle = async () => {
-    setIsConnecting(true);
-    try {
-      const url = await startGoogleImportConnection("/dashboard/import");
-      sessionStorage.setItem(GOOGLE_OAUTH_PENDING_KEY, "1");
-      window.location.assign(url);
-    } catch (err) {
-      sessionStorage.removeItem(GOOGLE_OAUTH_PENDING_KEY);
-      toast.error(err instanceof Error ? err.message : "Could not start Google connection.");
-      setIsConnecting(false);
-    }
-  };
+  const googleSummary = summary?.bySource.find((item) => item.source === "GOOGLE");
 
   return (
     <AppShell>
@@ -170,20 +189,32 @@ export default function ImportPage() {
               Bring your Google contacts into ContactBook.
             </h1>
             <p className="text-base text-muted-foreground">
-              Choose the Google account you want to connect, then sync contacts into
-              your ContactBook import queue.
+              {hasConnectedGoogle
+                ? "Sync contacts from your connected Google account into your ContactBook import queue."
+                : "Sync your Google contacts into your ContactBook import queue."}
             </p>
           </div>
           <div className="mt-6">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => void syncGoogle()}
-              disabled={isSyncing}
-            >
-              <RefreshCw className="h-4 w-4" aria-hidden="true" />
-              Sync contacts
-            </Button>
+            {hasConnectedGoogle ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void syncGoogle()}
+                disabled={isSyncing}
+              >
+                <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                Sync contacts
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                onClick={() => void connectGoogle()}
+                disabled={isConnectingGoogle}
+              >
+                <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                {isConnectingGoogle ? "Connecting" : "Connect Google"}
+              </Button>
+            )}
           </div>
         </div>
 
@@ -195,104 +226,72 @@ export default function ImportPage() {
           <CardContent className="space-y-3">
             <div className="flex items-center justify-between rounded-md border border-border p-3">
               <span className="text-sm text-muted-foreground">Imported contacts</span>
-              <span className="text-lg font-semibold">{imports.length}</span>
+              <span className="text-lg font-semibold">
+                {summary?.totalActive ?? imports.length}
+              </span>
             </div>
             <div className="flex items-center justify-between rounded-md border border-border p-3">
               <span className="text-sm text-muted-foreground">Google contacts</span>
               <span className="text-lg font-semibold">
-                {imports.filter((item) => item.source === "GOOGLE").length}
+                {googleSummary?.activeCount ?? imports.length}
+              </span>
+            </div>
+            <div className="flex items-center justify-between rounded-md border border-border p-3">
+              <span className="text-sm text-muted-foreground">Last sync</span>
+              <span className="text-sm font-medium">
+                {formatDate(googleSummary?.lastSyncAt ?? null)}
               </span>
             </div>
           </CardContent>
         </Card>
       </section>
 
-      <ContactImportOptions
-        onConnectGoogle={() => void connectGoogle()}
-        isConnectingGoogle={isConnecting}
-      />
+      <section className="grid gap-4 lg:grid-cols-3">
+        <ContactImportOptions
+          hideGoogle={hasConnectedGoogle}
+          onConnectGoogle={connectGoogle}
+          isConnectingGoogle={isConnectingGoogle}
+          className={hasConnectedGoogle ? "lg:contents" : "lg:col-span-3"}
+        />
 
-      <Card>
-        <CardHeader>
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <CardTitle>Imported contacts</CardTitle>
-              <CardDescription>Review contacts brought in from Google.</CardDescription>
-            </div>
-            <div className="relative w-full md:w-72">
-              <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-              <Input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search contacts"
-                className="pl-9"
-              />
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {isLoading && (
-            <div className="space-y-3">
-              {Array.from({ length: 5 }).map((_, index) => (
-                <Skeleton key={index} className="h-16 w-full" />
-              ))}
-            </div>
-          )}
-
-          {!isLoading && error && (
-            <Alert className="flex items-start gap-3">
-              <AlertCircle className="mt-0.5 h-4 w-4 text-destructive" />
-              <div>
-                <p className="font-medium">Could not load imports</p>
-                <p className="mt-1 text-sm text-muted-foreground">{error}</p>
-              </div>
-            </Alert>
-          )}
-
-          {!isLoading && !error && filtered.length === 0 && (
-            <div className="flex min-h-56 flex-col items-center justify-center rounded-lg border border-dashed border-border p-6 text-center">
-              <CheckCircle2 className="mb-3 h-8 w-8 text-primary" />
-              <h3 className="font-semibold">No imported contacts yet</h3>
-              <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-                Connect Google and run a sync to populate this list.
-              </p>
-            </div>
-          )}
-
-          {!isLoading && !error && filtered.length > 0 && (
-            <div className="overflow-hidden rounded-lg border border-border">
-              <div className="hidden grid-cols-[1fr_220px_220px] border-b border-border bg-muted px-4 py-3 text-xs font-medium uppercase text-muted-foreground md:grid">
-                <span>Name</span>
-                <span>Contact</span>
-                <span>Imported</span>
-              </div>
-              {filtered.map((item) => {
-                return (
-                  <div
-                    key={item.id}
-                    className="grid gap-2 border-b border-border px-4 py-4 last:border-b-0 md:grid-cols-[1fr_220px_220px] md:items-center"
-                  >
-                    <div>
-                      <p className="font-medium">
-                        {getImportDisplayName(item)}
-                      </p>
-                      <Badge variant="secondary" className="mt-1 w-fit">
-                        {item.source.toLowerCase()}
-                      </Badge>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      {getPrimaryContact(item)}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {formatDate(item.createdAt)}
-                    </p>
+        {hasConnectedGoogle && (
+          <Card className="min-h-64">
+            <CardHeader>
+              <CardTitle>Contacts directory</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {error && (
+                <Alert className="flex items-start gap-3">
+                  <AlertCircle className="mt-0.5 h-4 w-4 text-destructive" />
+                  <div>
+                    <p className="font-medium">Could not load import status</p>
+                    <p className="mt-1 text-sm text-muted-foreground">{error}</p>
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                </Alert>
+              )}
+              <div className="flex flex-col gap-4 rounded-lg border border-border p-4">
+                <div>
+                  <p className="font-medium">
+                    {isLoading
+                      ? "Loading contacts status"
+                      : `${summary?.totalActive ?? imports.length} contacts`}
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Open the Contacts page to search and inspect contacts.
+                  </p>
+                </div>
+                <Link
+                  to="/dashboard/contacts"
+                  className={buttonVariants({ variant: "default" })}
+                >
+                  View contacts
+                  <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </section>
     </AppShell>
   );
 }

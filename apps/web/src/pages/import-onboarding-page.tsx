@@ -7,17 +7,29 @@ import { ContactImportOptions } from "@/components/contact-import-options";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { startGoogleImportConnection } from "@/lib/google-import";
+import { GOOGLE_OAUTH_PENDING_KEY } from "@/lib/session-storage";
 
-const GOOGLE_OAUTH_PENDING_KEY = "contactbook:google-oauth-pending";
+type ImportOnboardingModalProps = {
+  mode?: "setup" | "create";
+  onSkip: () => void;
+};
 
-export default function ImportOnboardingPage() {
+export function ImportOnboardingModal({
+  mode = "create",
+  onSkip,
+}: ImportOnboardingModalProps) {
   const [isConnectingGoogle, setIsConnectingGoogle] = useState(false);
-  const navigate = useNavigate();
 
   const connectGoogle = async () => {
     setIsConnectingGoogle(true);
     try {
-      const url = await startGoogleImportConnection("/dashboard/import");
+      const cardNext =
+        mode === "setup"
+          ? "/dashboard?onboarding=card&flow=setup"
+          : "/dashboard?onboarding=card";
+      const url = await startGoogleImportConnection(
+        `/dashboard/import?next=${encodeURIComponent(cardNext)}`,
+      );
       sessionStorage.setItem(GOOGLE_OAUTH_PENDING_KEY, "1");
       window.location.assign(url);
     } catch (error) {
@@ -30,7 +42,6 @@ export default function ImportOnboardingPage() {
   };
 
   return (
-    <AppShell>
       <section className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 px-4 py-8 backdrop-blur-sm md:px-6">
         <div className="flex max-h-[calc(100vh-4rem)] w-full max-w-4xl flex-col overflow-hidden rounded-lg border border-border bg-card shadow-xl">
           <div className="border-b border-border px-4 py-3 md:px-5">
@@ -41,13 +52,13 @@ export default function ImportOnboardingPage() {
                   Bring your contacts into ContactBook.
                 </h1>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Choose a source now, or skip and import contacts from the dashboard later.
+                  Choose a source now, or continue setup and import contacts later.
                 </p>
               </div>
               <Button
                 type="button"
                 variant="ghost"
-                onClick={() => navigate("/dashboard", { replace: true })}
+                onClick={onSkip}
                 className="self-start"
               >
                 Skip for now
@@ -66,6 +77,18 @@ export default function ImportOnboardingPage() {
           </div>
         </div>
       </section>
+  );
+}
+
+export default function ImportOnboardingPage() {
+  const navigate = useNavigate();
+
+  return (
+    <AppShell>
+      <ImportOnboardingModal
+        mode="setup"
+        onSkip={() => navigate("/dashboard?onboarding=card&flow=setup", { replace: true })}
+      />
     </AppShell>
   );
 }
