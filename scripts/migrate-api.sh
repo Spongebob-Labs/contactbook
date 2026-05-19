@@ -50,6 +50,19 @@ fi
 
 cd "${API_DIR}"
 
+# shellcheck disable=SC1091
+set -a
+# shellcheck source=/dev/null
+source "${ENV_FILE}"
+set +a
+
+if [[ "${MODE}" == "deploy" ]] && [[ -z "${DIRECT_URL:-}" ]] && [[ "${DATABASE_URL:-}" == *":6543"* ]]; then
+  echo "Warning: DATABASE_URL uses port 6543 (Supabase transaction pooler)." >&2
+  echo "Set DIRECT_URL to your Supabase *direct* connection (port 5432) in apps/api/.env" >&2
+  echo "or migrate deploy may hang. See apps/api/.env.example." >&2
+  exit 1
+fi
+
 echo "==> Prisma migrate (${MODE})"
 if [[ "${MODE}" == "dev" ]]; then
   pnpm run prisma:migrate

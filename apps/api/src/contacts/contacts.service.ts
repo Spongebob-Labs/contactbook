@@ -1,10 +1,7 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { ContactSource } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
-import {
-  ContactSerializer,
-  type ContactWithRelations,
-} from "./contact.serializer";
+import { ContactSerializer } from "./contact.serializer";
 import type { ContactImportSummaryDto } from "./dto/contact-import-summary.dto";
 import type { ContactDetailDto } from "./dto/contact-response.dto";
 
