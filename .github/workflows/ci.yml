@@ -7,6 +7,7 @@
 #   Prisma generate, Nest build, tests, and Docker build (BuildKit file secret `api_env`).
 # - API_ENV_CI_B64 — optional. If set, CI uses this instead of API_ENV_B64 (e.g. CI-only DB URL).
 # - GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_SERVICE_ACCOUNT — required to push images to GAR on push to main/dev.
+#   Pushes tag :<sha> and :<0.1.run_number> for both main and dev.
 #
 # Variables (non-secret): GCP_REGION, GCP_PROJECT_ID — required when pushing images to Artifact Registry.
 
@@ -95,9 +96,7 @@ jobs:
             {
               echo "tags<<__EOF__"
               echo "${BASE}:${{ github.sha }}"
-              if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-                echo "${BASE}:${VERSION_TAG}"
-              fi
+              echo "${BASE}:${VERSION_TAG}"
               echo "__EOF__"
             } >> "$GITHUB_OUTPUT"
           else

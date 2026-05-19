@@ -7,9 +7,9 @@ function trimOrNull(v: string | null | undefined): string | null {
   return t && t.length > 0 ? t : null;
 }
 
-function primaryIndex<T extends { metadata?: { primary?: boolean | null } | null }>(
-  list: T[],
-): number {
+function primaryIndex<
+  T extends { metadata?: { primary?: boolean | null } | null },
+>(list: T[]): number {
   const idx = list.findIndex((item) => item.metadata?.primary === true);
   return idx >= 0 ? idx : 0;
 }
@@ -25,21 +25,25 @@ export function googlePersonToNormalizedContact(
   const names = person.names ?? [];
   const primaryName = names[primaryIndex(names)];
 
-  const phones = (person.phoneNumbers ?? []).map((p, i, arr) => ({
-    value: trimOrNull(p.value) ?? "",
-    label: trimOrNull(p.type ?? p.formattedType),
-    isPrimary:
-      p.metadata?.primary === true ||
-      (i === primaryIndex(arr) && !arr.some((x) => x.metadata?.primary)),
-  })).filter((p) => p.value.length > 0);
+  const phones = (person.phoneNumbers ?? [])
+    .map((p, i, arr) => ({
+      value: trimOrNull(p.value) ?? "",
+      label: trimOrNull(p.type ?? p.formattedType),
+      isPrimary:
+        p.metadata?.primary === true ||
+        (i === primaryIndex(arr) && !arr.some((x) => x.metadata?.primary)),
+    }))
+    .filter((p) => p.value.length > 0);
 
-  const emails = (person.emailAddresses ?? []).map((e, i, arr) => ({
-    value: (trimOrNull(e.value)?.toLowerCase() ?? ""),
-    label: trimOrNull(e.type ?? e.formattedType),
-    isPrimary:
-      e.metadata?.primary === true ||
-      (i === primaryIndex(arr) && !arr.some((x) => x.metadata?.primary)),
-  })).filter((e) => e.value.length > 0);
+  const emails = (person.emailAddresses ?? [])
+    .map((e, i, arr) => ({
+      value: trimOrNull(e.value)?.toLowerCase() ?? "",
+      label: trimOrNull(e.type ?? e.formattedType),
+      isPrimary:
+        e.metadata?.primary === true ||
+        (i === primaryIndex(arr) && !arr.some((x) => x.metadata?.primary)),
+    }))
+    .filter((e) => e.value.length > 0);
 
   const organizations = (person.organizations ?? []).map((o, i, arr) => ({
     companyName: trimOrNull(o.name),

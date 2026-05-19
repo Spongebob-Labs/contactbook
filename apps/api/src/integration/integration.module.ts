@@ -1,6 +1,5 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
-import { ContactsModule } from "../contacts/contacts.module";
 import { PrismaModule } from "../prisma/prisma.module";
 import { OAuthTokensModule } from "../oauth-tokens/oauth-tokens.module";
 import { TwilioNestModule } from "./twilio.module";
@@ -10,13 +9,7 @@ import { TwilioWebhookController } from "./twilio-webhook.controller";
 import { WhatsappWebhookService } from "./whatsapp-webhook.service";
 
 @Module({
-  imports: [
-    PrismaModule,
-    TwilioNestModule,
-    ConfigModule,
-    OAuthTokensModule,
-    ContactsModule,
-  ],
+  imports: [PrismaModule, TwilioNestModule, ConfigModule, OAuthTokensModule],
   controllers: [GoogleController, TwilioWebhookController],
   providers: [GoogleService, WhatsappWebhookService],
   exports: [GoogleService, TwilioNestModule],

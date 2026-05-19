@@ -1,10 +1,7 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { ContactSource } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
-import {
-  ContactSerializer,
-  type ContactWithRelations,
-} from "./contact.serializer";
+import { ContactSerializer } from "./contact.serializer";
 import type { ContactImportSummaryDto } from "./dto/contact-import-summary.dto";
 import type { ContactDetailDto } from "./dto/contact-response.dto";
 
@@ -40,12 +37,22 @@ export class ContactsService {
           }),
         ]);
         const hasSyncToken = Boolean(integration?.syncToken);
+        const lastSyncStats =
+          integration?.lastSyncAt != null
+            ? {
+                added: integration.lastSyncAdded,
+                updated: integration.lastSyncUpdated,
+                deleted: integration.lastSyncDeleted,
+                duplicatesFound: integration.lastSyncDuplicates,
+              }
+            : undefined;
         return {
           source,
           activeCount,
           deletedCount,
           lastSyncAt: integration?.lastSyncAt ?? null,
           hasSyncToken,
+          lastSyncStats,
         };
       }),
     );
@@ -76,11 +83,13 @@ export class ContactsService {
         ...(source ? { source } : {}),
       },
       include: contactInclude,
-      orderBy: [{ displayName: "asc" }, { lastName: "asc" }, { firstName: "asc" }],
+      orderBy: [
+        { displayName: "asc" },
+        { lastName: "asc" },
+        { firstName: "asc" },
+      ],
     });
-    return rows.map((row) =>
-      this.serializer.toDetail(row as ContactWithRelations),
-    );
+    return rows.map((row) => this.serializer.toDetail(row));
   }
 
   async get(userId: string, id: string): Promise<ContactDetailDto> {
@@ -91,6 +100,6 @@ export class ContactsService {
     if (!row) {
       throw new NotFoundException("Contact not found");
     }
-    return this.serializer.toDetail(row as ContactWithRelations);
+    return this.serializer.toDetail(row);
   }
 }
