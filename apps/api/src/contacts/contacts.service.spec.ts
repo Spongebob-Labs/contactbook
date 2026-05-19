@@ -23,14 +23,14 @@ describe("ContactsService.getImportSummary", () => {
           }) =>
             Promise.resolve(
               where.userId_source.source === ContactSource.GOOGLE
-              ? {
-                  lastSyncAt: new Date("2026-05-18T00:00:00Z"),
-                  syncToken: "token",
-                  lastSyncAdded: 0,
-                  lastSyncUpdated: 0,
-                  lastSyncDeleted: 0,
-                  lastSyncDuplicates: 0,
-                }
+                ? {
+                    lastSyncAt: new Date("2026-05-18T00:00:00Z"),
+                    syncToken: "token",
+                    lastSyncAdded: 0,
+                    lastSyncUpdated: 0,
+                    lastSyncDeleted: 0,
+                    lastSyncDuplicates: 0,
+                  }
                 : null,
             ),
         ),

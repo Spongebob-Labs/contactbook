@@ -9,12 +9,7 @@ import { TwilioWebhookController } from "./twilio-webhook.controller";
 import { WhatsappWebhookService } from "./whatsapp-webhook.service";
 
 @Module({
-  imports: [
-    PrismaModule,
-    TwilioNestModule,
-    ConfigModule,
-    OAuthTokensModule,
-  ],
+  imports: [PrismaModule, TwilioNestModule, ConfigModule, OAuthTokensModule],
   controllers: [GoogleController, TwilioWebhookController],
   providers: [GoogleService, WhatsappWebhookService],
   exports: [GoogleService, TwilioNestModule],

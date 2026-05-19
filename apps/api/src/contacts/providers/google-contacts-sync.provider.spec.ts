@@ -12,7 +12,9 @@ describe("GoogleContactsSyncProvider", () => {
 
   const prisma = {
     integrationState: {
-      upsert: jest.fn().mockResolvedValue({ syncToken: null, lastSyncAt: null }),
+      upsert: jest
+        .fn()
+        .mockResolvedValue({ syncToken: null, lastSyncAt: null }),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       update: jest.fn().mockResolvedValue({
         lastSyncAt: new Date("2026-05-19T00:00:00Z"),
@@ -64,26 +66,105 @@ describe("GoogleContactsSyncProvider", () => {
       },
     });
     peopleClient = { people: { connections: { list: listMock } } };
-    jest.spyOn(
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      require("googleapis").google,
-      "people",
-    ).mockReturnValue(peopleClient);
+    jest
+      .spyOn(
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        (require("googleapis") as { google: { people: jest.Mock } }).google,
+        "people",
+      )
+      .mockReturnValue(peopleClient);
   });
 
   afterEach(() => {
     jest.restoreAllMocks();
   });
 
-  it("retries full sync on 410 and sets recoveredFromExpiredToken", async () => {
-    listMock
-      .mockRejectedValueOnce(apiError(410))
-      .mockResolvedValueOnce({
-        data: {
-          connections: [],
-          nextSyncToken: "tok",
-        },
-      });
+  it("import runs full sync without syncToken in API request", async () => {
+    prisma.integrationState.upsert.mockResolvedValue({
+      syncToken: null,
+      lastSyncAt: null,
+    });
+
+    const provider = new GoogleContactsSyncProvider(
+      prisma as never,
+      config as never,
+      oauthTokenService as never,
+      contactUpsert as never,
+    );
+
+    const result = await provider.import(userId);
+
+    expect(result.syncMode).toBe("full");
+    expect(listMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        syncToken: undefined,
+        requestSyncToken: true,
+      }),
+    );
+    expect(prisma.integrationState.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("import clears blank sync token then runs full sync", async () => {
+    prisma.integrationState.upsert.mockResolvedValue({
+      syncToken: "   ",
+      lastSyncAt: null,
+    });
+
+    const provider = new GoogleContactsSyncProvider(
+      prisma as never,
+      config as never,
+      oauthTokenService as never,
+      contactUpsert as never,
+    );
+
+    const result = await provider.import(userId);
+
+    expect(prisma.integrationState.updateMany).toHaveBeenCalledWith({
+      where: { userId, source: ContactSource.GOOGLE },
+      data: { syncToken: null },
+    });
+    expect(result.syncMode).toBe("full");
+    expect(listMock).toHaveBeenCalledWith(
+      expect.objectContaining({ syncToken: undefined }),
+    );
+  });
+
+  it("import always runs full sync even when a sync token exists", async () => {
+    prisma.integrationState.upsert.mockResolvedValue({
+      syncToken: "existing-token",
+      lastSyncAt: new Date("2026-05-18T00:00:00Z"),
+    });
+
+    const provider = new GoogleContactsSyncProvider(
+      prisma as never,
+      config as never,
+      oauthTokenService as never,
+      contactUpsert as never,
+    );
+
+    const result = await provider.import(userId);
+
+    expect(prisma.integrationState.updateMany).toHaveBeenCalledWith({
+      where: { userId, source: ContactSource.GOOGLE },
+      data: { syncToken: null },
+    });
+    expect(result.syncMode).toBe("full");
+    expect(listMock).toHaveBeenCalledWith(
+      expect.objectContaining({ syncToken: undefined }),
+    );
+  });
+
+  it("sync falls back to full import on 410 and sets recoveredFromExpiredToken", async () => {
+    prisma.integrationState.upsert.mockResolvedValue({
+      syncToken: "expired-token",
+      lastSyncAt: new Date("2026-05-18T00:00:00Z"),
+    });
+    listMock.mockRejectedValueOnce(apiError(410)).mockResolvedValueOnce({
+      data: {
+        connections: [],
+        nextSyncToken: "tok",
+      },
+    });
 
     const provider = new GoogleContactsSyncProvider(
       prisma as never,
@@ -93,12 +174,19 @@ describe("GoogleContactsSyncProvider", () => {
     );
 
     const result = await provider.sync(userId);
-    expect(prisma.integrationState.updateMany).toHaveBeenCalledWith({
-      where: { userId, source: ContactSource.GOOGLE },
-      data: { syncToken: null },
-    });
     expect(result.recoveredFromExpiredToken).toBe(true);
     expect(result.syncMode).toBe("full");
     expect(listMock).toHaveBeenCalledTimes(2);
+    const calls = listMock.mock.calls as Array<
+      [{ syncToken?: string }] | undefined
+    >;
+    const firstListArgs = calls[0]?.[0];
+    const secondListArgs = calls[1]?.[0];
+    expect(firstListArgs).toEqual(
+      expect.objectContaining({ syncToken: "expired-token" }),
+    );
+    expect(secondListArgs).toEqual(
+      expect.objectContaining({ syncToken: undefined }),
+    );
   });
 });

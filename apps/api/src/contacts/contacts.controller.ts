@@ -4,7 +4,6 @@ import {
   Param,
   ParseEnumPipe,
   ParseUUIDPipe,
-  Post,
   Query,
   UseGuards,
 } from "@nestjs/common";
@@ -35,13 +34,16 @@ export class ContactsController {
     private readonly contactsSync: ContactsSyncService,
   ) {}
 
-  @Post("sync")
+  @Get("sync")
   @ApiOperation({
     summary: "Sync contacts from a provider",
     description:
-      "Runs provider sync (Google delta/full). Replaces GET /integrations/google/sync. iCloud is not implemented yet.",
+      "Runs incremental provider sync when a sync token exists (Google). On an expired token, falls back to the same full import as GET /contacts/import. iCloud is not implemented yet.",
   })
-  @ApiQuery({ name: "source", enum: [ContactSource.GOOGLE, ContactSource.ICLOUD] })
+  @ApiQuery({
+    name: "source",
+    enum: [ContactSource.GOOGLE, ContactSource.ICLOUD],
+  })
   @ApiOkResponse({ type: ContactSyncResponseDto })
   sync(
     @CurrentUser() user: JwtUserPayload,
@@ -52,12 +54,20 @@ export class ContactsController {
 
   @Get("import")
   @ApiOperation({
-    summary: "Import summary by source",
+    summary: "Import contacts from a provider",
     description:
-      "Counts and last sync metadata per provider. Does not return individual contacts.",
+      "Runs a full provider import for the given source (Google never uses a stored sync token), then returns counts and last sync metadata.",
+  })
+  @ApiQuery({
+    name: "source",
+    enum: [ContactSource.GOOGLE, ContactSource.ICLOUD],
   })
   @ApiOkResponse({ type: ContactImportSummaryDto })
-  getImportSummary(@CurrentUser() user: JwtUserPayload) {
+  async import(
+    @CurrentUser() user: JwtUserPayload,
+    @Query("source", new ParseEnumPipe(ContactSource)) source: ContactSource,
+  ) {
+    await this.contactsSync.import(user.sub, source);
     return this.contacts.getImportSummary(user.sub);
   }
 

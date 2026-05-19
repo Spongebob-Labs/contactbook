@@ -113,7 +113,7 @@ Google contact import uses the API-owned OAuth flow:
 3. Google redirects to `GOOGLE_REDIRECT_URI`.
 4. The API stores Google tokens for the signed-in ContactBook user.
 5. The API redirects back to `${WEB_APP_URL}/dashboard/import?google=connected`.
-6. The web app calls `GET /api/v1/integrations/google/sync` to import contacts.
+6. The web app calls `GET /api/v1/contacts/import?source=GOOGLE` to import contacts (or `GET /api/v1/contacts/sync?source=GOOGLE` for detailed sync stats).
 
 Local API env:
 

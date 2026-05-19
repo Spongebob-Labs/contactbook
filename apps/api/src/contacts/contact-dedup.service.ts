@@ -50,25 +50,23 @@ export class ContactDedupService {
         userId,
         OR: keys.map((k) => ({ kind: k.kind, value: k.value })),
       },
-      include: {
-        mergeGroup: {
-          include: {
-            contacts: {
-              where: { deletedAt: null },
-              select: { id: true, source: true, externalId: true },
-            },
-          },
-        },
-      },
+      select: { mergeGroupId: true },
+      take: 1,
     });
 
     if (existingKeys.length > 0) {
-      const mergeGroupId = existingKeys[0]!.mergeGroupId;
-      const siblings = existingKeys[0]!.mergeGroup.contacts;
-      const duplicateFound = siblings.some(
-        (c) =>
-          c.source !== contact.source || c.externalId !== contact.externalId,
-      );
+      const mergeGroupId = existingKeys[0].mergeGroupId;
+      const duplicateFound =
+        (await db.contact.count({
+          where: {
+            mergeGroupId,
+            deletedAt: null,
+            NOT: {
+              source: contact.source,
+              externalId: contact.externalId,
+            },
+          },
+        })) > 0;
       await this.ensureKeysForGroup(db, userId, mergeGroupId, keys);
       return { mergeGroupId, duplicateFound };
     }
@@ -90,21 +88,24 @@ export class ContactDedupService {
 
   async refreshKeysForContact(
     userId: string,
-    contactId: string,
+    _contactId: string,
     mergeGroupId: string,
     contact: NormalizedContact,
     tx: Prisma.TransactionClient,
   ): Promise<void> {
     const keys = this.buildDedupKeys(contact);
+    const nextSet = new Set(keys.map((k) => `${k.kind}:${k.value}`));
     const owned = await tx.contactDedupKey.findMany({
       where: { mergeGroupId, userId },
+      select: { id: true, kind: true, value: true },
     });
-    const nextSet = new Set(keys.map((k) => `${k.kind}:${k.value}`));
-    for (const row of owned) {
-      const token = `${row.kind}:${row.value}`;
-      if (!nextSet.has(token)) {
-        await tx.contactDedupKey.delete({ where: { id: row.id } });
-      }
+    const staleIds = owned
+      .filter((row) => !nextSet.has(`${row.kind}:${row.value}`))
+      .map((row) => row.id);
+    if (staleIds.length > 0) {
+      await tx.contactDedupKey.deleteMany({
+        where: { id: { in: staleIds } },
+      });
     }
     await this.ensureKeysForGroup(tx, userId, mergeGroupId, keys);
   }
@@ -115,24 +116,29 @@ export class ContactDedupService {
     mergeGroupId: string,
     keys: DedupKey[],
   ): Promise<void> {
-    for (const key of keys) {
-      await db.contactDedupKey.upsert({
-        where: {
-          userId_kind_value: {
+    if (keys.length === 0) {
+      return;
+    }
+    await Promise.all(
+      keys.map((key) =>
+        db.contactDedupKey.upsert({
+          where: {
+            userId_kind_value: {
+              userId,
+              kind: key.kind,
+              value: key.value,
+            },
+          },
+          create: {
             userId,
+            mergeGroupId,
             kind: key.kind,
             value: key.value,
           },
-        },
-        create: {
-          userId,
-          mergeGroupId,
-          kind: key.kind,
-          value: key.value,
-        },
-        update: { mergeGroupId },
-      });
-    }
+          update: { mergeGroupId },
+        }),
+      ),
+    );
   }
 }
 

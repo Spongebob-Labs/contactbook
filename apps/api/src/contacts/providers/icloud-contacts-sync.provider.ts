@@ -3,9 +3,17 @@ import type { ContactSyncResponseDto } from "../dto/contact-sync-response.dto";
 
 @Injectable()
 export class IcloudContactsSyncProvider {
-  sync(_userId: string): Promise<ContactSyncResponseDto> {
+  sync(userId: string): Promise<ContactSyncResponseDto> {
+    void userId;
     throw new NotImplementedException(
       "iCloud contact sync is not implemented yet. Use source=GOOGLE.",
+    );
+  }
+
+  import(userId: string): Promise<ContactSyncResponseDto> {
+    void userId;
+    throw new NotImplementedException(
+      "iCloud contact import is not implemented yet. Use source=GOOGLE.",
     );
   }
 }
