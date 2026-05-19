@@ -6,6 +6,7 @@ import { ProtectedRoute } from "@/components/protected-route";
 
 const AuthPage = lazy(() => import("@/pages/auth-page"));
 const AuthCallbackPage = lazy(() => import("@/pages/auth-callback-page"));
+const CardOnboardingPage = lazy(() => import("@/pages/card-onboarding-page"));
 const ContactsPage = lazy(() => import("@/pages/contacts-page"));
 const DashboardPage = lazy(() => import("@/pages/dashboard-page"));
 const ImportOnboardingPage = lazy(() => import("@/pages/import-onboarding-page"));
@@ -35,6 +36,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <ImportOnboardingPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/onboarding/card"
+            element={
+              <ProtectedRoute>
+                <CardOnboardingPage />
               </ProtectedRoute>
             }
           />

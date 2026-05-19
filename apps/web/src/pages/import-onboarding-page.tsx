@@ -17,7 +17,7 @@ export default function ImportOnboardingPage() {
   const connectGoogle = async () => {
     setIsConnectingGoogle(true);
     try {
-      const url = await startGoogleImportConnection("/dashboard/import");
+      const url = await startGoogleImportConnection("/dashboard/import?next=/onboarding/card");
       sessionStorage.setItem(GOOGLE_OAUTH_PENDING_KEY, "1");
       window.location.assign(url);
     } catch (error) {
@@ -41,13 +41,13 @@ export default function ImportOnboardingPage() {
                   Bring your contacts into ContactBook.
                 </h1>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Choose a source now, or skip and import contacts from the dashboard later.
+                  Choose a source now, or continue setup and import contacts later.
                 </p>
               </div>
               <Button
                 type="button"
                 variant="ghost"
-                onClick={() => navigate("/dashboard", { replace: true })}
+                onClick={() => navigate("/onboarding/card", { replace: true })}
                 className="self-start"
               >
                 Skip for now

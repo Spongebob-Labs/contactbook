@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { AlertCircle, CheckCircle2, RefreshCw, Search } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
@@ -19,6 +19,13 @@ import type {
 
 const GOOGLE_OAUTH_PENDING_KEY = "contactbook:google-oauth-pending";
 const GOOGLE_CONNECTED_KEY = "contactbook:google-connected";
+
+function getSafeNextPath(value: string | null) {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) {
+    return null;
+  }
+  return value;
+}
 
 function formatDate(value: string | null) {
   if (!value) {
@@ -72,6 +79,7 @@ function hasGoogleConnectionEvidence(
 
 export default function ImportPage() {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [imports, setImports] = useState<ContactImport[]>([]);
   const [summary, setSummary] = useState<ContactImportSummary | null>(null);
   const [query, setQuery] = useState("");
@@ -111,7 +119,7 @@ export default function ImportPage() {
     }
   }, []);
 
-  const syncGoogle = useCallback(async () => {
+  const syncGoogle = useCallback(async (nextPath?: string | null) => {
     setIsSyncing(true);
     try {
       const result = await apiFetch<GoogleSyncResponse>("/v1/integrations/google/sync");
@@ -119,6 +127,9 @@ export default function ImportPage() {
       setHasConnectedGoogle(true);
       toast.success(`Synced ${result.processedCount} contacts.`);
       await loadImports();
+      if (nextPath) {
+        navigate(nextPath, { replace: true });
+      }
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Could not sync Google contacts.";
@@ -130,7 +141,7 @@ export default function ImportPage() {
     } finally {
       setIsSyncing(false);
     }
-  }, [loadImports]);
+  }, [loadImports, navigate]);
 
   useEffect(() => {
     void loadImports();
@@ -139,6 +150,7 @@ export default function ImportPage() {
   useEffect(() => {
     const googleState = searchParams.get("google");
     const reason = searchParams.get("reason");
+    const nextPath = getSafeNextPath(searchParams.get("next"));
     if (googleState === "connected") {
       localStorage.setItem(GOOGLE_CONNECTED_KEY, "1");
       setHasConnectedGoogle(true);
@@ -147,9 +159,12 @@ export default function ImportPage() {
       sessionStorage.removeItem(GOOGLE_OAUTH_PENDING_KEY);
       if (shouldAutoSync) {
         toast.success("Google connected. Syncing contacts...");
-        void syncGoogle();
+        void syncGoogle(nextPath);
       } else {
         toast.success("Google connected. You can sync contacts now.");
+        if (nextPath) {
+          navigate(nextPath, { replace: true });
+        }
       }
     }
     if (googleState === "error") {
@@ -160,7 +175,7 @@ export default function ImportPage() {
           : "Google connection failed.",
       );
     }
-  }, [searchParams, syncGoogle]);
+  }, [navigate, searchParams, syncGoogle]);
 
   useEffect(() => {
     const reloadIfReturnedFromFailedGoogleOAuth = (event: PageTransitionEvent) => {

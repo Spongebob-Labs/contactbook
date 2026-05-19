@@ -42,6 +42,17 @@ export type ContactUrl = {
   label?: string | null;
 };
 
+export type ContactCardType = "BUSINESS" | "PERSONAL" | "PAYMENT" | "CUSTOM";
+
+export type ContactCard = {
+  id: string;
+  userId: string;
+  name: string;
+  type: ContactCardType;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type ContactImportSummary = {
   totalActive: number;
   totalDeleted: number;

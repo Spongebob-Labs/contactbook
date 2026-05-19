@@ -335,3 +335,15 @@
 - Decision: Add a frontend-only `/dashboard/contacts` page backed by mock data shaped like the current `GET /v1/contacts` `ContactDetailDto[]` response.
 - Reason: The contacts directory can be built and reviewed before the final API wiring while keeping the page contract-compatible with the backend response.
 - Notes: The page uses TanStack Table for filtering, sorting, and pagination state, shadcn-style combobox filters, and a responsive card view that becomes the default presentation on mobile.
+
+## 2026-05-19 - Add First Card Prompt After Import Onboarding
+
+- Decision: Add `/onboarding/card` as the next onboarding step after profile completion and import choice, using the existing `POST /v1/cards` API.
+- Reason: A first ContactBook card is the next meaningful setup action once a user has created a profile and either imported contacts or skipped import.
+- Notes: The card step stays skippable, Google onboarding redirects to it only after the existing auto-sync succeeds, and no backend code changes are required.
+
+## 2026-05-19 - Show ContactBook Cards On Dashboard
+
+- Decision: Load `GET /v1/cards` on the dashboard and display the user's ContactBook cards in a dedicated card section.
+- Reason: After users create a first card during onboarding, the dashboard should immediately reflect that core product object instead of only showing setup prompts.
+- Notes: The dashboard shows loading, error, empty, and populated card states, with an empty state linking back to `/onboarding/card`.
