@@ -1,13 +1,18 @@
 import { Module } from "@nestjs/common";
-import { TwilioNestModule } from "../integration/twilio.module";
 import { SyncModule } from "../sync/sync.module";
 import { ProfileController } from "./profile.controller";
-import { ProfileService } from "./profile.service";
+import { ProfileMeSerializerService } from "./profile-me.serializer";
+import { ProfileMeUpsertService } from "./profile-me.upsert.service";
+import { ProfilePersistenceService } from "./profile-persistence.service";
 
 @Module({
-  imports: [SyncModule, TwilioNestModule],
+  imports: [SyncModule],
   controllers: [ProfileController],
-  providers: [ProfileService],
-  exports: [ProfileService],
+  providers: [
+    ProfilePersistenceService,
+    ProfileMeSerializerService,
+    ProfileMeUpsertService,
+  ],
+  exports: [ProfileMeSerializerService],
 })
 export class ProfileModule {}

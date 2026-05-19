@@ -21,17 +21,24 @@ export class CompleteRegisterDto {
   @ApiProperty()
   @IsString()
   @MinLength(1)
-  @MaxLength(200)
-  name!: string;
+  @MaxLength(120)
+  firstName!: string;
+
+  @ApiProperty()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(120)
+  lastName!: string;
 
   @ApiProperty({
-    description: "National phone number (digits only, must match verification).",
+    description:
+      "National phone number (digits only, must match verification).",
     example: "5551234567",
   })
   @IsString()
   @Matches(/^\d{4,15}$/)
   @Transform(({ value }) =>
-    typeof value === "string" ? value.replace(/\D/g, "") : value,
+    typeof value === "string" ? value.replace(/\D/g, "") : (value as unknown),
   )
   phone!: string;
 
@@ -42,7 +49,7 @@ export class CompleteRegisterDto {
   @IsString()
   @Matches(/^\+\d{1,4}$/)
   @Transform(({ value }) =>
-    typeof value === "string" ? normalizeDialCode(value) : value,
+    typeof value === "string" ? normalizeDialCode(value) : (value as unknown),
   )
   countryCode!: string;
 

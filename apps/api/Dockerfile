@@ -13,8 +13,8 @@ ARG NODE_VERSION=20-alpine
 # =============================================================================
 FROM node:${NODE_VERSION} AS base
 RUN apk add --no-cache openssl libc6-compat \
- && corepack enable \
- && corepack prepare pnpm@10 --activate
+    && corepack enable \
+    && corepack prepare pnpm@10 --activate
 ENV PNPM_HOME=/pnpm \
     PATH=/pnpm:$PATH \
     CI=true
@@ -34,24 +34,25 @@ COPY packages/utils/package.json ./packages/utils/
 
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm install --frozen-lockfile \
-      --filter api... \
-      --filter "./packages/*"
+    --filter api... \
+    --filter "./packages/*"
 
 # Source for the api and its workspace deps.
 COPY apps/api ./apps/api
 COPY packages ./packages
 
-# DATABASE_URL is only needed for prisma generate (not persisted in image layers).
-# CI: build-push-action secret-envs `database_url=DATABASE_URL`.
-# Local: docker buildx build --secret id=database_url,env=DATABASE_URL ...
-RUN --mount=type=secret,id=database_url \
+# Full dotenv for prisma generate (not persisted): BuildKit file secret -> apps/api/.env, then removed.
+# CI: decode API_ENV_B64 to apps/api/.env, then build-push-action `secret-files: api_env=<that path>`.
+# Local: docker buildx build --secret id=api_env,src=apps/api/.env ...
+RUN --mount=type=secret,id=api_env \
     --mount=type=cache,id=pnpm-store,target=/pnpm/store \
-    export DATABASE_URL="$(cat /run/secrets/database_url)" \
- && pnpm --filter api exec prisma generate \
- && pnpm --filter api build \
- && test -f apps/api/dist/main.js \
+    cp /run/secrets/api_env /workspace/apps/api/.env \
+    && pnpm --filter api exec prisma generate \
+    && pnpm --filter api build \
+    && rm -f /workspace/apps/api/.env \
+    && test -f apps/api/dist/main.js \
     || (echo "Build failed: apps/api/dist/main.js missing" \
-        && ls -la apps/api/dist && exit 1)
+    && ls -la apps/api/dist && exit 1)
 
 # =============================================================================
 # Stage 3: deployer — produce a self-contained prod-only deployment tree
@@ -66,7 +67,7 @@ COPY --from=builder /workspace/packages /workspace/packages
 
 # Drop pre-built node_modules — pnpm deploy installs a fresh prod-only tree.
 RUN rm -rf /workspace/node_modules /workspace/apps/api/node_modules \
-           /workspace/packages/*/node_modules
+    /workspace/packages/*/node_modules
 
 # Create the deployable bundle (apps/api + its prod deps, workspace deps inlined).
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
@@ -76,17 +77,18 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
 # generated client. Regenerate it inside /deploy by pulling the matching prisma
 # CLI on the fly (only @prisma/client needs to be present at runtime).
 WORKDIR /deploy
-RUN --mount=type=secret,id=database_url \
+RUN --mount=type=secret,id=api_env \
     --mount=type=cache,id=pnpm-store,target=/pnpm/store \
-    export DATABASE_URL="$(cat /run/secrets/database_url)" \
- && PRISMA_VERSION=$(node -p "require('./node_modules/@prisma/client/package.json').version") \
- && pnpm dlx prisma@${PRISMA_VERSION} generate \
- && rm -rf /root/.cache /root/.npm /root/.local /tmp/*
+    cp /run/secrets/api_env /deploy/.env \
+    && PRISMA_VERSION=$(node -p "require('./node_modules/@prisma/client/package.json').version") \
+    && pnpm dlx prisma@${PRISMA_VERSION} generate \
+    && rm -f /deploy/.env \
+    && rm -rf /root/.cache /root/.npm /root/.local /tmp/*
 
 # Drop files not needed at runtime to keep the image lean.
 RUN rm -rf src test eslint.config.mjs nest-cli.json \
-           tsconfig.json tsconfig.build.json tsconfig.build.tsbuildinfo \
-           Dockerfile cloudbuild.yaml .env.example .gitignore
+    tsconfig.json tsconfig.build.json tsconfig.build.tsbuildinfo \
+    Dockerfile cloudbuild.yaml .env.example .gitignore
 
 # =============================================================================
 # Stage 4: runtime — minimal image for Cloud Run

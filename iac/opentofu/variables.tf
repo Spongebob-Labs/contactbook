@@ -86,7 +86,7 @@ variable "allow_unauthenticated" {
 }
 
 variable "cloud_run_service_account_email" {
-  description = "Optional service account email to run the Cloud Run service as. If null, Cloud Run uses its default identity."
+  description = "Service account email for the Cloud Run revision runtime identity. If null, the module uses the project default Compute Engine SA (PROJECT_NUMBER-compute@developer.gserviceaccount.com), matching GCP’s default when unspecified."
   type        = string
   default     = null
 }
@@ -104,4 +104,57 @@ variable "enable_apis" {
 variable "apis" {
   description = "List of APIs to enable when enable_apis is true."
   type        = list(string)
+}
+
+variable "enable_github_actions_wif" {
+  description = "If true, create a Workload Identity Pool + GitHub OIDC provider, a deployer service account, IAM for GAR push and Cloud Run deploy, and enable sts/iamcredentials APIs."
+  type        = bool
+  default     = false
+}
+
+variable "github_repository" {
+  description = "GitHub repository allowed to impersonate the GitHub Actions SA (format: owner/repo). Required when enable_github_actions_wif is true."
+  type        = string
+  default     = ""
+
+  validation {
+    condition = (
+      !var.enable_github_actions_wif
+      || (length(var.github_repository) > 0 && can(regex("^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$", var.github_repository)))
+    )
+    error_message = "When enable_github_actions_wif is true, set github_repository to owner/repo (letters, digits, _ . -)."
+  }
+}
+
+variable "github_actions_service_account_id" {
+  description = "GCP service account account_id (short name) for GitHub Actions OIDC. Used when enable_github_actions_wif is true."
+  type        = string
+  default     = "contactbook-github-actions"
+
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9-]{4,28}[a-z0-9]$", var.github_actions_service_account_id))
+    error_message = "github_actions_service_account_id must be 6-30 chars, start with a letter, end with alphanumeric, lowercase letters/digits/hyphens only."
+  }
+}
+
+variable "github_actions_wif_pool_id" {
+  description = "Workload Identity Pool id (short id) when enable_github_actions_wif is true."
+  type        = string
+  default     = "contactbook-github"
+
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9-]{2,30}[a-z0-9]$", var.github_actions_wif_pool_id))
+    error_message = "github_actions_wif_pool_id must be 4-32 chars, lowercase, start with letter, end with alphanumeric."
+  }
+}
+
+variable "github_actions_wif_provider_id" {
+  description = "WIF pool provider id (short id) for the GitHub OIDC provider when enable_github_actions_wif is true."
+  type        = string
+  default     = "github-oidc"
+
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9-]{2,30}[a-z0-9]$", var.github_actions_wif_provider_id))
+    error_message = "github_actions_wif_provider_id must be 4-32 chars, lowercase, start with letter, end with alphanumeric."
+  }
 }

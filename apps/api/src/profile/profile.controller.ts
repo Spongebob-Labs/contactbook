@@ -1,123 +1,88 @@
 import {
   Body,
   Controller,
-  Delete,
   Get,
-  Param,
-  ParseUUIDPipe,
+  HttpCode,
+  HttpStatus,
   Patch,
   Post,
+  Put,
   UseGuards,
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import {
+  ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from "@nestjs/swagger";
 import type { JwtUserPayload } from "../common/decorators/current-user.decorator";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
-import { CreateContactCardDto } from "./dto/create-contact-card.dto";
-import { CreateProfileFieldDto } from "./dto/create-profile-field.dto";
-import { CreateSensitiveFieldRequestDto } from "./dto/create-sensitive-field-request.dto";
-import { UpdateContactCardDto } from "./dto/update-contact-card.dto";
-import { UpdateProfileFieldDto } from "./dto/update-profile-field.dto";
-import { ProfileService } from "./profile.service";
+import { ProfileMeOnboardingDto } from "./dto/profile-me-onboarding.dto";
+import {
+  ProfileMePatchDto,
+  ProfileMePutDto,
+} from "./dto/profile-me-upsert.dto";
+import { ProfileMeResponseDto } from "./dto/profile-me-response.dto";
+import { ProfileMeSerializerService } from "./profile-me.serializer";
+import { ProfileMeUpsertService } from "./profile-me.upsert.service";
 
 @ApiTags("Profile")
 @ApiBearerAuth("access-token")
 @UseGuards(JwtAuthGuard)
 @Controller({ path: "profile", version: "1" })
 export class ProfileController {
-  constructor(private readonly profile: ProfileService) {}
+  constructor(
+    private readonly profileMe: ProfileMeSerializerService,
+    private readonly profileMeUpsert: ProfileMeUpsertService,
+  ) {}
 
-  @Get("cards")
-  @ApiOperation({ summary: "List contact cards" })
-  listCards(@CurrentUser() user: JwtUserPayload) {
-    return this.profile.listCards(user.sub);
-  }
-
-  @Post("cards")
-  @ApiOperation({ summary: "Create contact card" })
-  createCard(
-    @CurrentUser() user: JwtUserPayload,
-    @Body() dto: CreateContactCardDto,
-  ) {
-    return this.profile.createCard(user.sub, dto);
-  }
-
-  @Get("cards/:cardId")
-  @ApiOperation({ summary: "Get contact card" })
-  getCard(
-    @CurrentUser() user: JwtUserPayload,
-    @Param("cardId", ParseUUIDPipe) cardId: string,
-  ) {
-    return this.profile.getCard(user.sub, cardId);
-  }
-
-  @Patch("cards/:cardId")
-  @ApiOperation({ summary: "Update contact card" })
-  updateCard(
-    @CurrentUser() user: JwtUserPayload,
-    @Param("cardId", ParseUUIDPipe) cardId: string,
-    @Body() dto: UpdateContactCardDto,
-  ) {
-    return this.profile.updateCard(user.sub, cardId, dto);
-  }
-
-  @Delete("cards/:cardId")
-  @ApiOperation({ summary: "Delete contact card" })
-  async deleteCard(
-    @CurrentUser() user: JwtUserPayload,
-    @Param("cardId", ParseUUIDPipe) cardId: string,
-  ): Promise<{ ok: true }> {
-    await this.profile.deleteCard(user.sub, cardId);
-    return { ok: true };
-  }
-
-  @Get("cards/:cardId/fields")
-  @ApiOperation({ summary: "List profile fields on a card" })
-  listFields(
-    @CurrentUser() user: JwtUserPayload,
-    @Param("cardId", ParseUUIDPipe) cardId: string,
-  ) {
-    return this.profile.listFields(user.sub, cardId);
-  }
-
-  @Post("cards/:cardId/fields")
-  @ApiOperation({ summary: "Add profile field" })
-  createField(
-    @CurrentUser() user: JwtUserPayload,
-    @Param("cardId", ParseUUIDPipe) cardId: string,
-    @Body() dto: CreateProfileFieldDto,
-  ) {
-    return this.profile.createField(user.sub, cardId, dto);
-  }
-
-  @Patch("fields/:fieldId")
-  @ApiOperation({ summary: "Update profile field" })
-  updateField(
-    @CurrentUser() user: JwtUserPayload,
-    @Param("fieldId", ParseUUIDPipe) fieldId: string,
-    @Body() dto: UpdateProfileFieldDto,
-  ) {
-    return this.profile.updateField(user.sub, fieldId, dto);
-  }
-
-  @Delete("fields/:fieldId")
-  @ApiOperation({ summary: "Delete profile field" })
-  async deleteField(
-    @CurrentUser() user: JwtUserPayload,
-    @Param("fieldId", ParseUUIDPipe) fieldId: string,
-  ): Promise<{ ok: true }> {
-    await this.profile.deleteField(user.sub, fieldId);
-    return { ok: true };
-  }
-
-  @Post("sensitive-field-requests")
+  @Post("onboarding")
+  @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
-    summary: "Request access to a sensitive field (WhatsApp approval)",
+    summary: "First-time profile setup after registration",
+    description:
+      "Submit personal, work, business, social, and financial sections in one nested JSON body. Core identity fields come from registration; only `identity.profilePhoto` is optional here. Returns 409 if profile data already exists.",
   })
-  createSensitiveRequest(
+  @ApiCreatedResponse({ type: ProfileMeResponseDto })
+  completeOnboarding(
     @CurrentUser() user: JwtUserPayload,
-    @Body() dto: CreateSensitiveFieldRequestDto,
+    @Body() dto: ProfileMeOnboardingDto,
   ) {
-    return this.profile.createSensitiveFieldRequest(user.sub, dto);
+    return this.profileMeUpsert.completeOnboarding(user.sub, dto);
+  }
+
+  @Get("me")
+  @ApiOperation({
+    summary: "Current user profile (nested JSON for clients)",
+    description:
+      "Returns identity (User + IDENTITY groups), merged personal, work/business/social arrays, and financial rows.",
+  })
+  @ApiOkResponse({ type: ProfileMeResponseDto })
+  getMe(@CurrentUser() user: JwtUserPayload) {
+    return this.profileMe.build(user.sub);
+  }
+
+  @Patch("me")
+  @ApiOperation({
+    summary: "Partially update profile",
+    description:
+      "Only top-level sections present in the body are applied. Within each section, arrays are reconciled (items omitted are removed). Omit `groupId` to create a new work/business/social group; omit `fieldId` to create a new financial row.",
+  })
+  @ApiOkResponse({ type: ProfileMeResponseDto })
+  patchMe(@CurrentUser() user: JwtUserPayload, @Body() dto: ProfileMePatchDto) {
+    return this.profileMeUpsert.patch(user.sub, dto);
+  }
+
+  @Put("me")
+  @ApiOperation({
+    summary: "Update profile sections (same reconcile rules as PATCH)",
+    description:
+      "Use after GET /profile/me with the full body for whole-form saves, or PATCH a single section for targeted edits.",
+  })
+  @ApiOkResponse({ type: ProfileMeResponseDto })
+  putMe(@CurrentUser() user: JwtUserPayload, @Body() dto: ProfileMePutDto) {
+    return this.profileMeUpsert.put(user.sub, dto);
   }
 }

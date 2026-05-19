@@ -281,3 +281,9 @@
 - Decision: Render imported contacts with a `PENDING` fallback when the API response omits `status`.
 - Reason: Production import data can contain rows without a status value, and the import page should not crash while rendering incomplete contact import records.
 - Notes: The frontend type now marks import `status` as optional; processed rows still use the success badge and all other statuses use the warning badge.
+
+## 2026-05-19 - Align Import UI With Dev Contact Import API
+
+- Decision: Merge `origin/dev` into `feat/ui-creation` and update the Vite import page to read `firstName`, `lastName`, `mainPhone`, `mainEmail`, `source`, and `createdAt` from contact import rows.
+- Reason: The deployed backend and `origin/dev` now return the simplified contact import model instead of the older `displayNameSnapshot`, `status`, `rawPerson`, and sync timestamp fields.
+- Notes: The import table now shows contact name, primary phone/email, source, and imported date using frontend fallbacks for missing contact fields.

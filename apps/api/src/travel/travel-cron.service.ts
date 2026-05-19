@@ -1,10 +1,12 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { Cron, CronExpression } from "@nestjs/schedule";
-import { OAuthProvider } from "@prisma/client";
 import { e164FromStoredUser } from "../common/phone.util";
 import { PrismaService } from "../prisma/prisma.service";
 import { GoogleService } from "../integration/google.service";
+import { OAuthTokenService } from "../oauth-tokens/oauth-token.service";
 import { TwilioService } from "../integration/twilio.service";
+
+const GOOGLE_PROVIDER = "google";
 
 @Injectable()
 export class TravelCronService {
@@ -13,21 +15,21 @@ export class TravelCronService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly google: GoogleService,
+    private readonly oauthTokenService: OAuthTokenService,
     private readonly twilio: TwilioService,
   ) {}
 
   @Cron(CronExpression.EVERY_6_HOURS)
   async pollCalendar(): Promise<void> {
-    const accounts = await this.prisma.googleAccount.findMany({
-      where: { provider: OAuthProvider.GOOGLE },
-    });
-    for (const account of accounts) {
+    const userIds =
+      await this.oauthTokenService.findUserIdsByProvider(GOOGLE_PROVIDER);
+    for (const userId of userIds) {
       try {
-        await this.google.syncTravelEvents(account.userId);
-        await this.notifyPendingTravel(account.userId);
+        await this.google.syncTravelEvents(userId);
+        await this.notifyPendingTravel(userId);
       } catch (error) {
         this.logger.warn(
-          `Travel poll failed for user ${account.userId}: ${String(error)}`,
+          `Travel poll failed for user ${userId}: ${String(error)}`,
         );
       }
     }
@@ -42,14 +44,14 @@ export class TravelCronService {
       where: {
         userId,
         whatsappSentAt: null,
-        start: { gte: new Date() },
+        startDate: { gte: new Date() },
       },
     });
     for (const event of pending) {
-      const where = `${event.city ?? event.location ?? "your calendar"}`;
+      const where = `${event.city}, ${event.country}`.trim();
       await this.twilio.sendWhatsApp(
         e164FromStoredUser(user),
-        `ContactBook travel: ${event.title ?? "Trip"} — ${where}. Reply if you want to update your shared card.`,
+        `Upcoming travel: ${where} (${event.startDate.toISOString().slice(0, 10)})`,
       );
       await this.prisma.travelEvent.update({
         where: { id: event.id },

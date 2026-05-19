@@ -16,7 +16,11 @@ export type SessionCookieRuntime = {
 
 function parseSameSite(v: string | undefined): "lax" | "strict" | "none" {
   const normalized = (v ?? "lax").toLowerCase();
-  if (normalized === "none" || normalized === "strict" || normalized === "lax") {
+  if (
+    normalized === "none" ||
+    normalized === "strict" ||
+    normalized === "lax"
+  ) {
     return normalized;
   }
   return "lax";
@@ -83,7 +87,10 @@ export function setSessionCookies(
   });
 }
 
-export function clearSessionCookies(res: Response, runtime: SessionCookieRuntime): void {
+export function clearSessionCookies(
+  res: Response,
+  runtime: SessionCookieRuntime,
+): void {
   const base = baseCookieOptions(runtime);
   res.clearCookie(CB_ACCESS_TOKEN_COOKIE, base);
   res.clearCookie(CB_REFRESH_TOKEN_COOKIE, base);

@@ -50,7 +50,15 @@ export class AuthController {
     summary:
       "Send WhatsApp OTP to the given phone (registered or not). Requires WhatsApp on the device.",
   })
-  @ApiOkResponse({ description: "OTP dispatched (or dry-run when Twilio is unset)." })
+  @ApiOkResponse({
+    description: "OTP dispatched (or dry-run when Twilio is unset).",
+    schema: {
+      type: "object",
+      properties: {
+        message: { type: "string" },
+      },
+    },
+  })
   async requestWhatsappCode(
     @Body() dto: RequestWhatsappCodeDto,
   ): Promise<{ message: string }> {
@@ -65,6 +73,14 @@ export class AuthController {
   @ApiOkResponse({
     description:
       "Either `{ registered: true }` with `Set-Cookie` (`cb_access_token`, `cb_refresh_token`, `cb_user_id`), or `{ registered: false, message, phoneVerificationToken }`.",
+    schema: {
+      type: "object",
+      properties: {
+        registered: { type: "boolean" },
+        message: { type: "string" },
+        phoneVerificationToken: { type: "string" },
+      },
+    },
   })
   async verifyWhatsappCode(
     @Body() dto: VerifyWhatsappCodeDto,
@@ -91,6 +107,10 @@ export class AuthController {
   @ApiCreatedResponse({
     description:
       "User created; empty JSON body `{}`. Session cookies set via `Set-Cookie` (`cb_access_token`, `cb_refresh_token`, `cb_user_id`).",
+    schema: {
+      type: "object",
+      properties: {},
+    },
   })
   async completeRegister(
     @Body() dto: CompleteRegisterDto,
@@ -109,6 +129,10 @@ export class AuthController {
   @ApiOkResponse({
     description:
       "Empty JSON body `{}`. New session cookies set via `Set-Cookie` (`cb_access_token`, `cb_refresh_token`, `cb_user_id`).",
+    schema: {
+      type: "object",
+      properties: {},
+    },
   })
   async refresh(
     @Body() dto: RefreshSessionDto,
@@ -136,13 +160,24 @@ export class AuthController {
     summary:
       "Clear session cookies and revoke the current refresh token when `cb_refresh_token` is present.",
   })
-  @ApiOkResponse({ description: "`{ ok: true }`. Session cookies cleared." })
+  @ApiOkResponse({
+    description: "`{ ok: true }`. Session cookies cleared.",
+    schema: {
+      type: "object",
+      properties: {
+        ok: { type: "boolean" },
+      },
+    },
+  })
   async logout(
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<{ ok: true }> {
     const runtime = this.sessionCookieRuntime();
-    const refresh = getCookieFromHeader(req.headers.cookie, CB_REFRESH_TOKEN_COOKIE);
+    const refresh = getCookieFromHeader(
+      req.headers.cookie,
+      CB_REFRESH_TOKEN_COOKIE,
+    );
     await this.auth.logoutByRefreshToken(refresh);
     clearSessionCookies(res, runtime);
     return { ok: true };

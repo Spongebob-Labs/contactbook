@@ -1,9 +1,10 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
+import { CardType } from "@prisma/client";
 import {
-  IsBoolean,
-  IsInt,
+  IsEnum,
   IsOptional,
   IsString,
+  MaxLength,
   MinLength,
 } from "class-validator";
 
@@ -12,15 +13,11 @@ export class UpdateContactCardDto {
   @IsOptional()
   @IsString()
   @MinLength(1)
+  @MaxLength(200)
   name?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ enum: CardType })
   @IsOptional()
-  @IsInt()
-  sortOrder?: number;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsBoolean()
-  isArchived?: boolean;
+  @IsEnum(CardType)
+  type?: CardType;
 }

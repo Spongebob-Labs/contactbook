@@ -1,7 +1,7 @@
 import { Module } from "@nestjs/common";
-import { ConfigModule, ConfigService } from "@nestjs/config";
-import { JwtModule } from "@nestjs/jwt";
+import { ConfigModule } from "@nestjs/config";
 import { PrismaModule } from "../prisma/prisma.module";
+import { OAuthTokensModule } from "../oauth-tokens/oauth-tokens.module";
 import { TwilioNestModule } from "./twilio.module";
 import { ContactImportController } from "./contact-import.controller";
 import { ContactImportService } from "./contact-import.service";
@@ -11,21 +11,7 @@ import { TwilioWebhookController } from "./twilio-webhook.controller";
 import { WhatsappWebhookService } from "./whatsapp-webhook.service";
 
 @Module({
-  imports: [
-    PrismaModule,
-    TwilioNestModule,
-    ConfigModule,
-    JwtModule.registerAsync({
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        secret: config.get<string>("JWT_SECRET", "change-me-in-production"),
-        signOptions: {
-          expiresIn: 60 * 60 * 24 * 7,
-        },
-      }),
-    }),
-  ],
+  imports: [PrismaModule, TwilioNestModule, ConfigModule, OAuthTokensModule],
   controllers: [
     GoogleController,
     ContactImportController,

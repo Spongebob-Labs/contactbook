@@ -15,11 +15,10 @@ import { startGoogleImportConnection } from "@/lib/google-import";
 import type { ContactImport, GoogleSyncResponse } from "@/lib/types";
 
 const GOOGLE_OAUTH_PENDING_KEY = "contactbook:google-oauth-pending";
-const DEFAULT_IMPORT_STATUS = "PENDING";
 
 function formatDate(value: string | null) {
   if (!value) {
-    return "Not synced";
+    return "Not imported";
   }
   return new Intl.DateTimeFormat(undefined, {
     dateStyle: "medium",
@@ -27,8 +26,28 @@ function formatDate(value: string | null) {
   }).format(new Date(value));
 }
 
-function getImportStatus(item: ContactImport) {
-  return item.status ?? DEFAULT_IMPORT_STATUS;
+function getImportDisplayName(item: ContactImport) {
+  const name = [item.firstName, item.lastName]
+    .map((part) => part?.trim())
+    .filter(Boolean)
+    .join(" ");
+  return name || "Unknown contact";
+}
+
+function getImportSearchText(item: ContactImport) {
+  return [
+    getImportDisplayName(item),
+    item.mainPhone,
+    item.mainEmail,
+    item.source,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function getPrimaryContact(item: ContactImport) {
+  return item.mainEmail ?? item.mainPhone ?? "No phone or email";
 }
 
 export default function ImportPage() {
@@ -45,9 +64,7 @@ export default function ImportPage() {
     if (!q) {
       return imports;
     }
-    return imports.filter((item) =>
-      (item.displayNameSnapshot ?? "Unknown").toLowerCase().includes(q),
-    );
+    return imports.filter((item) => getImportSearchText(item).includes(q));
   }, [imports, query]);
 
   const loadImports = useCallback(async () => {
@@ -181,9 +198,9 @@ export default function ImportPage() {
               <span className="text-lg font-semibold">{imports.length}</span>
             </div>
             <div className="flex items-center justify-between rounded-md border border-border p-3">
-              <span className="text-sm text-muted-foreground">Processed</span>
+              <span className="text-sm text-muted-foreground">Google contacts</span>
               <span className="text-lg font-semibold">
-                {imports.filter((item) => item.status === "PROCESSED").length}
+                {imports.filter((item) => item.source === "GOOGLE").length}
               </span>
             </div>
           </CardContent>
@@ -244,32 +261,30 @@ export default function ImportPage() {
 
           {!isLoading && !error && filtered.length > 0 && (
             <div className="overflow-hidden rounded-lg border border-border">
-              <div className="hidden grid-cols-[1fr_120px_220px] border-b border-border bg-muted px-4 py-3 text-xs font-medium uppercase text-muted-foreground md:grid">
+              <div className="hidden grid-cols-[1fr_220px_220px] border-b border-border bg-muted px-4 py-3 text-xs font-medium uppercase text-muted-foreground md:grid">
                 <span>Name</span>
-                <span>Status</span>
-                <span>Last synced</span>
+                <span>Contact</span>
+                <span>Imported</span>
               </div>
               {filtered.map((item) => {
-                const status = getImportStatus(item);
                 return (
                   <div
                     key={item.id}
-                    className="grid gap-2 border-b border-border px-4 py-4 last:border-b-0 md:grid-cols-[1fr_120px_220px] md:items-center"
+                    className="grid gap-2 border-b border-border px-4 py-4 last:border-b-0 md:grid-cols-[1fr_220px_220px] md:items-center"
                   >
                     <div>
                       <p className="font-medium">
-                        {item.displayNameSnapshot ?? "Unknown contact"}
+                        {getImportDisplayName(item)}
                       </p>
-                      <p className="text-xs text-muted-foreground">{item.source}</p>
+                      <Badge variant="secondary" className="mt-1 w-fit">
+                        {item.source.toLowerCase()}
+                      </Badge>
                     </div>
-                    <Badge
-                      variant={status === "PROCESSED" ? "success" : "warning"}
-                      className="w-fit"
-                    >
-                      {status.toLowerCase()}
-                    </Badge>
                     <p className="text-sm text-muted-foreground">
-                      {formatDate(item.lastSyncedAt)}
+                      {getPrimaryContact(item)}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {formatDate(item.createdAt)}
                     </p>
                   </div>
                 );

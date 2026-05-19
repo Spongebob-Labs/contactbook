@@ -75,7 +75,7 @@ export class TwilioService {
         err &&
         typeof err === "object" &&
         "code" in err &&
-        typeof (err as { code: unknown }).code === "number"
+        typeof err.code === "number"
           ? (err as { code: number }).code
           : undefined;
       const message =
@@ -84,5 +84,44 @@ export class TwilioService {
           : "ContactBook sends login codes only over WhatsApp. We could not deliver a WhatsApp message to this number — WhatsApp is required.";
       throw new BadRequestException(message);
     }
+  }
+
+  /**
+   * Sends a connection invite using WhatsApp Content API when `TWILIO_WA_CONNECTION_CONTENT_SID`
+   * is set; otherwise falls back to plain text with keyword replies.
+   */
+  async sendConnectionInvite(
+    toE164: string,
+    requesterDisplayName: string,
+    connectionId: string,
+  ): Promise<void> {
+    const to = toWhatsAppChannelAddress(toE164);
+    const from = this.whatsappFrom;
+    const contentSid = this.config.get<string>(
+      "TWILIO_WA_CONNECTION_CONTENT_SID",
+    );
+    if (this.client && from && contentSid?.trim()) {
+      try {
+        await this.client.messages.create({
+          from,
+          to,
+          contentSid: contentSid.trim(),
+          contentVariables: JSON.stringify({
+            name: requesterDisplayName,
+            connection_id: connectionId,
+          }),
+        });
+        return;
+      } catch (err: unknown) {
+        this.logger.warn(
+          "WhatsApp Content invite failed; falling back to text.",
+          err instanceof Error ? err.stack : err,
+        );
+      }
+    }
+    await this.sendWhatsApp(
+      toE164,
+      `ContactBook: ${requesterDisplayName} wants to connect. Reply ACCEPT-${connectionId} or DECLINE-${connectionId}. (Or use quick-reply buttons if your client shows them.)`,
+    );
   }
 }

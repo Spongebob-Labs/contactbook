@@ -1,8 +1,8 @@
 import { ApiProperty } from "@nestjs/swagger";
 import { IsUUID } from "class-validator";
 
-export class ShareBackDto {
+export class AddCardFieldMappingDto {
   @ApiProperty()
   @IsUUID()
-  recipientSharedCardId!: string;
+  fieldId!: string;
 }

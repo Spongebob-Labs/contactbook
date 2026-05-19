@@ -1,9 +1,12 @@
 # API-only CI: triggers when the Nest app, shared workspace packages, or install roots change.
 #
+# ESLint is not run in CI; run ./scripts/validate-api.sh locally (requires apps/api/.env) before pushing.
+#
 # Secrets (repository Settings → Secrets and variables → Actions):
-# - DATABASE_URL — required for Prisma generate, Nest build, tests, and Docker build (BuildKit secret).
+# - API_ENV_B64 — required. Base64-encoded full `apps/api/.env` (see apps/api/.env.example). Used for
+#   Prisma generate, Nest build, tests, and Docker build (BuildKit file secret `api_env`).
+# - API_ENV_CI_B64 — optional. If set, CI uses this instead of API_ENV_B64 (e.g. CI-only DB URL).
 # - GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_SERVICE_ACCOUNT — required to push images to GAR on push to main/dev.
-# Optional (e.g. future integration tests): JWT_SECRET, TWILIO_*, GOOGLE_*, etc. — add to job `env` when needed.
 #
 # Variables (non-secret): GCP_REGION, GCP_PROJECT_ID — required when pushing images to Artifact Registry.
 
@@ -15,21 +18,25 @@ on:
     paths:
       - ".github/workflows/ci.yml"
       - ".github/workflows/cd.yml"
+      - ".github/workflows/release-api.yml"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
       - "package.json"
       - "apps/api/**"
       - "packages/**"
+      - "scripts/**"
   push:
     branches: [main, dev]
     paths:
       - ".github/workflows/ci.yml"
       - ".github/workflows/cd.yml"
+      - ".github/workflows/release-api.yml"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
       - "package.json"
       - "apps/api/**"
       - "packages/**"
+      - "scripts/**"
 
 jobs:
   api:
@@ -37,11 +44,27 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    env:
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Decode API env for CI
+        env:
+          API_ENV_B64: ${{ secrets.API_ENV_B64 }}
+          API_ENV_CI_B64: ${{ secrets.API_ENV_CI_B64 }}
+        run: |
+          set -euo pipefail
+          if [ -n "${API_ENV_CI_B64:-}" ]; then
+            printf '%s' "$API_ENV_CI_B64" | base64 -d > apps/api/.env
+          else
+            printf '%s' "$API_ENV_B64" | base64 -d > apps/api/.env
+          fi
+          test -s apps/api/.env || {
+            echo "Decoded apps/api/.env is empty. Configure repository secret API_ENV_B64 (base64 of a dotenv file)."
+            exit 1
+          }
 
       - name: Whether to push image to GAR
         id: garpush
@@ -58,18 +81,22 @@ jobs:
           PUSH: ${{ steps.garpush.outputs.push }}
           GCP_REGION: ${{ vars.GCP_REGION }}
           GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          RUN_NUMBER: ${{ github.run_number }}
         run: |
           if [ "$PUSH" = "true" ]; then
             if [ -z "$GCP_REGION" ] || [ -z "$GCP_PROJECT_ID" ]; then
               echo "Set repository variables GCP_REGION and GCP_PROJECT_ID to push images to GAR."
               exit 1
             fi
+            LATEST_TAG=$(git describe --tags --match "v*" --abbrev=0 2>/dev/null || echo "v0.1")
+            BASE_VERSION=${LATEST_TAG#v}
+            VERSION_TAG="${BASE_VERSION}.${RUN_NUMBER}"
             BASE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/contactbook/api"
             {
               echo "tags<<__EOF__"
               echo "${BASE}:${{ github.sha }}"
               if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-                echo "${BASE}:latest"
+                echo "${BASE}:${VERSION_TAG}"
               fi
               echo "__EOF__"
             } >> "$GITHUB_OUTPUT"
@@ -88,14 +115,31 @@ jobs:
           node-version: 20
           cache: pnpm
 
+      - name: Cache Prisma Engine
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules/.prisma
+            node_modules/@prisma/engines
+          key: ${{ runner.os }}-prisma-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-prisma-
+
+      - name: Cache TS Build Output (api)
+        uses: actions/cache@v4
+        with:
+          path: |
+            apps/api/.tsbuildinfo
+            apps/api/dist
+          key: ${{ runner.os }}-tsbuild-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-tsbuild-
+
       - name: Install dependencies (api + workspace deps)
         run: pnpm install --frozen-lockfile --filter api...
 
       - name: Prisma generate (api)
         run: pnpm -C apps/api prisma:generate
-
-      - name: Lint (api)
-        run: pnpm -C apps/api lint
 
       - name: Build (api)
         run: pnpm -C apps/api build
@@ -129,7 +173,7 @@ jobs:
           push: ${{ steps.garpush.outputs.push == 'true' }}
           load: ${{ steps.garpush.outputs.push != 'true' }}
           tags: ${{ steps.imagetags.outputs.tags }}
-          secret-envs: |
-            database_url=DATABASE_URL
+          secret-files: |
+            api_env=${{ github.workspace }}/apps/api/.env
           cache-from: type=gha
           cache-to: type=gha,mode=max

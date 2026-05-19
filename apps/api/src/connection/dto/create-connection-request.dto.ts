@@ -1,12 +1,6 @@
-import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { ApiProperty } from "@nestjs/swagger";
 import { Transform } from "class-transformer";
-import {
-  IsISO8601,
-  IsOptional,
-  IsString,
-  IsUUID,
-  Matches,
-} from "class-validator";
+import { IsString, IsUUID, Matches } from "class-validator";
 import { normalizeDialCode } from "../../common/phone.util";
 
 export class CreateConnectionRequestDto {
@@ -18,7 +12,7 @@ export class CreateConnectionRequestDto {
   @IsString()
   @Matches(/^\d{4,15}$/)
   @Transform(({ value }) =>
-    typeof value === "string" ? value.replace(/\D/g, "") : value,
+    typeof value === "string" ? value.replace(/\D/g, "") : (value as unknown),
   )
   recipientPhone!: string;
 
@@ -29,17 +23,14 @@ export class CreateConnectionRequestDto {
   @IsString()
   @Matches(/^\+\d{1,4}$/)
   @Transform(({ value }) =>
-    typeof value === "string" ? normalizeDialCode(value) : value,
+    typeof value === "string" ? normalizeDialCode(value) : (value as unknown),
   )
   recipientCountryCode!: string;
 
-  @ApiProperty()
+  @ApiProperty({
+    description: "Contact card the requester will share when accepted.",
+  })
   @IsString()
   @IsUUID()
-  initiatorSharedCardId!: string;
-
-  @ApiPropertyOptional({ description: "ISO datetime when share access ends" })
-  @IsOptional()
-  @IsISO8601()
-  shareExpiresAt?: string;
+  sharedCardId!: string;
 }

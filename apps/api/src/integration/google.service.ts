@@ -1,25 +1,24 @@
 import {
   BadRequestException,
   Injectable,
+  InternalServerErrorException,
   Logger,
-  UnauthorizedException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import {
-  ContactImportSource,
-  ContactImportStatus,
-  OAuthProvider,
-  TravelEventSource,
-} from "@prisma/client";
+import { ImportSource } from "@prisma/client";
 import { google, people_v1 } from "googleapis";
-import { JwtService } from "@nestjs/jwt";
+import { OAuthTokenService } from "../oauth-tokens/oauth-token.service";
 import { PrismaService } from "../prisma/prisma.service";
-import { ContactImportService } from "./contact-import.service";
+
+const GOOGLE_PROVIDER = "google";
 
 const GOOGLE_SCOPES = [
   "https://www.googleapis.com/auth/contacts.readonly",
   "https://www.googleapis.com/auth/calendar.readonly",
 ];
+
+/** Placeholder redirect URI; only used for token refresh via googleapis, not authorization-code flow. */
+const OAUTH2_REDIRECT_PLACEHOLDER = "urn:ietf:wg:oauth:2.0:oob";
 
 @Injectable()
 export class GoogleService {
@@ -28,119 +27,69 @@ export class GoogleService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
-    private readonly jwt: JwtService,
-    private readonly contactImport: ContactImportService,
+    private readonly oauthTokenService: OAuthTokenService,
   ) {}
 
   buildOAuthClient(): InstanceType<typeof google.auth.OAuth2> {
     const clientId = this.config.get<string>("GOOGLE_CLIENT_ID");
     const clientSecret = this.config.get<string>("GOOGLE_CLIENT_SECRET");
-    const redirectUri = this.config.get<string>("GOOGLE_REDIRECT_URI");
-    if (!clientId || !clientSecret || !redirectUri) {
+    if (!clientId || !clientSecret) {
       throw new BadRequestException("Google OAuth is not configured");
     }
-    return new google.auth.OAuth2(clientId, clientSecret, redirectUri);
-  }
-
-  createAuthUrl(userId: string): string {
-    const oauth2 = this.buildOAuthClient();
-    const state = this.jwt.sign(
-      { sub: userId, typ: "google_oauth" },
-      { expiresIn: "10m" },
+    return new google.auth.OAuth2(
+      clientId,
+      clientSecret,
+      OAUTH2_REDIRECT_PLACEHOLDER,
     );
-    return oauth2.generateAuthUrl({
-      access_type: "offline",
-      prompt: "consent select_account",
-      scope: GOOGLE_SCOPES,
-      state,
-    });
-  }
-
-  private async upsertGoogleAccountForUser(userId: string, args: {
-    accessToken: string;
-    refreshToken: string;
-    expiresAt: Date | null;
-    scopes: string;
-  }): Promise<void> {
-    await this.prisma.googleAccount.upsert({
-      where: {
-        userId_provider: { userId, provider: OAuthProvider.GOOGLE },
-      },
-      create: {
-        userId,
-        provider: OAuthProvider.GOOGLE,
-        scopes: args.scopes,
-        accessToken: args.accessToken,
-        refreshToken: args.refreshToken,
-        expiresAt: args.expiresAt,
-      },
-      update: {
-        scopes: args.scopes,
-        accessToken: args.accessToken,
-        refreshToken: args.refreshToken,
-        expiresAt: args.expiresAt,
-      },
-    });
-  }
-
-  async handleOAuthCallback(code: string, state: string): Promise<void> {
-    let userId: string;
-    try {
-      const payload = this.jwt.verify<{ sub: string; typ?: string }>(state);
-      if (payload.typ !== "google_oauth") {
-        throw new Error("Invalid state type");
-      }
-      userId = payload.sub;
-    } catch {
-      throw new UnauthorizedException("Invalid OAuth state");
-    }
-    const oauth2 = this.buildOAuthClient();
-    const { tokens } = await oauth2.getToken(code);
-    if (!tokens.refresh_token || !tokens.access_token) {
-      throw new BadRequestException("Google did not return tokens");
-    }
-    oauth2.setCredentials(tokens);
-    const expiresAt = tokens.expiry_date ? new Date(tokens.expiry_date) : null;
-    await this.upsertGoogleAccountForUser(userId, {
-      accessToken: tokens.access_token,
-      refreshToken: tokens.refresh_token,
-      expiresAt,
-      scopes: GOOGLE_SCOPES.join(" "),
-    });
   }
 
   async linkProviderTokensForUser(
     userId: string,
     args: {
       providerAccessToken: string;
-      providerRefreshToken: string;
+      providerRefreshToken?: string | null;
       expiresAt: Date | null;
       scope: string | null;
     },
   ): Promise<void> {
-    await this.upsertGoogleAccountForUser(userId, {
-      accessToken: args.providerAccessToken,
-      refreshToken: args.providerRefreshToken,
-      expiresAt: args.expiresAt,
-      scopes: (args.scope && args.scope.trim().length > 0)
+    if (!args.providerRefreshToken) {
+      return;
+    }
+
+    const scope =
+      args.scope && args.scope.trim().length > 0
         ? args.scope.trim()
-        : GOOGLE_SCOPES.join(" "),
-    });
+        : GOOGLE_SCOPES.join(" ");
+
+    try {
+      await this.oauthTokenService.upsertForUser(userId, GOOGLE_PROVIDER, {
+        refreshToken: args.providerRefreshToken,
+        accessToken: args.providerAccessToken ?? null,
+        accessTokenExpiresAt: args.expiresAt,
+        scope,
+      });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "unknown error";
+      this.logger.error(
+        `Failed to persist Google OAuth credentials for user ${userId}: ${reason}`,
+      );
+      throw error;
+    }
+  }
+
+  async disconnectGoogle(userId: string): Promise<void> {
+    await this.oauthTokenService.deleteForUser(userId, GOOGLE_PROVIDER);
   }
 
   private async getOAuth2ForUser(userId: string) {
-    const account = await this.prisma.googleAccount.findUnique({
-      where: {
-        userId_provider: { userId, provider: OAuthProvider.GOOGLE },
-      },
-    });
-    if (!account) {
-      throw new BadRequestException("Google account not linked");
-    }
+    const credential = await this.oauthTokenService.requireForUser(
+      userId,
+      GOOGLE_PROVIDER,
+    );
     const oauth2 = this.buildOAuthClient();
     oauth2.setCredentials({
-      access_token: account.accessToken,
-      refresh_token: account.refreshToken,
+      access_token: credential.accessToken ?? undefined,
+      refresh_token: credential.refreshToken,
     });
     oauth2.on(
       "tokens",
@@ -150,31 +99,82 @@ export class GoogleService {
         expiry_date?: number | null;
       }) => {
         void (async () => {
-          if (tokens.access_token) {
-            await this.prisma.googleAccount.update({
-              where: { id: account.id },
-              data: {
+          if (!tokens.access_token) {
+            return;
+          }
+          try {
+            await this.oauthTokenService.updateAccessToken(
+              userId,
+              GOOGLE_PROVIDER,
+              {
                 accessToken: tokens.access_token,
-                expiresAt: tokens.expiry_date
+                accessTokenExpiresAt: tokens.expiry_date
                   ? new Date(tokens.expiry_date)
-                  : account.expiresAt,
-                refreshToken: tokens.refresh_token ?? account.refreshToken,
+                  : new Date(Date.now() + 3600 * 1000),
               },
-            });
+            );
+            if (tokens.refresh_token) {
+              await this.oauthTokenService.upsertForUser(
+                userId,
+                GOOGLE_PROVIDER,
+                {
+                  refreshToken: tokens.refresh_token,
+                  accessToken: tokens.access_token,
+                  accessTokenExpiresAt: tokens.expiry_date
+                    ? new Date(tokens.expiry_date)
+                    : null,
+                  scope: credential.scope,
+                },
+              );
+            }
+          } catch (error) {
+            this.logger.warn(
+              `Failed to persist refreshed Google tokens for user ${userId}`,
+              error instanceof Error ? error.stack : undefined,
+            );
           }
         })();
       },
     );
-    return { oauth2, account };
+    return oauth2;
   }
 
   private async getAuthorizedPeopleClient(userId: string) {
-    const { oauth2, account } = await this.getOAuth2ForUser(userId);
-    return { people: google.people({ version: "v1", auth: oauth2 }), account };
+    const oauth2 = await this.getOAuth2ForUser(userId);
+    return google.people({ version: "v1", auth: oauth2 });
+  }
+
+  private async peopleIntegrationState(userId: string) {
+    return this.prisma.integrationState.upsert({
+      where: {
+        userId_source: { userId, source: ImportSource.GOOGLE },
+      },
+      create: { userId, source: ImportSource.GOOGLE },
+      update: {},
+    });
   }
 
   async syncContacts(userId: string): Promise<{ imported: number }> {
-    const { people, account } = await this.getAuthorizedPeopleClient(userId);
+    try {
+      return await this.runContactsSync(userId);
+    } catch (error) {
+      if (this.isInvalidSyncTokenError(error)) {
+        this.logger.warn(
+          `Google People sync token invalid for user ${userId}; retrying full sync`,
+        );
+        await this.prisma.integrationState.updateMany({
+          where: { userId, source: ImportSource.GOOGLE },
+          data: { syncToken: null },
+        });
+        return await this.runContactsSync(userId);
+      }
+      throw this.mapSyncError(userId, error);
+    }
+  }
+
+  private async runContactsSync(userId: string): Promise<{ imported: number }> {
+    const people = await this.getAuthorizedPeopleClient(userId);
+    const stateRow = await this.peopleIntegrationState(userId);
     let pageToken: string | undefined;
     let nextSyncToken: string | undefined;
     let count = 0;
@@ -186,7 +186,7 @@ export class GoogleService {
         personFields:
           "names,emailAddresses,phoneNumbers,organizations,metadata,etag",
         requestSyncToken: true,
-        syncToken: account.peopleSyncToken ?? undefined,
+        syncToken: stateRow.syncToken ?? undefined,
       });
       const connections = res.data.connections ?? [];
       for (const person of connections) {
@@ -202,12 +202,77 @@ export class GoogleService {
       }
     }
     if (nextSyncToken) {
-      await this.prisma.googleAccount.update({
-        where: { id: account.id },
-        data: { peopleSyncToken: nextSyncToken },
+      await this.prisma.integrationState.update({
+        where: {
+          userId_source: { userId, source: ImportSource.GOOGLE },
+        },
+        data: { syncToken: nextSyncToken, lastSyncAt: new Date() },
       });
     }
     return { imported: count };
+  }
+
+  private googleErrorStatus(error: unknown): number | undefined {
+    if (error && typeof error === "object" && "response" in error) {
+      const status = (error as { response?: { status?: number } }).response
+        ?.status;
+      if (typeof status === "number") {
+        return status;
+      }
+    }
+    if (error && typeof error === "object" && "code" in error) {
+      const code = error.code;
+      if (typeof code === "number") {
+        return code;
+      }
+    }
+    return undefined;
+  }
+
+  private isInvalidSyncTokenError(error: unknown): boolean {
+    return this.googleErrorStatus(error) === 410;
+  }
+
+  private mapSyncError(userId: string, error: unknown): Error {
+    if (error instanceof BadRequestException) {
+      return error;
+    }
+    const status = this.googleErrorStatus(error);
+    if (status === 401 || status === 403) {
+      return new BadRequestException(
+        "Google authorization expired or was revoked. Reconnect your Google account.",
+      );
+    }
+    const reason = error instanceof Error ? error.message : String(error);
+    this.logger.error(
+      `Google contacts sync failed for user ${userId}: ${reason}`,
+      error instanceof Error ? error.stack : undefined,
+    );
+    return new InternalServerErrorException("Google contacts sync failed");
+  }
+
+  private primaryPhone(person: people_v1.Schema$Person): string | null {
+    const list = person.phoneNumbers ?? [];
+    const primary = list.find((p) => p.metadata?.primary === true) ?? list[0];
+    return primary?.value?.trim() ?? null;
+  }
+
+  private primaryEmail(person: people_v1.Schema$Person): string | null {
+    const list = person.emailAddresses ?? [];
+    const primary = list.find((e) => e.metadata?.primary === true) ?? list[0];
+    return primary?.value?.trim()?.toLowerCase() ?? null;
+  }
+
+  private nameParts(person: people_v1.Schema$Person): {
+    firstName: string | null;
+    lastName: string | null;
+  } {
+    const names = person.names ?? [];
+    const primary = names.find((n) => n.metadata?.primary === true) ?? names[0];
+    return {
+      firstName: primary?.givenName?.trim() ?? null,
+      lastName: primary?.familyName?.trim() ?? null,
+    };
   }
 
   private async upsertPerson(
@@ -224,59 +289,42 @@ export class GoogleService {
       await this.prisma.contactImport.updateMany({
         where: {
           userId,
-          source: ContactImportSource.GOOGLE,
-          externalResourceName: resourceName,
+          source: ImportSource.GOOGLE,
+          externalId: resourceName,
         },
-        data: {
-          deletedAt: new Date(),
-          lastSyncedAt: new Date(),
-          rawPerson: raw,
-          etag: person.etag ?? undefined,
-        },
+        data: { deletedAt: new Date() },
       });
       return;
     }
-    const existing = await this.prisma.contactImport.findUnique({
-      where: {
-        userId_source_externalResourceName: {
-          userId,
-          source: ContactImportSource.GOOGLE,
-          externalResourceName: resourceName,
-        },
-      },
-    });
-    const mergedName = this.contactImport.mergeDisplayNameSnapshot(
-      person,
-      existing?.userOverrides ?? null,
-    );
+    const { firstName, lastName } = this.nameParts(person);
+    const mainPhone = this.primaryPhone(person);
+    const mainEmail = this.primaryEmail(person);
     await this.prisma.contactImport.upsert({
       where: {
-        userId_source_externalResourceName: {
+        userId_source_externalId: {
           userId,
-          source: ContactImportSource.GOOGLE,
-          externalResourceName: resourceName,
+          source: ImportSource.GOOGLE,
+          externalId: resourceName,
         },
       },
       create: {
         userId,
-        source: ContactImportSource.GOOGLE,
-        status: ContactImportStatus.PROCESSED,
-        externalResourceName: resourceName,
-        etag: person.etag ?? null,
-        displayNameSnapshot: mergedName,
-        rawPerson: raw,
-        lastSyncedAt: new Date(),
-        processedAt: new Date(),
+        source: ImportSource.GOOGLE,
+        externalId: resourceName,
+        firstName,
+        lastName,
+        mainPhone,
+        mainEmail,
+        rawJson: raw,
         deletedAt: null,
       },
       update: {
-        etag: person.etag ?? null,
-        displayNameSnapshot: mergedName,
-        rawPerson: raw,
-        lastSyncedAt: new Date(),
-        processedAt: new Date(),
+        firstName,
+        lastName,
+        mainPhone,
+        mainEmail,
+        rawJson: raw,
         deletedAt: null,
-        status: ContactImportStatus.PROCESSED,
       },
     });
   }
@@ -298,8 +346,16 @@ export class GoogleService {
     return keys.some((k) => hay.includes(k));
   }
 
+  private inferCountry(location: string | null | undefined): string {
+    if (!location?.trim()) {
+      return "";
+    }
+    const parts = location.split(",").map((s) => s.trim());
+    return parts[parts.length - 1] ?? "";
+  }
+
   async syncTravelEvents(userId: string): Promise<number> {
-    const { oauth2 } = await this.getOAuth2ForUser(userId);
+    const oauth2 = await this.getOAuth2ForUser(userId);
     const calendar = google.calendar({ version: "v3", auth: oauth2 });
     const timeMin = new Date();
     const timeMax = new Date(Date.now() + 120 * 24 * 60 * 60 * 1000);
@@ -322,35 +378,34 @@ export class GoogleService {
       if (!startRaw || !endRaw) {
         continue;
       }
-      const start = new Date(startRaw);
-      const end = new Date(endRaw);
-      const city = ev.location?.split(",")[0]?.trim().slice(0, 120) ?? null;
+      const startDate = new Date(startRaw);
+      const endDate = new Date(endRaw);
+      const city =
+        ev.location?.split(",")[0]?.trim().slice(0, 120) ?? "Unknown";
+      const country = this.inferCountry(ev.location ?? null);
       await this.prisma.travelEvent.upsert({
         where: {
-          userId_calendarEventId: {
+          userId_externalCalendarEventId: {
             userId,
-            calendarEventId: ev.id,
+            externalCalendarEventId: ev.id,
           },
         },
         create: {
           userId,
-          calendarEventId: ev.id,
-          title: ev.summary ?? null,
-          start,
-          end,
           city,
-          location: ev.location ?? null,
-          timeZone: ev.start?.timeZone ?? null,
+          country: country || "Unknown",
+          startDate,
+          endDate,
+          externalCalendarEventId: ev.id,
+          title: ev.summary ?? null,
           raw: (ev as object) ?? {},
-          source: TravelEventSource.GOOGLE_CALENDAR,
         },
         update: {
-          title: ev.summary ?? null,
-          start,
-          end,
           city,
-          location: ev.location ?? null,
-          timeZone: ev.start?.timeZone ?? null,
+          country: country || "Unknown",
+          startDate,
+          endDate,
+          title: ev.summary ?? null,
           raw: (ev as object) ?? {},
         },
       });
