@@ -74,6 +74,12 @@ export class GoogleController {
     description: "Contacts synced successfully",
     schema: {
       type: "object",
+      properties: {
+        syncMode: { type: "string", enum: ["full", "delta"] },
+        processedCount: { type: "number" },
+        totalContacts: { type: "number" },
+        lastSyncAt: { type: "string", format: "date-time", nullable: true },
+      },
     },
   })
   sync(@CurrentUser() user: JwtUserPayload) {

@@ -57,11 +57,12 @@ enum ConnectionStatus {
   DECLINED
 }
 
-enum ImportSource {
+enum ContactSource {
   GOOGLE
   ICLOUD
   CSV
   VCARD
+  CALDAV
 }
 
 enum OAuthProvider {
@@ -96,7 +97,7 @@ model User {
   initiatedConnections Connection[] @relation("Requester")
   receivedConnections  Connection[] @relation("Receiver")
 
-  imports       ContactImport[]
+  contacts      Contact[]
   integrations  IntegrationState[]
   travelEvents  TravelEvent[]
   tags          Tag[]
@@ -271,35 +272,115 @@ model CryptoWalletDetail {
 }
 
 model IntegrationState {
-  id         String       @id @default(uuid())
+  id         String        @id @default(uuid())
   userId     String
-  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  source     ImportSource
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  source     ContactSource
   syncToken  String?
-  lastSyncAt DateTime     @default(now())
+  lastSyncAt DateTime      @default(now())
 
   @@unique([userId, source])
   @@map("integration_states")
 }
 
-model ContactImport {
-  id         String       @id @default(uuid())
-  userId     String
-  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  source     ImportSource
-  externalId String?
-  firstName  String?
-  lastName   String?
-  mainPhone  String?
-  mainEmail  String?
-  rawJson    Json?
-  deletedAt  DateTime?
+model Contact {
+  id             String        @id @default(uuid())
+  userId         String
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  source         ContactSource
+  externalId     String
+  sourceRevision String?
+  displayName    String?
+  firstName      String?
+  lastName       String?
+  middleName     String?
+  namePrefix     String?
+  nameSuffix     String?
+  nickname       String?
+  notes          String?
+  deletedAt      DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
-  createdAt DateTime @default(now())
+  phones        ContactPhone[]
+  emails        ContactEmail[]
+  organizations ContactOrganization[]
+  addresses     ContactAddress[]
+  urls          ContactUrl[]
 
   @@unique([userId, source, externalId])
   @@index([userId, source, deletedAt])
-  @@map("contact_imports")
+  @@index([userId, displayName])
+  @@map("contacts")
+}
+
+model ContactPhone {
+  id        String  @id @default(uuid())
+  contactId String
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  value     String
+  label     String?
+  isPrimary Boolean @default(false)
+  sortOrder Int     @default(0)
+
+  @@index([contactId])
+  @@map("contact_phones")
+}
+
+model ContactEmail {
+  id        String  @id @default(uuid())
+  contactId String
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  value     String
+  label     String?
+  isPrimary Boolean @default(false)
+  sortOrder Int     @default(0)
+
+  @@index([contactId])
+  @@map("contact_emails")
+}
+
+model ContactOrganization {
+  id          String  @id @default(uuid())
+  contactId   String
+  contact     Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  companyName String?
+  department  String?
+  title       String?
+  isPrimary   Boolean @default(false)
+  sortOrder   Int     @default(0)
+
+  @@index([contactId])
+  @@map("contact_organizations")
+}
+
+model ContactAddress {
+  id         String  @id @default(uuid())
+  contactId  String
+  contact    Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  street     String?
+  city       String?
+  region     String?
+  postalCode String?
+  country    String?
+  label      String?
+  isPrimary  Boolean @default(false)
+  sortOrder  Int     @default(0)
+
+  @@index([contactId])
+  @@map("contact_addresses")
+}
+
+model ContactUrl {
+  id        String  @id @default(uuid())
+  contactId String
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  value     String
+  label     String?
+  sortOrder Int     @default(0)
+
+  @@index([contactId])
+  @@map("contact_urls")
 }
 
 model TravelEvent {
