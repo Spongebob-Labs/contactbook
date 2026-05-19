@@ -383,3 +383,9 @@
 - Decision: Add `/dashboard/cards` for listing ContactBook cards and `/dashboard/cards/:cardId` for a basic card detail view.
 - Reason: Cards are becoming a first-class product area and need a dedicated route beyond the dashboard summary.
 - Notes: The pages use existing `GET /v1/cards` and `GET /v1/cards/{cardId}` APIs, keep card creation routed through the existing onboarding modal, and do not require backend changes.
+
+## 2026-05-19 - Preserve Signup Onboarding Redirect
+
+- Decision: Track the intended post-registration redirect as `/dashboard?onboarding=profile` before marking the auth context authenticated.
+- Reason: Marking the user authenticated can re-render the auth route and trigger its generic authenticated redirect to `/dashboard`, dropping the onboarding query before the dashboard modal opens.
+- Notes: Existing-user login still follows the original protected-route destination, while new signups keep the dashboard-owned onboarding modal flow.
