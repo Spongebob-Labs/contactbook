@@ -17,6 +17,7 @@ async function bootstrap(): Promise<void> {
       "http://localhost:8000",
       "http://127.0.0.1:5173",
       "http://192.168.1.18:5173",
+      "https://contactbookten.vercel.app",
     ].join(",")
   )
     .split(",")
