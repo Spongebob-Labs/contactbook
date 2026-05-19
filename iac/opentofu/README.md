@@ -107,7 +107,7 @@ docker buildx build -f apps/api/Dockerfile \
 ## CI/CD (GitHub Actions)
 
 - **CI** (`.github/workflows/ci.yml`) uses repository secrets **`API_ENV_B64`** (and optionally **`API_ENV_CI_B64`**), **`GCP_WORKLOAD_IDENTITY_PROVIDER`**, **`GCP_SERVICE_ACCOUNT`**, and OIDC to push images to GAR on push to `main` or `dev` (tags `:sha` and `:0.1.<run_number>`).
-- **CD** (`.github/workflows/cd.yml`) runs after a successful CI run for a **push** to `main` or `dev`: decodes **`API_ENV_B64`**, then updates Cloud Run to image `…/contactbook/api:<version>` and applies env keys via **`--env-vars-file`** (JSON produced by [../../scripts/dotenv-to-gcloud-env-json.py](../../scripts/dotenv-to-gcloud-env-json.py)).
+- **CD** (`.github/workflows/cd.yml`) runs after a successful CI run for a **push** to `main` or `dev`: decodes **`API_ENV_B64`**, runs **`prisma migrate deploy`** (uses **`DIRECT_URL`** from that env via [../../apps/api/prisma.config.ts](../../apps/api/prisma.config.ts)), then updates Cloud Run to image `…/contactbook/api:<version>` and applies env keys via **`--env-vars-file`** (JSON produced by [../../scripts/dotenv-to-gcloud-env-json.py](../../scripts/dotenv-to-gcloud-env-json.py)).
 
 Configure repository **variables**: `GCP_REGION`, `GCP_PROJECT_ID`, and optionally `CLOUD_RUN_SERVICE` (defaults to `contactbook-api`). Configure **secrets** as above.
 

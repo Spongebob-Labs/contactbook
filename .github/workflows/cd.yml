@@ -1,6 +1,7 @@
 # Deploys the API image built and pushed by CI to Cloud Run (after a successful push to main or dev).
 #
-# Secrets: API_ENV_B64 (production: base64 full apps/api/.env), GCP_WORKLOAD_IDENTITY_PROVIDER,
+# Secrets: API_ENV_B64 (production: base64 full apps/api/.env; must include DIRECT_URL for
+#   migrate deploy — Prisma 7 CLI uses DIRECT_URL via prisma.config.ts), GCP_WORKLOAD_IDENTITY_PROVIDER,
 #   GCP_SERVICE_ACCOUNT
 # Variables: GCP_REGION, GCP_PROJECT_ID — optional CLOUD_RUN_SERVICE (default: contactbook-api)
 #
@@ -45,6 +46,23 @@ jobs:
 
       - name: Convert .env to Cloud Run env JSON
         run: python3 scripts/dotenv-to-gcloud-env-json.py apps/api/.env "${RUNNER_TEMP}/cloudrun-env.json"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies (api)
+        run: pnpm install --frozen-lockfile --filter api...
+
+      - name: Apply Prisma migrations
+        run: pnpm -C apps/api prisma:migrate:deploy
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
