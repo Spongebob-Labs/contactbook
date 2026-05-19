@@ -34,15 +34,20 @@ const cardTypeOptions: Array<{
 ];
 
 type CardOnboardingModalProps = {
+  mode?: "setup" | "create";
   onComplete: () => void;
   onSkip: () => void;
 };
 
 export function CardOnboardingModal({
+  mode = "create",
   onComplete,
   onSkip,
 }: CardOnboardingModalProps) {
-  const [name, setName] = useState("My first ContactBook card");
+  const isSetupMode = mode === "setup";
+  const [name, setName] = useState(
+    isSetupMode ? "My first ContactBook card" : "New ContactBook card",
+  );
   const [type, setType] = useState<ContactCardType>("PERSONAL");
   const [isSaving, setIsSaving] = useState(false);
 
@@ -64,7 +69,7 @@ export function CardOnboardingModal({
           type,
         },
       });
-      toast.success("Your first card is ready.");
+      toast.success(isSetupMode ? "Your first card is ready." : "Card created.");
       onComplete();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not create card.");
@@ -74,7 +79,9 @@ export function CardOnboardingModal({
   };
 
   const skipCard = () => {
-    toast.info("You can create your first card later.");
+    if (isSetupMode) {
+      toast.info("You can create your first card later.");
+    }
     onSkip();
   };
 
@@ -84,13 +91,18 @@ export function CardOnboardingModal({
           <div className="min-h-0 overflow-y-auto p-4 md:p-6">
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div className="max-w-2xl">
-                <Badge variant="success">Final setup step</Badge>
+                <Badge variant={isSetupMode ? "success" : "secondary"}>
+                  {isSetupMode ? "Final setup step" : "Card"}
+                </Badge>
                 <h1 className="mt-3 text-2xl font-semibold tracking-normal">
-                  Create your first ContactBook card.
+                  {isSetupMode
+                    ? "Create your first ContactBook card."
+                    : "Create a ContactBook card."}
                 </h1>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  Cards let you package the profile details you want to share for a
-                  specific context. Start simple now and refine the fields later.
+                  {isSetupMode
+                    ? "Cards let you package the profile details you want to share for a specific context. Start simple now and refine the fields later."
+                    : "Create another shareable card for a personal, business, payment, or custom context."}
                 </p>
               </div>
               <Button
@@ -165,7 +177,7 @@ export function CardOnboardingModal({
                 <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary text-primary-foreground">
                   <IdCard className="h-5 w-5" aria-hidden="true" />
                 </div>
-                <CardTitle>First card preview</CardTitle>
+                <CardTitle>{isSetupMode ? "First card preview" : "Card preview"}</CardTitle>
                 <CardDescription>
                   This creates the card shell. Field selection can come next.
                 </CardDescription>
@@ -202,6 +214,7 @@ export default function CardOnboardingPage() {
   return (
     <AppShell>
       <CardOnboardingModal
+        mode="create"
         onComplete={() => navigate("/dashboard", { replace: true })}
         onSkip={() => navigate("/dashboard", { replace: true })}
       />

@@ -11,10 +11,12 @@ import { startGoogleImportConnection } from "@/lib/google-import";
 const GOOGLE_OAUTH_PENDING_KEY = "contactbook:google-oauth-pending";
 
 type ImportOnboardingModalProps = {
+  mode?: "setup" | "create";
   onSkip: () => void;
 };
 
 export function ImportOnboardingModal({
+  mode = "create",
   onSkip,
 }: ImportOnboardingModalProps) {
   const [isConnectingGoogle, setIsConnectingGoogle] = useState(false);
@@ -22,7 +24,13 @@ export function ImportOnboardingModal({
   const connectGoogle = async () => {
     setIsConnectingGoogle(true);
     try {
-      const url = await startGoogleImportConnection("/dashboard/import?next=/dashboard%3Fonboarding%3Dcard");
+      const cardNext =
+        mode === "setup"
+          ? "/dashboard?onboarding=card&flow=setup"
+          : "/dashboard?onboarding=card";
+      const url = await startGoogleImportConnection(
+        `/dashboard/import?next=${encodeURIComponent(cardNext)}`,
+      );
       sessionStorage.setItem(GOOGLE_OAUTH_PENDING_KEY, "1");
       window.location.assign(url);
     } catch (error) {
@@ -79,7 +87,8 @@ export default function ImportOnboardingPage() {
   return (
     <AppShell>
       <ImportOnboardingModal
-        onSkip={() => navigate("/dashboard?onboarding=card", { replace: true })}
+        mode="setup"
+        onSkip={() => navigate("/dashboard?onboarding=card&flow=setup", { replace: true })}
       />
     </AppShell>
   );

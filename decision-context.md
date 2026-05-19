@@ -401,3 +401,9 @@
 - Decision: Mark first-run profile onboarding links with `flow=setup` and treat plain dashboard profile onboarding as a standalone action.
 - Reason: Skipping profile from the dashboard should close the modal, while skipping profile during signup setup should continue to import contacts.
 - Notes: Signup and legacy `/onboarding/profile` redirects now include `flow=setup`; profile edit and dashboard profile actions stay local unless `returnTo` is present.
+
+## 2026-05-19 - Make Card Wizard Copy Context-Aware
+
+- Decision: Add setup/create modes to the card modal so first-card language appears only during first-run setup.
+- Reason: Reusing the card modal from dashboard and cards pages should not tell users they are creating their first card after they already have cards.
+- Notes: Setup import links encode `flow=setup` before the Google OAuth callback, while regular dashboard card creation uses generic card copy.

@@ -34,7 +34,7 @@ export default function App() {
             path="/onboarding/import"
             element={
               <ProtectedRoute>
-                <Navigate to="/dashboard?onboarding=import" replace />
+                <Navigate to="/dashboard?onboarding=import&flow=setup" replace />
               </ProtectedRoute>
             }
           />

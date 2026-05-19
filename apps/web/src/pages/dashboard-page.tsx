@@ -464,10 +464,14 @@ export default function DashboardPage() {
         />
       )}
       {onboardingStep === "import" && (
-        <ImportOnboardingModal onSkip={() => setOnboardingStep("card")} />
+        <ImportOnboardingModal
+          mode={isSetupFlow ? "setup" : "create"}
+          onSkip={() => setOnboardingStep("card")}
+        />
       )}
       {onboardingStep === "card" && (
         <CardOnboardingModal
+          mode={isSetupFlow ? "setup" : "create"}
           onComplete={() => {
             setOnboardingStep(null);
             void Promise.all([loadCards(), loadOverview()]);
