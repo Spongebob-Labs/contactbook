@@ -66,23 +66,4 @@ export class GoogleController {
     return { ok: true };
   }
 
-  @Get("sync")
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth("access-token")
-  @ApiOperation({ summary: "Run Google People contacts sync" })
-  @ApiOkResponse({
-    description: "Contacts synced successfully",
-    schema: {
-      type: "object",
-      properties: {
-        syncMode: { type: "string", enum: ["full", "delta"] },
-        processedCount: { type: "number" },
-        totalContacts: { type: "number" },
-        lastSyncAt: { type: "string", format: "date-time", nullable: true },
-      },
-    },
-  })
-  sync(@CurrentUser() user: JwtUserPayload) {
-    return this.google.syncContacts(user.sub);
-  }
 }

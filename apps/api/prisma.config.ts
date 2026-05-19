@@ -12,7 +12,10 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    url: process.env["DATABASE_URL"],
-    directUrl: process.env["DIRECT_URL"],
+    // Prisma 7 CLI (migrate, db execute, etc.) uses `url` only — `directUrl` was removed.
+    // Runtime uses DATABASE_URL via PrismaService; migrations need DIRECT_URL (not :6543 pooler).
+    url:
+      process.env["DIRECT_URL"] ??
+      process.env["DATABASE_URL"],
   },
 });

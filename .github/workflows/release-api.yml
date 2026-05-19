@@ -1,4 +1,4 @@
-# Creates a GitHub Release for the API when CI succeeds on a push to main that changes apps/api/.
+# Creates a GitHub Release for the API when CI succeeds on a push to main or dev that changes apps/api/.
 # Tags use prefix api-v* so they do not affect git describe --match "v*" used by CI/CD for image versions.
 #
 # Requires default GITHUB_TOKEN permissions: contents write (set on the job).
@@ -18,7 +18,7 @@ jobs:
   release:
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.head_branch == 'main' &&
+      contains(fromJSON('["main","dev"]'), github.event.workflow_run.head_branch) &&
       github.event.workflow_run.event == 'push'
     runs-on: ubuntu-latest
     permissions:
@@ -70,7 +70,7 @@ jobs:
           {
             echo "## apps/api"
             echo
-            echo "Image / CD version segment: **${RELEASE_VERSION}** (same formula as CI and CD for \`main\`)."
+            echo "Image / CD version segment: **${RELEASE_VERSION}** (same formula as CI and CD for \`main\` and \`dev\`)."
             echo
             if [ -n "${PREV:-}" ] && git rev-parse "$PREV^{}" >/dev/null 2>&1; then
               git log "${PREV}..HEAD" --pretty=format:'- %s (%h)' -- apps/api/ || true
