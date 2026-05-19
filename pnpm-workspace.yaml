@@ -6,6 +6,7 @@ allowBuilds:
   '@prisma/engines': true
   '@scarf/scarf': true
   bcrypt: true
+  esbuild: true
   msw: true
   prisma: true
   sharp: true
@@ -15,6 +16,7 @@ onlyBuiltDependencies:
   - "@prisma/engines"
   - "@scarf/scarf"
   - bcrypt
+  - esbuild
   - msw
   - prisma
   - sharp
