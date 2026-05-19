@@ -419,3 +419,15 @@
 - Decision: Replace mock contacts with `GET /v1/contacts` on `/dashboard/contacts` and remove the duplicated imported-contact list from `/dashboard/import`.
 - Reason: The import page should own provider connection and sync status, while the contacts page should be the canonical synced-contact directory.
 - Notes: Contacts now uses a Google Contacts-inspired layout with left counts, central searchable list, and a right detail panel; Import links to Contacts with a CTA.
+
+## 2026-05-19 - Simplify Contacts Directory Copy
+
+- Decision: Remove "synced" explanatory copy from the contacts table and import directory CTA.
+- Reason: The contacts directory should present user records plainly without repeating source or synchronization mechanics in table-level copy.
+- Notes: Empty and import-directory states now refer to contacts/importing contacts directly while keeping the existing navigation to Import and Contacts pages.
+
+## 2026-05-19 - Place Contacts Directory With Import Options
+
+- Decision: Show the Contacts directory card beside the iCloud and VCF import option cards once Google is connected.
+- Reason: After Google is connected, the Google sign-in card is hidden, leaving the import option row as the right place for the directory shortcut.
+- Notes: The directory card remains hidden before Google connection and keeps its existing contacts count, error state, and View contacts CTA.

@@ -246,50 +246,52 @@ export default function ImportPage() {
         </Card>
       </section>
 
-      <ContactImportOptions
-        hideGoogle={hasConnectedGoogle}
-        onConnectGoogle={connectGoogle}
-        isConnectingGoogle={isConnectingGoogle}
-      />
+      <section className="grid gap-4 lg:grid-cols-3">
+        <ContactImportOptions
+          hideGoogle={hasConnectedGoogle}
+          onConnectGoogle={connectGoogle}
+          isConnectingGoogle={isConnectingGoogle}
+          className={hasConnectedGoogle ? "lg:contents" : "lg:col-span-3"}
+        />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Contacts directory</CardTitle>
-          <CardDescription>
-            Synced contacts are managed from the Contacts page.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {error && (
-            <Alert className="flex items-start gap-3">
-              <AlertCircle className="mt-0.5 h-4 w-4 text-destructive" />
-              <div>
-                <p className="font-medium">Could not load import status</p>
-                <p className="mt-1 text-sm text-muted-foreground">{error}</p>
+        {hasConnectedGoogle && (
+          <Card className="min-h-64">
+            <CardHeader>
+              <CardTitle>Contacts directory</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {error && (
+                <Alert className="flex items-start gap-3">
+                  <AlertCircle className="mt-0.5 h-4 w-4 text-destructive" />
+                  <div>
+                    <p className="font-medium">Could not load import status</p>
+                    <p className="mt-1 text-sm text-muted-foreground">{error}</p>
+                  </div>
+                </Alert>
+              )}
+              <div className="flex flex-col gap-4 rounded-lg border border-border p-4">
+                <div>
+                  <p className="font-medium">
+                    {isLoading
+                      ? "Loading contacts status"
+                      : `${summary?.totalActive ?? imports.length} contacts`}
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Open the Contacts page to search and inspect contacts.
+                  </p>
+                </div>
+                <Link
+                  to="/dashboard/contacts"
+                  className={buttonVariants({ variant: "default" })}
+                >
+                  View contacts
+                  <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                </Link>
               </div>
-            </Alert>
-          )}
-          <div className="flex flex-col gap-4 rounded-lg border border-border p-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="font-medium">
-                {isLoading
-                  ? "Loading contacts status"
-                  : `${summary?.totalActive ?? imports.length} synced contacts`}
-              </p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Open the Contacts page to search, inspect, and manage synced records.
-              </p>
-            </div>
-            <Link
-              to="/dashboard/contacts"
-              className={buttonVariants({ variant: "default" })}
-            >
-              View contacts
-              <ArrowRight className="h-4 w-4" aria-hidden="true" />
-            </Link>
-          </div>
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+        )}
+      </section>
     </AppShell>
   );
 }

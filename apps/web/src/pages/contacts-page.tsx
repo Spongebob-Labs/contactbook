@@ -243,9 +243,6 @@ export default function ContactsPage() {
             <div className="flex items-end justify-between gap-3">
               <div>
                 <CardTitle>Contacts ({filteredContacts.length})</CardTitle>
-                <CardDescription>
-                  Synced contact records from your connected sources.
-                </CardDescription>
               </div>
             </div>
           </CardHeader>
@@ -263,7 +260,7 @@ export default function ContactsPage() {
                 <UsersRound className="mb-3 h-9 w-9 text-primary" aria-hidden="true" />
                 <h2 className="font-semibold">No contacts found</h2>
                 <p className="mt-2 max-w-sm text-sm text-muted-foreground">
-                  Sync Google contacts from the Import page, or adjust your search.
+                  Import contacts from the Import page, or adjust your search.
                 </p>
                 <Link
                   to="/dashboard/import"
