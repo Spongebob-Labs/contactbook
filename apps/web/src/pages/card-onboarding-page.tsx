@@ -35,7 +35,7 @@ const cardTypeOptions: Array<{
 
 type CardOnboardingModalProps = {
   mode?: "setup" | "create";
-  onComplete: () => void;
+  onComplete: (card: ContactCard) => void;
   onSkip: () => void;
 };
 
@@ -62,7 +62,7 @@ export function CardOnboardingModal({
 
     setIsSaving(true);
     try {
-      await apiFetch<ContactCard>("/v1/cards", {
+      const card = await apiFetch<ContactCard>("/v1/cards", {
         method: "POST",
         body: {
           name: cleanedName,
@@ -70,7 +70,7 @@ export function CardOnboardingModal({
         },
       });
       toast.success(isSetupMode ? "Your first card is ready." : "Card created.");
-      onComplete();
+      onComplete(card);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not create card.");
     } finally {

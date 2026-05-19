@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { apiFetch } from "@/lib/api";
+import { buildContactImportSummary } from "@/lib/contact-summary";
 import { startGoogleImportConnection } from "@/lib/google-import";
 import {
   GOOGLE_CONNECTED_KEY,
@@ -65,12 +66,10 @@ export default function ImportPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const [summaryData, contactsData] = await Promise.all([
-        apiFetch<ContactImportSummary>("/v1/contacts/import"),
-        apiFetch<ContactImport[]>("/v1/contacts?source=GOOGLE"),
-      ]);
-      setSummary(summaryData);
+      const contactsData = await apiFetch<ContactImport[]>("/v1/contacts?source=GOOGLE");
+      const summaryData = buildContactImportSummary(contactsData);
       setImports(contactsData);
+      setSummary(summaryData);
       setHasConnectedGoogle(hasGoogleConnectionEvidence(summaryData, contactsData));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load imports.");
@@ -84,7 +83,6 @@ export default function ImportPage() {
     try {
       const result = await apiFetch<GoogleSyncResponse>(
         "/v1/contacts/sync?source=GOOGLE",
-        { method: "POST" },
       );
       setHasConnectedGoogle(true);
       toast.success(`Synced ${result.processedCount} contacts.`);
