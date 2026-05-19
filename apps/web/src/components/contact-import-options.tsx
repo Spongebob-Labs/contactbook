@@ -1,4 +1,4 @@
-import { Cloud, FileUp, UploadCloud } from "lucide-react";
+import { Cloud, FileUp, Lock, UploadCloud } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -11,6 +11,23 @@ type ImportOption = {
   icon: typeof UploadCloud;
   disabled?: boolean;
 };
+
+type ContactImportOptionsProps = {
+  className?: string;
+  compact?: boolean;
+  featuredGoogle?: boolean;
+} & (
+  | {
+      hideGoogle: true;
+      onConnectGoogle?: () => void;
+      isConnectingGoogle?: boolean;
+    }
+  | {
+      hideGoogle?: false;
+      onConnectGoogle: () => void;
+      isConnectingGoogle: boolean;
+    }
+);
 
 const options: ImportOption[] = [
   {
@@ -40,26 +57,25 @@ const options: ImportOption[] = [
 
 export function ContactImportOptions({
   onConnectGoogle,
-  isConnectingGoogle,
+  isConnectingGoogle = false,
   className,
   compact = false,
   featuredGoogle = false,
-}: {
-  onConnectGoogle: () => void;
-  isConnectingGoogle: boolean;
-  className?: string;
-  compact?: boolean;
-  featuredGoogle?: boolean;
-}) {
+  hideGoogle = false,
+}: ContactImportOptionsProps) {
+  const visibleOptions = hideGoogle
+    ? options.filter((option) => option.key !== "google")
+    : options;
+
   return (
     <div
       className={cn(
         "grid gap-4",
-        featuredGoogle ? "lg:grid-cols-2" : "lg:grid-cols-3",
+        featuredGoogle && !hideGoogle ? "lg:grid-cols-2" : "lg:grid-cols-3",
         className,
       )}
     >
-      {options.map((option) => {
+      {visibleOptions.map((option) => {
         const Icon = option.icon;
         return (
           <div
@@ -107,7 +123,8 @@ export function ContactImportOptions({
                 variant="outline"
                 disabled
               >
-                {option.key === "vcf" ? "Upload unavailable" : "Connector unavailable"}
+                <Lock className="h-4 w-4" aria-hidden="true" />
+                {option.key === "vcf" ? "Upload" : "Connect now"}
               </Button>
             )}
           </div>

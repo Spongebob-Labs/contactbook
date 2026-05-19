@@ -299,3 +299,33 @@
 - Decision: Hydrate `/onboarding/profile` from `GET /v1/profile/me` before rendering editable fields.
 - Reason: The profile page routes existing users to the onboarding form for edits, so previously saved profile sections should appear in the form instead of starting from blank defaults.
 - Notes: The current UI supports one work, business, socials, bank, wallet, and crypto row, so the form preloads the first item from each corresponding profile array.
+
+## 2026-05-19 - Hide Google Connect CTA After Import Link
+
+- Decision: Hide the Google authenticate/connect card on the dashboard import page once Google is connected, keeping the sync button as the primary action.
+- Reason: Users who have already linked Google should not see a repeated authenticate CTA because the next expected action is syncing contacts.
+- Notes: The frontend treats a Google summary row with `hasSyncToken` as the persisted connected/synced signal and also marks the page connected immediately after a successful `google=connected` callback.
+
+## 2026-05-19 - Persist Google Import Connected State
+
+- Decision: Store a frontend Google-connected marker after a successful import OAuth callback and hydrate the import page from that marker plus backend import evidence.
+- Reason: A linked Google account can exist before the backend has a sync cursor, so relying only on `hasSyncToken` can leave a stale authenticate CTA visible.
+- Notes: Sync failures that indicate expired or revoked Google authorization clear the marker so the reconnect path can return when it is actually needed.
+
+## 2026-05-19 - Remove Google Auth CTA From Import Page
+
+- Decision: Remove the Google connect/authenticate card from `/dashboard/import` entirely and keep that page focused on syncing and reviewing imported contacts.
+- Reason: The import page should not show duplicate Google authentication entry points after users reach the operational import workflow.
+- Notes: Google authentication remains available through the import onboarding/choice flow, while `/dashboard/import` keeps the sync action as the primary control.
+
+## 2026-05-19 - Keep Non-Google Import Options Visible
+
+- Decision: Show iCloud and VCF import option cards on `/dashboard/import` while hiding only the Google card.
+- Reason: Completing Google import should not remove visibility of other import methods users may want later.
+- Notes: `ContactImportOptions` now supports filtering out Google so onboarding can keep the full source picker and the dashboard import page can show only pending non-Google options.
+
+## 2026-05-19 - Use Future-Action Labels For Locked Imports
+
+- Decision: Replace unavailable wording on locked iCloud and VCF import buttons with the intended future actions, `Connect now` and `Upload`.
+- Reason: Disabled coming-soon cards should preview the action users will eventually take without exposing internal implementation states like connector availability.
+- Notes: The buttons remain disabled and show a lock icon, while the existing `Coming soon` badges continue to communicate feature status.

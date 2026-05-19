@@ -11,7 +11,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
-import { startGoogleImportConnection } from "@/lib/google-import";
 import type {
   ContactImport,
   ContactImportSummary,
@@ -19,6 +18,7 @@ import type {
 } from "@/lib/types";
 
 const GOOGLE_OAUTH_PENDING_KEY = "contactbook:google-oauth-pending";
+const GOOGLE_CONNECTED_KEY = "contactbook:google-connected";
 
 function formatDate(value: string | null) {
   if (!value) {
@@ -57,15 +57,30 @@ function getPrimaryContact(item: ContactImport) {
   return item.primaryEmail?.value ?? item.primaryPhone?.value ?? "No phone or email";
 }
 
+function hasGoogleConnectionEvidence(
+  summary: ContactImportSummary,
+  contacts: ContactImport[],
+) {
+  const googleSummary = summary.bySource.find((item) => item.source === "GOOGLE");
+  return Boolean(
+    googleSummary?.hasSyncToken ||
+      googleSummary?.lastSyncAt ||
+      googleSummary?.activeCount ||
+      contacts.length > 0,
+  );
+}
+
 export default function ImportPage() {
   const [searchParams] = useSearchParams();
   const [imports, setImports] = useState<ContactImport[]>([]);
   const [summary, setSummary] = useState<ContactImportSummary | null>(null);
   const [query, setQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
-  const [isConnecting, setIsConnecting] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hasConnectedGoogle, setHasConnectedGoogle] = useState(
+    () => localStorage.getItem(GOOGLE_CONNECTED_KEY) === "1",
+  );
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -85,6 +100,10 @@ export default function ImportPage() {
       ]);
       setSummary(summaryData);
       setImports(contactsData);
+      if (hasGoogleConnectionEvidence(summaryData, contactsData)) {
+        localStorage.setItem(GOOGLE_CONNECTED_KEY, "1");
+        setHasConnectedGoogle(true);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load imports.");
     } finally {
@@ -96,10 +115,18 @@ export default function ImportPage() {
     setIsSyncing(true);
     try {
       const result = await apiFetch<GoogleSyncResponse>("/v1/integrations/google/sync");
+      localStorage.setItem(GOOGLE_CONNECTED_KEY, "1");
+      setHasConnectedGoogle(true);
       toast.success(`Synced ${result.processedCount} contacts.`);
       await loadImports();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not sync Google contacts.");
+      const message =
+        err instanceof Error ? err.message : "Could not sync Google contacts.";
+      if (/authorization expired|revoked|reconnect/i.test(message)) {
+        localStorage.removeItem(GOOGLE_CONNECTED_KEY);
+        setHasConnectedGoogle(false);
+      }
+      toast.error(message);
     } finally {
       setIsSyncing(false);
     }
@@ -113,6 +140,8 @@ export default function ImportPage() {
     const googleState = searchParams.get("google");
     const reason = searchParams.get("reason");
     if (googleState === "connected") {
+      localStorage.setItem(GOOGLE_CONNECTED_KEY, "1");
+      setHasConnectedGoogle(true);
       const shouldAutoSync =
         sessionStorage.getItem(GOOGLE_OAUTH_PENDING_KEY) === "1";
       sessionStorage.removeItem(GOOGLE_OAUTH_PENDING_KEY);
@@ -159,19 +188,6 @@ export default function ImportPage() {
     };
   }, []);
 
-  const connectGoogle = async () => {
-    setIsConnecting(true);
-    try {
-      const url = await startGoogleImportConnection("/dashboard/import");
-      sessionStorage.setItem(GOOGLE_OAUTH_PENDING_KEY, "1");
-      window.location.assign(url);
-    } catch (err) {
-      sessionStorage.removeItem(GOOGLE_OAUTH_PENDING_KEY);
-      toast.error(err instanceof Error ? err.message : "Could not start Google connection.");
-      setIsConnecting(false);
-    }
-  };
-
   const googleSummary = summary?.bySource.find((item) => item.source === "GOOGLE");
 
   return (
@@ -184,8 +200,9 @@ export default function ImportPage() {
               Bring your Google contacts into ContactBook.
             </h1>
             <p className="text-base text-muted-foreground">
-              Choose the Google account you want to connect, then sync contacts into
-              your ContactBook import queue.
+              {hasConnectedGoogle
+                ? "Sync contacts from your connected Google account into your ContactBook import queue."
+                : "Sync your Google contacts into your ContactBook import queue."}
             </p>
           </div>
           <div className="mt-6">
@@ -229,10 +246,7 @@ export default function ImportPage() {
         </Card>
       </section>
 
-      <ContactImportOptions
-        onConnectGoogle={() => void connectGoogle()}
-        isConnectingGoogle={isConnecting}
-      />
+      <ContactImportOptions hideGoogle />
 
       <Card>
         <CardHeader>
@@ -276,7 +290,7 @@ export default function ImportPage() {
               <CheckCircle2 className="mb-3 h-8 w-8 text-primary" />
               <h3 className="font-semibold">No imported contacts yet</h3>
               <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-                Connect Google and run a sync to populate this list.
+                Run a sync to populate this list.
               </p>
             </div>
           )}
