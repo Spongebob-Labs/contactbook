@@ -48,6 +48,10 @@ type CryptoForm = {
 
 type OnboardingForm = {
   identity: {
+    firstName: string;
+    lastName: string;
+    primaryPhone: string;
+    primaryEmail: string;
     profilePhoto: string;
   };
   personal: {
@@ -124,7 +128,11 @@ type AddressPayload = {
 };
 
 type ProfileOnboardingPayload = {
-  identity?: {
+  identity: {
+    firstName: string;
+    lastName: string;
+    primaryPhone: string;
+    primaryEmail: string;
     profilePhoto?: string | null;
   };
   personal?: {
@@ -201,6 +209,10 @@ const emptyAddress: AddressForm = {
 
 const initialForm: OnboardingForm = {
   identity: {
+    firstName: "",
+    lastName: "",
+    primaryPhone: "",
+    primaryEmail: "",
     profilePhoto: "",
   },
   personal: {
@@ -397,6 +409,10 @@ function profileToForm(profile: ProfileMeResponse): OnboardingForm {
 
   return {
     identity: {
+      firstName: profile.identity.firstName,
+      lastName: profile.identity.lastName,
+      primaryPhone: profile.identity.primaryPhone,
+      primaryEmail: profile.identity.primaryEmail,
       profilePhoto: valueOrEmpty(profile.identity.profilePhoto),
     },
     personal: {
@@ -486,6 +502,9 @@ function profileToForm(profile: ProfileMeResponse): OnboardingForm {
 const MAX_PROFILE_PHOTO_BYTES = 1024 * 1024;
 
 function hasInitializedProfile(profile: ProfileMeResponse) {
+  if (profile.profileOnboardingCompletedAt) {
+    return true;
+  }
   return Boolean(
     profile.personal.groupId ||
       profile.work.length > 0 ||
@@ -639,63 +658,26 @@ export function ProfileOnboardingModal({
     }));
   };
 
-  const validate = (): string | null => {
-    const addressError =
-      validateAddress("Personal address", form.personal.postalAddress) ??
-      validateAddress("Work address", form.work.workPostalAddress) ??
-      validateAddress("Business address", form.business.businessPostalAddress);
-    if (addressError) {
-      return addressError;
-    }
+  const validate = (): string | null => null;
 
-    const bankTouched = hasAny([
-      form.financial.bank.bankName,
-      form.financial.bank.accountHolder,
-      form.financial.bank.accountNumber,
-      form.financial.bank.ifsc,
-      form.financial.bank.currency,
-    ]);
-    if (
-      bankTouched &&
-      (!hasText(form.financial.bank.bankName) ||
-        !hasText(form.financial.bank.accountHolder) ||
-        !hasText(form.financial.bank.accountNumber))
-    ) {
-      return "Bank account needs bank name, account holder, and account number.";
-    }
+  const buildProfilePayload = (
+    forOnboarding: boolean,
+  ): ProfileOnboardingPayload | Record<string, unknown> => {
+    const payload: ProfileOnboardingPayload | Record<string, unknown> = {};
 
-    const walletTouched = hasAny([
-      form.financial.wallet.platform,
-      form.financial.wallet.handleOrLink,
-    ]);
-    if (
-      walletTouched &&
-      (!hasText(form.financial.wallet.platform) ||
-        !hasText(form.financial.wallet.handleOrLink))
-    ) {
-      return "Digital wallet needs platform and handle or link.";
-    }
-
-    const cryptoTouched = hasAny([
-      form.financial.crypto.network,
-      form.financial.crypto.address,
-    ]);
-    if (
-      cryptoTouched &&
-      (!hasText(form.financial.crypto.network) || !hasText(form.financial.crypto.address))
-    ) {
-      return "Crypto wallet needs network and address.";
-    }
-
-    return null;
-  };
-
-  const buildProfilePayload = (): ProfileOnboardingPayload => {
-    const payload: ProfileOnboardingPayload = {};
-
-    const profilePhoto = optionalText(form.identity.profilePhoto);
-    if (profilePhoto) {
-      payload.identity = { profilePhoto };
+    if (forOnboarding) {
+      payload.identity = {
+        firstName: form.identity.firstName.trim(),
+        lastName: form.identity.lastName.trim(),
+        primaryPhone: form.identity.primaryPhone.trim(),
+        primaryEmail: form.identity.primaryEmail.trim(),
+        profilePhoto: optionalText(form.identity.profilePhoto) ?? null,
+      };
+    } else {
+      const profilePhoto = optionalText(form.identity.profilePhoto);
+      if (profilePhoto) {
+        payload.identity = { profilePhoto };
+      }
     }
 
     const personalCustom = compactCustom({
@@ -881,9 +863,8 @@ export function ProfileOnboardingModal({
 
     setIsSaving(true);
     try {
-      const payload = buildProfilePayload();
-      const sectionKeys = Object.keys(payload).filter((key) => key !== "identity");
-      const shouldInitialize = sectionKeys.length > 0 && !hasExistingProfile;
+      const shouldInitialize = !hasExistingProfile;
+      const payload = buildProfilePayload(shouldInitialize);
       try {
         await apiFetch<unknown>(
           shouldInitialize ? "/v1/profile/onboarding" : "/v1/profile/me",

@@ -90,6 +90,7 @@ model User {
   firstName String
   lastName  String
   isActive  Boolean  @default(false)
+  profileOnboardingCompletedAt DateTime? @map("profile_onboarding_completed_at")
 
   fieldGroups   FieldGroup[]
   cards         ContactCard[]

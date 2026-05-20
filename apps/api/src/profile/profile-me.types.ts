@@ -78,6 +78,7 @@ export type ProfileMeFinancial = {
 };
 
 export type ProfileMeResponse = {
+  profileOnboardingCompletedAt: string | null;
   identity: ProfileMeIdentity;
   personal: ProfileMePersonal;
   work: ProfileMeWorkItem[];

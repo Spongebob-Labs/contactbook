@@ -34,6 +34,7 @@ export class ProfileMeSerializerService {
           email: true,
           phone: true,
           countryCode: true,
+          profileOnboardingCompletedAt: true,
         },
       }),
       this.prisma.fieldGroup.findMany({
@@ -54,6 +55,7 @@ export class ProfileMeSerializerService {
 
     if (!user) {
       return {
+        profileOnboardingCompletedAt: null,
         identity: {
           firstName: "",
           lastName: "",
@@ -131,6 +133,9 @@ export class ProfileMeSerializerService {
     }
 
     return {
+      profileOnboardingCompletedAt: user?.profileOnboardingCompletedAt
+        ? user.profileOnboardingCompletedAt.toISOString()
+        : null,
       identity: buildIdentity(user, identityGroups),
       personal: mergePersonalGroups(
         personalGroups,

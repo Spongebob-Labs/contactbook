@@ -1,11 +1,44 @@
-import { ConflictException } from "@nestjs/common";
+import { BadRequestException, ConflictException } from "@nestjs/common";
 import { FieldCategory, FieldType } from "@prisma/client";
+import { ProfileDeletableGroupCategory } from "./dto/profile-deletable-group-category.enum";
 import { ProfileMeUpsertService } from "./profile-me.upsert.service";
+import { sanitizeProfilePayload } from "./profile-me.payload.util";
+
+const registrationIdentity = {
+  firstName: "Jane",
+  lastName: "Doe",
+  primaryEmail: "jane@example.com",
+  primaryPhone: "+12025551234",
+};
+
+describe("sanitizeProfilePayload", () => {
+  it("omits empty work array", () => {
+    const out = sanitizeProfilePayload({ work: [] });
+    expect(out.work).toBeUndefined();
+  });
+
+  it("omits empty personal shell without explicit null field clears", () => {
+    const out = sanitizeProfilePayload({
+      personal: { tag: "", postalAddress: {} },
+    });
+    expect(out.personal).toBeUndefined();
+  });
+
+  it("keeps personal when explicit null clears a field", () => {
+    const out = sanitizeProfilePayload({
+      personal: { mobile: null },
+    });
+    expect(out.personal).toEqual({ mobile: null });
+  });
+});
 
 describe("ProfileMeUpsertService", () => {
   const userId = "user-1";
   let prisma: {
-    user: { update: jest.Mock; findUnique: jest.Mock };
+    user: {
+      update: jest.Mock;
+      findUnique: jest.Mock;
+    };
     fieldGroup: {
       count: jest.Mock;
       findMany: jest.Mock;
@@ -36,6 +69,20 @@ describe("ProfileMeUpsertService", () => {
   };
   let serializer: { build: jest.Mock };
 
+  const emptyProfileResponse = {
+    profileOnboardingCompletedAt: null,
+    identity: registrationIdentity,
+    personal: { groupId: "", tag: "" },
+    work: [],
+    business: [],
+    socials: [],
+    financial: {
+      bankAccounts: [],
+      digitalWallets: [],
+      cryptoWallets: [],
+    },
+  };
+
   beforeEach(() => {
     prisma = {
       user: {
@@ -44,8 +91,9 @@ describe("ProfileMeUpsertService", () => {
           firstName: "Jane",
           lastName: "Doe",
           email: "jane@example.com",
-          phone: "5551234567",
+          phone: "2025551234",
           countryCode: "+1",
+          profileOnboardingCompletedAt: null,
         }),
       },
       fieldGroup: {
@@ -85,18 +133,7 @@ describe("ProfileMeUpsertService", () => {
       }),
     };
     serializer = {
-      build: jest.fn().mockResolvedValue({
-        identity: {},
-        personal: {},
-        work: [],
-        business: [],
-        socials: [],
-        financial: {
-          bankAccounts: [],
-          digitalWallets: [],
-          cryptoWallets: [],
-        },
-      }),
+      build: jest.fn().mockResolvedValue(emptyProfileResponse),
     };
   });
 
@@ -115,6 +152,26 @@ describe("ProfileMeUpsertService", () => {
       "Acme",
     );
     expect(persistence.syncGroupFields).toHaveBeenCalled();
+  });
+
+  it("does not delete work groups when work is an empty array", async () => {
+    persistence.loadGroups.mockResolvedValue([
+      {
+        id: "work-1",
+        userId,
+        category: FieldCategory.WORK,
+        name: "Acme",
+        updatedAt: new Date(),
+        fields: [],
+      },
+    ]);
+    const svc = new ProfileMeUpsertService(
+      prisma as never,
+      persistence as never,
+      serializer as never,
+    );
+    await svc.patch(userId, { work: [] });
+    expect(persistence.deleteGroup).not.toHaveBeenCalled();
   });
 
   it("updates identity user fields", async () => {
@@ -175,9 +232,87 @@ describe("ProfileMeUpsertService", () => {
     );
   });
 
+  it("deletes a work group by id and category", async () => {
+    persistence.findGroup.mockResolvedValue({
+      id: "work-1",
+      category: FieldCategory.WORK,
+    });
+    const svc = new ProfileMeUpsertService(
+      prisma as never,
+      persistence as never,
+      serializer as never,
+    );
+    await svc.deleteGroup(userId, {
+      groupId: "work-1",
+      category: ProfileDeletableGroupCategory.WORK,
+    });
+    expect(persistence.deleteGroup).toHaveBeenCalledWith(userId, "work-1");
+    expect(serializer.build).toHaveBeenCalledWith(userId);
+  });
+
+  it("rejects delete when category does not match group", async () => {
+    persistence.findGroup.mockResolvedValue({
+      id: "work-1",
+      category: FieldCategory.WORK,
+    });
+    const svc = new ProfileMeUpsertService(
+      prisma as never,
+      persistence as never,
+      serializer as never,
+    );
+    await expect(
+      svc.deleteGroup(userId, {
+        groupId: "work-1",
+        category: ProfileDeletableGroupCategory.BUSINESS,
+      }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it("clears personal phone with null without reconcile-wiping landline", async () => {
+    persistence.loadGroups.mockResolvedValue([
+      {
+        id: "p1",
+        userId,
+        category: FieldCategory.PERSONAL,
+        name: "Primary",
+        updatedAt: new Date(),
+        fields: [
+          {
+            id: "phone-1",
+            type: FieldType.PHONE,
+            groupId: "p1",
+            label: null,
+          },
+          {
+            id: "land-1",
+            type: FieldType.LANDLINE,
+            groupId: "p1",
+            label: null,
+          },
+        ],
+      },
+    ]);
+    const svc = new ProfileMeUpsertService(
+      prisma as never,
+      persistence as never,
+      serializer as never,
+    );
+    await svc.patch(userId, { personal: { mobile: null } });
+    expect(persistence.deleteField).toHaveBeenCalledWith(userId, "phone-1");
+    expect(persistence.deleteField).not.toHaveBeenCalledWith(userId, "land-1");
+    expect(persistence.syncGroupFields).not.toHaveBeenCalled();
+  });
+
   describe("completeOnboarding", () => {
-    it("returns 409 when field groups already exist", async () => {
-      prisma.fieldGroup.count.mockResolvedValue(2);
+    it("returns 409 when onboarding already completed", async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        firstName: "Jane",
+        lastName: "Doe",
+        email: "jane@example.com",
+        phone: "5551234567",
+        countryCode: "+1",
+        profileOnboardingCompletedAt: new Date(),
+      });
       const svc = new ProfileMeUpsertService(
         prisma as never,
         persistence as never,
@@ -185,20 +320,32 @@ describe("ProfileMeUpsertService", () => {
       );
       await expect(
         svc.completeOnboarding(userId, {
-          personal: { tag: "Primary", mobile: "+15551234567" },
+          identity: registrationIdentity,
         }),
       ).rejects.toThrow(ConflictException);
     });
 
-    it("rejects empty onboarding body", async () => {
+    it("completes identity-only onboarding and sets completedAt", async () => {
       const svc = new ProfileMeUpsertService(
         prisma as never,
         persistence as never,
         serializer as never,
       );
-      await expect(svc.completeOnboarding(userId, {})).rejects.toThrow(
-        "Provide at least one profile section",
-      );
+      const applySpy = jest.spyOn(svc as never, "apply" as never);
+
+      await svc.completeOnboarding(userId, {
+        identity: registrationIdentity,
+        work: [],
+      });
+
+      expect(applySpy).toHaveBeenCalledWith(userId, {});
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: userId },
+        data: {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+          profileOnboardingCompletedAt: expect.any(Date),
+        },
+      });
     });
 
     it("rejects identity mismatch with registration", async () => {
@@ -209,49 +356,29 @@ describe("ProfileMeUpsertService", () => {
       );
       await expect(
         svc.completeOnboarding(userId, {
-          personal: { tag: "Primary" },
-          identity: { firstName: "Wrong" },
+          identity: { ...registrationIdentity, firstName: "Wrong" },
         }),
       ).rejects.toThrow("identity.firstName does not match registration");
     });
 
-    it("initializes profile via put when no field groups exist", async () => {
+    it("initializes profile via apply when sections are present", async () => {
       const svc = new ProfileMeUpsertService(
         prisma as never,
         persistence as never,
         serializer as never,
       );
-      const putSpy = jest.spyOn(svc, "put").mockResolvedValue({
-        identity: {
-          firstName: "Jane",
-          lastName: "Doe",
-          primaryPhone: "+15551234567",
-          primaryEmail: "jane@example.com",
-        },
-        personal: { groupId: "p1", tag: "Primary Personal" },
-        work: [],
-        business: [],
-        socials: [],
-        financial: {
-          bankAccounts: [],
-          digitalWallets: [],
-          cryptoWallets: [],
-        },
-      });
+      const applySpy = jest.spyOn(svc as never, "apply" as never);
 
       await svc.completeOnboarding(userId, {
-        personal: { tag: "Primary Personal", mobile: "+15551234567" },
         identity: {
+          ...registrationIdentity,
           profilePhoto: "https://example.com/photo.jpg",
-          firstName: "Jane",
         },
+        personal: { tag: "Primary Personal", mobile: "+12025551234" },
       });
 
-      expect(prisma.fieldGroup.count).toHaveBeenCalledWith({
-        where: { userId },
-      });
-      expect(putSpy).toHaveBeenCalledWith(userId, {
-        personal: { tag: "Primary Personal", mobile: "+15551234567" },
+      expect(applySpy).toHaveBeenCalledWith(userId, {
+        personal: { tag: "Primary Personal", mobile: "+12025551234" },
         identity: { profilePhoto: "https://example.com/photo.jpg" },
       });
     });

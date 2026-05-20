@@ -114,6 +114,7 @@ export type PostalAddress = {
 };
 
 export type ProfileMeResponse = {
+  profileOnboardingCompletedAt?: string | null;
   identity: {
     firstName: string;
     lastName: string;

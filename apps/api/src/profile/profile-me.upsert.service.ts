@@ -10,11 +10,11 @@ import {
   normalizeDialCode,
 } from "../common/phone.util";
 import { PrismaService } from "../prisma/prisma.service";
+import type { ProfileDeleteGroupDto } from "./dto/profile-delete-group.dto";
 import type { ProfileMeOnboardingDto } from "./dto/profile-me-onboarding.dto";
-import type {
-  ProfileMeIdentityUpsertDto,
-  ProfileMePatchDto,
-} from "./dto/profile-me-upsert.dto";
+import type { ProfileMeOnboardingIdentityDto } from "./dto/profile-me-onboarding.dto";
+import type { ProfileMePatchDto } from "./dto/profile-me-upsert.dto";
+import { fieldCategoryFromDeletable } from "./profile-me.deletable-group";
 import type {
   InflatedFinancialRow,
   InflatedGroupItem,
@@ -30,6 +30,12 @@ import {
   inflateWorkItem,
 } from "./profile-me.inflate";
 import type { GroupWithFields } from "./profile-me.flatten";
+import { sanitizeProfilePayload } from "./profile-me.payload.util";
+import {
+  fieldMatchesPersonalNullKey,
+  personalNullKeys,
+  stripPersonalNulls,
+} from "./profile-me.personal-null";
 import { ProfileMeSerializerService } from "./profile-me.serializer";
 import type { ProfileMeResponse } from "./profile-me.types";
 import { ProfilePersistenceService } from "./profile-persistence.service";
@@ -46,70 +52,66 @@ export class ProfileMeUpsertService {
     userId: string,
     dto: ProfileMePatchDto,
   ): Promise<ProfileMeResponse> {
-    return this.apply(userId, dto);
+    const sanitized = sanitizeProfilePayload(dto);
+    return this.apply(userId, sanitized);
   }
 
-  async put(
+  async deleteGroup(
     userId: string,
-    dto: ProfileMePatchDto,
+    dto: ProfileDeleteGroupDto,
   ): Promise<ProfileMeResponse> {
-    return this.apply(userId, dto);
+    const expectedCategory = fieldCategoryFromDeletable(dto.category);
+    const group = await this.persistence.findGroup(
+      userId,
+      dto.groupId,
+      expectedCategory,
+    );
+    if (group.category !== expectedCategory) {
+      throw new BadRequestException(
+        "groupId does not match the provided category",
+      );
+    }
+    await this.persistence.deleteGroup(userId, dto.groupId);
+    return this.serializer.build(userId);
   }
 
   async completeOnboarding(
     userId: string,
     dto: ProfileMeOnboardingDto,
   ): Promise<ProfileMeResponse> {
-    const count = await this.prisma.fieldGroup.count({ where: { userId } });
-    if (count > 0) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { profileOnboardingCompletedAt: true },
+    });
+    if (!user) {
+      throw new BadRequestException("User not found");
+    }
+    if (user.profileOnboardingCompletedAt) {
       throw new ConflictException("Profile already initialized");
     }
 
-    this.assertHasOnboardingSection(dto);
     await this.assertIdentityMatchesUser(userId, dto.identity);
 
     const { identity, ...rest } = dto;
-    const payload: ProfileMePatchDto = { ...rest };
-    if (identity?.profilePhoto !== undefined) {
+    const payload: ProfileMePatchDto = sanitizeProfilePayload({ ...rest });
+    if (identity.profilePhoto !== undefined) {
       payload.identity = { profilePhoto: identity.profilePhoto };
     }
 
-    return this.put(userId, payload);
-  }
+    await this.apply(userId, payload);
 
-  private assertHasOnboardingSection(dto: ProfileMeOnboardingDto): void {
-    const hasPersonal = dto.personal !== undefined && dto.personal !== null;
-    const hasWork = Array.isArray(dto.work) && dto.work.length > 0;
-    const hasBusiness = Array.isArray(dto.business) && dto.business.length > 0;
-    const hasSocials = Array.isArray(dto.socials) && dto.socials.length > 0;
-    const hasFinancial =
-      dto.financial !== undefined &&
-      dto.financial !== null &&
-      ((dto.financial.bankAccounts?.length ?? 0) > 0 ||
-        (dto.financial.digitalWallets?.length ?? 0) > 0 ||
-        (dto.financial.cryptoWallets?.length ?? 0) > 0);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { profileOnboardingCompletedAt: new Date() },
+    });
 
-    if (
-      !hasPersonal &&
-      !hasWork &&
-      !hasBusiness &&
-      !hasSocials &&
-      !hasFinancial
-    ) {
-      throw new BadRequestException(
-        "Provide at least one profile section: personal, work, business, socials, or financial",
-      );
-    }
+    return this.serializer.build(userId);
   }
 
   private async assertIdentityMatchesUser(
     userId: string,
-    identity?: ProfileMeIdentityUpsertDto,
+    identity: ProfileMeOnboardingIdentityDto,
   ): Promise<void> {
-    if (!identity) {
-      return;
-    }
-
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: {
@@ -124,52 +126,43 @@ export class ProfileMeUpsertService {
       throw new BadRequestException("User not found");
     }
 
-    if (
-      identity.firstName !== undefined &&
-      identity.firstName.trim() !== user.firstName
-    ) {
+    if (identity.firstName.trim() !== user.firstName) {
       throw new BadRequestException(
         "identity.firstName does not match registration",
       );
     }
-    if (
-      identity.lastName !== undefined &&
-      identity.lastName.trim() !== user.lastName
-    ) {
+    if (identity.lastName.trim() !== user.lastName) {
       throw new BadRequestException(
         "identity.lastName does not match registration",
       );
     }
     if (
-      identity.primaryEmail !== undefined &&
       identity.primaryEmail.trim().toLowerCase() !== user.email.toLowerCase()
     ) {
       throw new BadRequestException(
         "identity.primaryEmail does not match registration",
       );
     }
-    if (identity.primaryPhone !== undefined) {
-      const submitted = inboundE164ToIdentity(identity.primaryPhone);
-      if (!submitted) {
-        throw new BadRequestException("Invalid identity.primaryPhone");
-      }
-      let expected: string;
-      try {
-        expected = e164FromStoredUser(user);
-      } catch {
-        throw new BadRequestException(
-          "identity.primaryPhone does not match registration",
-        );
-      }
-      const submittedE164 = e164FromStoredUser({
-        countryCode: submitted.countryCode,
-        phone: submitted.phone,
-      });
-      if (submittedE164 !== expected) {
-        throw new BadRequestException(
-          "identity.primaryPhone does not match registration",
-        );
-      }
+    const submitted = inboundE164ToIdentity(identity.primaryPhone);
+    if (!submitted) {
+      throw new BadRequestException("Invalid identity.primaryPhone");
+    }
+    let expected: string;
+    try {
+      expected = e164FromStoredUser(user);
+    } catch {
+      throw new BadRequestException(
+        "identity.primaryPhone does not match registration",
+      );
+    }
+    const submittedE164 = e164FromStoredUser({
+      countryCode: submitted.countryCode,
+      phone: submitted.phone,
+    });
+    if (submittedE164 !== expected) {
+      throw new BadRequestException(
+        "identity.primaryPhone does not match registration",
+      );
     }
   }
 
@@ -240,21 +233,17 @@ export class ProfileMeUpsertService {
       countryCode?: string;
     } = {};
 
-    if (identity.firstName !== undefined) {
-      // eslint-disable-next-line @typescript-eslint/no-base-to-string
-      userUpdate.firstName = String(identity.firstName).trim();
+    if (identity.firstName !== undefined && identity.firstName !== null) {
+      userUpdate.firstName = (identity.firstName as string).trim();
     }
-    if (identity.lastName !== undefined) {
-      // eslint-disable-next-line @typescript-eslint/no-base-to-string
-      userUpdate.lastName = String(identity.lastName).trim();
+    if (identity.lastName !== undefined && identity.lastName !== null) {
+      userUpdate.lastName = (identity.lastName as string).trim();
     }
-    if (identity.primaryEmail !== undefined) {
-      // eslint-disable-next-line @typescript-eslint/no-base-to-string
-      userUpdate.email = String(identity.primaryEmail).trim();
+    if (identity.primaryEmail !== undefined && identity.primaryEmail !== null) {
+      userUpdate.email = (identity.primaryEmail as string).trim();
     }
-    if (identity.primaryPhone !== undefined) {
-      // eslint-disable-next-line @typescript-eslint/no-base-to-string
-      const parsed = inboundE164ToIdentity(String(identity.primaryPhone));
+    if (identity.primaryPhone !== undefined && identity.primaryPhone !== null) {
+      const parsed = inboundE164ToIdentity(identity.primaryPhone as string);
       if (!parsed) {
         throw new BadRequestException("Invalid primaryPhone");
       }
@@ -267,6 +256,10 @@ export class ProfileMeUpsertService {
         where: { id: userId },
         data: userUpdate,
       });
+    }
+
+    if (identity.profilePhoto === undefined) {
+      return;
     }
 
     const photoSpec = inflateIdentityPhoto(identity);
@@ -309,7 +302,9 @@ export class ProfileMeUpsertService {
     personal: Record<string, unknown>,
     groups: GroupWithFields[],
   ): Promise<void> {
-    const inflated = inflatePersonal(personal);
+    const nullKeys = personalNullKeys(personal);
+    const forInflate = stripPersonalNulls(personal);
+    const inflated = inflatePersonal(forInflate);
     const personalGroups = groups.filter(
       (g) => g.category === FieldCategory.PERSONAL,
     );
@@ -326,24 +321,58 @@ export class ProfileMeUpsertService {
         (a, b) => b.updatedAt.getTime() - a.updatedAt.getTime(),
       )[0];
       targetId = primary.id;
-    } else {
+    } else if (nullKeys.size === 0 && inflated.fields.length > 0) {
       const created = await this.persistence.createGroup(
         userId,
         FieldCategory.PERSONAL,
         inflated.tag,
       );
       targetId = created.id;
+    } else if (nullKeys.size > 0) {
+      return;
+    } else if (forInflate.tag !== undefined) {
+      const created = await this.persistence.createGroup(
+        userId,
+        FieldCategory.PERSONAL,
+        inflated.tag,
+      );
+      targetId = created.id;
+    } else {
+      return;
     }
 
-    await this.persistence.updateGroupName(targetId, inflated.tag);
+    const targetGroup =
+      personalGroups.find((g) => g.id === targetId) ??
+      ({ id: targetId, fields: [] } as unknown as GroupWithFields);
 
-    const targetGroup = personalGroups.find((g) => g.id === targetId);
-    await this.persistence.syncGroupFields(
-      targetId,
-      inflated.fields,
-      targetGroup?.fields ?? [],
-      true,
-    );
+    if (nullKeys.size > 0) {
+      for (const field of targetGroup.fields) {
+        for (const nullKey of nullKeys) {
+          if (fieldMatchesPersonalNullKey(field, nullKey)) {
+            await this.persistence.deleteField(userId, field.id);
+          }
+        }
+      }
+    }
+
+    if (forInflate.tag !== undefined && forInflate.tag !== null) {
+      await this.persistence.updateGroupName(targetId, inflated.tag);
+    }
+
+    if (inflated.fields.length > 0) {
+      const refreshed = await this.persistence.loadGroups(userId);
+      const refreshedPersonal = refreshed.filter(
+        (g) => g.category === FieldCategory.PERSONAL,
+      );
+      const refreshedTarget =
+        refreshedPersonal.find((g) => g.id === targetId) ?? targetGroup;
+      await this.persistence.syncGroupFields(
+        targetId,
+        inflated.fields,
+        refreshedTarget.fields,
+        false,
+      );
+    }
 
     for (const g of personalGroups) {
       if (g.id !== targetId) {
