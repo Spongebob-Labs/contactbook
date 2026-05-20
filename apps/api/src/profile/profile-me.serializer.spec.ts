@@ -11,6 +11,7 @@ describe("ProfileMeSerializerService", () => {
           email: "a@b.com",
           phone: "5551234567",
           countryCode: "+1",
+          profileOnboardingCompletedAt: null,
         }),
       },
       fieldGroup: {

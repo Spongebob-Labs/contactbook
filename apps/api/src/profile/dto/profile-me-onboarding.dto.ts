@@ -1,20 +1,57 @@
-import { ApiPropertyOptional } from "@nestjs/swagger";
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { Type } from "class-transformer";
+import {
+  IsEmail,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  MaxLength,
+  ValidateNested,
+} from "class-validator";
 import { ProfileMePatchDto } from "./profile-me-upsert.dto";
+
+export class ProfileMeOnboardingIdentityDto {
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(120)
+  firstName!: string;
+
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(120)
+  lastName!: string;
+
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(32)
+  primaryPhone!: string;
+
+  @ApiProperty()
+  @IsEmail()
+  @MaxLength(320)
+  primaryEmail!: string;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20_000)
+  profilePhoto?: string | null;
+}
 
 /**
  * First-time profile setup after registration (`POST /v1/profile/onboarding`).
  * Same nested shape as GET/PATCH `/profile/me`.
  *
- * - Core identity (`firstName`, `lastName`, `primaryEmail`, `primaryPhone`) is set at
- *   registration; only `identity.profilePhoto` is applied here.
- * - Omit `groupId` / `fieldId` on create — the server assigns them.
- * - At least one of `personal`, `work`, `business`, `socials`, or `financial` is required
- *   (enforced in `ProfileMeUpsertService.completeOnboarding`).
+ * - `identity` is required (core fields must match registration; only `profilePhoto` is optional).
+ * - All other sections are optional; empty shells are ignored.
+ * - One-time only — returns 409 if onboarding was already completed.
  */
 export class ProfileMeOnboardingDto extends ProfileMePatchDto {
-  @ApiPropertyOptional({
-    description:
-      "Optional. Only `profilePhoto` is stored; other identity fields must match the user from registration if sent.",
-  })
-  declare identity?: ProfileMePatchDto["identity"];
+  @ApiProperty({ type: () => ProfileMeOnboardingIdentityDto })
+  @ValidateNested()
+  @Type(() => ProfileMeOnboardingIdentityDto)
+  declare identity: ProfileMeOnboardingIdentityDto;
 }

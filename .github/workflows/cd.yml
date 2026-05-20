@@ -32,9 +32,21 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
-          fetch-depth: 0
+          fetch-depth: 1
+          fetch-tags: true
+
+      - name: Detect apps/api changes
+        id: detect
+        run: |
+          set -euo pipefail
+          if git diff-tree --no-commit-id --name-only -r HEAD | grep -qE '^apps/api/'; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Decode API env (production)
+        if: steps.detect.outputs.changed == 'true'
         env:
           API_ENV_B64: ${{ secrets.API_ENV_B64 }}
         run: |
@@ -46,18 +58,22 @@ jobs:
           }
 
       - name: Convert .env to Cloud Run env JSON
+        if: steps.detect.outputs.changed == 'true'
         run: python3 scripts/dotenv-to-gcloud-env-json.py apps/api/.env "${RUNNER_TEMP}/cloudrun-env.json"
 
       - name: Authenticate to Google Cloud
+        if: steps.detect.outputs.changed == 'true'
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
       - name: Set up Cloud SDK
+        if: steps.detect.outputs.changed == 'true'
         uses: google-github-actions/setup-gcloud@v2
 
       - name: Deploy to Cloud Run
+        if: steps.detect.outputs.changed == 'true'
         env:
           REGION: ${{ vars.GCP_REGION }}
           PROJECT: ${{ vars.GCP_PROJECT_ID }}

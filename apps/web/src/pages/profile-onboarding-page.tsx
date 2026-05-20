@@ -652,6 +652,9 @@ function profileToForm(profile: ProfileMeResponse): OnboardingForm {
 const MAX_PROFILE_PHOTO_BYTES = 1024 * 1024;
 
 function hasInitializedProfile(profile: ProfileMeResponse) {
+  if (profile.profileOnboardingCompletedAt) {
+    return true;
+  }
   return Boolean(
     profile.personal.groupId ||
       profile.work.length > 0 ||
@@ -1125,8 +1128,7 @@ export function ProfileOnboardingModal({
     setIsSaving(true);
     try {
       const payload = buildProfilePayload();
-      const sectionKeys = Object.keys(payload).filter((key) => key !== "identity");
-      const shouldInitialize = sectionKeys.length > 0 && !hasExistingProfile;
+      const shouldInitialize = !hasExistingProfile;
       try {
         if (shouldInitialize) {
           const { identity, ...onboardingSections } = payload;

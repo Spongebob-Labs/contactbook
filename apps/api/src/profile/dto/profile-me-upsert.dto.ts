@@ -3,12 +3,14 @@ import { Type } from "class-transformer";
 import {
   IsArray,
   IsEmail,
+  IsNotEmpty,
   IsObject,
   IsOptional,
   IsString,
   IsUUID,
   MaxLength,
-  MinLength,
+  NotEquals,
+  ValidateIf,
   ValidateNested,
 } from "class-validator";
 import { AddressPayloadDto } from "./address-payload.dto";
@@ -17,26 +19,33 @@ import { CryptoWalletPayloadDto } from "./crypto-wallet-payload.dto";
 import { DigitalWalletPayloadDto } from "./digital-wallet-payload.dto";
 
 export class ProfileMeIdentityUpsertDto {
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ nullable: false })
   @IsOptional()
+  @NotEquals(null, { message: "identity.firstName cannot be null" })
   @IsString()
+  @IsNotEmpty()
   @MaxLength(120)
   firstName?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ nullable: false })
   @IsOptional()
+  @NotEquals(null, { message: "identity.lastName cannot be null" })
   @IsString()
+  @IsNotEmpty()
   @MaxLength(120)
   lastName?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ nullable: false })
   @IsOptional()
+  @NotEquals(null, { message: "identity.primaryPhone cannot be null" })
   @IsString()
+  @IsNotEmpty()
   @MaxLength(32)
   primaryPhone?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ nullable: false })
   @IsOptional()
+  @NotEquals(null, { message: "identity.primaryEmail cannot be null" })
   @IsEmail()
   @MaxLength(320)
   primaryEmail?: string;
@@ -54,26 +63,62 @@ export class ProfileMePersonalUpsertDto {
   @IsUUID()
   groupId?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ nullable: true })
   @IsOptional()
+  @ValidateIf((_, v) => v !== null && v !== undefined && v !== "")
   @IsString()
-  @MinLength(1)
   @MaxLength(200)
-  tag?: string;
+  tag?: string | null;
 
-  @ApiPropertyOptional({ type: () => AddressPayloadDto })
+  @ApiPropertyOptional({ type: () => AddressPayloadDto, nullable: true })
   @IsOptional()
   @ValidateNested()
   @Type(() => AddressPayloadDto)
-  postalAddress?: AddressPayloadDto;
+  postalAddress?: AddressPayloadDto | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  mobile?: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  landline?: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  email?: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  dateOfBirth?: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  yearOfBirth?: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  currentLocation?: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  relationshipStatus?: string | null;
 
   @ApiPropertyOptional({
     type: "object",
-    additionalProperties: { type: "string" },
+    additionalProperties: { type: "string", nullable: true },
+    nullable: true,
   })
   @IsOptional()
   @IsObject()
-  custom?: Record<string, string>;
+  custom?: Record<string, string | null> | null;
 }
 
 export class ProfileMeGroupItemUpsertDto {
@@ -82,12 +127,12 @@ export class ProfileMeGroupItemUpsertDto {
   @IsUUID()
   groupId?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ nullable: true })
   @IsOptional()
+  @ValidateIf((_, v) => v !== null && v !== undefined && v !== "")
   @IsString()
-  @MinLength(1)
   @MaxLength(200)
-  tag?: string;
+  tag?: string | null;
 
   @ApiPropertyOptional({
     type: "object",
@@ -109,12 +154,12 @@ export class ProfileMeBankRowUpsertDto extends BankAccountPayloadDto {
   @IsUUID()
   fieldId?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ nullable: true })
   @IsOptional()
+  @ValidateIf((_, v) => v !== null && v !== undefined && v !== "")
   @IsString()
-  @MinLength(1)
   @MaxLength(200)
-  tag?: string;
+  tag?: string | null;
 }
 
 export class ProfileMeWalletRowUpsertDto extends DigitalWalletPayloadDto {
@@ -128,12 +173,12 @@ export class ProfileMeWalletRowUpsertDto extends DigitalWalletPayloadDto {
   @IsUUID()
   fieldId?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ nullable: true })
   @IsOptional()
+  @ValidateIf((_, v) => v !== null && v !== undefined && v !== "")
   @IsString()
-  @MinLength(1)
   @MaxLength(200)
-  tag?: string;
+  tag?: string | null;
 }
 
 export class ProfileMeCryptoRowUpsertDto extends CryptoWalletPayloadDto {
@@ -147,12 +192,12 @@ export class ProfileMeCryptoRowUpsertDto extends CryptoWalletPayloadDto {
   @IsUUID()
   fieldId?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ nullable: true })
   @IsOptional()
+  @ValidateIf((_, v) => v !== null && v !== undefined && v !== "")
   @IsString()
-  @MinLength(1)
   @MaxLength(200)
-  tag?: string;
+  tag?: string | null;
 }
 
 export class ProfileMeFinancialUpsertDto {
@@ -178,7 +223,7 @@ export class ProfileMeFinancialUpsertDto {
   cryptoWallets?: ProfileMeCryptoRowUpsertDto[];
 }
 
-/** PATCH / PUT body — only include sections to change (PATCH) or full profile (PUT). */
+/** PATCH body — only include sections to change. */
 export class ProfileMePatchDto {
   @ApiPropertyOptional({ type: () => ProfileMeIdentityUpsertDto })
   @IsOptional()
@@ -219,5 +264,3 @@ export class ProfileMePatchDto {
   @Type(() => ProfileMeFinancialUpsertDto)
   financial?: ProfileMeFinancialUpsertDto;
 }
-
-export class ProfileMePutDto extends ProfileMePatchDto {}

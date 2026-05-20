@@ -1,5 +1,11 @@
 # Decision Context
 
+## 2026-05-20 - Resolve PR 21 Profile Onboarding Merge Conflict
+
+- Decision: Merge `origin/dev` into `feat/ui-creation` and resolve the profile onboarding conflict by keeping repeatable profile groups, editable identity fields, optional financial rows, and the latest first-time profile initialization path.
+- Reason: PR 21 needed to preserve both branches' user-facing behavior: the feature branch's richer profile form and `dev`'s updated signup setup flow.
+- Notes: Backend files came from `origin/dev` through the merge only; conflict edits were limited to frontend profile onboarding and this decision log. Browser testing remains skipped per project instructions.
+
 ## 2026-05-20 - Complete Array-Aware Financial Profile Display
 
 - Decision: Update the profile page financial display to prefer `fieldId` keys for repeated financial rows and show optional bank routing fields.
