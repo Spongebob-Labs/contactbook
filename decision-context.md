@@ -1,5 +1,11 @@
 # Decision Context
 
+## 2026-05-20 - Make Bank Identity Fields Optional In Profile Form
+
+- Decision: Treat bank name, account holder, and account number as optional in the frontend profile onboarding/edit form and payload.
+- Reason: The live profile API does not require those bank account fields, so the form should allow users to save partial bank details instead of blocking on frontend-only validation.
+- Notes: Backend code remains untouched. A bank account is still only sent when the user enters at least one non-currency bank detail, so the default `INR` value alone does not create a blank bank record.
+
 ## 2026-05-20 - Render Theme Preview Without App Shell Chrome
 
 - Decision: Remove `AppShell` from `/dashboard/theme-preview` so the design preview renders as a standalone full-page mock interface.

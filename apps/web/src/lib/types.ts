@@ -171,9 +171,9 @@ export type ProfileMeResponse = {
     bankAccounts: Array<{
       groupId: string;
       tag: string;
-      bankName: string;
-      accountHolder: string;
-      accountNumber: string;
+      bankName?: string | null;
+      accountHolder?: string | null;
+      accountNumber?: string | null;
       ifsc?: string | null;
       currency: string;
       isSensitive: boolean;
