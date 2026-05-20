@@ -2,6 +2,7 @@ import { ApiPropertyOptional } from "@nestjs/swagger";
 import { Type } from "class-transformer";
 import {
   IsArray,
+  IsBoolean,
   IsEmail,
   IsNotEmpty,
   IsObject,
@@ -111,6 +112,36 @@ export class ProfileMePersonalUpsertDto {
   @IsString()
   relationshipStatus?: string | null;
 
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  title?: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  nickname?: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  kidsNames?: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  partnerName?: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  petNames?: string | null;
+
   @ApiPropertyOptional({
     type: "object",
     additionalProperties: { type: "string", nullable: true },
@@ -121,7 +152,8 @@ export class ProfileMePersonalUpsertDto {
   custom?: Record<string, string | null> | null;
 }
 
-export class ProfileMeGroupItemUpsertDto {
+/** Shared group row keys for work / business / social upserts. */
+export class ProfileMeGroupRowBaseUpsertDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsUUID()
@@ -136,11 +168,192 @@ export class ProfileMeGroupItemUpsertDto {
 
   @ApiPropertyOptional({
     type: "object",
-    additionalProperties: { type: "string" },
+    additionalProperties: { type: "string", nullable: true },
+    nullable: true,
   })
   @IsOptional()
   @IsObject()
-  custom?: Record<string, string>;
+  custom?: Record<string, string | null> | null;
+}
+
+export class ProfileMeWorkUpsertDto extends ProfileMeGroupRowBaseUpsertDto {
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  companyName?: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20_000)
+  companyLogo?: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  companyRegNumber?: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  workTitle?: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  workMobile?: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  workLandline?: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  workFax?: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(320)
+  workEmail?: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20_000)
+  website?: string | null;
+
+  @ApiPropertyOptional({ type: () => AddressPayloadDto, nullable: true })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => AddressPayloadDto)
+  workPostalAddress?: AddressPayloadDto | null;
+}
+
+export class ProfileMeBusinessUpsertDto extends ProfileMeGroupRowBaseUpsertDto {
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  businessName?: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20_000)
+  businessLogo?: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  businessRegNumber?: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  businessTitle?: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  businessMobile?: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  businessLandline?: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  businessFax?: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(320)
+  businessEmail?: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20_000)
+  website?: string | null;
+
+  @ApiPropertyOptional({ type: () => AddressPayloadDto, nullable: true })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => AddressPayloadDto)
+  businessPostalAddress?: AddressPayloadDto | null;
+}
+
+export class ProfileMeSocialUpsertDto extends ProfileMeGroupRowBaseUpsertDto {
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  skype?: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  facebook?: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  twitter?: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  bbmPin?: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  whatsApp?: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  asw?: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  bebo?: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  blog?: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  website?: string | null;
 }
 
 export class ProfileMeBankRowUpsertDto extends BankAccountPayloadDto {
@@ -160,6 +373,11 @@ export class ProfileMeBankRowUpsertDto extends BankAccountPayloadDto {
   @IsString()
   @MaxLength(200)
   tag?: string | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  isSensitive?: boolean;
 }
 
 export class ProfileMeWalletRowUpsertDto extends DigitalWalletPayloadDto {
@@ -179,12 +397,17 @@ export class ProfileMeWalletRowUpsertDto extends DigitalWalletPayloadDto {
   @IsString()
   @MaxLength(200)
   tag?: string | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  isSensitive?: boolean;
 }
 
 export class ProfileMeCryptoRowUpsertDto extends CryptoWalletPayloadDto {
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUUID()
+  @IsUUID() 
   groupId?: string;
 
   @ApiPropertyOptional()
@@ -198,6 +421,11 @@ export class ProfileMeCryptoRowUpsertDto extends CryptoWalletPayloadDto {
   @IsString()
   @MaxLength(200)
   tag?: string | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  isSensitive?: boolean;
 }
 
 export class ProfileMeFinancialUpsertDto {
@@ -235,28 +463,28 @@ export class ProfileMePatchDto {
   @IsOptional()
   @ValidateNested()
   @Type(() => ProfileMePersonalUpsertDto)
-  personal?: ProfileMePersonalUpsertDto & Record<string, unknown>;
+  personal?: ProfileMePersonalUpsertDto;
 
-  @ApiPropertyOptional({ type: [ProfileMeGroupItemUpsertDto] })
+  @ApiPropertyOptional({ type: [ProfileMeWorkUpsertDto] })
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => ProfileMeGroupItemUpsertDto)
-  work?: (ProfileMeGroupItemUpsertDto & Record<string, unknown>)[];
+  @Type(() => ProfileMeWorkUpsertDto)
+  work?: ProfileMeWorkUpsertDto[];
 
-  @ApiPropertyOptional({ type: [ProfileMeGroupItemUpsertDto] })
+  @ApiPropertyOptional({ type: [ProfileMeBusinessUpsertDto] })
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => ProfileMeGroupItemUpsertDto)
-  business?: (ProfileMeGroupItemUpsertDto & Record<string, unknown>)[];
+  @Type(() => ProfileMeBusinessUpsertDto)
+  business?: ProfileMeBusinessUpsertDto[];
 
-  @ApiPropertyOptional({ type: [ProfileMeGroupItemUpsertDto] })
+  @ApiPropertyOptional({ type: [ProfileMeSocialUpsertDto] })
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => ProfileMeGroupItemUpsertDto)
-  socials?: (ProfileMeGroupItemUpsertDto & Record<string, unknown>)[];
+  @Type(() => ProfileMeSocialUpsertDto)
+  socials?: ProfileMeSocialUpsertDto[];
 
   @ApiPropertyOptional({ type: () => ProfileMeFinancialUpsertDto })
   @IsOptional()
