@@ -1,5 +1,23 @@
 # Decision Context
 
+## 2026-05-20 - Render Theme Preview Without App Shell Chrome
+
+- Decision: Remove `AppShell` from `/dashboard/theme-preview` so the design preview renders as a standalone full-page mock interface.
+- Reason: The authenticated app shell sidebar and topbar visually duplicated the preview's internal shell and made it harder to evaluate the proposed ContactBook UI direction.
+- Notes: The route remains protected under `/dashboard/theme-preview`; only the visual wrapper was removed. Production dashboard, backend code, and global theme tokens remain unchanged.
+
+## 2026-05-20 - Prototype Private Contact Memory UI On Theme Preview
+
+- Decision: Redesign only `/dashboard/theme-preview` as a warm, personal ContactBook UI preview using mock data.
+- Reason: The user wants to evaluate the private contact memory direction before changing the production dashboard, app shell, or global shadcn theme tokens.
+- Notes: Keep backend code untouched, avoid browser testing, preserve existing production routes and handlers, and use the preview to explore warm paper/oat/cream surfaces, deep fern actions, onboarding cards, WhatsApp preview, and a prioritized setup journey.
+
+## 2026-05-20 - Prototype Material-Inspired Theme On Static Signed-In Route
+
+- Decision: Add a protected static preview route at `/dashboard/theme-preview` before changing the working signed-in pages or global theme.
+- Reason: The user wants to evaluate a shadcn-professional UI direction with Material 3-inspired tokens before applying it to production flows.
+- Notes: The preview must use mock data only, keep backend code untouched, avoid browser testing, preserve the current teal/green brand direction, and explore richer secondary, tertiary, surface, outline, success, warning, and destructive roles locally first.
+
 ## 2026-05-19 - Add Signed-In UI Redesign Preview
 
 - Decision: Add a frontend-only signed-in preview route for the proposed setup-console redesign before replacing production dashboard/import/profile screens.

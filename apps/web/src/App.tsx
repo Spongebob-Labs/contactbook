@@ -17,6 +17,7 @@ const ProfilePage = lazy(() => import("@/pages/profile-page"));
 const SignedInRedesignPreviewPage = lazy(
   () => import("@/pages/signed-in-redesign-preview-page"),
 );
+const ThemePreviewPage = lazy(() => import("@/pages/theme-preview-page"));
 
 export default function App() {
   return (
@@ -71,6 +72,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <SignedInRedesignPreviewPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/theme-preview"
+            element={
+              <ProtectedRoute>
+                <ThemePreviewPage />
               </ProtectedRoute>
             }
           />
