@@ -202,6 +202,12 @@ export class ProfileMeFinancialDto {
 }
 
 export class ProfileMeResponseDto {
+  @ApiPropertyOptional({
+    nullable: true,
+    description: "Set after POST /profile/onboarding completes successfully.",
+  })
+  profileOnboardingCompletedAt!: string | null;
+
   @ApiProperty({ type: () => ProfileMeIdentityDto })
   identity!: ProfileMeIdentityDto;
 

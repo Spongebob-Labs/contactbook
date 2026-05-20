@@ -1,12 +1,12 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
   Patch,
   Post,
-  Put,
   UseGuards,
 } from "@nestjs/common";
 import {
@@ -19,11 +19,9 @@ import {
 import type { JwtUserPayload } from "../common/decorators/current-user.decorator";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
+import { ProfileDeleteGroupDto } from "./dto/profile-delete-group.dto";
 import { ProfileMeOnboardingDto } from "./dto/profile-me-onboarding.dto";
-import {
-  ProfileMePatchDto,
-  ProfileMePutDto,
-} from "./dto/profile-me-upsert.dto";
+import { ProfileMePatchDto } from "./dto/profile-me-upsert.dto";
 import { ProfileMeResponseDto } from "./dto/profile-me-response.dto";
 import { ProfileMeSerializerService } from "./profile-me.serializer";
 import { ProfileMeUpsertService } from "./profile-me.upsert.service";
@@ -43,7 +41,7 @@ export class ProfileController {
   @ApiOperation({
     summary: "First-time profile setup after registration",
     description:
-      "Submit personal, work, business, social, and financial sections in one nested JSON body. Core identity fields come from registration; only `identity.profilePhoto` is optional here. Returns 409 if profile data already exists.",
+      "Requires identity (firstName, lastName, primaryEmail, primaryPhone from registration; profilePhoto optional). Other sections optional. Returns 409 if onboarding already completed.",
   })
   @ApiCreatedResponse({ type: ProfileMeResponseDto })
   completeOnboarding(
@@ -68,21 +66,25 @@ export class ProfileController {
   @ApiOperation({
     summary: "Partially update profile",
     description:
-      "Only top-level sections present in the body are applied. Within each section, arrays are reconciled (items omitted are removed). Omit `groupId` to create a new work/business/social group; omit `fieldId` to create a new financial row.",
+      "Only top-level sections present in the body are applied. Empty shells are ignored. Use null on personal fields to clear them; identity core fields cannot be null. Remove work/business/social/financial groups via DELETE /profile/me/groups.",
   })
   @ApiOkResponse({ type: ProfileMeResponseDto })
   patchMe(@CurrentUser() user: JwtUserPayload, @Body() dto: ProfileMePatchDto) {
     return this.profileMeUpsert.patch(user.sub, dto);
   }
 
-  @Put("me")
+  @Delete("me/groups")
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: "Update profile sections (same reconcile rules as PATCH)",
+    summary: "Delete a work, business, social, or financial field group",
     description:
-      "Use after GET /profile/me with the full body for whole-form saves, or PATCH a single section for targeted edits.",
+      "Deletes the entire group and its fields. Use PATCH with null to clear personal or identity profile fields.",
   })
   @ApiOkResponse({ type: ProfileMeResponseDto })
-  putMe(@CurrentUser() user: JwtUserPayload, @Body() dto: ProfileMePutDto) {
-    return this.profileMeUpsert.put(user.sub, dto);
+  deleteGroup(
+    @CurrentUser() user: JwtUserPayload,
+    @Body() dto: ProfileDeleteGroupDto,
+  ) {
+    return this.profileMeUpsert.deleteGroup(user.sub, dto);
   }
 }

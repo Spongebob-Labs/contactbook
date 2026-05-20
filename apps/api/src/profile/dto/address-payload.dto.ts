@@ -1,18 +1,20 @@
-import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { ApiPropertyOptional } from "@nestjs/swagger";
 import { IsOptional, IsString, MaxLength, MinLength } from "class-validator";
 
 export class AddressPayloadDto {
-  @ApiProperty()
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsString()
   @MinLength(1)
   @MaxLength(500)
-  street!: string;
+  street?: string;
 
-  @ApiProperty()
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsString()
   @MinLength(1)
   @MaxLength(200)
-  city!: string;
+  city?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -26,9 +28,10 @@ export class AddressPayloadDto {
   @MaxLength(40)
   pincode?: string;
 
-  @ApiProperty()
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsString()
   @MinLength(1)
   @MaxLength(120)
-  country!: string;
+  country?: string;
 }
