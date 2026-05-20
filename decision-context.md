@@ -1,5 +1,11 @@
 # Decision Context
 
+## 2026-05-20 - Send Personal Scalars As Custom Profile Fields
+
+- Decision: Keep the personal onboarding UI fields but send mobile, landline, email, date/year of birth, current location, and relationship status under `personal.custom` instead of top-level `personal` keys.
+- Reason: The live profile onboarding API rejects those top-level personal properties and currently only accepts `tag`, `postalAddress`, and `custom` for the personal section.
+- Notes: Hydration still reads legacy top-level personal values when present, then falls back to `personal.custom`. Empty custom values are omitted from outgoing payloads.
+
 ## 2026-05-20 - Make Bank Identity Fields Optional In Profile Form
 
 - Decision: Treat bank name, account holder, and account number as optional in the frontend profile onboarding/edit form and payload.

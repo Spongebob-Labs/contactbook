@@ -362,7 +362,11 @@ function compactObject<T extends Record<string, unknown>>(value: T): Partial<T> 
 }
 
 function compactCustom(values: Record<string, string>): Record<string, string> | undefined {
-  const custom = compactObject(values);
+  const custom = compactObject(
+    Object.fromEntries(
+      Object.entries(values).map(([key, value]) => [key, optionalText(value)]),
+    ),
+  );
   return Object.keys(custom).length > 0 ? (custom as Record<string, string>) : undefined;
 }
 
@@ -404,17 +408,31 @@ function profileToForm(profile: ProfileMeResponse): OnboardingForm {
       tag: valueOrEmpty(profile.personal.tag) || initialForm.personal.tag,
       title: customValue(profile.personal.custom, "title"),
       nickname: customValue(profile.personal.custom, "nickname"),
-      mobile: valueOrEmpty(profile.personal.mobile),
-      landline: valueOrEmpty(profile.personal.landline),
-      email: valueOrEmpty(profile.personal.email),
+      mobile:
+        valueOrEmpty(profile.personal.mobile) ||
+        customValue(profile.personal.custom, "mobile"),
+      landline:
+        valueOrEmpty(profile.personal.landline) ||
+        customValue(profile.personal.custom, "landline"),
+      email:
+        valueOrEmpty(profile.personal.email) ||
+        customValue(profile.personal.custom, "email"),
       postalAddress: addressToForm(profile.personal.postalAddress),
-      dateOfBirth: valueOrEmpty(profile.personal.dateOfBirth),
-      yearOfBirth: valueOrEmpty(profile.personal.yearOfBirth),
-      currentLocation: valueOrEmpty(profile.personal.currentLocation),
+      dateOfBirth:
+        valueOrEmpty(profile.personal.dateOfBirth) ||
+        customValue(profile.personal.custom, "dateOfBirth"),
+      yearOfBirth:
+        valueOrEmpty(profile.personal.yearOfBirth) ||
+        customValue(profile.personal.custom, "yearOfBirth"),
+      currentLocation:
+        valueOrEmpty(profile.personal.currentLocation) ||
+        customValue(profile.personal.custom, "currentLocation"),
       kidsNames: customValue(profile.personal.custom, "kidsNames"),
       partnerName: customValue(profile.personal.custom, "partnerName"),
       petNames: customValue(profile.personal.custom, "petNames"),
-      relationshipStatus: valueOrEmpty(profile.personal.relationshipStatus),
+      relationshipStatus:
+        valueOrEmpty(profile.personal.relationshipStatus) ||
+        customValue(profile.personal.custom, "relationshipStatus"),
       bloodGroup: customValue(profile.personal.custom, "bloodGroup"),
     },
     work: {
@@ -685,32 +703,23 @@ export function ProfileOnboardingModal({
     const personalCustom = compactCustom({
       title: form.personal.title,
       nickname: form.personal.nickname,
+      mobile: form.personal.mobile,
+      landline: form.personal.landline,
+      email: form.personal.email,
+      dateOfBirth: form.personal.dateOfBirth,
+      yearOfBirth: form.personal.yearOfBirth,
+      currentLocation: form.personal.currentLocation,
       kidsNames: form.personal.kidsNames,
       partnerName: form.personal.partnerName,
       petNames: form.personal.petNames,
+      relationshipStatus: form.personal.relationshipStatus,
       bloodGroup: form.personal.bloodGroup,
     });
     const hasPersonalDetails =
       Boolean(personalCustom) ||
-      hasAny([
-        form.personal.mobile,
-        form.personal.landline,
-        form.personal.email,
-        form.personal.dateOfBirth,
-        form.personal.yearOfBirth,
-        form.personal.currentLocation,
-        form.personal.relationshipStatus,
-      ]) ||
       addressHasAny(form.personal.postalAddress);
     const personal = compactObject({
       tag: optionalText(form.personal.tag),
-      mobile: optionalText(form.personal.mobile),
-      landline: optionalText(form.personal.landline),
-      email: optionalText(form.personal.email),
-      dateOfBirth: optionalText(form.personal.dateOfBirth),
-      yearOfBirth: optionalText(form.personal.yearOfBirth),
-      currentLocation: optionalText(form.personal.currentLocation),
-      relationshipStatus: optionalText(form.personal.relationshipStatus),
       postalAddress: addressHasAny(form.personal.postalAddress)
         ? toAddressPayload(form.personal.postalAddress)
         : undefined,
