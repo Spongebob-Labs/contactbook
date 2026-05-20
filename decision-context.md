@@ -1,5 +1,11 @@
 # Decision Context
 
+## 2026-05-20 - Add Editable Identity Fields To Profile Wizard
+
+- Decision: Show first name, last name, phone number, and email in step 1 of the profile onboarding/edit wizard. Keep first name, last name, and email editable, while rendering phone number as a read-only muted input.
+- Reason: Users need to review and correct core registration identity details from the same profile form used after signup and from the edit profile button, but phone number should remain locked because it is the verified account identifier.
+- Notes: Backend code remains untouched. For first-time onboarding, section setup still uses `POST /v1/profile/onboarding`; editable identity changes are persisted with `PATCH /v1/profile/me` so the onboarding endpoint's identity-match guard is respected.
+
 ## 2026-05-20 - Send Personal Scalars As Custom Profile Fields
 
 - Decision: Keep the personal onboarding UI fields but send mobile, landline, email, date/year of birth, current location, and relationship status under `personal.custom` instead of top-level `personal` keys.

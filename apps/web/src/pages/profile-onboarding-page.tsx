@@ -48,6 +48,10 @@ type CryptoForm = {
 
 type OnboardingForm = {
   identity: {
+    firstName: string;
+    lastName: string;
+    primaryEmail: string;
+    primaryPhone: string;
     profilePhoto: string;
   };
   personal: {
@@ -125,6 +129,9 @@ type AddressPayload = {
 
 type ProfileOnboardingPayload = {
   identity?: {
+    firstName?: string;
+    lastName?: string;
+    primaryEmail?: string;
     profilePhoto?: string | null;
   };
   personal?: {
@@ -201,6 +208,10 @@ const emptyAddress: AddressForm = {
 
 const initialForm: OnboardingForm = {
   identity: {
+    firstName: "",
+    lastName: "",
+    primaryEmail: "",
+    primaryPhone: "",
     profilePhoto: "",
   },
   personal: {
@@ -401,6 +412,10 @@ function profileToForm(profile: ProfileMeResponse): OnboardingForm {
 
   return {
     identity: {
+      firstName: valueOrEmpty(profile.identity.firstName),
+      lastName: valueOrEmpty(profile.identity.lastName),
+      primaryEmail: valueOrEmpty(profile.identity.primaryEmail),
+      primaryPhone: valueOrEmpty(profile.identity.primaryPhone),
       profilePhoto: valueOrEmpty(profile.identity.profilePhoto),
     },
     personal: {
@@ -658,6 +673,19 @@ export function ProfileOnboardingModal({
   };
 
   const validate = (): string | null => {
+    if (!hasText(form.identity.firstName)) {
+      return "Enter your first name.";
+    }
+    if (!hasText(form.identity.lastName)) {
+      return "Enter your last name.";
+    }
+    if (!hasText(form.identity.primaryEmail)) {
+      return "Enter your email.";
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean(form.identity.primaryEmail))) {
+      return "Enter a valid email address.";
+    }
+
     const addressError =
       validateAddress("Personal address", form.personal.postalAddress) ??
       validateAddress("Work address", form.work.workPostalAddress) ??
@@ -695,9 +723,14 @@ export function ProfileOnboardingModal({
   const buildProfilePayload = (): ProfileOnboardingPayload => {
     const payload: ProfileOnboardingPayload = {};
 
-    const profilePhoto = optionalText(form.identity.profilePhoto);
-    if (profilePhoto) {
-      payload.identity = { profilePhoto };
+    const identity = compactObject({
+      firstName: optionalText(form.identity.firstName),
+      lastName: optionalText(form.identity.lastName),
+      primaryEmail: optionalText(form.identity.primaryEmail),
+      profilePhoto: optionalText(form.identity.profilePhoto),
+    });
+    if (Object.keys(identity).length > 0) {
+      payload.identity = identity;
     }
 
     const personalCustom = compactCustom({
@@ -878,10 +911,40 @@ export function ProfileOnboardingModal({
       const sectionKeys = Object.keys(payload).filter((key) => key !== "identity");
       const shouldInitialize = sectionKeys.length > 0 && !hasExistingProfile;
       try {
-        await apiFetch<unknown>(
-          shouldInitialize ? "/v1/profile/onboarding" : "/v1/profile/me",
-          { method: shouldInitialize ? "POST" : "PATCH", body: payload },
-        );
+        if (shouldInitialize) {
+          const { identity, ...onboardingSections } = payload;
+          const onboardingPayload: ProfileOnboardingPayload = { ...onboardingSections };
+          if (identity?.profilePhoto !== undefined) {
+            onboardingPayload.identity = { profilePhoto: identity.profilePhoto };
+          }
+
+          await apiFetch<unknown>("/v1/profile/onboarding", {
+            method: "POST",
+            body: onboardingPayload,
+          });
+
+          if (
+            identity?.firstName !== undefined ||
+            identity?.lastName !== undefined ||
+            identity?.primaryEmail !== undefined
+          ) {
+            await apiFetch<unknown>("/v1/profile/me", {
+              method: "PATCH",
+              body: {
+                identity: {
+                  firstName: identity.firstName,
+                  lastName: identity.lastName,
+                  primaryEmail: identity.primaryEmail,
+                },
+              },
+            });
+          }
+        } else {
+          await apiFetch<unknown>("/v1/profile/me", {
+            method: "PATCH",
+            body: payload,
+          });
+        }
       } catch (error) {
         if (
           shouldInitialize &&
@@ -972,6 +1035,44 @@ export function ProfileOnboardingModal({
                 onUpload={uploadProfilePhoto}
                 onClear={() => setSectionValue("identity", "profilePhoto", "")}
               />
+              <TwoColumn>
+                <Field label="First name">
+                  <Input
+                    autoComplete="given-name"
+                    value={form.identity.firstName}
+                    onChange={(event) =>
+                      setSectionValue("identity", "firstName", event.target.value)
+                    }
+                  />
+                </Field>
+                <Field label="Last name">
+                  <Input
+                    autoComplete="family-name"
+                    value={form.identity.lastName}
+                    onChange={(event) =>
+                      setSectionValue("identity", "lastName", event.target.value)
+                    }
+                  />
+                </Field>
+                <Field label="Email">
+                  <Input
+                    type="email"
+                    autoComplete="email"
+                    value={form.identity.primaryEmail}
+                    onChange={(event) =>
+                      setSectionValue("identity", "primaryEmail", event.target.value)
+                    }
+                  />
+                </Field>
+                <Field label="Phone number">
+                  <Input
+                    value={form.identity.primaryPhone}
+                    readOnly
+                    aria-readonly="true"
+                    className="cursor-default bg-muted text-muted-foreground"
+                  />
+                </Field>
+              </TwoColumn>
               <Field label="Group tag">
                 <Input
                   value={form.personal.tag}
