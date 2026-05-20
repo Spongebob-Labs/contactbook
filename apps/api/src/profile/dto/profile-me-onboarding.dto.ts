@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Type } from "class-transformer";
 import {
+  IsDefined,
   IsEmail,
   IsNotEmpty,
   IsOptional,
@@ -45,12 +46,14 @@ export class ProfileMeOnboardingIdentityDto {
  * First-time profile setup after registration (`POST /v1/profile/onboarding`).
  * Same nested shape as GET/PATCH `/profile/me`.
  *
- * - `identity` is required (core fields must match registration; only `profilePhoto` is optional).
+ * - `identity` is required and updates the user's core identity fields (`profilePhoto` optional).
  * - All other sections are optional; empty shells are ignored.
+ * - Omit `groupId` / `fieldId` on first-time setup unless updating existing rows.
  * - One-time only — returns 409 if onboarding was already completed.
  */
 export class ProfileMeOnboardingDto extends ProfileMePatchDto {
   @ApiProperty({ type: () => ProfileMeOnboardingIdentityDto })
+  @IsDefined({ message: "identity is required for profile onboarding" })
   @ValidateNested()
   @Type(() => ProfileMeOnboardingIdentityDto)
   declare identity: ProfileMeOnboardingIdentityDto;

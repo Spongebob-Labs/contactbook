@@ -4,15 +4,10 @@ import {
   Injectable,
 } from "@nestjs/common";
 import { FieldCategory, FieldType } from "@prisma/client";
-import {
-  e164FromStoredUser,
-  inboundE164ToIdentity,
-  normalizeDialCode,
-} from "../common/phone.util";
+import { inboundE164ToIdentity, normalizeDialCode } from "../common/phone.util";
 import { PrismaService } from "../prisma/prisma.service";
 import type { ProfileDeleteGroupDto } from "./dto/profile-delete-group.dto";
 import type { ProfileMeOnboardingDto } from "./dto/profile-me-onboarding.dto";
-import type { ProfileMeOnboardingIdentityDto } from "./dto/profile-me-onboarding.dto";
 import type { ProfileMePatchDto } from "./dto/profile-me-upsert.dto";
 import { fieldCategoryFromDeletable } from "./profile-me.deletable-group";
 import type {
@@ -90,13 +85,21 @@ export class ProfileMeUpsertService {
       throw new ConflictException("Profile already initialized");
     }
 
-    await this.assertIdentityMatchesUser(userId, dto.identity);
+    if (!dto?.identity) {
+      throw new BadRequestException("identity is required");
+    }
 
     const { identity, ...rest } = dto;
     const payload: ProfileMePatchDto = sanitizeProfilePayload({ ...rest });
-    if (identity.profilePhoto !== undefined) {
-      payload.identity = { profilePhoto: identity.profilePhoto };
-    }
+    payload.identity = {
+      firstName: identity.firstName,
+      lastName: identity.lastName,
+      primaryEmail: identity.primaryEmail,
+      primaryPhone: identity.primaryPhone,
+      ...(identity.profilePhoto !== undefined
+        ? { profilePhoto: identity.profilePhoto }
+        : {}),
+    };
 
     await this.apply(userId, payload);
 
@@ -106,64 +109,6 @@ export class ProfileMeUpsertService {
     });
 
     return this.serializer.build(userId);
-  }
-
-  private async assertIdentityMatchesUser(
-    userId: string,
-    identity: ProfileMeOnboardingIdentityDto,
-  ): Promise<void> {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        firstName: true,
-        lastName: true,
-        email: true,
-        phone: true,
-        countryCode: true,
-      },
-    });
-    if (!user) {
-      throw new BadRequestException("User not found");
-    }
-
-    if (identity.firstName.trim() !== user.firstName) {
-      throw new BadRequestException(
-        "identity.firstName does not match registration",
-      );
-    }
-    if (identity.lastName.trim() !== user.lastName) {
-      throw new BadRequestException(
-        "identity.lastName does not match registration",
-      );
-    }
-    if (
-      identity.primaryEmail.trim().toLowerCase() !== user.email.toLowerCase()
-    ) {
-      throw new BadRequestException(
-        "identity.primaryEmail does not match registration",
-      );
-    }
-    const submitted = inboundE164ToIdentity(identity.primaryPhone);
-    if (!submitted) {
-      throw new BadRequestException("Invalid identity.primaryPhone");
-    }
-    let expected: string;
-    try {
-      expected = e164FromStoredUser(user);
-    } catch {
-      throw new BadRequestException(
-        "identity.primaryPhone does not match registration",
-      );
-    }
-    const submittedE164 = e164FromStoredUser({
-      countryCode: submitted.countryCode,
-      phone: submitted.phone,
-    });
-    if (submittedE164 !== expected) {
-      throw new BadRequestException(
-        "identity.primaryPhone does not match registration",
-      );
-    }
   }
 
   private async apply(

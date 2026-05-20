@@ -11,6 +11,7 @@ import {
 } from "@nestjs/common";
 import {
   ApiBearerAuth,
+  ApiBody,
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
@@ -41,7 +42,29 @@ export class ProfileController {
   @ApiOperation({
     summary: "First-time profile setup after registration",
     description:
-      "Requires identity (firstName, lastName, primaryEmail, primaryPhone from registration; profilePhoto optional). Other sections optional. Returns 409 if onboarding already completed.",
+      "Requires identity (firstName, lastName, primaryEmail, primaryPhone; updates the user record; profilePhoto optional). " +
+      "Other sections are optional; omit groupId/fieldId on first-time setup. Returns 409 if onboarding already completed.",
+  })
+  @ApiBody({
+    type: ProfileMeOnboardingDto,
+    examples: {
+      firstTime: {
+        summary: "First-time onboarding (no groupId/fieldId)",
+        value: {
+          identity: {
+            firstName: "Jane",
+            lastName: "Doe",
+            primaryPhone: "+12025551234",
+            primaryEmail: "jane@example.com",
+            profilePhoto: null,
+          },
+          personal: {
+            tag: "Primary Personal",
+            mobile: "+12025551234",
+          },
+        },
+      },
+    },
   })
   @ApiCreatedResponse({ type: ProfileMeResponseDto })
   completeOnboarding(
