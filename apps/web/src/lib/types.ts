@@ -170,16 +170,21 @@ export type ProfileMeResponse = {
   financial: {
     bankAccounts: Array<{
       groupId: string;
+      fieldId?: string;
       tag: string;
       bankName?: string | null;
       accountHolder?: string | null;
       accountNumber?: string | null;
+      iban?: string | null;
+      swiftBic?: string | null;
+      routingNumber?: string | null;
       ifsc?: string | null;
       currency: string;
       isSensitive: boolean;
     }>;
     digitalWallets: Array<{
       groupId: string;
+      fieldId?: string;
       tag: string;
       platform: string;
       handleOrLink: string;
@@ -187,6 +192,7 @@ export type ProfileMeResponse = {
     }>;
     cryptoWallets: Array<{
       groupId: string;
+      fieldId?: string;
       tag: string;
       network: string;
       address: string;

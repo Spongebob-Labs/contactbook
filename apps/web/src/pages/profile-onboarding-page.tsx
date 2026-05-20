@@ -6,6 +6,8 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
+  Plus,
+  Trash2,
   UploadCloud,
   X,
 } from "lucide-react";
@@ -29,21 +31,77 @@ type AddressForm = {
 };
 
 type BankForm = {
+  groupId?: string;
+  fieldId?: string;
+  tag: string;
   bankName: string;
   accountHolder: string;
   accountNumber: string;
+  iban: string;
+  swiftBic: string;
+  routingNumber: string;
   ifsc: string;
   currency: string;
 };
 
 type WalletForm = {
+  groupId?: string;
+  fieldId?: string;
+  tag: string;
   platform: string;
   handleOrLink: string;
 };
 
 type CryptoForm = {
+  groupId?: string;
+  fieldId?: string;
+  tag: string;
   network: string;
   address: string;
+};
+
+type WorkForm = {
+  groupId?: string;
+  tag: string;
+  companyName: string;
+  companyLogo: string;
+  companyRegNumber: string;
+  workTitle: string;
+  workMobile: string;
+  workLandline: string;
+  workFax: string;
+  workEmail: string;
+  workPostalAddress: AddressForm;
+  employeeId: string;
+};
+
+type BusinessForm = {
+  groupId?: string;
+  tag: string;
+  businessName: string;
+  businessLogo: string;
+  businessRegNumber: string;
+  businessTitle: string;
+  businessMobile: string;
+  businessLandline: string;
+  businessFax: string;
+  businessEmail: string;
+  businessPostalAddress: AddressForm;
+  businessType: string;
+  gstin: string;
+};
+
+type SocialsForm = {
+  groupId?: string;
+  tag: string;
+  skype: string;
+  facebook: string;
+  twitter: string;
+  whatsapp: string;
+  blog: string;
+  website: string;
+  linkedin: string;
+  github: string;
 };
 
 type OnboardingForm = {
@@ -71,51 +129,13 @@ type OnboardingForm = {
     relationshipStatus: string;
     bloodGroup: string;
   };
-  work: {
-    tag: string;
-    companyName: string;
-    companyLogo: string;
-    companyRegNumber: string;
-    workTitle: string;
-    workMobile: string;
-    workLandline: string;
-    workFax: string;
-    workEmail: string;
-    workPostalAddress: AddressForm;
-    employeeId: string;
-  };
-  business: {
-    tag: string;
-    businessName: string;
-    businessLogo: string;
-    businessRegNumber: string;
-    businessTitle: string;
-    businessMobile: string;
-    businessLandline: string;
-    businessFax: string;
-    businessEmail: string;
-    businessPostalAddress: AddressForm;
-    businessType: string;
-    gstin: string;
-  };
-  socials: {
-    tag: string;
-    skype: string;
-    facebook: string;
-    twitter: string;
-    whatsapp: string;
-    blog: string;
-    website: string;
-    linkedin: string;
-    github: string;
-  };
+  work: WorkForm[];
+  business: BusinessForm[];
+  socials: SocialsForm[];
   financial: {
-    bankTag: string;
-    bank: BankForm;
-    walletTag: string;
-    wallet: WalletForm;
-    cryptoTag: string;
-    crypto: CryptoForm;
+    bankAccounts: BankForm[];
+    digitalWallets: WalletForm[];
+    cryptoWallets: CryptoForm[];
   };
 };
 
@@ -147,6 +167,7 @@ type ProfileOnboardingPayload = {
     custom?: Record<string, string>;
   };
   work?: Array<{
+    groupId?: string;
     tag?: string;
     companyName?: string;
     companyLogo?: string;
@@ -160,6 +181,7 @@ type ProfileOnboardingPayload = {
     custom?: Record<string, string>;
   }>;
   business?: Array<{
+    groupId?: string;
     tag?: string;
     businessName?: string;
     businessLogo?: string;
@@ -173,27 +195,37 @@ type ProfileOnboardingPayload = {
     custom?: Record<string, string>;
   }>;
   socials?: Array<{
+    groupId?: string;
     tag?: string;
     custom?: Record<string, string>;
   }>;
   financial?: {
     bankAccounts?: Array<{
+      groupId?: string;
+      fieldId?: string;
       tag?: string;
       bankName?: string;
       accountHolder?: string;
       accountNumber?: string;
+      iban?: string;
+      swiftBic?: string;
+      routingNumber?: string;
       ifsc?: string;
       currency?: string;
     }>;
     digitalWallets?: Array<{
+      groupId?: string;
+      fieldId?: string;
       tag?: string;
-      platform: string;
-      handleOrLink: string;
+      platform?: string;
+      handleOrLink?: string;
     }>;
     cryptoWallets?: Array<{
+      groupId?: string;
+      fieldId?: string;
       tag?: string;
-      network: string;
-      address: string;
+      network?: string;
+      address?: string;
     }>;
   };
 };
@@ -205,6 +237,71 @@ const emptyAddress: AddressForm = {
   pincode: "",
   country: "",
 };
+
+const emptyWork = (): WorkForm => ({
+  tag: "Current Work",
+  companyName: "",
+  companyLogo: "",
+  companyRegNumber: "",
+  workTitle: "",
+  workMobile: "",
+  workLandline: "",
+  workFax: "",
+  workEmail: "",
+  workPostalAddress: { ...emptyAddress },
+  employeeId: "",
+});
+
+const emptyBusiness = (): BusinessForm => ({
+  tag: "Primary Business",
+  businessName: "",
+  businessLogo: "",
+  businessRegNumber: "",
+  businessTitle: "",
+  businessMobile: "",
+  businessLandline: "",
+  businessFax: "",
+  businessEmail: "",
+  businessPostalAddress: { ...emptyAddress },
+  businessType: "",
+  gstin: "",
+});
+
+const emptySocials = (): SocialsForm => ({
+  tag: "Main Digital Presence",
+  skype: "",
+  facebook: "",
+  twitter: "",
+  whatsapp: "",
+  blog: "",
+  website: "",
+  linkedin: "",
+  github: "",
+});
+
+const emptyBank = (): BankForm => ({
+  tag: "Bank account",
+  bankName: "",
+  accountHolder: "",
+  accountNumber: "",
+  iban: "",
+  swiftBic: "",
+  routingNumber: "",
+  ifsc: "",
+  currency: "INR",
+});
+
+const emptyWallet = (): WalletForm => ({
+  tag: "Digital wallet",
+  platform: "",
+  handleOrLink: "",
+});
+
+const emptyCrypto = (): CryptoForm => ({
+  tag: "Crypto wallet",
+  network: "",
+  address: "",
+});
 
 const initialForm: OnboardingForm = {
   identity: {
@@ -231,63 +328,13 @@ const initialForm: OnboardingForm = {
     relationshipStatus: "",
     bloodGroup: "",
   },
-  work: {
-    tag: "Current Work",
-    companyName: "",
-    companyLogo: "",
-    companyRegNumber: "",
-    workTitle: "",
-    workMobile: "",
-    workLandline: "",
-    workFax: "",
-    workEmail: "",
-    workPostalAddress: { ...emptyAddress },
-    employeeId: "",
-  },
-  business: {
-    tag: "Primary Business",
-    businessName: "",
-    businessLogo: "",
-    businessRegNumber: "",
-    businessTitle: "",
-    businessMobile: "",
-    businessLandline: "",
-    businessFax: "",
-    businessEmail: "",
-    businessPostalAddress: { ...emptyAddress },
-    businessType: "",
-    gstin: "",
-  },
-  socials: {
-    tag: "Main Digital Presence",
-    skype: "",
-    facebook: "",
-    twitter: "",
-    whatsapp: "",
-    blog: "",
-    website: "",
-    linkedin: "",
-    github: "",
-  },
+  work: [emptyWork()],
+  business: [emptyBusiness()],
+  socials: [emptySocials()],
   financial: {
-    bankTag: "Bank account",
-    bank: {
-      bankName: "",
-      accountHolder: "",
-      accountNumber: "",
-      ifsc: "",
-      currency: "INR",
-    },
-    walletTag: "Digital wallet",
-    wallet: {
-      platform: "",
-      handleOrLink: "",
-    },
-    cryptoTag: "Crypto wallet",
-    crypto: {
-      network: "",
-      address: "",
-    },
+    bankAccounts: [emptyBank()],
+    digitalWallets: [emptyWallet()],
+    cryptoWallets: [emptyCrypto()],
   },
 };
 
@@ -351,16 +398,6 @@ function toAddressPayload(address: AddressForm): AddressPayload {
   };
 }
 
-function validateAddress(label: string, address: AddressForm): string | null {
-  if (!addressHasAny(address)) {
-    return null;
-  }
-  if (!hasText(address.street) || !hasText(address.city) || !hasText(address.country)) {
-    return `${label} needs street, city, and country.`;
-  }
-  return null;
-}
-
 function optionalText(value: string): string | undefined {
   const next = clean(value);
   return next || undefined;
@@ -402,14 +439,77 @@ function addressToForm(address: PostalAddress | undefined): AddressForm {
   };
 }
 
-function profileToForm(profile: ProfileMeResponse): OnboardingForm {
-  const work = profile.work[0];
-  const business = profile.business[0];
-  const socials = profile.socials[0];
-  const bank = profile.financial.bankAccounts[0];
-  const wallet = profile.financial.digitalWallets[0];
-  const crypto = profile.financial.cryptoWallets[0];
+function ensureRows<T>(rows: T[], createEmpty: () => T): T[] {
+  return rows.length > 0 ? rows : [createEmpty()];
+}
 
+function hasWorkDetails(row: WorkForm): boolean {
+  return (
+    hasAny([
+      row.companyName,
+      row.companyLogo,
+      row.companyRegNumber,
+      row.workTitle,
+      row.workMobile,
+      row.workLandline,
+      row.workFax,
+      row.workEmail,
+      row.employeeId,
+    ]) || addressHasAny(row.workPostalAddress)
+  );
+}
+
+function hasBusinessDetails(row: BusinessForm): boolean {
+  return (
+    hasAny([
+      row.businessName,
+      row.businessLogo,
+      row.businessRegNumber,
+      row.businessTitle,
+      row.businessMobile,
+      row.businessLandline,
+      row.businessFax,
+      row.businessEmail,
+      row.businessType,
+      row.gstin,
+    ]) || addressHasAny(row.businessPostalAddress)
+  );
+}
+
+function hasSocialDetails(row: SocialsForm): boolean {
+  return hasAny([
+    row.skype,
+    row.facebook,
+    row.twitter,
+    row.whatsapp,
+    row.blog,
+    row.website,
+    row.linkedin,
+    row.github,
+  ]);
+}
+
+function hasBankDetails(row: BankForm): boolean {
+  return hasAny([
+    row.bankName,
+    row.accountHolder,
+    row.accountNumber,
+    row.iban,
+    row.swiftBic,
+    row.routingNumber,
+    row.ifsc,
+  ]);
+}
+
+function hasWalletDetails(row: WalletForm): boolean {
+  return hasAny([row.platform, row.handleOrLink]);
+}
+
+function hasCryptoDetails(row: CryptoForm): boolean {
+  return hasAny([row.network, row.address]);
+}
+
+function profileToForm(profile: ProfileMeResponse): OnboardingForm {
   return {
     identity: {
       firstName: valueOrEmpty(profile.identity.firstName),
@@ -450,68 +550,101 @@ function profileToForm(profile: ProfileMeResponse): OnboardingForm {
         customValue(profile.personal.custom, "relationshipStatus"),
       bloodGroup: customValue(profile.personal.custom, "bloodGroup"),
     },
-    work: {
-      ...initialForm.work,
-      tag: valueOrEmpty(work?.tag) || initialForm.work.tag,
-      companyName: valueOrEmpty(work?.companyName),
-      companyLogo: valueOrEmpty(work?.companyLogo),
-      companyRegNumber: valueOrEmpty(work?.companyRegNumber),
-      workTitle: valueOrEmpty(work?.workTitle),
-      workMobile: valueOrEmpty(work?.workMobile),
-      workLandline: valueOrEmpty(work?.workLandline),
-      workFax: valueOrEmpty(work?.workFax),
-      workEmail: valueOrEmpty(work?.workEmail),
-      workPostalAddress: addressToForm(work?.workPostalAddress),
-      employeeId: customValue(work?.custom, "employeeId"),
-    },
-    business: {
-      ...initialForm.business,
-      tag: valueOrEmpty(business?.tag) || initialForm.business.tag,
-      businessName: valueOrEmpty(business?.businessName),
-      businessLogo: valueOrEmpty(business?.businessLogo),
-      businessRegNumber: valueOrEmpty(business?.businessRegNumber),
-      businessTitle: valueOrEmpty(business?.businessTitle),
-      businessMobile: valueOrEmpty(business?.businessMobile),
-      businessLandline: valueOrEmpty(business?.businessLandline),
-      businessFax: valueOrEmpty(business?.businessFax),
-      businessEmail: valueOrEmpty(business?.businessEmail),
-      businessPostalAddress: addressToForm(business?.businessPostalAddress),
-      businessType: customValue(business?.custom, "businessType"),
-      gstin: customValue(business?.custom, "gstin"),
-    },
-    socials: {
-      ...initialForm.socials,
-      tag: valueOrEmpty(socials?.tag) || initialForm.socials.tag,
-      skype: customValue(socials?.custom, "skype"),
-      facebook: customValue(socials?.custom, "facebook"),
-      twitter: customValue(socials?.custom, "twitter"),
-      whatsapp:
-        customValue(socials?.custom, "whatsApp") ||
-        customValue(socials?.custom, "whatsapp"),
-      blog: customValue(socials?.custom, "blog"),
-      website: customValue(socials?.custom, "website"),
-      linkedin: customValue(socials?.custom, "linkedin"),
-      github: customValue(socials?.custom, "github"),
-    },
+    work: ensureRows(
+      profile.work.map((item) => ({
+        ...emptyWork(),
+        groupId: item.groupId,
+        tag: valueOrEmpty(item.tag) || emptyWork().tag,
+        companyName: valueOrEmpty(item.companyName),
+        companyLogo: valueOrEmpty(item.companyLogo),
+        companyRegNumber: valueOrEmpty(item.companyRegNumber),
+        workTitle: valueOrEmpty(item.workTitle),
+        workMobile: valueOrEmpty(item.workMobile),
+        workLandline: valueOrEmpty(item.workLandline),
+        workFax: valueOrEmpty(item.workFax),
+        workEmail: valueOrEmpty(item.workEmail),
+        workPostalAddress: addressToForm(item.workPostalAddress),
+        employeeId: customValue(item.custom, "employeeId"),
+      })),
+      emptyWork,
+    ),
+    business: ensureRows(
+      profile.business.map((item) => ({
+        ...emptyBusiness(),
+        groupId: item.groupId,
+        tag: valueOrEmpty(item.tag) || emptyBusiness().tag,
+        businessName: valueOrEmpty(item.businessName),
+        businessLogo: valueOrEmpty(item.businessLogo),
+        businessRegNumber: valueOrEmpty(item.businessRegNumber),
+        businessTitle: valueOrEmpty(item.businessTitle),
+        businessMobile: valueOrEmpty(item.businessMobile),
+        businessLandline: valueOrEmpty(item.businessLandline),
+        businessFax: valueOrEmpty(item.businessFax),
+        businessEmail: valueOrEmpty(item.businessEmail),
+        businessPostalAddress: addressToForm(item.businessPostalAddress),
+        businessType: customValue(item.custom, "businessType"),
+        gstin: customValue(item.custom, "gstin"),
+      })),
+      emptyBusiness,
+    ),
+    socials: ensureRows(
+      profile.socials.map((item) => ({
+        ...emptySocials(),
+        groupId: item.groupId,
+        tag: valueOrEmpty(item.tag) || emptySocials().tag,
+        skype: customValue(item.custom, "skype"),
+        facebook: customValue(item.custom, "facebook"),
+        twitter: customValue(item.custom, "twitter"),
+        whatsapp:
+          customValue(item.custom, "whatsApp") ||
+          customValue(item.custom, "whatsapp"),
+        blog: customValue(item.custom, "blog"),
+        website: customValue(item.custom, "website"),
+        linkedin: customValue(item.custom, "linkedin"),
+        github: customValue(item.custom, "github"),
+      })),
+      emptySocials,
+    ),
     financial: {
-      bankTag: valueOrEmpty(bank?.tag) || initialForm.financial.bankTag,
-      bank: {
-        bankName: valueOrEmpty(bank?.bankName),
-        accountHolder: valueOrEmpty(bank?.accountHolder),
-        accountNumber: valueOrEmpty(bank?.accountNumber),
-        ifsc: valueOrEmpty(bank?.ifsc),
-        currency: valueOrEmpty(bank?.currency) || initialForm.financial.bank.currency,
-      },
-      walletTag: valueOrEmpty(wallet?.tag) || initialForm.financial.walletTag,
-      wallet: {
-        platform: valueOrEmpty(wallet?.platform),
-        handleOrLink: valueOrEmpty(wallet?.handleOrLink),
-      },
-      cryptoTag: valueOrEmpty(crypto?.tag) || initialForm.financial.cryptoTag,
-      crypto: {
-        network: valueOrEmpty(crypto?.network),
-        address: valueOrEmpty(crypto?.address),
-      },
+      bankAccounts: ensureRows(
+        profile.financial.bankAccounts.map((item) => ({
+          ...emptyBank(),
+          groupId: item.groupId,
+          fieldId: item.fieldId,
+          tag: valueOrEmpty(item.tag) || emptyBank().tag,
+          bankName: valueOrEmpty(item.bankName),
+          accountHolder: valueOrEmpty(item.accountHolder),
+          accountNumber: valueOrEmpty(item.accountNumber),
+          iban: valueOrEmpty(item.iban),
+          swiftBic: valueOrEmpty(item.swiftBic),
+          routingNumber: valueOrEmpty(item.routingNumber),
+          ifsc: valueOrEmpty(item.ifsc),
+          currency: valueOrEmpty(item.currency) || emptyBank().currency,
+        })),
+        emptyBank,
+      ),
+      digitalWallets: ensureRows(
+        profile.financial.digitalWallets.map((item) => ({
+          ...emptyWallet(),
+          groupId: item.groupId,
+          fieldId: item.fieldId,
+          tag: valueOrEmpty(item.tag) || emptyWallet().tag,
+          platform: valueOrEmpty(item.platform),
+          handleOrLink: valueOrEmpty(item.handleOrLink),
+        })),
+        emptyWallet,
+      ),
+      cryptoWallets: ensureRows(
+        profile.financial.cryptoWallets.map((item) => ({
+          ...emptyCrypto(),
+          groupId: item.groupId,
+          fieldId: item.fieldId,
+          tag: valueOrEmpty(item.tag) || emptyCrypto().tag,
+          network: valueOrEmpty(item.network),
+          address: valueOrEmpty(item.address),
+        })),
+        emptyCrypto,
+      ),
     },
   };
 }
@@ -607,7 +740,7 @@ export function ProfileOnboardingModal({
     reader.readAsDataURL(file);
   };
 
-  const setSectionValue = <Section extends keyof OnboardingForm>(
+  const setSectionValue = <Section extends "identity" | "personal">(
     section: Section,
     key: keyof OnboardingForm[Section],
     value: string,
@@ -622,7 +755,7 @@ export function ProfileOnboardingModal({
   };
 
   const setAddressValue = (
-    section: "personal" | "work" | "business",
+    section: "personal",
     key: keyof AddressForm,
     value: string,
   ) => {
@@ -635,41 +768,154 @@ export function ProfileOnboardingModal({
               postalAddress: { ...current.personal.postalAddress, [key]: value },
             }
           : current.personal,
-      work:
-        section === "work"
-          ? {
-              ...current.work,
-              workPostalAddress: { ...current.work.workPostalAddress, [key]: value },
-            }
-          : current.work,
-      business:
-        section === "business"
-          ? {
-              ...current.business,
-              businessPostalAddress: {
-                ...current.business.businessPostalAddress,
-                [key]: value,
-              },
-            }
-          : current.business,
     }));
   };
 
-  const setFinancialValue = (
-    bucket: "bank" | "wallet" | "crypto",
-    key: string,
+  const setWorkValue = (index: number, key: keyof WorkForm, value: string) => {
+    setForm((current) => ({
+      ...current,
+      work: current.work.map((row, rowIndex) =>
+        rowIndex === index ? { ...row, [key]: value } : row,
+      ),
+    }));
+  };
+
+  const setBusinessValue = (
+    index: number,
+    key: keyof BusinessForm,
+    value: string,
+  ) => {
+    setForm((current) => ({
+      ...current,
+      business: current.business.map((row, rowIndex) =>
+        rowIndex === index ? { ...row, [key]: value } : row,
+      ),
+    }));
+  };
+
+  const setSocialValue = (index: number, key: keyof SocialsForm, value: string) => {
+    setForm((current) => ({
+      ...current,
+      socials: current.socials.map((row, rowIndex) =>
+        rowIndex === index ? { ...row, [key]: value } : row,
+      ),
+    }));
+  };
+
+  const setWorkAddressValue = (
+    index: number,
+    key: keyof AddressForm,
+    value: string,
+  ) => {
+    setForm((current) => ({
+      ...current,
+      work: current.work.map((row, rowIndex) =>
+        rowIndex === index
+          ? {
+              ...row,
+              workPostalAddress: { ...row.workPostalAddress, [key]: value },
+            }
+          : row,
+      ),
+    }));
+  };
+
+  const setBusinessAddressValue = (
+    index: number,
+    key: keyof AddressForm,
+    value: string,
+  ) => {
+    setForm((current) => ({
+      ...current,
+      business: current.business.map((row, rowIndex) =>
+        rowIndex === index
+          ? {
+              ...row,
+              businessPostalAddress: {
+                ...row.businessPostalAddress,
+                [key]: value,
+              },
+            }
+          : row,
+      ),
+    }));
+  };
+
+  const addRow = <Bucket extends keyof OnboardingForm>(
+    bucket: Bucket,
+    createEmpty: () => OnboardingForm[Bucket] extends Array<infer Row> ? Row : never,
+  ) => {
+    setForm((current) => ({
+      ...current,
+      [bucket]: [...(current[bucket] as unknown[]), createEmpty()],
+    }));
+  };
+
+  const removeRow = <Bucket extends keyof OnboardingForm>(
+    bucket: Bucket,
+    index: number,
+    createEmpty: () => OnboardingForm[Bucket] extends Array<infer Row> ? Row : never,
+  ) => {
+    setForm((current) => {
+      const rows = (current[bucket] as unknown[]).filter(
+        (_, rowIndex) => rowIndex !== index,
+      );
+      return {
+        ...current,
+        [bucket]: rows.length > 0 ? rows : [createEmpty()],
+      };
+    });
+  };
+
+  const setFinancialRowValue = <
+    Bucket extends keyof OnboardingForm["financial"],
+  >(
+    bucket: Bucket,
+    index: number,
+    key: keyof OnboardingForm["financial"][Bucket][number],
     value: string,
   ) => {
     setForm((current) => ({
       ...current,
       financial: {
         ...current.financial,
-        [bucket]: {
-          ...current.financial[bucket],
-          [key]: value,
-        },
+        [bucket]: current.financial[bucket].map((row, rowIndex) =>
+          rowIndex === index ? { ...row, [key]: value } : row,
+        ),
       },
     }));
+  };
+
+  const addFinancialRow = <Bucket extends keyof OnboardingForm["financial"]>(
+    bucket: Bucket,
+    createEmpty: () => OnboardingForm["financial"][Bucket][number],
+  ) => {
+    setForm((current) => ({
+      ...current,
+      financial: {
+        ...current.financial,
+        [bucket]: [...current.financial[bucket], createEmpty()],
+      },
+    }));
+  };
+
+  const removeFinancialRow = <Bucket extends keyof OnboardingForm["financial"]>(
+    bucket: Bucket,
+    index: number,
+    createEmpty: () => OnboardingForm["financial"][Bucket][number],
+  ) => {
+    setForm((current) => {
+      const rows = current.financial[bucket].filter(
+        (_, rowIndex) => rowIndex !== index,
+      );
+      return {
+        ...current,
+        financial: {
+          ...current.financial,
+          [bucket]: rows.length > 0 ? rows : [createEmpty()],
+        },
+      };
+    });
   };
 
   const validate = (): string | null => {
@@ -684,37 +930,6 @@ export function ProfileOnboardingModal({
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean(form.identity.primaryEmail))) {
       return "Enter a valid email address.";
-    }
-
-    const addressError =
-      validateAddress("Personal address", form.personal.postalAddress) ??
-      validateAddress("Work address", form.work.workPostalAddress) ??
-      validateAddress("Business address", form.business.businessPostalAddress);
-    if (addressError) {
-      return addressError;
-    }
-
-    const walletTouched = hasAny([
-      form.financial.wallet.platform,
-      form.financial.wallet.handleOrLink,
-    ]);
-    if (
-      walletTouched &&
-      (!hasText(form.financial.wallet.platform) ||
-        !hasText(form.financial.wallet.handleOrLink))
-    ) {
-      return "Digital wallet needs platform and handle or link.";
-    }
-
-    const cryptoTouched = hasAny([
-      form.financial.crypto.network,
-      form.financial.crypto.address,
-    ]);
-    if (
-      cryptoTouched &&
-      (!hasText(form.financial.crypto.network) || !hasText(form.financial.crypto.address))
-    ) {
-      return "Crypto wallet needs network and address.";
     }
 
     return null;
@@ -762,129 +977,131 @@ export function ProfileOnboardingModal({
       payload.personal = personal;
     }
 
-    const workCustom = compactCustom({ employeeId: form.work.employeeId });
-    const hasWorkDetails =
-      Boolean(workCustom) ||
-      hasAny([
-        form.work.companyName,
-        form.work.companyLogo,
-        form.work.companyRegNumber,
-        form.work.workTitle,
-        form.work.workMobile,
-        form.work.workLandline,
-        form.work.workFax,
-        form.work.workEmail,
-      ]) ||
-      addressHasAny(form.work.workPostalAddress);
-    const work = compactObject({
-      tag: optionalText(form.work.tag),
-      companyName: optionalText(form.work.companyName),
-      companyLogo: optionalText(form.work.companyLogo),
-      companyRegNumber: optionalText(form.work.companyRegNumber),
-      workTitle: optionalText(form.work.workTitle),
-      workMobile: optionalText(form.work.workMobile),
-      workLandline: optionalText(form.work.workLandline),
-      workFax: optionalText(form.work.workFax),
-      workEmail: optionalText(form.work.workEmail),
-      workPostalAddress: addressHasAny(form.work.workPostalAddress)
-        ? toAddressPayload(form.work.workPostalAddress)
-        : undefined,
-      custom: workCustom,
-    });
-    if (hasWorkDetails) {
-      payload.work = [work];
+    const work = form.work
+      .filter(hasWorkDetails)
+      .map((row) => {
+        const workCustom = compactCustom({ employeeId: row.employeeId });
+        return compactObject({
+          groupId: row.groupId,
+          tag: optionalText(row.tag),
+          companyName: optionalText(row.companyName),
+          companyLogo: optionalText(row.companyLogo),
+          companyRegNumber: optionalText(row.companyRegNumber),
+          workTitle: optionalText(row.workTitle),
+          workMobile: optionalText(row.workMobile),
+          workLandline: optionalText(row.workLandline),
+          workFax: optionalText(row.workFax),
+          workEmail: optionalText(row.workEmail),
+          workPostalAddress: addressHasAny(row.workPostalAddress)
+            ? toAddressPayload(row.workPostalAddress)
+            : undefined,
+          custom: workCustom,
+        });
+      });
+    if (work.length > 0) {
+      payload.work = work;
     }
 
-    const businessCustom = compactCustom({
-      businessType: form.business.businessType,
-      gstin: form.business.gstin,
-    });
-    const hasBusinessDetails =
-      Boolean(businessCustom) ||
-      hasAny([
-        form.business.businessName,
-        form.business.businessLogo,
-        form.business.businessRegNumber,
-        form.business.businessTitle,
-        form.business.businessMobile,
-        form.business.businessLandline,
-        form.business.businessFax,
-        form.business.businessEmail,
-      ]) ||
-      addressHasAny(form.business.businessPostalAddress);
-    const business = compactObject({
-      tag: optionalText(form.business.tag),
-      businessName: optionalText(form.business.businessName),
-      businessLogo: optionalText(form.business.businessLogo),
-      businessRegNumber: optionalText(form.business.businessRegNumber),
-      businessTitle: optionalText(form.business.businessTitle),
-      businessMobile: optionalText(form.business.businessMobile),
-      businessLandline: optionalText(form.business.businessLandline),
-      businessFax: optionalText(form.business.businessFax),
-      businessEmail: optionalText(form.business.businessEmail),
-      businessPostalAddress: addressHasAny(form.business.businessPostalAddress)
-        ? toAddressPayload(form.business.businessPostalAddress)
-        : undefined,
-      custom: businessCustom,
-    });
-    if (hasBusinessDetails) {
-      payload.business = [business];
+    const business = form.business
+      .filter(hasBusinessDetails)
+      .map((row) => {
+        const businessCustom = compactCustom({
+          businessType: row.businessType,
+          gstin: row.gstin,
+        });
+        return compactObject({
+          groupId: row.groupId,
+          tag: optionalText(row.tag),
+          businessName: optionalText(row.businessName),
+          businessLogo: optionalText(row.businessLogo),
+          businessRegNumber: optionalText(row.businessRegNumber),
+          businessTitle: optionalText(row.businessTitle),
+          businessMobile: optionalText(row.businessMobile),
+          businessLandline: optionalText(row.businessLandline),
+          businessFax: optionalText(row.businessFax),
+          businessEmail: optionalText(row.businessEmail),
+          businessPostalAddress: addressHasAny(row.businessPostalAddress)
+            ? toAddressPayload(row.businessPostalAddress)
+            : undefined,
+          custom: businessCustom,
+        });
+      });
+    if (business.length > 0) {
+      payload.business = business;
     }
 
-    const socialsCustom = compactCustom({
-      skype: form.socials.skype,
-      facebook: form.socials.facebook,
-      twitter: form.socials.twitter,
-      whatsApp: form.socials.whatsapp,
-      blog: form.socials.blog,
-      website: form.socials.website,
-      linkedin: form.socials.linkedin,
-      github: form.socials.github,
-    });
-    if (socialsCustom) {
-      payload.socials = [
-        {
-          tag: optionalText(form.socials.tag),
-          custom: socialsCustom,
-        },
-      ];
+    const socials = form.socials
+      .filter(hasSocialDetails)
+      .map((row) =>
+        compactObject({
+          groupId: row.groupId,
+          tag: optionalText(row.tag),
+          custom: compactCustom({
+            skype: row.skype,
+            facebook: row.facebook,
+            twitter: row.twitter,
+            whatsApp: row.whatsapp,
+            blog: row.blog,
+            website: row.website,
+            linkedin: row.linkedin,
+            github: row.github,
+          }),
+        }),
+      );
+    if (socials.length > 0) {
+      payload.socials = socials;
     }
 
     const financial: NonNullable<ProfileOnboardingPayload["financial"]> = {};
-    const bank = form.financial.bank;
-    if (hasAny([bank.bankName, bank.accountHolder, bank.accountNumber, bank.ifsc])) {
-      financial.bankAccounts = [
-        {
-          tag: optionalText(form.financial.bankTag),
-          bankName: optionalText(bank.bankName),
-          accountHolder: optionalText(bank.accountHolder),
-          accountNumber: optionalText(bank.accountNumber),
-          ifsc: optionalText(bank.ifsc),
-          currency: optionalText(bank.currency),
-        },
-      ];
+    const bankAccounts = form.financial.bankAccounts
+      .filter(hasBankDetails)
+      .map((row) =>
+        compactObject({
+          groupId: row.groupId,
+          fieldId: row.fieldId,
+          tag: optionalText(row.tag),
+          bankName: optionalText(row.bankName),
+          accountHolder: optionalText(row.accountHolder),
+          accountNumber: optionalText(row.accountNumber),
+          iban: optionalText(row.iban),
+          swiftBic: optionalText(row.swiftBic),
+          routingNumber: optionalText(row.routingNumber),
+          ifsc: optionalText(row.ifsc),
+          currency: optionalText(row.currency),
+        }),
+      );
+    if (bankAccounts.length > 0) {
+      financial.bankAccounts = bankAccounts;
     }
 
-    const wallet = form.financial.wallet;
-    if (hasAny([wallet.platform, wallet.handleOrLink])) {
-      financial.digitalWallets = [
-        {
-          tag: optionalText(form.financial.walletTag),
-          platform: clean(wallet.platform),
-          handleOrLink: clean(wallet.handleOrLink),
-        },
-      ];
+    const digitalWallets = form.financial.digitalWallets
+      .filter(hasWalletDetails)
+      .map((row) =>
+        compactObject({
+          groupId: row.groupId,
+          fieldId: row.fieldId,
+          tag: optionalText(row.tag),
+          platform: optionalText(row.platform),
+          handleOrLink: optionalText(row.handleOrLink),
+        }),
+      );
+    if (digitalWallets.length > 0) {
+      financial.digitalWallets = digitalWallets;
     }
 
-    const crypto = form.financial.crypto;
-    if (hasAny([crypto.network, crypto.address])) {
-      financial.cryptoWallets = [
-        {
-          tag: optionalText(form.financial.cryptoTag),
-          network: clean(crypto.network),
-          address: clean(crypto.address),
-        },
-      ];
+    const cryptoWallets = form.financial.cryptoWallets
+      .filter(hasCryptoDetails)
+      .map((row) =>
+        compactObject({
+          groupId: row.groupId,
+          fieldId: row.fieldId,
+          tag: optionalText(row.tag),
+          network: optionalText(row.network),
+          address: optionalText(row.address),
+        }),
+      );
+    if (cryptoWallets.length > 0) {
+      financial.cryptoWallets = cryptoWallets;
     }
 
     if (
@@ -1073,12 +1290,6 @@ export function ProfileOnboardingModal({
                   />
                 </Field>
               </TwoColumn>
-              <Field label="Group tag">
-                <Input
-                  value={form.personal.tag}
-                  onChange={(event) => setSectionValue("personal", "tag", event.target.value)}
-                />
-              </Field>
               <TwoColumn>
                 <Field label="Title">
                   <Input
@@ -1204,384 +1415,586 @@ export function ProfileOnboardingModal({
                 address={form.personal.postalAddress}
                 onChange={(key, value) => setAddressValue("personal", key, value)}
               />
+              <Field label="Label">
+                <Input
+                  value={form.personal.tag}
+                  onChange={(event) => setSectionValue("personal", "tag", event.target.value)}
+                />
+              </Field>
             </ProfileSection>
           )}
 
           {!isLoadingProfile && !loadError && step.key === "work" && (
             <ProfileSection>
-              <Field label="Group tag">
-                <Input
-                  value={form.work.tag}
-                  onChange={(event) => setSectionValue("work", "tag", event.target.value)}
-                />
-              </Field>
-              <TwoColumn>
-                <Field label="Company name">
-                  <Input
-                    value={form.work.companyName}
-                    onChange={(event) =>
-                      setSectionValue("work", "companyName", event.target.value)
-                    }
-                  />
-                </Field>
-                <Field label="Company logo URL">
-                  <Input
-                    value={form.work.companyLogo}
-                    onChange={(event) =>
-                      setSectionValue("work", "companyLogo", event.target.value)
-                    }
-                  />
-                </Field>
-                <Field label="Company registration number">
-                  <Input
-                    value={form.work.companyRegNumber}
-                    onChange={(event) =>
-                      setSectionValue("work", "companyRegNumber", event.target.value)
-                    }
-                  />
-                </Field>
-                <Field label="Work title">
-                  <Input
-                    value={form.work.workTitle}
-                    onChange={(event) =>
-                      setSectionValue("work", "workTitle", event.target.value)
-                    }
-                  />
-                </Field>
-                <Field label="Work mobile">
-                  <Input
-                    value={form.work.workMobile}
-                    onChange={(event) =>
-                      setSectionValue("work", "workMobile", event.target.value)
-                    }
-                  />
-                </Field>
-                <Field label="Work landline">
-                  <Input
-                    value={form.work.workLandline}
-                    onChange={(event) =>
-                      setSectionValue("work", "workLandline", event.target.value)
-                    }
-                  />
-                </Field>
-                <Field label="Work fax">
-                  <Input
-                    value={form.work.workFax}
-                    onChange={(event) =>
-                      setSectionValue("work", "workFax", event.target.value)
-                    }
-                  />
-                </Field>
-                <Field label="Work email">
-                  <Input
-                    type="email"
-                    value={form.work.workEmail}
-                    onChange={(event) =>
-                      setSectionValue("work", "workEmail", event.target.value)
-                    }
-                  />
-                </Field>
-                <Field label="Employee ID">
-                  <Input
-                    value={form.work.employeeId}
-                    onChange={(event) =>
-                      setSectionValue("work", "employeeId", event.target.value)
-                    }
-                  />
-                </Field>
-              </TwoColumn>
-              <AddressFields
-                title="Work postal address"
-                address={form.work.workPostalAddress}
-                onChange={(key, value) => setAddressValue("work", key, value)}
+              <SectionHeader
+                actionLabel="Add work profile"
+                onAdd={() => addRow("work", emptyWork)}
               />
+              {form.work.map((row, index) => (
+                <RepeatablePanel
+                  key={row.groupId ?? `work-${index}`}
+                  canRemove={form.work.length > 1}
+                  title={`Work profile ${index + 1}`}
+                  onRemove={() => removeRow("work", index, emptyWork)}
+                >
+                  <TwoColumn>
+                    <Field label="Company name">
+                      <Input
+                        value={row.companyName}
+                        onChange={(event) =>
+                          setWorkValue(index, "companyName", event.target.value)
+                        }
+                      />
+                    </Field>
+                    <Field label="Company logo URL">
+                      <Input
+                        value={row.companyLogo}
+                        onChange={(event) =>
+                          setWorkValue(index, "companyLogo", event.target.value)
+                        }
+                      />
+                    </Field>
+                    <Field label="Company registration number">
+                      <Input
+                        value={row.companyRegNumber}
+                        onChange={(event) =>
+                          setWorkValue(index, "companyRegNumber", event.target.value)
+                        }
+                      />
+                    </Field>
+                    <Field label="Work title">
+                      <Input
+                        value={row.workTitle}
+                        onChange={(event) =>
+                          setWorkValue(index, "workTitle", event.target.value)
+                        }
+                      />
+                    </Field>
+                    <Field label="Work mobile">
+                      <Input
+                        value={row.workMobile}
+                        onChange={(event) =>
+                          setWorkValue(index, "workMobile", event.target.value)
+                        }
+                      />
+                    </Field>
+                    <Field label="Work landline">
+                      <Input
+                        value={row.workLandline}
+                        onChange={(event) =>
+                          setWorkValue(index, "workLandline", event.target.value)
+                        }
+                      />
+                    </Field>
+                    <Field label="Work fax">
+                      <Input
+                        value={row.workFax}
+                        onChange={(event) =>
+                          setWorkValue(index, "workFax", event.target.value)
+                        }
+                      />
+                    </Field>
+                    <Field label="Work email">
+                      <Input
+                        type="email"
+                        value={row.workEmail}
+                        onChange={(event) =>
+                          setWorkValue(index, "workEmail", event.target.value)
+                        }
+                      />
+                    </Field>
+                    <Field label="Employee ID">
+                      <Input
+                        value={row.employeeId}
+                        onChange={(event) =>
+                          setWorkValue(index, "employeeId", event.target.value)
+                        }
+                      />
+                    </Field>
+                  </TwoColumn>
+                  <AddressFields
+                    title="Work postal address"
+                    address={row.workPostalAddress}
+                    onChange={(key, value) => setWorkAddressValue(index, key, value)}
+                  />
+                  <Field label="Label">
+                    <Input
+                      value={row.tag}
+                      onChange={(event) =>
+                        setWorkValue(index, "tag", event.target.value)
+                      }
+                    />
+                  </Field>
+                </RepeatablePanel>
+              ))}
             </ProfileSection>
           )}
 
           {!isLoadingProfile && !loadError && step.key === "business" && (
             <ProfileSection>
-              <Field label="Group tag">
-                <Input
-                  value={form.business.tag}
-                  onChange={(event) =>
-                    setSectionValue("business", "tag", event.target.value)
-                  }
-                />
-              </Field>
-              <TwoColumn>
-                <Field label="Business name">
-                  <Input
-                    value={form.business.businessName}
-                    onChange={(event) =>
-                      setSectionValue("business", "businessName", event.target.value)
-                    }
-                  />
-                </Field>
-                <Field label="Business logo URL">
-                  <Input
-                    value={form.business.businessLogo}
-                    onChange={(event) =>
-                      setSectionValue("business", "businessLogo", event.target.value)
-                    }
-                  />
-                </Field>
-                <Field label="Business registration number">
-                  <Input
-                    value={form.business.businessRegNumber}
-                    onChange={(event) =>
-                      setSectionValue("business", "businessRegNumber", event.target.value)
-                    }
-                  />
-                </Field>
-                <Field label="Business title">
-                  <Input
-                    value={form.business.businessTitle}
-                    onChange={(event) =>
-                      setSectionValue("business", "businessTitle", event.target.value)
-                    }
-                  />
-                </Field>
-                <Field label="Business mobile">
-                  <Input
-                    value={form.business.businessMobile}
-                    onChange={(event) =>
-                      setSectionValue("business", "businessMobile", event.target.value)
-                    }
-                  />
-                </Field>
-                <Field label="Business landline">
-                  <Input
-                    value={form.business.businessLandline}
-                    onChange={(event) =>
-                      setSectionValue("business", "businessLandline", event.target.value)
-                    }
-                  />
-                </Field>
-                <Field label="Business fax">
-                  <Input
-                    value={form.business.businessFax}
-                    onChange={(event) =>
-                      setSectionValue("business", "businessFax", event.target.value)
-                    }
-                  />
-                </Field>
-                <Field label="Business email">
-                  <Input
-                    type="email"
-                    value={form.business.businessEmail}
-                    onChange={(event) =>
-                      setSectionValue("business", "businessEmail", event.target.value)
-                    }
-                  />
-                </Field>
-                <Field label="Business type">
-                  <Input
-                    value={form.business.businessType}
-                    onChange={(event) =>
-                      setSectionValue("business", "businessType", event.target.value)
-                    }
-                  />
-                </Field>
-                <Field label="GSTIN">
-                  <Input
-                    value={form.business.gstin}
-                    onChange={(event) =>
-                      setSectionValue("business", "gstin", event.target.value)
-                    }
-                  />
-                </Field>
-              </TwoColumn>
-              <AddressFields
-                title="Business postal address"
-                address={form.business.businessPostalAddress}
-                onChange={(key, value) => setAddressValue("business", key, value)}
+              <SectionHeader
+                actionLabel="Add business"
+                onAdd={() => addRow("business", emptyBusiness)}
               />
+              {form.business.map((row, index) => (
+                <RepeatablePanel
+                  key={row.groupId ?? `business-${index}`}
+                  canRemove={form.business.length > 1}
+                  title={`Business ${index + 1}`}
+                  onRemove={() => removeRow("business", index, emptyBusiness)}
+                >
+                  <TwoColumn>
+                    <Field label="Business name">
+                      <Input
+                        value={row.businessName}
+                        onChange={(event) =>
+                          setBusinessValue(index, "businessName", event.target.value)
+                        }
+                      />
+                    </Field>
+                    <Field label="Business logo URL">
+                      <Input
+                        value={row.businessLogo}
+                        onChange={(event) =>
+                          setBusinessValue(index, "businessLogo", event.target.value)
+                        }
+                      />
+                    </Field>
+                    <Field label="Business registration number">
+                      <Input
+                        value={row.businessRegNumber}
+                        onChange={(event) =>
+                          setBusinessValue(
+                            index,
+                            "businessRegNumber",
+                            event.target.value,
+                          )
+                        }
+                      />
+                    </Field>
+                    <Field label="Business title">
+                      <Input
+                        value={row.businessTitle}
+                        onChange={(event) =>
+                          setBusinessValue(index, "businessTitle", event.target.value)
+                        }
+                      />
+                    </Field>
+                    <Field label="Business mobile">
+                      <Input
+                        value={row.businessMobile}
+                        onChange={(event) =>
+                          setBusinessValue(index, "businessMobile", event.target.value)
+                        }
+                      />
+                    </Field>
+                    <Field label="Business landline">
+                      <Input
+                        value={row.businessLandline}
+                        onChange={(event) =>
+                          setBusinessValue(index, "businessLandline", event.target.value)
+                        }
+                      />
+                    </Field>
+                    <Field label="Business fax">
+                      <Input
+                        value={row.businessFax}
+                        onChange={(event) =>
+                          setBusinessValue(index, "businessFax", event.target.value)
+                        }
+                      />
+                    </Field>
+                    <Field label="Business email">
+                      <Input
+                        type="email"
+                        value={row.businessEmail}
+                        onChange={(event) =>
+                          setBusinessValue(index, "businessEmail", event.target.value)
+                        }
+                      />
+                    </Field>
+                    <Field label="Business type">
+                      <Input
+                        value={row.businessType}
+                        onChange={(event) =>
+                          setBusinessValue(index, "businessType", event.target.value)
+                        }
+                      />
+                    </Field>
+                    <Field label="GSTIN">
+                      <Input
+                        value={row.gstin}
+                        onChange={(event) =>
+                          setBusinessValue(index, "gstin", event.target.value)
+                        }
+                      />
+                    </Field>
+                  </TwoColumn>
+                  <AddressFields
+                    title="Business postal address"
+                    address={row.businessPostalAddress}
+                    onChange={(key, value) =>
+                      setBusinessAddressValue(index, key, value)
+                    }
+                  />
+                  <Field label="Label">
+                    <Input
+                      value={row.tag}
+                      onChange={(event) =>
+                        setBusinessValue(index, "tag", event.target.value)
+                      }
+                    />
+                  </Field>
+                </RepeatablePanel>
+              ))}
             </ProfileSection>
           )}
 
           {!isLoadingProfile && !loadError && step.key === "socials" && (
             <ProfileSection>
-              <Field label="Group tag">
-                <Input
-                  value={form.socials.tag}
-                  onChange={(event) => setSectionValue("socials", "tag", event.target.value)}
-                />
-              </Field>
-              <TwoColumn>
-                <Field label="Skype">
-                  <Input
-                    value={form.socials.skype}
-                    onChange={(event) =>
-                      setSectionValue("socials", "skype", event.target.value)
-                    }
-                  />
-                </Field>
-                <Field label="Facebook">
-                  <Input
-                    value={form.socials.facebook}
-                    onChange={(event) =>
-                      setSectionValue("socials", "facebook", event.target.value)
-                    }
-                  />
-                </Field>
-                <Field label="Twitter">
-                  <Input
-                    value={form.socials.twitter}
-                    onChange={(event) =>
-                      setSectionValue("socials", "twitter", event.target.value)
-                    }
-                  />
-                </Field>
-                <Field label="WhatsApp">
-                  <Input
-                    value={form.socials.whatsapp}
-                    onChange={(event) =>
-                      setSectionValue("socials", "whatsapp", event.target.value)
-                    }
-                  />
-                </Field>
-                <Field label="Blog">
-                  <Input
-                    value={form.socials.blog}
-                    onChange={(event) =>
-                      setSectionValue("socials", "blog", event.target.value)
-                    }
-                  />
-                </Field>
-                <Field label="Website">
-                  <Input
-                    value={form.socials.website}
-                    onChange={(event) =>
-                      setSectionValue("socials", "website", event.target.value)
-                    }
-                  />
-                </Field>
-                <Field label="LinkedIn">
-                  <Input
-                    value={form.socials.linkedin}
-                    onChange={(event) =>
-                      setSectionValue("socials", "linkedin", event.target.value)
-                    }
-                  />
-                </Field>
-                <Field label="GitHub">
-                  <Input
-                    value={form.socials.github}
-                    onChange={(event) =>
-                      setSectionValue("socials", "github", event.target.value)
-                    }
-                  />
-                </Field>
-              </TwoColumn>
+              <SectionHeader
+                actionLabel="Add social profile"
+                onAdd={() => addRow("socials", emptySocials)}
+              />
+              {form.socials.map((row, index) => (
+                <RepeatablePanel
+                  key={row.groupId ?? `socials-${index}`}
+                  canRemove={form.socials.length > 1}
+                  title={`Social profile ${index + 1}`}
+                  onRemove={() => removeRow("socials", index, emptySocials)}
+                >
+                  <TwoColumn>
+                    <Field label="Skype">
+                      <Input
+                        value={row.skype}
+                        onChange={(event) =>
+                          setSocialValue(index, "skype", event.target.value)
+                        }
+                      />
+                    </Field>
+                    <Field label="Facebook">
+                      <Input
+                        value={row.facebook}
+                        onChange={(event) =>
+                          setSocialValue(index, "facebook", event.target.value)
+                        }
+                      />
+                    </Field>
+                    <Field label="Twitter">
+                      <Input
+                        value={row.twitter}
+                        onChange={(event) =>
+                          setSocialValue(index, "twitter", event.target.value)
+                        }
+                      />
+                    </Field>
+                    <Field label="WhatsApp">
+                      <Input
+                        value={row.whatsapp}
+                        onChange={(event) =>
+                          setSocialValue(index, "whatsapp", event.target.value)
+                        }
+                      />
+                    </Field>
+                    <Field label="Blog">
+                      <Input
+                        value={row.blog}
+                        onChange={(event) =>
+                          setSocialValue(index, "blog", event.target.value)
+                        }
+                      />
+                    </Field>
+                    <Field label="Website">
+                      <Input
+                        value={row.website}
+                        onChange={(event) =>
+                          setSocialValue(index, "website", event.target.value)
+                        }
+                      />
+                    </Field>
+                    <Field label="LinkedIn">
+                      <Input
+                        value={row.linkedin}
+                        onChange={(event) =>
+                          setSocialValue(index, "linkedin", event.target.value)
+                        }
+                      />
+                    </Field>
+                    <Field label="GitHub">
+                      <Input
+                        value={row.github}
+                        onChange={(event) =>
+                          setSocialValue(index, "github", event.target.value)
+                        }
+                      />
+                    </Field>
+                  </TwoColumn>
+                  <Field label="Label">
+                    <Input
+                      value={row.tag}
+                      onChange={(event) =>
+                        setSocialValue(index, "tag", event.target.value)
+                      }
+                    />
+                  </Field>
+                </RepeatablePanel>
+              ))}
             </ProfileSection>
           )}
 
           {!isLoadingProfile && !loadError && step.key === "financial" && (
             <ProfileSection>
-              <div className="grid gap-3 xl:grid-cols-3">
-                <SensitivePanel title="Bank account">
-                  <Field label="Group tag">
-                    <Input
-                      value={form.financial.bankTag}
-                      onChange={(event) =>
-                        setSectionValue("financial", "bankTag", event.target.value)
-                      }
-                    />
-                  </Field>
-                  <Field label="Bank name">
-                    <Input
-                      value={form.financial.bank.bankName}
-                      onChange={(event) =>
-                        setFinancialValue("bank", "bankName", event.target.value)
-                      }
-                    />
-                  </Field>
-                  <Field label="Account holder">
-                    <Input
-                      value={form.financial.bank.accountHolder}
-                      onChange={(event) =>
-                        setFinancialValue("bank", "accountHolder", event.target.value)
-                      }
-                    />
-                  </Field>
-                  <Field label="Account number">
-                    <Input
-                      value={form.financial.bank.accountNumber}
-                      onChange={(event) =>
-                        setFinancialValue("bank", "accountNumber", event.target.value)
-                      }
-                    />
-                  </Field>
-                  <Field label="IFSC">
-                    <Input
-                      value={form.financial.bank.ifsc}
-                      onChange={(event) =>
-                        setFinancialValue("bank", "ifsc", event.target.value)
-                      }
-                    />
-                  </Field>
-                  <Field label="Currency">
-                    <Input
-                      value={form.financial.bank.currency}
-                      onChange={(event) =>
-                        setFinancialValue("bank", "currency", event.target.value)
-                      }
-                    />
-                  </Field>
+              <FinancialGroupHeader
+                title="Bank accounts"
+                actionLabel="Add bank account"
+                onAdd={() => addFinancialRow("bankAccounts", emptyBank)}
+              />
+              {form.financial.bankAccounts.map((row, index) => (
+                <SensitivePanel
+                  key={row.fieldId ?? row.groupId ?? `bank-${index}`}
+                  canRemove={form.financial.bankAccounts.length > 1}
+                  title={`Bank account ${index + 1}`}
+                  onRemove={() =>
+                    removeFinancialRow("bankAccounts", index, emptyBank)
+                  }
+                >
+                  <TwoColumn>
+                    <Field label="Bank name">
+                      <Input
+                        value={row.bankName}
+                        onChange={(event) =>
+                          setFinancialRowValue(
+                            "bankAccounts",
+                            index,
+                            "bankName",
+                            event.target.value,
+                          )
+                        }
+                      />
+                    </Field>
+                    <Field label="Account holder">
+                      <Input
+                        value={row.accountHolder}
+                        onChange={(event) =>
+                          setFinancialRowValue(
+                            "bankAccounts",
+                            index,
+                            "accountHolder",
+                            event.target.value,
+                          )
+                        }
+                      />
+                    </Field>
+                    <Field label="Account number">
+                      <Input
+                        value={row.accountNumber}
+                        onChange={(event) =>
+                          setFinancialRowValue(
+                            "bankAccounts",
+                            index,
+                            "accountNumber",
+                            event.target.value,
+                          )
+                        }
+                      />
+                    </Field>
+                    <Field label="IBAN">
+                      <Input
+                        value={row.iban}
+                        onChange={(event) =>
+                          setFinancialRowValue(
+                            "bankAccounts",
+                            index,
+                            "iban",
+                            event.target.value,
+                          )
+                        }
+                      />
+                    </Field>
+                    <Field label="SWIFT/BIC">
+                      <Input
+                        value={row.swiftBic}
+                        onChange={(event) =>
+                          setFinancialRowValue(
+                            "bankAccounts",
+                            index,
+                            "swiftBic",
+                            event.target.value,
+                          )
+                        }
+                      />
+                    </Field>
+                    <Field label="Routing number">
+                      <Input
+                        value={row.routingNumber}
+                        onChange={(event) =>
+                          setFinancialRowValue(
+                            "bankAccounts",
+                            index,
+                            "routingNumber",
+                            event.target.value,
+                          )
+                        }
+                      />
+                    </Field>
+                    <Field label="IFSC">
+                      <Input
+                        value={row.ifsc}
+                        onChange={(event) =>
+                          setFinancialRowValue(
+                            "bankAccounts",
+                            index,
+                            "ifsc",
+                            event.target.value,
+                          )
+                        }
+                      />
+                    </Field>
+                    <Field label="Currency">
+                      <Input
+                        value={row.currency}
+                        onChange={(event) =>
+                          setFinancialRowValue(
+                            "bankAccounts",
+                            index,
+                            "currency",
+                            event.target.value,
+                          )
+                        }
+                      />
+                    </Field>
+                    <Field label="Label">
+                      <Input
+                        value={row.tag}
+                        onChange={(event) =>
+                          setFinancialRowValue(
+                            "bankAccounts",
+                            index,
+                            "tag",
+                            event.target.value,
+                          )
+                        }
+                      />
+                    </Field>
+                  </TwoColumn>
                 </SensitivePanel>
-                <SensitivePanel title="Digital wallet">
-                  <Field label="Group tag">
-                    <Input
-                      value={form.financial.walletTag}
-                      onChange={(event) =>
-                        setSectionValue("financial", "walletTag", event.target.value)
-                      }
-                    />
-                  </Field>
-                  <Field label="Platform">
-                    <Input
-                      value={form.financial.wallet.platform}
-                      onChange={(event) =>
-                        setFinancialValue("wallet", "platform", event.target.value)
-                      }
-                    />
-                  </Field>
-                  <Field label="Handle or link">
-                    <Input
-                      value={form.financial.wallet.handleOrLink}
-                      onChange={(event) =>
-                        setFinancialValue("wallet", "handleOrLink", event.target.value)
-                      }
-                    />
-                  </Field>
+              ))}
+
+              <FinancialGroupHeader
+                title="Digital wallets"
+                actionLabel="Add wallet"
+                onAdd={() => addFinancialRow("digitalWallets", emptyWallet)}
+              />
+              {form.financial.digitalWallets.map((row, index) => (
+                <SensitivePanel
+                  key={row.fieldId ?? row.groupId ?? `wallet-${index}`}
+                  canRemove={form.financial.digitalWallets.length > 1}
+                  title={`Digital wallet ${index + 1}`}
+                  onRemove={() =>
+                    removeFinancialRow("digitalWallets", index, emptyWallet)
+                  }
+                >
+                  <TwoColumn>
+                    <Field label="Platform">
+                      <Input
+                        value={row.platform}
+                        onChange={(event) =>
+                          setFinancialRowValue(
+                            "digitalWallets",
+                            index,
+                            "platform",
+                            event.target.value,
+                          )
+                        }
+                      />
+                    </Field>
+                    <Field label="Handle or link">
+                      <Input
+                        value={row.handleOrLink}
+                        onChange={(event) =>
+                          setFinancialRowValue(
+                            "digitalWallets",
+                            index,
+                            "handleOrLink",
+                            event.target.value,
+                          )
+                        }
+                      />
+                    </Field>
+                    <Field label="Label">
+                      <Input
+                        value={row.tag}
+                        onChange={(event) =>
+                          setFinancialRowValue(
+                            "digitalWallets",
+                            index,
+                            "tag",
+                            event.target.value,
+                          )
+                        }
+                      />
+                    </Field>
+                  </TwoColumn>
                 </SensitivePanel>
-                <SensitivePanel title="Crypto wallet">
-                  <Field label="Group tag">
-                    <Input
-                      value={form.financial.cryptoTag}
-                      onChange={(event) =>
-                        setSectionValue("financial", "cryptoTag", event.target.value)
-                      }
-                    />
-                  </Field>
-                  <Field label="Network">
-                    <Input
-                      value={form.financial.crypto.network}
-                      onChange={(event) =>
-                        setFinancialValue("crypto", "network", event.target.value)
-                      }
-                    />
-                  </Field>
-                  <Field label="Address">
-                    <Input
-                      value={form.financial.crypto.address}
-                      onChange={(event) =>
-                        setFinancialValue("crypto", "address", event.target.value)
-                      }
-                    />
-                  </Field>
+              ))}
+
+              <FinancialGroupHeader
+                title="Crypto wallets"
+                actionLabel="Add crypto wallet"
+                onAdd={() => addFinancialRow("cryptoWallets", emptyCrypto)}
+              />
+              {form.financial.cryptoWallets.map((row, index) => (
+                <SensitivePanel
+                  key={row.fieldId ?? row.groupId ?? `crypto-${index}`}
+                  canRemove={form.financial.cryptoWallets.length > 1}
+                  title={`Crypto wallet ${index + 1}`}
+                  onRemove={() =>
+                    removeFinancialRow("cryptoWallets", index, emptyCrypto)
+                  }
+                >
+                  <TwoColumn>
+                    <Field label="Network">
+                      <Input
+                        value={row.network}
+                        onChange={(event) =>
+                          setFinancialRowValue(
+                            "cryptoWallets",
+                            index,
+                            "network",
+                            event.target.value,
+                          )
+                        }
+                      />
+                    </Field>
+                    <Field label="Address">
+                      <Input
+                        value={row.address}
+                        onChange={(event) =>
+                          setFinancialRowValue(
+                            "cryptoWallets",
+                            index,
+                            "address",
+                            event.target.value,
+                          )
+                        }
+                      />
+                    </Field>
+                    <Field label="Label">
+                      <Input
+                        value={row.tag}
+                        onChange={(event) =>
+                          setFinancialRowValue(
+                            "cryptoWallets",
+                            index,
+                            "tag",
+                            event.target.value,
+                          )
+                        }
+                      />
+                    </Field>
+                  </TwoColumn>
                 </SensitivePanel>
-              </div>
+              ))}
             </ProfileSection>
           )}
           </div>
@@ -1640,6 +2053,74 @@ export default function ProfileOnboardingPage() {
 
 function ProfileSection({ children }: { children: ReactNode }) {
   return <section className="space-y-4">{children}</section>;
+}
+
+function SectionHeader({
+  actionLabel,
+  onAdd,
+}: {
+  actionLabel: string;
+  onAdd: () => void;
+}) {
+  return (
+    <div className="flex justify-end">
+      <Button type="button" variant="outline" onClick={onAdd}>
+        <Plus className="h-4 w-4" aria-hidden="true" />
+        {actionLabel}
+      </Button>
+    </div>
+  );
+}
+
+function FinancialGroupHeader({
+  actionLabel,
+  onAdd,
+  title,
+}: {
+  actionLabel: string;
+  onAdd: () => void;
+  title: string;
+}) {
+  return (
+    <div className="flex flex-col gap-3 border-t border-border pt-4 first:border-t-0 first:pt-0 sm:flex-row sm:items-center sm:justify-between">
+      <p className="text-sm font-semibold">{title}</p>
+      <Button type="button" variant="outline" onClick={onAdd}>
+        <Plus className="h-4 w-4" aria-hidden="true" />
+        {actionLabel}
+      </Button>
+    </div>
+  );
+}
+
+function RepeatablePanel({
+  canRemove,
+  children,
+  onRemove,
+  title,
+}: {
+  canRemove: boolean;
+  children: ReactNode;
+  onRemove: () => void;
+  title: string;
+}) {
+  return (
+    <div className="space-y-3 rounded-md border border-border p-3">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm font-semibold">{title}</p>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={onRemove}
+          disabled={!canRemove}
+          aria-label={`Remove ${title.toLowerCase()}`}
+        >
+          <Trash2 className="h-4 w-4" aria-hidden="true" />
+        </Button>
+      </div>
+      {children}
+    </div>
+  );
 }
 
 function ProfilePhotoUpload({
@@ -1746,17 +2227,33 @@ function AddressFields({
 }
 
 function SensitivePanel({
+  canRemove,
   title,
   children,
+  onRemove,
 }: {
+  canRemove: boolean;
   title: string;
   children: ReactNode;
+  onRemove: () => void;
 }) {
   return (
     <div className="space-y-3 rounded-md border border-border p-3">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-sm font-semibold">{title}</p>
-        <Badge variant="warning">Sensitive</Badge>
+        <div className="flex items-center gap-2">
+          <p className="text-sm font-semibold">{title}</p>
+          <Badge variant="warning">Sensitive</Badge>
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={onRemove}
+          disabled={!canRemove}
+          aria-label={`Remove ${title.toLowerCase()}`}
+        >
+          <Trash2 className="h-4 w-4" aria-hidden="true" />
+        </Button>
       </div>
       {children}
     </div>

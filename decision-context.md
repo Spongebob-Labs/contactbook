@@ -1,5 +1,23 @@
 # Decision Context
 
+## 2026-05-20 - Complete Array-Aware Financial Profile Display
+
+- Decision: Update the profile page financial display to prefer `fieldId` keys for repeated financial rows and show optional bank routing fields.
+- Reason: Financial rows are field-backed array entries, so `fieldId` is the most stable React key when available, and the live API exposes IBAN, SWIFT/BIC, and routing number values that should be visible when saved.
+- Notes: Backend code remains untouched. This is display-only and does not change profile form payload behavior.
+
+## 2026-05-20 - Keep One Visible Row In Repeatable Profile Groups
+
+- Decision: Disable the remove button when a repeatable profile group has only one visible row.
+- Reason: The onboarding/edit wizard should keep a stable input surface for array-backed sections, so users clear the last row manually instead of deleting the entire UI for that section.
+- Notes: Backend code remains untouched. Payload behavior is unchanged because backend will make partially filled financial row fields optional.
+
+## 2026-05-20 - Support Repeatable Profile Wizard Groups
+
+- Decision: Refactor the shared profile onboarding/edit wizard to support multiple work, business, social, bank account, digital wallet, and crypto wallet rows with add/remove controls.
+- Reason: The current profile create/update API accepts arrays for these profile groups, so the UI should let users maintain more than one entry instead of only editing the first saved row.
+- Notes: Keep backend code untouched. Keep validation required only for identity fields in the UI; optional repeated rows are omitted when blank, and row labels are shown as `Label` at the end of each group instead of `Group tag`.
+
 ## 2026-05-20 - Add Editable Identity Fields To Profile Wizard
 
 - Decision: Show first name, last name, phone number, and email in step 1 of the profile onboarding/edit wizard. Keep first name, last name, and email editable, while rendering phone number as a read-only muted input.

@@ -256,10 +256,17 @@ export default function ProfilePage() {
                 <EmptyState label="No bank accounts added yet." />
               )}
               {profile.financial.bankAccounts.map((item) => (
-                <FinancialItem key={item.groupId} tag={item.tag} sensitive={item.isSensitive}>
+                <FinancialItem
+                  key={item.fieldId ?? item.groupId}
+                  tag={item.tag}
+                  sensitive={item.isSensitive}
+                >
                   <DetailRow label="Bank" value={item.bankName} />
                   <DetailRow label="Holder" value={item.accountHolder} />
                   <DetailRow label="Account" value={maskMiddle(item.accountNumber)} />
+                  <DetailRow label="IBAN" value={maskMiddle(item.iban)} />
+                  <DetailRow label="SWIFT/BIC" value={item.swiftBic} />
+                  <DetailRow label="Routing number" value={item.routingNumber} />
                   <DetailRow label="IFSC" value={item.ifsc} />
                   <DetailRow label="Currency" value={item.currency} />
                 </FinancialItem>
@@ -271,7 +278,11 @@ export default function ProfilePage() {
                 <EmptyState label="No digital wallets added yet." />
               )}
               {profile.financial.digitalWallets.map((item) => (
-                <FinancialItem key={item.groupId} tag={item.tag} sensitive={item.isSensitive}>
+                <FinancialItem
+                  key={item.fieldId ?? item.groupId}
+                  tag={item.tag}
+                  sensitive={item.isSensitive}
+                >
                   <DetailRow label="Platform" value={item.platform} />
                   <DetailRow label="Handle or link" value={item.handleOrLink} />
                 </FinancialItem>
@@ -283,7 +294,11 @@ export default function ProfilePage() {
                 <EmptyState label="No crypto wallets added yet." />
               )}
               {profile.financial.cryptoWallets.map((item) => (
-                <FinancialItem key={item.groupId} tag={item.tag} sensitive={item.isSensitive}>
+                <FinancialItem
+                  key={item.fieldId ?? item.groupId}
+                  tag={item.tag}
+                  sensitive={item.isSensitive}
+                >
                   <DetailRow label="Network" value={item.network} />
                   <DetailRow label="Address" value={maskMiddle(item.address)} />
                 </FinancialItem>
