@@ -1,5 +1,11 @@
 # Decision Context
 
+## 2026-05-20 - Send Complete Profile Onboarding Shell
+
+- Decision: Build a dedicated frontend payload for `POST /v1/profile/onboarding` that always includes identity, personal, work, business, socials, and financial shells, with empty arrays for empty repeatable sections.
+- Reason: The live onboarding API expects a complete first-time setup shape even when users skip optional details; sending `{}` can reach the API and fail with a server error.
+- Notes: Normal `PATCH /v1/profile/me` remains compact. The onboarding identity uses the loaded registration values so the backend identity-match guard can pass before any edited identity values are patched separately. Optional shell fields use `null` instead of empty strings.
+
 ## 2026-05-20 - Resolve PR 21 Profile Onboarding Merge Conflict
 
 - Decision: Merge `origin/dev` into `feat/ui-creation` and resolve the profile onboarding conflict by keeping repeatable profile groups, editable identity fields, optional financial rows, and the latest first-time profile initialization path.

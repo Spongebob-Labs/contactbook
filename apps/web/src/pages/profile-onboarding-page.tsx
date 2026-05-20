@@ -151,12 +151,13 @@ type ProfileOnboardingPayload = {
   identity?: {
     firstName?: string;
     lastName?: string;
+    primaryPhone?: string;
     primaryEmail?: string;
     profilePhoto?: string | null;
   };
   personal?: {
-    tag?: string;
-    postalAddress?: AddressPayload;
+    tag?: string | null;
+    postalAddress?: AddressPayload | null;
     mobile?: string;
     landline?: string;
     email?: string;
@@ -164,7 +165,7 @@ type ProfileOnboardingPayload = {
     yearOfBirth?: string;
     currentLocation?: string;
     relationshipStatus?: string;
-    custom?: Record<string, string>;
+    custom?: Record<string, string> | null;
   };
   work?: Array<{
     groupId?: string;
@@ -227,6 +228,35 @@ type ProfileOnboardingPayload = {
       network?: string;
       address?: string;
     }>;
+  };
+};
+
+type RequiredOnboardingPayload = {
+  identity: {
+    firstName: string;
+    lastName: string;
+    primaryPhone: string;
+    primaryEmail: string;
+    profilePhoto: string | null;
+  };
+  personal: {
+    tag: string | null;
+    postalAddress: AddressPayload | null;
+    custom: Record<string, string> | null;
+  };
+  work: NonNullable<ProfileOnboardingPayload["work"]>;
+  business: NonNullable<ProfileOnboardingPayload["business"]>;
+  socials: NonNullable<ProfileOnboardingPayload["socials"]>;
+  financial: {
+    bankAccounts: NonNullable<
+      NonNullable<ProfileOnboardingPayload["financial"]>["bankAccounts"]
+    >;
+    digitalWallets: NonNullable<
+      NonNullable<ProfileOnboardingPayload["financial"]>["digitalWallets"]
+    >;
+    cryptoWallets: NonNullable<
+      NonNullable<ProfileOnboardingPayload["financial"]>["cryptoWallets"]
+    >;
   };
 };
 
@@ -401,6 +431,11 @@ function toAddressPayload(address: AddressForm): AddressPayload {
 function optionalText(value: string): string | undefined {
   const next = clean(value);
   return next || undefined;
+}
+
+function nullableText(value: string | null | undefined): string | null {
+  const next = clean(value ?? "");
+  return next || null;
 }
 
 function compactObject<T extends Record<string, unknown>>(value: T): Partial<T> {
@@ -681,6 +716,7 @@ export function ProfileOnboardingModal({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [hasExistingProfile, setHasExistingProfile] = useState(false);
+  const [registeredIdentity, setRegisteredIdentity] = useState(initialForm.identity);
   const step = steps[stepIndex];
   const controlsDisabled = isSaving || isLoadingProfile || Boolean(loadError);
 
@@ -693,7 +729,9 @@ export function ProfileOnboardingModal({
       try {
         const profile = await apiFetch<ProfileMeResponse>("/v1/profile/me");
         if (isMounted) {
-          setForm(profileToForm(profile));
+          const nextForm = profileToForm(profile);
+          setForm(nextForm);
+          setRegisteredIdentity(nextForm.identity);
           setHasExistingProfile(hasInitializedProfile(profile));
         }
       } catch (error) {
@@ -1118,6 +1156,31 @@ export function ProfileOnboardingModal({
     return payload;
   };
 
+  const buildOnboardingPayload = (
+    payload: ProfileOnboardingPayload,
+  ): RequiredOnboardingPayload => ({
+    identity: {
+      firstName: registeredIdentity.firstName.trim(),
+      lastName: registeredIdentity.lastName.trim(),
+      primaryPhone: registeredIdentity.primaryPhone.trim(),
+      primaryEmail: registeredIdentity.primaryEmail.trim(),
+      profilePhoto: nullableText(form.identity.profilePhoto),
+    },
+    personal: {
+      tag: nullableText(payload.personal?.tag),
+      postalAddress: payload.personal?.postalAddress ?? null,
+      custom: payload.personal?.custom ?? null,
+    },
+    work: payload.work ?? [],
+    business: payload.business ?? [],
+    socials: payload.socials ?? [],
+    financial: {
+      bankAccounts: payload.financial?.bankAccounts ?? [],
+      digitalWallets: payload.financial?.digitalWallets ?? [],
+      cryptoWallets: payload.financial?.cryptoWallets ?? [],
+    },
+  });
+
   const saveProfile = async () => {
     const error = validate();
     if (error) {
@@ -1131,17 +1194,12 @@ export function ProfileOnboardingModal({
       const shouldInitialize = !hasExistingProfile;
       try {
         if (shouldInitialize) {
-          const { identity, ...onboardingSections } = payload;
-          const onboardingPayload: ProfileOnboardingPayload = { ...onboardingSections };
-          if (identity?.profilePhoto !== undefined) {
-            onboardingPayload.identity = { profilePhoto: identity.profilePhoto };
-          }
-
           await apiFetch<unknown>("/v1/profile/onboarding", {
             method: "POST",
-            body: onboardingPayload,
+            body: buildOnboardingPayload(payload),
           });
 
+          const identity = payload.identity;
           if (
             identity?.firstName !== undefined ||
             identity?.lastName !== undefined ||
