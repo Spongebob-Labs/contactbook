@@ -338,27 +338,56 @@ describe("ProfileMeUpsertService", () => {
         work: [],
       });
 
-      expect(applySpy).toHaveBeenCalledWith(userId, {});
+      expect(applySpy).toHaveBeenCalledWith(userId, {
+        identity: {
+          firstName: "Jane",
+          lastName: "Doe",
+          primaryEmail: "jane@example.com",
+          primaryPhone: "+12025551234",
+        },
+      });
       expect(prisma.user.update).toHaveBeenCalledWith({
         where: { id: userId },
         data: {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-          profileOnboardingCompletedAt: expect.any(Date),
+          profileOnboardingCompletedAt: expect.any(Date) as Date,
         },
       });
     });
 
-    it("rejects identity mismatch with registration", async () => {
+    it("applies identity updates during onboarding", async () => {
+      const svc = new ProfileMeUpsertService(
+        prisma as never,
+        persistence as never,
+        serializer as never,
+      );
+      const applySpy = jest.spyOn(svc as never, "apply" as never);
+
+      await svc.completeOnboarding(userId, {
+        identity: { ...registrationIdentity, firstName: "Janet" },
+      });
+
+      expect(applySpy).toHaveBeenCalledWith(userId, {
+        identity: {
+          firstName: "Janet",
+          lastName: "Doe",
+          primaryEmail: "jane@example.com",
+          primaryPhone: "+12025551234",
+        },
+      });
+    });
+
+    it("requires identity on onboarding", async () => {
       const svc = new ProfileMeUpsertService(
         prisma as never,
         persistence as never,
         serializer as never,
       );
       await expect(
-        svc.completeOnboarding(userId, {
-          identity: { ...registrationIdentity, firstName: "Wrong" },
-        }),
-      ).rejects.toThrow("identity.firstName does not match registration");
+        svc.completeOnboarding(
+          userId,
+          {} as Parameters<ProfileMeUpsertService["completeOnboarding"]>[1],
+        ),
+      ).rejects.toThrow("identity is required");
     });
 
     it("initializes profile via apply when sections are present", async () => {
@@ -379,7 +408,13 @@ describe("ProfileMeUpsertService", () => {
 
       expect(applySpy).toHaveBeenCalledWith(userId, {
         personal: { tag: "Primary Personal", mobile: "+12025551234" },
-        identity: { profilePhoto: "https://example.com/photo.jpg" },
+        identity: {
+          firstName: "Jane",
+          lastName: "Doe",
+          primaryEmail: "jane@example.com",
+          primaryPhone: "+12025551234",
+          profilePhoto: "https://example.com/photo.jpg",
+        },
       });
     });
   });
