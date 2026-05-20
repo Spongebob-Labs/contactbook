@@ -4,7 +4,7 @@
 #
 # Secrets (repository Settings → Secrets and variables → Actions):
 # - API_ENV_B64 — required. Base64-encoded full `apps/api/.env` (see apps/api/.env.example). Used for
-#   Prisma generate, Nest build, tests, and Docker build (BuildKit file secret `api_env`).
+#   Prisma generate, typecheck, tests, and Docker build (BuildKit file secret `api_env`).
 # - API_ENV_CI_B64 — optional. If set, CI uses this instead of API_ENV_B64 (e.g. CI-only DB URL).
 # - GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_SERVICE_ACCOUNT — required to push images to GAR on push to main/dev.
 #   Pushes tag :<sha> and :<0.1.run_number> for both main and dev.
@@ -49,7 +49,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: ${{ github.event_name == 'push' && 0 || 1 }}
 
       - name: Decode API env for CI
         env:
@@ -77,31 +77,28 @@ jobs:
           fi
 
       - name: Container image tags
+        if: steps.garpush.outputs.push == 'true'
         id: imagetags
         env:
-          PUSH: ${{ steps.garpush.outputs.push }}
           GCP_REGION: ${{ vars.GCP_REGION }}
           GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
           RUN_NUMBER: ${{ github.run_number }}
         run: |
-          if [ "$PUSH" = "true" ]; then
-            if [ -z "$GCP_REGION" ] || [ -z "$GCP_PROJECT_ID" ]; then
-              echo "Set repository variables GCP_REGION and GCP_PROJECT_ID to push images to GAR."
-              exit 1
-            fi
-            LATEST_TAG=$(git describe --tags --match "v*" --abbrev=0 2>/dev/null || echo "v0.1")
-            BASE_VERSION=${LATEST_TAG#v}
-            VERSION_TAG="${BASE_VERSION}.${RUN_NUMBER}"
-            BASE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/contactbook/api"
-            {
-              echo "tags<<__EOF__"
-              echo "${BASE}:${{ github.sha }}"
-              echo "${BASE}:${VERSION_TAG}"
-              echo "__EOF__"
-            } >> "$GITHUB_OUTPUT"
-          else
-            echo "tags=contactbook-api:ci" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          if [ -z "$GCP_REGION" ] || [ -z "$GCP_PROJECT_ID" ]; then
+            echo "Set repository variables GCP_REGION and GCP_PROJECT_ID to push images to GAR."
+            exit 1
           fi
+          LATEST_TAG=$(git describe --tags --match "v*" --abbrev=0 2>/dev/null || echo "v0.1")
+          BASE_VERSION=${LATEST_TAG#v}
+          VERSION_TAG="${BASE_VERSION}.${RUN_NUMBER}"
+          BASE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/contactbook/api"
+          {
+            echo "tags<<__EOF__"
+            echo "${BASE}:${{ github.sha }}"
+            echo "${BASE}:${VERSION_TAG}"
+            echo "__EOF__"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -124,24 +121,14 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-prisma-
 
-      - name: Cache TS Build Output (api)
-        uses: actions/cache@v4
-        with:
-          path: |
-            apps/api/.tsbuildinfo
-            apps/api/dist
-          key: ${{ runner.os }}-tsbuild-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-tsbuild-
-
       - name: Install dependencies (api + workspace deps)
         run: pnpm install --frozen-lockfile --filter api...
 
       - name: Prisma generate (api)
         run: pnpm -C apps/api prisma:generate
 
-      - name: Build (api)
-        run: pnpm -C apps/api build
+      - name: Typecheck (api)
+        run: pnpm -C apps/api exec tsc -p tsconfig.build.json --noEmit
 
       - name: Test (api)
         run: pnpm -C apps/api test
@@ -162,17 +149,18 @@ jobs:
         run: gcloud auth configure-docker "${{ vars.GCP_REGION }}-docker.pkg.dev" --quiet
 
       - name: Set up Docker Buildx
+        if: steps.garpush.outputs.push == 'true'
         uses: docker/setup-buildx-action@v3
 
       - name: Build and push container image
+        if: steps.garpush.outputs.push == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
           file: apps/api/Dockerfile
-          push: ${{ steps.garpush.outputs.push == 'true' }}
-          load: ${{ steps.garpush.outputs.push != 'true' }}
+          push: true
           tags: ${{ steps.imagetags.outputs.tags }}
           secret-files: |
             api_env=${{ github.workspace }}/apps/api/.env
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: type=gha,mode=min
