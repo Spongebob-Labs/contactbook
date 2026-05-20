@@ -43,7 +43,8 @@ export class ProfileController {
     summary: "First-time profile setup after registration",
     description:
       "Requires identity (firstName, lastName, primaryEmail, primaryPhone; updates the user record; profilePhoto optional). " +
-      "Other sections are optional; omit groupId/fieldId on first-time setup. Returns 409 if onboarding already completed.",
+      "Request body uses the same flattened shape as GET /profile/me (work.companyName, business.businessName, socials.skype, financial.isSensitive, etc.). " +
+      "Do not send profileOnboardingCompletedAt — the server sets it. Omit groupId/fieldId on first-time setup. Returns 409 if onboarding already completed.",
   })
   @ApiBody({
     type: ProfileMeOnboardingDto,
@@ -61,6 +62,48 @@ export class ProfileController {
           personal: {
             tag: "Primary Personal",
             mobile: "+12025551234",
+          },
+        },
+      },
+      fullProfile: {
+        summary: "Flattened sections (matches GET /profile/me write shape)",
+        value: {
+          identity: {
+            firstName: "Jane",
+            lastName: "Doe",
+            primaryPhone: "+12025551234",
+            primaryEmail: "jane@example.com",
+            profilePhoto: null,
+          },
+          personal: {
+            tag: "Primary Personal",
+            mobile: "+12025551234",
+            postalAddress: {
+              street: "1 Main St",
+              city: "Springfield",
+              state: "IL",
+              pincode: "62701",
+              country: "USA",
+            },
+          },
+          work: [
+            {
+              tag: "Acme Corp",
+              companyName: "Acme Corp",
+              workTitle: "Engineer",
+            },
+          ],
+          financial: {
+            bankAccounts: [
+              {
+                tag: "Primary",
+                bankName: "Example Bank",
+                accountHolder: "Jane Doe",
+                accountNumber: "123456789",
+                currency: "USD",
+                isSensitive: true,
+              },
+            ],
           },
         },
       },
@@ -89,8 +132,10 @@ export class ProfileController {
   @ApiOperation({
     summary: "Partially update profile",
     description:
-      "Only top-level sections present in the body are applied. Empty shells are ignored. Use null on personal fields to clear them; identity core fields cannot be null. Remove work/business/social/financial groups via DELETE /profile/me/groups.",
+      "Only top-level sections present in the body are applied. Same flattened field names as GET /profile/me. Empty shells are ignored. " +
+      "Use null on personal fields to clear them; identity core fields cannot be null. Remove work/business/social/financial groups via DELETE /profile/me/groups.",
   })
+  @ApiBody({ type: ProfileMePatchDto })
   @ApiOkResponse({ type: ProfileMeResponseDto })
   patchMe(@CurrentUser() user: JwtUserPayload, @Body() dto: ProfileMePatchDto) {
     return this.profileMeUpsert.patch(user.sub, dto);

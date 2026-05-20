@@ -1,9 +1,11 @@
 /**
- * Deletes all contact and connection rows for a user. Does not touch users,
- * profile fields, cards, oauth, sessions, travel events, tags, etc.
+ * Deletes contacts, connections, and profile/me data for a user (field groups,
+ * profile fields, contact cards, card mappings). Resets profile onboarding.
+ * Does not touch the users row identity (name, email, phone), oauth, sessions,
+ * travel events, tags, etc.
  *
  * Usage (from repo root):
- *   ./scripts/purge-user-contacts-connections.sh <userId> [--dry-run] [--yes]
+ *   pnpm -C apps/api exec ts-node --transpile-only scripts/purge-user-contacts-connections.ts <userId> [--dry-run] [--yes]
  */
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
@@ -71,7 +73,13 @@ async function main() {
   try {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, email: true, firstName: true, lastName: true },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        profileOnboardingCompletedAt: true,
+      },
     });
     if (!user) {
       console.error(`User not found: ${userId}`);
@@ -88,27 +96,49 @@ async function main() {
       dedupKeyCount,
       integrationCount,
       connectionCount,
+      fieldGroupCount,
+      profileFieldCount,
+      cardCount,
+      cardMappingCount,
     ] = await Promise.all([
       prisma.contact.count({ where: { userId } }),
       prisma.contactMergeGroup.count({ where: { userId } }),
       prisma.contactDedupKey.count({ where: { userId } }),
       prisma.integrationState.count({ where: { userId } }),
       prisma.connection.count({ where: connectionWhere }),
+      prisma.fieldGroup.count({ where: { userId } }),
+      prisma.profileField.count({ where: { group: { userId } } }),
+      prisma.contactCard.count({ where: { userId } }),
+      prisma.cardFieldMapping.count({ where: { card: { userId } } }),
     ]);
 
+    const willResetOnboarding = user.profileOnboardingCompletedAt != null;
+
     console.log(`User: ${user.email} (${user.firstName} ${user.lastName})`);
-    console.log(`  contacts:            ${contactCount}`);
-    console.log(`  contact_merge_groups:  ${mergeGroupCount}`);
-    console.log(`  contact_dedup_keys:    ${dedupKeyCount}`);
-    console.log(`  integration_states:    ${integrationCount}`);
-    console.log(`  connections:           ${connectionCount}`);
+    console.log(`  contacts:              ${contactCount}`);
+    console.log(`  contact_merge_groups:    ${mergeGroupCount}`);
+    console.log(`  contact_dedup_keys:      ${dedupKeyCount}`);
+    console.log(`  integration_states:      ${integrationCount}`);
+    console.log(`  connections:             ${connectionCount}`);
+    console.log(`  field_groups (profile):  ${fieldGroupCount}`);
+    console.log(`  profile_fields:          ${profileFieldCount}`);
+    console.log(`  contact_cards:           ${cardCount}`);
+    console.log(`  card_field_mappings:     ${cardMappingCount}`);
+    console.log(
+      `  profile_onboarding_reset: ${willResetOnboarding ? "yes" : "no"}`,
+    );
 
     const total =
       contactCount +
       mergeGroupCount +
       dedupKeyCount +
       integrationCount +
-      connectionCount;
+      connectionCount +
+      fieldGroupCount +
+      profileFieldCount +
+      cardCount +
+      cardMappingCount +
+      (willResetOnboarding ? 1 : 0);
 
     if (total === 0) {
       console.log("Nothing to delete.");
@@ -138,25 +168,43 @@ async function main() {
       const deletedConnections = await tx.connection.deleteMany({
         where: connectionWhere,
       });
+      const deletedCards = await tx.contactCard.deleteMany({ where: { userId } });
+      const deletedFieldGroups = await tx.fieldGroup.deleteMany({
+        where: { userId },
+      });
+      const resetUser = await tx.user.update({
+        where: { id: userId },
+        data: { profileOnboardingCompletedAt: null },
+      });
       return {
         deletedContacts,
         deletedMergeGroups,
         deletedIntegrations,
         deletedConnections,
+        deletedCards,
+        deletedFieldGroups,
+        resetUser,
       };
     });
 
     console.log("\nDeleted:");
-    console.log(`  contacts:            ${result.deletedContacts.count}`);
+    console.log(`  contacts:              ${result.deletedContacts.count}`);
     console.log(
-      `  contact_merge_groups:  ${result.deletedMergeGroups.count}`,
+      `  contact_merge_groups:    ${result.deletedMergeGroups.count}`,
     );
     console.log(
-      `  integration_states:    ${result.deletedIntegrations.count}`,
+      `  integration_states:      ${result.deletedIntegrations.count}`,
     );
-    console.log(`  connections:           ${result.deletedConnections.count}`);
+    console.log(`  connections:             ${result.deletedConnections.count}`);
+    console.log(`  contact_cards:           ${result.deletedCards.count}`);
+    console.log(`  field_groups (profile):  ${result.deletedFieldGroups.count}`);
     console.log(
-      "(contact phones/emails/etc. removed via cascade; connection–tag links via cascade)",
+      `  profile_onboarding_reset: ${
+        result.resetUser.profileOnboardingCompletedAt == null ? "yes" : "no"
+      }`,
+    );
+    console.log(
+      "(contact phones/emails, profile field extensions, and card mappings removed via cascade)",
     );
   } finally {
     await prisma.$disconnect();

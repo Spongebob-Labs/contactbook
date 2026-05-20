@@ -3,7 +3,7 @@ import {
   ConflictException,
   Injectable,
 } from "@nestjs/common";
-import { FieldCategory, FieldType } from "@prisma/client";
+import { FieldCategory, FieldType, Prisma } from "@prisma/client";
 import { inboundE164ToIdentity, normalizeDialCode } from "../common/phone.util";
 import { PrismaService } from "../prisma/prisma.service";
 import type { ProfileDeleteGroupDto } from "./dto/profile-delete-group.dto";
@@ -125,13 +125,17 @@ export class ProfileMeUpsertService {
       );
     }
     if (dto.personal !== undefined) {
-      await this.applyPersonal(userId, dto.personal, groups);
+      await this.applyPersonal(
+        userId,
+        dto.personal as unknown as Record<string, unknown>,
+        groups,
+      );
     }
     if (dto.work !== undefined) {
       await this.applyGroupArray(
         userId,
         FieldCategory.WORK,
-        dto.work,
+        dto.work as unknown as Record<string, unknown>[],
         groups,
         inflateWorkItem,
       );
@@ -140,7 +144,7 @@ export class ProfileMeUpsertService {
       await this.applyGroupArray(
         userId,
         FieldCategory.BUSINESS,
-        dto.business,
+        dto.business as unknown as Record<string, unknown>[],
         groups,
         inflateBusinessItem,
       );
@@ -149,7 +153,7 @@ export class ProfileMeUpsertService {
       await this.applyGroupArray(
         userId,
         FieldCategory.SOCIAL,
-        dto.socials,
+        dto.socials as unknown as Record<string, unknown>[],
         groups,
         inflateSocialItem,
       );
@@ -170,6 +174,18 @@ export class ProfileMeUpsertService {
     identity: Record<string, unknown>,
     groups: GroupWithFields[],
   ): Promise<void> {
+    const current = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        email: true,
+        phone: true,
+        countryCode: true,
+      },
+    });
+    if (!current) {
+      throw new BadRequestException("User not found");
+    }
+
     const userUpdate: {
       firstName?: string;
       lastName?: string;
@@ -185,22 +201,50 @@ export class ProfileMeUpsertService {
       userUpdate.lastName = (identity.lastName as string).trim();
     }
     if (identity.primaryEmail !== undefined && identity.primaryEmail !== null) {
-      userUpdate.email = (identity.primaryEmail as string).trim();
+      const email = (identity.primaryEmail as string).trim().toLowerCase();
+      if (email !== current.email.toLowerCase()) {
+        const taken = await this.prisma.user.findUnique({
+          where: { email },
+          select: { id: true },
+        });
+        if (taken && taken.id !== userId) {
+          throw new ConflictException("This email is already in use");
+        }
+        userUpdate.email = email;
+      }
     }
     if (identity.primaryPhone !== undefined && identity.primaryPhone !== null) {
       const parsed = inboundE164ToIdentity(identity.primaryPhone as string);
       if (!parsed) {
         throw new BadRequestException("Invalid primaryPhone");
       }
-      userUpdate.countryCode = normalizeDialCode(parsed.countryCode);
-      userUpdate.phone = parsed.phone;
+      const countryCode = normalizeDialCode(parsed.countryCode);
+      const phone = parsed.phone;
+      if (
+        phone !== current.phone ||
+        countryCode !== normalizeDialCode(current.countryCode)
+      ) {
+        const taken = await this.prisma.user.findUnique({
+          where: { countryCode_phone: { countryCode, phone } },
+          select: { id: true },
+        });
+        if (taken && taken.id !== userId) {
+          throw new ConflictException("This phone number is already in use");
+        }
+        userUpdate.countryCode = countryCode;
+        userUpdate.phone = phone;
+      }
     }
 
     if (Object.keys(userUpdate).length > 0) {
-      await this.prisma.user.update({
-        where: { id: userId },
-        data: userUpdate,
-      });
+      try {
+        await this.prisma.user.update({
+          where: { id: userId },
+          data: userUpdate,
+        });
+      } catch (err) {
+        throw this.mapUserUniqueConstraintError(err);
+      }
     }
 
     if (identity.profilePhoto === undefined) {
@@ -459,5 +503,29 @@ export class ProfileMeUpsertService {
       inflateCryptoRow,
       FieldType.CRYPTO_WALLET,
     );
+  }
+
+  private mapUserUniqueConstraintError(err: unknown): unknown {
+    if (
+      err instanceof Prisma.PrismaClientKnownRequestError &&
+      err.code === "P2002"
+    ) {
+      const fields = err.meta?.target;
+      const fieldList = Array.isArray(fields)
+        ? fields.map(String)
+        : typeof fields === "string"
+          ? [fields]
+          : [];
+      if (fieldList.some((f) => f.includes("email"))) {
+        return new ConflictException("This email is already in use");
+      }
+      if (
+        fieldList.some((f) => f.includes("phone") || f.includes("countryCode"))
+      ) {
+        return new ConflictException("This phone number is already in use");
+      }
+      return new ConflictException("Identity field already in use");
+    }
+    return err;
   }
 }

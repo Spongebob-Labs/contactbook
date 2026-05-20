@@ -123,14 +123,17 @@ function isEmptyGroupItem(item: Record<string, unknown>): boolean {
   return true;
 }
 
-function filterNonEmptyGroupItems(
-  items: Record<string, unknown>[] | undefined,
-): Record<string, unknown>[] | undefined {
+function filterNonEmptyGroupItems<T extends object>(
+  items: T[] | undefined,
+): T[] | undefined {
   if (!Array.isArray(items)) {
     return undefined;
   }
   const filtered = items.filter(
-    (item) => item && typeof item === "object" && !isEmptyGroupItem(item),
+    (item) =>
+      item &&
+      typeof item === "object" &&
+      !isEmptyGroupItem(item as Record<string, unknown>),
   );
   return filtered.length > 0 ? filtered : undefined;
 }

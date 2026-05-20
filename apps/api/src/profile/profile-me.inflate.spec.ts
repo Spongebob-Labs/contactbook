@@ -3,7 +3,7 @@ import {
   flattenFieldForContext,
   type FieldWithExtensions,
 } from "./profile-me.flatten";
-import { inflateWorkItem } from "./profile-me.inflate";
+import { inflateSocialItem, inflateWorkItem } from "./profile-me.inflate";
 
 function mkField(
   partial: Partial<FieldWithExtensions> & Pick<FieldWithExtensions, "type">,
@@ -51,5 +51,37 @@ describe("inflateWorkItem", () => {
     expect(item.fields.find((f) => f.type === FieldType.JOB_TITLE)?.value).toBe(
       "Architect",
     );
+  });
+});
+
+describe("inflateSocialItem", () => {
+  it("maps top-level skype and whatsApp to SOCIAL_LINK fields", () => {
+    const item = inflateSocialItem({
+      tag: "Social",
+      skype: "live:user",
+      whatsApp: "+12025551234",
+      custom: { GitHub: "https://github.com/example" },
+    });
+    expect(
+      item.fields.some(
+        (f) =>
+          f.type === FieldType.SOCIAL_LINK &&
+          f.label === "skype" &&
+          f.value === "live:user",
+      ),
+    ).toBe(true);
+    expect(
+      item.fields.some(
+        (f) =>
+          f.type === FieldType.SOCIAL_LINK &&
+          f.label === "whatsapp" &&
+          f.value === "+12025551234",
+      ),
+    ).toBe(true);
+    expect(
+      item.fields.some(
+        (f) => f.type === FieldType.CUSTOM && f.label === "GitHub",
+      ),
+    ).toBe(true);
   });
 });
