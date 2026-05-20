@@ -172,9 +172,9 @@ type ProfileOnboardingPayload = {
   financial?: {
     bankAccounts?: Array<{
       tag?: string;
-      bankName: string;
-      accountHolder: string;
-      accountNumber: string;
+      bankName?: string;
+      accountHolder?: string;
+      accountNumber?: string;
       ifsc?: string;
       currency?: string;
     }>;
@@ -648,22 +648,6 @@ export function ProfileOnboardingModal({
       return addressError;
     }
 
-    const bankTouched = hasAny([
-      form.financial.bank.bankName,
-      form.financial.bank.accountHolder,
-      form.financial.bank.accountNumber,
-      form.financial.bank.ifsc,
-      form.financial.bank.currency,
-    ]);
-    if (
-      bankTouched &&
-      (!hasText(form.financial.bank.bankName) ||
-        !hasText(form.financial.bank.accountHolder) ||
-        !hasText(form.financial.bank.accountNumber))
-    ) {
-      return "Bank account needs bank name, account holder, and account number.";
-    }
-
     const walletTouched = hasAny([
       form.financial.wallet.platform,
       form.financial.wallet.handleOrLink,
@@ -830,9 +814,9 @@ export function ProfileOnboardingModal({
       financial.bankAccounts = [
         {
           tag: optionalText(form.financial.bankTag),
-          bankName: clean(bank.bankName),
-          accountHolder: clean(bank.accountHolder),
-          accountNumber: clean(bank.accountNumber),
+          bankName: optionalText(bank.bankName),
+          accountHolder: optionalText(bank.accountHolder),
+          accountNumber: optionalText(bank.accountNumber),
           ifsc: optionalText(bank.ifsc),
           currency: optionalText(bank.currency),
         },

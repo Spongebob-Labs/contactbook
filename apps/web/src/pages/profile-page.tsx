@@ -40,7 +40,10 @@ function formatAddress(address: PostalAddress | undefined): string | null {
     .join(", ");
 }
 
-function maskMiddle(value: string): string {
+function maskMiddle(value: string | null | undefined): string | null {
+  if (!value) {
+    return null;
+  }
   if (value.length <= 8) {
     return value;
   }
