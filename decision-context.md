@@ -408,6 +408,16 @@
 - Reason: The user requested row clicks to be enough for opening contact details.
 - Notes: Rows support keyboard activation with Enter and Space in addition to pointer clicks.
 
+## 2026-05-20 - Simplify Signup Onboarding And Contact Details
+
+- Decision: Stop routing signup setup users into the card creation modal after the import step.
+- Reason: The user wants new signups to avoid the create-card modal during onboarding; cards remain available from manual card creation paths.
+- Notes: Setup-mode import skip and Google connect completion now return to `/dashboard`.
+
+- Decision: Remove internal identifiers from the contact detail page, including External id and Source metadata.
+- Reason: Imported identifiers are not useful user-facing contact details and make the page feel noisy.
+- Notes: The page still shows primary contact fields, organizations, addresses, URLs, notes, source badge, and created/updated dates.
+
 ## 2026-05-19 - Add Cards Index And Detail Pages
 
 - Decision: Add `/dashboard/cards` for listing ContactBook cards and `/dashboard/cards/:cardId` for a basic card detail view.
