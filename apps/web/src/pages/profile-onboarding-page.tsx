@@ -113,6 +113,7 @@ type OnboardingForm = {
     profilePhoto: string;
   };
   personal: {
+    groupId?: string;
     tag: string;
     title: string;
     nickname: string;
@@ -139,99 +140,17 @@ type OnboardingForm = {
   };
 };
 
-type AddressPayload = {
-  street: string;
-  city: string;
-  state?: string;
-  pincode?: string;
-  country: string;
+type NullableAddressPayload = {
+  street: string | null;
+  city: string | null;
+  state: string | null;
+  pincode: string | null;
+  country: string | null;
 };
 
-type ProfileOnboardingPayload = {
-  identity?: {
-    firstName?: string;
-    lastName?: string;
-    primaryPhone?: string;
-    primaryEmail?: string;
-    profilePhoto?: string | null;
-  };
-  personal?: {
-    tag?: string | null;
-    postalAddress?: AddressPayload | null;
-    mobile?: string;
-    landline?: string;
-    email?: string;
-    dateOfBirth?: string;
-    yearOfBirth?: string;
-    currentLocation?: string;
-    relationshipStatus?: string;
-    custom?: Record<string, string> | null;
-  };
-  work?: Array<{
-    groupId?: string;
-    tag?: string;
-    companyName?: string;
-    companyLogo?: string;
-    companyRegNumber?: string;
-    workTitle?: string;
-    workMobile?: string;
-    workLandline?: string;
-    workFax?: string;
-    workEmail?: string;
-    workPostalAddress?: AddressPayload;
-    custom?: Record<string, string>;
-  }>;
-  business?: Array<{
-    groupId?: string;
-    tag?: string;
-    businessName?: string;
-    businessLogo?: string;
-    businessRegNumber?: string;
-    businessTitle?: string;
-    businessMobile?: string;
-    businessLandline?: string;
-    businessFax?: string;
-    businessEmail?: string;
-    businessPostalAddress?: AddressPayload;
-    custom?: Record<string, string>;
-  }>;
-  socials?: Array<{
-    groupId?: string;
-    tag?: string;
-    custom?: Record<string, string>;
-  }>;
-  financial?: {
-    bankAccounts?: Array<{
-      groupId?: string;
-      fieldId?: string;
-      tag?: string;
-      bankName?: string;
-      accountHolder?: string;
-      accountNumber?: string;
-      iban?: string;
-      swiftBic?: string;
-      routingNumber?: string;
-      ifsc?: string;
-      currency?: string;
-    }>;
-    digitalWallets?: Array<{
-      groupId?: string;
-      fieldId?: string;
-      tag?: string;
-      platform?: string;
-      handleOrLink?: string;
-    }>;
-    cryptoWallets?: Array<{
-      groupId?: string;
-      fieldId?: string;
-      tag?: string;
-      network?: string;
-      address?: string;
-    }>;
-  };
-};
+type NullableCustomPayload = Record<string, string | null>;
 
-type RequiredOnboardingPayload = {
+type FullProfilePayload = {
   identity: {
     firstName: string;
     lastName: string;
@@ -240,23 +159,54 @@ type RequiredOnboardingPayload = {
     profilePhoto: string | null;
   };
   personal: {
+    groupId: string | null;
     tag: string | null;
-    postalAddress: AddressPayload | null;
-    custom: Record<string, string> | null;
+    postalAddress: NullableAddressPayload;
+    custom: NullableCustomPayload;
   };
-  work: NonNullable<ProfileOnboardingPayload["work"]>;
-  business: NonNullable<ProfileOnboardingPayload["business"]>;
-  socials: NonNullable<ProfileOnboardingPayload["socials"]>;
+  work: Array<{
+    groupId: string | null;
+    tag: string | null;
+    custom: NullableCustomPayload;
+  }>;
+  business: Array<{
+    groupId: string | null;
+    tag: string | null;
+    custom: NullableCustomPayload;
+  }>;
+  socials: Array<{
+    groupId: string | null;
+    tag: string | null;
+    custom: NullableCustomPayload;
+  }>;
   financial: {
-    bankAccounts: NonNullable<
-      NonNullable<ProfileOnboardingPayload["financial"]>["bankAccounts"]
-    >;
-    digitalWallets: NonNullable<
-      NonNullable<ProfileOnboardingPayload["financial"]>["digitalWallets"]
-    >;
-    cryptoWallets: NonNullable<
-      NonNullable<ProfileOnboardingPayload["financial"]>["cryptoWallets"]
-    >;
+    bankAccounts: Array<{
+      groupId: string | null;
+      fieldId: string | null;
+      tag: string | null;
+      bankName: string | null;
+      accountHolder: string | null;
+      accountNumber: string | null;
+      iban: string | null;
+      swiftBic: string | null;
+      routingNumber: string | null;
+      ifsc: string | null;
+      currency: string | null;
+    }>;
+    digitalWallets: Array<{
+      groupId: string | null;
+      fieldId: string | null;
+      tag: string | null;
+      platform: string | null;
+      handleOrLink: string | null;
+    }>;
+    cryptoWallets: Array<{
+      groupId: string | null;
+      fieldId: string | null;
+      tag: string | null;
+      network: string | null;
+      address: string | null;
+    }>;
   };
 };
 
@@ -342,6 +292,7 @@ const initialForm: OnboardingForm = {
     profilePhoto: "",
   },
   personal: {
+    groupId: undefined,
     tag: "Primary Personal Details",
     title: "",
     nickname: "",
@@ -404,33 +355,14 @@ function hasText(value: string): boolean {
   return clean(value).length > 0;
 }
 
-function hasAny(values: string[]): boolean {
-  return values.some(hasText);
-}
-
-function addressHasAny(address: AddressForm): boolean {
-  return hasAny([
-    address.street,
-    address.city,
-    address.state,
-    address.pincode,
-    address.country,
-  ]);
-}
-
-function toAddressPayload(address: AddressForm): AddressPayload {
+function toNullableAddressPayload(address: AddressForm): NullableAddressPayload {
   return {
-    street: clean(address.street),
-    city: clean(address.city),
-    state: clean(address.state) || undefined,
-    pincode: clean(address.pincode) || undefined,
-    country: clean(address.country),
+    street: nullableText(address.street),
+    city: nullableText(address.city),
+    state: nullableText(address.state),
+    pincode: nullableText(address.pincode),
+    country: nullableText(address.country),
   };
-}
-
-function optionalText(value: string): string | undefined {
-  const next = clean(value);
-  return next || undefined;
 }
 
 function nullableText(value: string | null | undefined): string | null {
@@ -438,19 +370,23 @@ function nullableText(value: string | null | undefined): string | null {
   return next || null;
 }
 
-function compactObject<T extends Record<string, unknown>>(value: T): Partial<T> {
+function nullableCustom(values: Record<string, string>): NullableCustomPayload {
   return Object.fromEntries(
-    Object.entries(value).filter(([, item]) => item !== undefined),
-  ) as Partial<T>;
+    Object.entries(values).map(([key, value]) => [key, nullableText(value)]),
+  );
 }
 
-function compactCustom(values: Record<string, string>): Record<string, string> | undefined {
-  const custom = compactObject(
-    Object.fromEntries(
-      Object.entries(values).map(([key, value]) => [key, optionalText(value)]),
-    ),
-  );
-  return Object.keys(custom).length > 0 ? (custom as Record<string, string>) : undefined;
+function nullableAddressCustom(
+  prefix: string,
+  address: AddressForm,
+): NullableCustomPayload {
+  return nullableCustom({
+    [`${prefix}Street`]: address.street,
+    [`${prefix}City`]: address.city,
+    [`${prefix}State`]: address.state,
+    [`${prefix}Pincode`]: address.pincode,
+    [`${prefix}Country`]: address.country,
+  });
 }
 
 function valueOrEmpty(value: string | null | undefined): string {
@@ -474,74 +410,23 @@ function addressToForm(address: PostalAddress | undefined): AddressForm {
   };
 }
 
+function addressToFormWithCustom(
+  address: PostalAddress | undefined,
+  custom: Record<string, string> | undefined,
+  prefix: string,
+): AddressForm {
+  const formAddress = addressToForm(address);
+  return {
+    street: formAddress.street || customValue(custom, `${prefix}Street`),
+    city: formAddress.city || customValue(custom, `${prefix}City`),
+    state: formAddress.state || customValue(custom, `${prefix}State`),
+    pincode: formAddress.pincode || customValue(custom, `${prefix}Pincode`),
+    country: formAddress.country || customValue(custom, `${prefix}Country`),
+  };
+}
+
 function ensureRows<T>(rows: T[], createEmpty: () => T): T[] {
   return rows.length > 0 ? rows : [createEmpty()];
-}
-
-function hasWorkDetails(row: WorkForm): boolean {
-  return (
-    hasAny([
-      row.companyName,
-      row.companyLogo,
-      row.companyRegNumber,
-      row.workTitle,
-      row.workMobile,
-      row.workLandline,
-      row.workFax,
-      row.workEmail,
-      row.employeeId,
-    ]) || addressHasAny(row.workPostalAddress)
-  );
-}
-
-function hasBusinessDetails(row: BusinessForm): boolean {
-  return (
-    hasAny([
-      row.businessName,
-      row.businessLogo,
-      row.businessRegNumber,
-      row.businessTitle,
-      row.businessMobile,
-      row.businessLandline,
-      row.businessFax,
-      row.businessEmail,
-      row.businessType,
-      row.gstin,
-    ]) || addressHasAny(row.businessPostalAddress)
-  );
-}
-
-function hasSocialDetails(row: SocialsForm): boolean {
-  return hasAny([
-    row.skype,
-    row.facebook,
-    row.twitter,
-    row.whatsapp,
-    row.blog,
-    row.website,
-    row.linkedin,
-    row.github,
-  ]);
-}
-
-function hasBankDetails(row: BankForm): boolean {
-  return hasAny([
-    row.bankName,
-    row.accountHolder,
-    row.accountNumber,
-    row.iban,
-    row.swiftBic,
-    row.routingNumber,
-    row.ifsc,
-  ]);
-}
-
-function hasWalletDetails(row: WalletForm): boolean {
-  return hasAny([row.platform, row.handleOrLink]);
-}
-
-function hasCryptoDetails(row: CryptoForm): boolean {
-  return hasAny([row.network, row.address]);
 }
 
 function profileToForm(profile: ProfileMeResponse): OnboardingForm {
@@ -555,6 +440,7 @@ function profileToForm(profile: ProfileMeResponse): OnboardingForm {
     },
     personal: {
       ...initialForm.personal,
+      groupId: profile.personal.groupId,
       tag: valueOrEmpty(profile.personal.tag) || initialForm.personal.tag,
       title: customValue(profile.personal.custom, "title"),
       nickname: customValue(profile.personal.custom, "nickname"),
@@ -567,7 +453,11 @@ function profileToForm(profile: ProfileMeResponse): OnboardingForm {
       email:
         valueOrEmpty(profile.personal.email) ||
         customValue(profile.personal.custom, "email"),
-      postalAddress: addressToForm(profile.personal.postalAddress),
+      postalAddress: addressToFormWithCustom(
+        profile.personal.postalAddress,
+        profile.personal.custom,
+        "postal",
+      ),
       dateOfBirth:
         valueOrEmpty(profile.personal.dateOfBirth) ||
         customValue(profile.personal.custom, "dateOfBirth"),
@@ -590,15 +480,28 @@ function profileToForm(profile: ProfileMeResponse): OnboardingForm {
         ...emptyWork(),
         groupId: item.groupId,
         tag: valueOrEmpty(item.tag) || emptyWork().tag,
-        companyName: valueOrEmpty(item.companyName),
-        companyLogo: valueOrEmpty(item.companyLogo),
-        companyRegNumber: valueOrEmpty(item.companyRegNumber),
-        workTitle: valueOrEmpty(item.workTitle),
-        workMobile: valueOrEmpty(item.workMobile),
-        workLandline: valueOrEmpty(item.workLandline),
-        workFax: valueOrEmpty(item.workFax),
-        workEmail: valueOrEmpty(item.workEmail),
-        workPostalAddress: addressToForm(item.workPostalAddress),
+        companyName:
+          valueOrEmpty(item.companyName) || customValue(item.custom, "companyName"),
+        companyLogo:
+          valueOrEmpty(item.companyLogo) || customValue(item.custom, "companyLogo"),
+        companyRegNumber:
+          valueOrEmpty(item.companyRegNumber) ||
+          customValue(item.custom, "companyRegNumber"),
+        workTitle:
+          valueOrEmpty(item.workTitle) || customValue(item.custom, "workTitle"),
+        workMobile:
+          valueOrEmpty(item.workMobile) || customValue(item.custom, "workMobile"),
+        workLandline:
+          valueOrEmpty(item.workLandline) ||
+          customValue(item.custom, "workLandline"),
+        workFax: valueOrEmpty(item.workFax) || customValue(item.custom, "workFax"),
+        workEmail:
+          valueOrEmpty(item.workEmail) || customValue(item.custom, "workEmail"),
+        workPostalAddress: addressToFormWithCustom(
+          item.workPostalAddress,
+          item.custom,
+          "workPostal",
+        ),
         employeeId: customValue(item.custom, "employeeId"),
       })),
       emptyWork,
@@ -608,15 +511,34 @@ function profileToForm(profile: ProfileMeResponse): OnboardingForm {
         ...emptyBusiness(),
         groupId: item.groupId,
         tag: valueOrEmpty(item.tag) || emptyBusiness().tag,
-        businessName: valueOrEmpty(item.businessName),
-        businessLogo: valueOrEmpty(item.businessLogo),
-        businessRegNumber: valueOrEmpty(item.businessRegNumber),
-        businessTitle: valueOrEmpty(item.businessTitle),
-        businessMobile: valueOrEmpty(item.businessMobile),
-        businessLandline: valueOrEmpty(item.businessLandline),
-        businessFax: valueOrEmpty(item.businessFax),
-        businessEmail: valueOrEmpty(item.businessEmail),
-        businessPostalAddress: addressToForm(item.businessPostalAddress),
+        businessName:
+          valueOrEmpty(item.businessName) ||
+          customValue(item.custom, "businessName"),
+        businessLogo:
+          valueOrEmpty(item.businessLogo) ||
+          customValue(item.custom, "businessLogo"),
+        businessRegNumber:
+          valueOrEmpty(item.businessRegNumber) ||
+          customValue(item.custom, "businessRegNumber"),
+        businessTitle:
+          valueOrEmpty(item.businessTitle) ||
+          customValue(item.custom, "businessTitle"),
+        businessMobile:
+          valueOrEmpty(item.businessMobile) ||
+          customValue(item.custom, "businessMobile"),
+        businessLandline:
+          valueOrEmpty(item.businessLandline) ||
+          customValue(item.custom, "businessLandline"),
+        businessFax:
+          valueOrEmpty(item.businessFax) || customValue(item.custom, "businessFax"),
+        businessEmail:
+          valueOrEmpty(item.businessEmail) ||
+          customValue(item.custom, "businessEmail"),
+        businessPostalAddress: addressToFormWithCustom(
+          item.businessPostalAddress,
+          item.custom,
+          "businessPostal",
+        ),
         businessType: customValue(item.custom, "businessType"),
         gstin: customValue(item.custom, "gstin"),
       })),
@@ -716,7 +638,6 @@ export function ProfileOnboardingModal({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [hasExistingProfile, setHasExistingProfile] = useState(false);
-  const [registeredIdentity, setRegisteredIdentity] = useState(initialForm.identity);
   const step = steps[stepIndex];
   const controlsDisabled = isSaving || isLoadingProfile || Boolean(loadError);
 
@@ -731,7 +652,6 @@ export function ProfileOnboardingModal({
         if (isMounted) {
           const nextForm = profileToForm(profile);
           setForm(nextForm);
-          setRegisteredIdentity(nextForm.identity);
           setHasExistingProfile(hasInitializedProfile(profile));
         }
       } catch (error) {
@@ -976,208 +896,113 @@ export function ProfileOnboardingModal({
     return null;
   };
 
-  const buildProfilePayload = (): ProfileOnboardingPayload => {
-    const payload: ProfileOnboardingPayload = {};
-
-    const identity = compactObject({
-      firstName: optionalText(form.identity.firstName),
-      lastName: optionalText(form.identity.lastName),
-      primaryEmail: optionalText(form.identity.primaryEmail),
-      profilePhoto: optionalText(form.identity.profilePhoto),
-    });
-    if (Object.keys(identity).length > 0) {
-      payload.identity = identity;
-    }
-
-    const personalCustom = compactCustom({
-      title: form.personal.title,
-      nickname: form.personal.nickname,
-      mobile: form.personal.mobile,
-      landline: form.personal.landline,
-      email: form.personal.email,
-      dateOfBirth: form.personal.dateOfBirth,
-      yearOfBirth: form.personal.yearOfBirth,
-      currentLocation: form.personal.currentLocation,
-      kidsNames: form.personal.kidsNames,
-      partnerName: form.personal.partnerName,
-      petNames: form.personal.petNames,
-      relationshipStatus: form.personal.relationshipStatus,
-      bloodGroup: form.personal.bloodGroup,
-    });
-    const hasPersonalDetails =
-      Boolean(personalCustom) ||
-      addressHasAny(form.personal.postalAddress);
-    const personal = compactObject({
-      tag: optionalText(form.personal.tag),
-      postalAddress: addressHasAny(form.personal.postalAddress)
-        ? toAddressPayload(form.personal.postalAddress)
-        : undefined,
-      custom: personalCustom,
-    });
-    if (hasPersonalDetails) {
-      payload.personal = personal;
-    }
-
-    const work = form.work
-      .filter(hasWorkDetails)
-      .map((row) => {
-        const workCustom = compactCustom({ employeeId: row.employeeId });
-        return compactObject({
-          groupId: row.groupId,
-          tag: optionalText(row.tag),
-          companyName: optionalText(row.companyName),
-          companyLogo: optionalText(row.companyLogo),
-          companyRegNumber: optionalText(row.companyRegNumber),
-          workTitle: optionalText(row.workTitle),
-          workMobile: optionalText(row.workMobile),
-          workLandline: optionalText(row.workLandline),
-          workFax: optionalText(row.workFax),
-          workEmail: optionalText(row.workEmail),
-          workPostalAddress: addressHasAny(row.workPostalAddress)
-            ? toAddressPayload(row.workPostalAddress)
-            : undefined,
-          custom: workCustom,
-        });
-      });
-    if (work.length > 0) {
-      payload.work = work;
-    }
-
-    const business = form.business
-      .filter(hasBusinessDetails)
-      .map((row) => {
-        const businessCustom = compactCustom({
-          businessType: row.businessType,
-          gstin: row.gstin,
-        });
-        return compactObject({
-          groupId: row.groupId,
-          tag: optionalText(row.tag),
-          businessName: optionalText(row.businessName),
-          businessLogo: optionalText(row.businessLogo),
-          businessRegNumber: optionalText(row.businessRegNumber),
-          businessTitle: optionalText(row.businessTitle),
-          businessMobile: optionalText(row.businessMobile),
-          businessLandline: optionalText(row.businessLandline),
-          businessFax: optionalText(row.businessFax),
-          businessEmail: optionalText(row.businessEmail),
-          businessPostalAddress: addressHasAny(row.businessPostalAddress)
-            ? toAddressPayload(row.businessPostalAddress)
-            : undefined,
-          custom: businessCustom,
-        });
-      });
-    if (business.length > 0) {
-      payload.business = business;
-    }
-
-    const socials = form.socials
-      .filter(hasSocialDetails)
-      .map((row) =>
-        compactObject({
-          groupId: row.groupId,
-          tag: optionalText(row.tag),
-          custom: compactCustom({
-            skype: row.skype,
-            facebook: row.facebook,
-            twitter: row.twitter,
-            whatsApp: row.whatsapp,
-            blog: row.blog,
-            website: row.website,
-            linkedin: row.linkedin,
-            github: row.github,
-          }),
-        }),
-      );
-    if (socials.length > 0) {
-      payload.socials = socials;
-    }
-
-    const financial: NonNullable<ProfileOnboardingPayload["financial"]> = {};
-    const bankAccounts = form.financial.bankAccounts
-      .filter(hasBankDetails)
-      .map((row) =>
-        compactObject({
-          groupId: row.groupId,
-          fieldId: row.fieldId,
-          tag: optionalText(row.tag),
-          bankName: optionalText(row.bankName),
-          accountHolder: optionalText(row.accountHolder),
-          accountNumber: optionalText(row.accountNumber),
-          iban: optionalText(row.iban),
-          swiftBic: optionalText(row.swiftBic),
-          routingNumber: optionalText(row.routingNumber),
-          ifsc: optionalText(row.ifsc),
-          currency: optionalText(row.currency),
-        }),
-      );
-    if (bankAccounts.length > 0) {
-      financial.bankAccounts = bankAccounts;
-    }
-
-    const digitalWallets = form.financial.digitalWallets
-      .filter(hasWalletDetails)
-      .map((row) =>
-        compactObject({
-          groupId: row.groupId,
-          fieldId: row.fieldId,
-          tag: optionalText(row.tag),
-          platform: optionalText(row.platform),
-          handleOrLink: optionalText(row.handleOrLink),
-        }),
-      );
-    if (digitalWallets.length > 0) {
-      financial.digitalWallets = digitalWallets;
-    }
-
-    const cryptoWallets = form.financial.cryptoWallets
-      .filter(hasCryptoDetails)
-      .map((row) =>
-        compactObject({
-          groupId: row.groupId,
-          fieldId: row.fieldId,
-          tag: optionalText(row.tag),
-          network: optionalText(row.network),
-          address: optionalText(row.address),
-        }),
-      );
-    if (cryptoWallets.length > 0) {
-      financial.cryptoWallets = cryptoWallets;
-    }
-
-    if (
-      financial.bankAccounts?.length ||
-      financial.digitalWallets?.length ||
-      financial.cryptoWallets?.length
-    ) {
-      payload.financial = financial;
-    }
-
-    return payload;
-  };
-
-  const buildOnboardingPayload = (
-    payload: ProfileOnboardingPayload,
-  ): RequiredOnboardingPayload => ({
+  const buildProfilePayload = (): FullProfilePayload => ({
     identity: {
-      firstName: registeredIdentity.firstName.trim(),
-      lastName: registeredIdentity.lastName.trim(),
-      primaryPhone: registeredIdentity.primaryPhone.trim(),
-      primaryEmail: registeredIdentity.primaryEmail.trim(),
+      firstName: form.identity.firstName.trim(),
+      lastName: form.identity.lastName.trim(),
+      primaryPhone: form.identity.primaryPhone.trim(),
+      primaryEmail: form.identity.primaryEmail.trim(),
       profilePhoto: nullableText(form.identity.profilePhoto),
     },
     personal: {
-      tag: nullableText(payload.personal?.tag),
-      postalAddress: payload.personal?.postalAddress ?? null,
-      custom: payload.personal?.custom ?? null,
+      groupId: nullableText(form.personal.groupId),
+      tag: nullableText(form.personal.tag),
+      postalAddress: toNullableAddressPayload(form.personal.postalAddress),
+      custom: nullableCustom({
+        title: form.personal.title,
+        nickname: form.personal.nickname,
+        mobile: form.personal.mobile,
+        landline: form.personal.landline,
+        email: form.personal.email,
+        dateOfBirth: form.personal.dateOfBirth,
+        yearOfBirth: form.personal.yearOfBirth,
+        currentLocation: form.personal.currentLocation,
+        kidsNames: form.personal.kidsNames,
+        partnerName: form.personal.partnerName,
+        petNames: form.personal.petNames,
+        relationshipStatus: form.personal.relationshipStatus,
+        bloodGroup: form.personal.bloodGroup,
+      }),
     },
-    work: payload.work ?? [],
-    business: payload.business ?? [],
-    socials: payload.socials ?? [],
+    work: form.work.map((row) => ({
+      groupId: nullableText(row.groupId),
+      tag: nullableText(row.tag),
+      custom: {
+        ...nullableCustom({
+          companyName: row.companyName,
+          companyLogo: row.companyLogo,
+          companyRegNumber: row.companyRegNumber,
+          workTitle: row.workTitle,
+          workMobile: row.workMobile,
+          workLandline: row.workLandline,
+          workFax: row.workFax,
+          workEmail: row.workEmail,
+          employeeId: row.employeeId,
+        }),
+        ...nullableAddressCustom("workPostal", row.workPostalAddress),
+      },
+    })),
+    business: form.business.map((row) => ({
+      groupId: nullableText(row.groupId),
+      tag: nullableText(row.tag),
+      custom: {
+        ...nullableCustom({
+          businessName: row.businessName,
+          businessLogo: row.businessLogo,
+          businessRegNumber: row.businessRegNumber,
+          businessTitle: row.businessTitle,
+          businessMobile: row.businessMobile,
+          businessLandline: row.businessLandline,
+          businessFax: row.businessFax,
+          businessEmail: row.businessEmail,
+          businessType: row.businessType,
+          gstin: row.gstin,
+        }),
+        ...nullableAddressCustom("businessPostal", row.businessPostalAddress),
+      },
+    })),
+    socials: form.socials.map((row) => ({
+      groupId: nullableText(row.groupId),
+      tag: nullableText(row.tag),
+      custom: nullableCustom({
+        skype: row.skype,
+        facebook: row.facebook,
+        twitter: row.twitter,
+        whatsApp: row.whatsapp,
+        blog: row.blog,
+        website: row.website,
+        linkedin: row.linkedin,
+        github: row.github,
+      }),
+    })),
     financial: {
-      bankAccounts: payload.financial?.bankAccounts ?? [],
-      digitalWallets: payload.financial?.digitalWallets ?? [],
-      cryptoWallets: payload.financial?.cryptoWallets ?? [],
+      bankAccounts: form.financial.bankAccounts.map((row) => ({
+        groupId: nullableText(row.groupId),
+        fieldId: nullableText(row.fieldId),
+        tag: nullableText(row.tag),
+        bankName: nullableText(row.bankName),
+        accountHolder: nullableText(row.accountHolder),
+        accountNumber: nullableText(row.accountNumber),
+        iban: nullableText(row.iban),
+        swiftBic: nullableText(row.swiftBic),
+        routingNumber: nullableText(row.routingNumber),
+        ifsc: nullableText(row.ifsc),
+        currency: nullableText(row.currency),
+      })),
+      digitalWallets: form.financial.digitalWallets.map((row) => ({
+        groupId: nullableText(row.groupId),
+        fieldId: nullableText(row.fieldId),
+        tag: nullableText(row.tag),
+        platform: nullableText(row.platform),
+        handleOrLink: nullableText(row.handleOrLink),
+      })),
+      cryptoWallets: form.financial.cryptoWallets.map((row) => ({
+        groupId: nullableText(row.groupId),
+        fieldId: nullableText(row.fieldId),
+        tag: nullableText(row.tag),
+        network: nullableText(row.network),
+        address: nullableText(row.address),
+      })),
     },
   });
 
@@ -1196,26 +1021,8 @@ export function ProfileOnboardingModal({
         if (shouldInitialize) {
           await apiFetch<unknown>("/v1/profile/onboarding", {
             method: "POST",
-            body: buildOnboardingPayload(payload),
+            body: payload,
           });
-
-          const identity = payload.identity;
-          if (
-            identity?.firstName !== undefined ||
-            identity?.lastName !== undefined ||
-            identity?.primaryEmail !== undefined
-          ) {
-            await apiFetch<unknown>("/v1/profile/me", {
-              method: "PATCH",
-              body: {
-                identity: {
-                  firstName: identity.firstName,
-                  lastName: identity.lastName,
-                  primaryEmail: identity.primaryEmail,
-                },
-              },
-            });
-          }
         } else {
           await apiFetch<unknown>("/v1/profile/me", {
             method: "PATCH",

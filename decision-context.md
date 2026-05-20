@@ -6,6 +6,12 @@
 - Reason: The live onboarding API expects a complete first-time setup shape even when users skip optional details; sending `{}` can reach the API and fail with a server error.
 - Notes: Normal `PATCH /v1/profile/me` remains compact. The onboarding identity uses the loaded registration values so the backend identity-match guard can pass before any edited identity values are patched separately. Optional shell fields use `null` instead of empty strings.
 
+## 2026-05-20 - Avoid Invalid Empty Profile Fields
+
+- Decision: Send the complete deployed-API-allowed profile payload for profile onboarding and profile patch saves, using `null` for empty optional values and excluding backend-rejected response-only fields.
+- Reason: The deployed backend rejects top-level work/business detail fields and financial `isSensitive`, so the frontend must keep those values inside accepted fields while still letting users save partial details.
+- Notes: Work and business scalar/address values are sent under `custom`, `profileOnboardingCompletedAt` and financial `isSensitive` are excluded, and both `POST /v1/profile/onboarding` and `PATCH /v1/profile/me` share the same frontend payload builder.
+
 ## 2026-05-20 - Resolve PR 21 Profile Onboarding Merge Conflict
 
 - Decision: Merge `origin/dev` into `feat/ui-creation` and resolve the profile onboarding conflict by keeping repeatable profile groups, editable identity fields, optional financial rows, and the latest first-time profile initialization path.
