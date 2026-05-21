@@ -407,7 +407,7 @@ export class ProfileMeWalletRowUpsertDto extends DigitalWalletPayloadDto {
 export class ProfileMeCryptoRowUpsertDto extends CryptoWalletPayloadDto {
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUUID() 
+  @IsUUID()
   groupId?: string;
 
   @ApiPropertyOptional()
