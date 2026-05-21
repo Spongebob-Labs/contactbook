@@ -22,7 +22,7 @@ import { parseRelativeMs } from "./parse-relative-ms";
 
 /** Public JSON body for verify-code (session cookies set on the response when registered). */
 export type VerifyWhatsappCodeResponse =
-  | { registered: true }
+  | { registered: true; isOnboarded: boolean }
   | {
       registered: false;
       message: string;
@@ -33,6 +33,7 @@ export type VerifyWhatsappCodeResponse =
 export type VerifyWhatsappCodeResult =
   | {
       registered: true;
+      isOnboarded: boolean;
       userId: string;
       accessToken: string;
       refreshToken: string;
@@ -80,13 +81,17 @@ export class AuthService {
     const e164 = composeE164(countryCode, phone);
     const userId = await this.otp.verifyPhoneOtp(e164, code);
     if (userId) {
-      const user = await this.prisma.user.findUnique({ where: { id: userId } });
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, profileOnboardingCompletedAt: true },
+      });
       if (!user) {
         throw new UnauthorizedException();
       }
       const tokens = await this.issueTokenPair(user.id);
       return {
         registered: true,
+        isOnboarded: user.profileOnboardingCompletedAt != null,
         userId: user.id,
         ...tokens,
       };

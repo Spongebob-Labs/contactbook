@@ -72,11 +72,16 @@ export class AuthController {
   })
   @ApiOkResponse({
     description:
-      "Either `{ registered: true }` with `Set-Cookie` (`cb_access_token`, `cb_refresh_token`, `cb_user_id`), or `{ registered: false, message, phoneVerificationToken }`.",
+      "Either `{ registered: true, isOnboarded }` with `Set-Cookie` (`cb_access_token`, `cb_refresh_token`, `cb_user_id`), or `{ registered: false, message, phoneVerificationToken }`.",
     schema: {
       type: "object",
       properties: {
         registered: { type: "boolean" },
+        isOnboarded: {
+          type: "boolean",
+          description:
+            "Present when registered is true. True after POST /profile/onboarding completed.",
+        },
         message: { type: "string" },
         phoneVerificationToken: { type: "string" },
       },
@@ -93,7 +98,7 @@ export class AuthController {
     );
     if (result.registered) {
       setSessionCookies(res, result, this.sessionCookieRuntime());
-      return { registered: true };
+      return { registered: true, isOnboarded: result.isOnboarded };
     }
     return result;
   }
