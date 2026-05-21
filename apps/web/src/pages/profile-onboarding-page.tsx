@@ -168,7 +168,6 @@ type FullProfilePayload = {
     landline: string | null | undefined;
     email: string | null | undefined;
     dateOfBirth: string | null | undefined;
-    yearOfBirth: string | null | undefined;
     currentLocation: string | null | undefined;
     relationshipStatus: string | null | undefined;
     custom: NullableCustomPayload;
@@ -364,6 +363,11 @@ function hasText(value: string): boolean {
   return clean(value).length > 0;
 }
 
+function deriveYearOfBirth(dateOfBirth: string | null | undefined): string {
+  const match = /^(\d{4})-\d{2}-\d{2}/.exec(clean(dateOfBirth ?? ""));
+  return match?.[1] ?? "";
+}
+
 function toNullableAddressPayload(address: AddressForm): NullableAddressPayload {
   return {
     street: nullableText(address.street),
@@ -515,6 +519,8 @@ function ensureRows<T>(rows: T[], createEmpty: () => T): T[] {
 }
 
 function profileToForm(profile: ProfileMeResponse): OnboardingForm {
+  const dateOfBirth = profileFieldValue(profile.personal, "dateOfBirth");
+
   return {
     identity: {
       firstName: valueOrEmpty(profile.identity.firstName),
@@ -537,8 +543,10 @@ function profileToForm(profile: ProfileMeResponse): OnboardingForm {
         customFrom(profile.personal),
         "postal",
       ),
-      dateOfBirth: profileFieldValue(profile.personal, "dateOfBirth"),
-      yearOfBirth: profileFieldValue(profile.personal, "yearOfBirth"),
+      dateOfBirth,
+      yearOfBirth:
+        deriveYearOfBirth(dateOfBirth) ||
+        profileFieldValue(profile.personal, "yearOfBirth"),
       currentLocation: profileFieldValue(profile.personal, "currentLocation"),
       kidsNames: profileFieldValue(profile.personal, "kidsNames"),
       partnerName: profileFieldValue(profile.personal, "partnerName"),
@@ -955,6 +963,17 @@ export function ProfileOnboardingModal({
     }));
   };
 
+  const setDateOfBirth = (value: string) => {
+    setForm((current) => ({
+      ...current,
+      personal: {
+        ...current.personal,
+        dateOfBirth: value,
+        yearOfBirth: deriveYearOfBirth(value),
+      },
+    }));
+  };
+
   const setAddressValue = (
     section: "personal",
     key: keyof AddressForm,
@@ -1154,10 +1173,6 @@ export function ProfileOnboardingModal({
         email: nullableTextForSave(form.personal.email, canClearPersonalFields),
         dateOfBirth: nullableTextForSave(
           form.personal.dateOfBirth,
-          canClearPersonalFields,
-        ),
-        yearOfBirth: nullableTextForSave(
-          form.personal.yearOfBirth,
           canClearPersonalFields,
         ),
         currentLocation: nullableTextForSave(
@@ -1482,17 +1497,15 @@ export function ProfileOnboardingModal({
                   <Input
                     type="date"
                     value={form.personal.dateOfBirth}
-                    onChange={(event) =>
-                      setSectionValue("personal", "dateOfBirth", event.target.value)
-                    }
+                    onChange={(event) => setDateOfBirth(event.target.value)}
                   />
                 </Field>
                 <Field label="Year of birth">
                   <Input
                     value={form.personal.yearOfBirth}
-                    onChange={(event) =>
-                      setSectionValue("personal", "yearOfBirth", event.target.value)
-                    }
+                    readOnly
+                    aria-readonly="true"
+                    className="bg-muted text-muted-foreground"
                     placeholder="1998"
                   />
                 </Field>

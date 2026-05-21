@@ -1,5 +1,17 @@
 # Decision Context
 
+## 2026-05-21 - Make Year Of Birth Derived Read-Only
+
+- Decision: Keep Year of birth visible in the profile onboarding/edit form as a read-only value derived from Date of birth, and stop sending `personal.yearOfBirth` in the profile save payload.
+- Reason: The backend derives `yearOfBirth` from the saved `dateOfBirth` field and ignores it as an independently editable top-level personal value.
+- Notes: Hydration still falls back to the API-returned `yearOfBirth`, but changing or clearing Date of birth updates the displayed year locally. Backend code and browser testing remain untouched.
+
+## 2026-05-21 - Display Complete Profile GET Fields
+
+- Decision: Expand the frontend profile page to display all onboarding fields available from `GET /v1/profile/me`, including personal scalar fields, broader work/business fields, top-level social fields, and custom fallback values.
+- Reason: The profile page previously showed only a subset of saved onboarding data, so fields like date of birth, mobile, landline, work contact details, and business metadata could be saved but not visible.
+- Notes: The display reads normalized top-level response keys first and then falls back to `custom` keys for compatibility with existing saved records. Backend code and browser testing remain untouched.
+
 ## 2026-05-21 - Omit Blank Profile IDs On Save
 
 - Decision: Change the frontend profile save payload to omit empty `groupId` and `fieldId` values instead of sending `null`, and omit blank personal scalar/custom values until a personal group exists.
