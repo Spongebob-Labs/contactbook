@@ -48,7 +48,7 @@ describe("ConnectionController (HTTP)", () => {
   });
 
   it("POST /connections/requests accepts valid payload", async () => {
-    await request(app.getHttpServer())
+    await request(app.getHttpServer() as never)
       .post("/api/v1/connections/requests")
       .send(validConnectionRequest)
       .expect(HttpStatus.CREATED);
@@ -59,7 +59,7 @@ describe("ConnectionController (HTTP)", () => {
   });
 
   it("POST /connections/requests rejects invalid recipientPhone", async () => {
-    await request(app.getHttpServer())
+    await request(app.getHttpServer() as never)
       .post("/api/v1/connections/requests")
       .send(invalidConnectionRequest)
       .expect(HttpStatus.BAD_REQUEST);

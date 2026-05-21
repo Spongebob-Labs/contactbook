@@ -61,7 +61,7 @@ describe("AuthController (HTTP)", () => {
   });
 
   it("POST /auth/whatsapp/request-code accepts valid payload", async () => {
-    await request(app.getHttpServer())
+    await request(app.getHttpServer() as never)
       .post("/api/v1/auth/whatsapp/request-code")
       .send(validWhatsappRequest)
       .expect(HttpStatus.CREATED);
@@ -72,7 +72,7 @@ describe("AuthController (HTTP)", () => {
   });
 
   it("POST /auth/whatsapp/request-code rejects invalid phone", async () => {
-    await request(app.getHttpServer())
+    await request(app.getHttpServer() as never)
       .post("/api/v1/auth/whatsapp/request-code")
       .send(invalidWhatsappRequest)
       .expect(HttpStatus.BAD_REQUEST);
@@ -80,15 +80,45 @@ describe("AuthController (HTTP)", () => {
   });
 
   it("POST /auth/whatsapp/verify-code rejects missing code", async () => {
-    await request(app.getHttpServer())
+    await request(app.getHttpServer() as never)
       .post("/api/v1/auth/whatsapp/verify-code")
       .send({ phone: "5551234567", countryCode: "+1" })
       .expect(HttpStatus.BAD_REQUEST);
     expect(auth.verifyWhatsappCode).not.toHaveBeenCalled();
   });
 
+  it("POST /auth/whatsapp/verify-code returns isOnboarded false when registered", async () => {
+    auth.verifyWhatsappCode.mockResolvedValue({
+      registered: true,
+      isOnboarded: false,
+      userId: "user-1",
+      accessToken: "access",
+      refreshToken: "refresh",
+    });
+    const res = await request(app.getHttpServer() as never)
+      .post("/api/v1/auth/whatsapp/verify-code")
+      .send({ phone: "5551234567", countryCode: "+1", code: "123456" })
+      .expect(HttpStatus.CREATED);
+    expect(res.body).toEqual({ registered: true, isOnboarded: false });
+  });
+
+  it("POST /auth/whatsapp/verify-code returns isOnboarded true when registered", async () => {
+    auth.verifyWhatsappCode.mockResolvedValue({
+      registered: true,
+      isOnboarded: true,
+      userId: "user-1",
+      accessToken: "access",
+      refreshToken: "refresh",
+    });
+    const res = await request(app.getHttpServer() as never)
+      .post("/api/v1/auth/whatsapp/verify-code")
+      .send({ phone: "5551234567", countryCode: "+1", code: "123456" })
+      .expect(HttpStatus.CREATED);
+    expect(res.body).toEqual({ registered: true, isOnboarded: true });
+  });
+
   it("POST /auth/register rejects invalid email", async () => {
-    await request(app.getHttpServer())
+    await request(app.getHttpServer() as never)
       .post("/api/v1/auth/register")
       .send({
         phoneVerificationToken: "token",

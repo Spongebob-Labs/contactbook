@@ -57,7 +57,7 @@ describe("ProfileController (HTTP)", () => {
   });
 
   it("POST /profile/onboarding rejects empty identity object with 400", async () => {
-    await request(app.getHttpServer())
+    await request(app.getHttpServer() as never)
       .post("/api/v1/profile/onboarding")
       .send({ identity: {} })
       .expect(HttpStatus.BAD_REQUEST);
@@ -65,7 +65,7 @@ describe("ProfileController (HTTP)", () => {
   });
 
   it("POST /profile/onboarding accepts identity-only with 201", async () => {
-    await request(app.getHttpServer())
+    await request(app.getHttpServer() as never)
       .post("/api/v1/profile/onboarding")
       .send(identityOnlyOnboarding)
       .expect(HttpStatus.CREATED);
@@ -76,7 +76,7 @@ describe("ProfileController (HTTP)", () => {
   });
 
   it("POST /profile/onboarding forwards personal and work sections", async () => {
-    await request(app.getHttpServer())
+    await request(app.getHttpServer() as never)
       .post("/api/v1/profile/onboarding")
       .send(onboardingWithPersonalAndWork)
       .expect(HttpStatus.CREATED);
@@ -90,7 +90,7 @@ describe("ProfileController (HTTP)", () => {
   });
 
   it("POST /profile/onboarding accepts flattened work and financial fields with 201", async () => {
-    await request(app.getHttpServer())
+    await request(app.getHttpServer() as never)
       .post("/api/v1/profile/onboarding")
       .send(onboardingWithPersonalAndWorkFull)
       .expect(HttpStatus.CREATED);
@@ -108,7 +108,7 @@ describe("ProfileController (HTTP)", () => {
   });
 
   it("POST /profile/onboarding accepts full GET-shaped payload with 201", async () => {
-    await request(app.getHttpServer())
+    await request(app.getHttpServer() as never)
       .post("/api/v1/profile/onboarding")
       .send(fullOnboardingPayload)
       .expect(HttpStatus.CREATED);
@@ -119,7 +119,7 @@ describe("ProfileController (HTTP)", () => {
   });
 
   it("POST /profile/onboarding rejects profileOnboardingCompletedAt with 400", async () => {
-    await request(app.getHttpServer())
+    await request(app.getHttpServer() as never)
       .post("/api/v1/profile/onboarding")
       .send(onboardingRejectsReadOnlyTimestamp)
       .expect(HttpStatus.BAD_REQUEST);
@@ -127,7 +127,7 @@ describe("ProfileController (HTTP)", () => {
   });
 
   it("POST /profile/onboarding rejects invalid work groupId UUID", async () => {
-    await request(app.getHttpServer())
+    await request(app.getHttpServer() as never)
       .post("/api/v1/profile/onboarding")
       .send(onboardingWithInvalidWorkGroupId)
       .expect(HttpStatus.BAD_REQUEST);
@@ -138,14 +138,14 @@ describe("ProfileController (HTTP)", () => {
     upsert.completeOnboarding.mockRejectedValue(
       new ConflictException("Profile already initialized"),
     );
-    await request(app.getHttpServer())
+    await request(app.getHttpServer() as never)
       .post("/api/v1/profile/onboarding")
       .send(identityOnlyOnboarding)
       .expect(HttpStatus.CONFLICT);
   });
 
   it("GET /profile/me returns 200 and builds profile", async () => {
-    await request(app.getHttpServer())
+    await request(app.getHttpServer() as never)
       .get("/api/v1/profile/me")
       .expect(HttpStatus.OK);
     expect(serializer.build).toHaveBeenCalledWith(TEST_USER_ID);
@@ -153,7 +153,7 @@ describe("ProfileController (HTTP)", () => {
 
   it("PATCH /profile/me forwards body to patch service", async () => {
     const body = { personal: { tag: "Primary", mobile: "+12025551234" } };
-    await request(app.getHttpServer())
+    await request(app.getHttpServer() as never)
       .patch("/api/v1/profile/me")
       .send(body)
       .expect(HttpStatus.OK);
@@ -161,7 +161,7 @@ describe("ProfileController (HTTP)", () => {
   });
 
   it("DELETE /profile/me/groups forwards delete DTO", async () => {
-    await request(app.getHttpServer())
+    await request(app.getHttpServer() as never)
       .delete("/api/v1/profile/me/groups")
       .send(deleteWorkGroupDto)
       .expect(HttpStatus.OK);
@@ -172,7 +172,7 @@ describe("ProfileController (HTTP)", () => {
   });
 
   it("DELETE /profile/me/groups rejects invalid groupId", async () => {
-    await request(app.getHttpServer())
+    await request(app.getHttpServer() as never)
       .delete("/api/v1/profile/me/groups")
       .send({
         groupId: "not-a-uuid",
@@ -220,7 +220,7 @@ describe("ProfileController auth", () => {
   });
 
   it("GET /profile/me returns 401 when guard rejects", async () => {
-    await request(app.getHttpServer())
+    await request(app.getHttpServer() as never)
       .get("/api/v1/profile/me")
       .expect(HttpStatus.UNAUTHORIZED);
   });
