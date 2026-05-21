@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import {
   ContactRound,
@@ -15,8 +15,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useAuth } from "@/context/auth-context";
-import { apiFetch } from "@/lib/api";
-import type { ProfileMeResponse } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const nav = [
@@ -29,33 +27,8 @@ const nav = [
 export function AppShell({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
-  const [profileSummary, setProfileSummary] = useState<ProfileMeResponse["identity"] | null>(
-    null,
-  );
   const navigate = useNavigate();
-  const { logout, userId } = useAuth();
-
-  useEffect(() => {
-    let isMounted = true;
-
-    const loadProfileSummary = async () => {
-      try {
-        const profile = await apiFetch<ProfileMeResponse>("/v1/profile/me");
-        if (isMounted) {
-          setProfileSummary(profile.identity);
-        }
-      } catch {
-        if (isMounted) {
-          setProfileSummary(null);
-        }
-      }
-    };
-
-    void loadProfileSummary();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+  const { logout, profileIdentity, userId } = useAuth();
 
   const handleLogout = async () => {
     setProfileMenuOpen(false);
@@ -154,12 +127,12 @@ export function AppShell({ children }: { children: ReactNode }) {
                       </div>
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium">
-                          {profileSummary
-                            ? `${profileSummary.firstName} ${profileSummary.lastName}`.trim()
+                          {profileIdentity
+                            ? `${profileIdentity.firstName} ${profileIdentity.lastName}`.trim()
                             : "Signed in"}
                         </p>
                         <p className="truncate text-xs text-muted-foreground">
-                          {profileSummary?.primaryEmail ?? userId ?? "Active session"}
+                          {profileIdentity?.primaryEmail ?? userId ?? "Active session"}
                         </p>
                       </div>
                     </div>

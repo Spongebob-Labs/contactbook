@@ -22,6 +22,8 @@ type ApiOptions = Omit<RequestInit, "body" | "credentials"> & {
   retry?: boolean;
 };
 
+const getCache = new Map<string, Promise<unknown>>();
+
 function formatError(payload: unknown, fallback: string): string {
   if (payload && typeof payload === "object" && "message" in payload) {
     const message = (payload as ApiErrorPayload).message;
@@ -57,9 +59,24 @@ async function refreshSession(): Promise<boolean> {
   return response.ok;
 }
 
-export async function apiFetch<T>(
+function requestMethod(options: ApiOptions): string {
+  return (options.method ?? "GET").toUpperCase();
+}
+
+function getCacheKey(path: string, options: ApiOptions): string {
+  return JSON.stringify({
+    path,
+    headers: options.headers ?? {},
+  });
+}
+
+function clearGetCache() {
+  getCache.clear();
+}
+
+async function requestJson<T>(
   path: string,
-  options: ApiOptions = {},
+  options: ApiOptions,
 ): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,
@@ -77,7 +94,7 @@ export async function apiFetch<T>(
   if (response.status === 401 && options.retry !== false) {
     const refreshed = await refreshSession();
     if (refreshed) {
-      return apiFetch<T>(path, { ...options, retry: false });
+      return requestJson<T>(path, { ...options, retry: false });
     }
   }
 
@@ -88,6 +105,33 @@ export async function apiFetch<T>(
       response.status,
       payload,
     );
+  }
+  return payload as T;
+}
+
+export async function apiFetch<T>(
+  path: string,
+  options: ApiOptions = {},
+): Promise<T> {
+  const method = requestMethod(options);
+  if (method === "GET") {
+    const cacheKey = getCacheKey(path, options);
+    const cached = getCache.get(cacheKey);
+    if (cached) {
+      return cached as Promise<T>;
+    }
+
+    const request = requestJson<T>(path, options).catch((error) => {
+      getCache.delete(cacheKey);
+      throw error;
+    });
+    getCache.set(cacheKey, request);
+    return request;
+  }
+
+  const payload = await requestJson<T>(path, options);
+  if (method !== "HEAD" && method !== "OPTIONS") {
+    clearGetCache();
   }
   return payload as T;
 }

@@ -1,5 +1,17 @@
 # Decision Context
 
+## 2026-05-21 - Mirror WhatsApp OTP Request Validation
+
+- Decision: Update the auth phone form validation and phone helper to mirror `POST /v1/auth/whatsapp/request-code` constraints: country code must be `+` plus 1-4 digits and the normalized national phone must be 4-15 digits.
+- Reason: The frontend previously allowed loosely validated phone input and used a stricter local minimum than the backend, so users could see avoidable API errors or inconsistent validation behavior.
+- Notes: The phone field still accepts formatted input, then strips non-digits and leading zeros before validation/submission. Backend code and browser testing remain untouched.
+
+## 2026-05-21 - Dedupe Dashboard Refresh API Calls
+
+- Decision: Add in-memory GET request deduping/caching to the frontend API helper and have `AppShell` read the profile menu identity from `AuthProvider` instead of fetching `/v1/profile/me` separately.
+- Reason: Dashboard refresh triggered overlapping profile requests from auth bootstrapping, the shell, dashboard overview, and sometimes onboarding modals; React dev StrictMode can double those effects and make the network panel show many duplicate calls.
+- Notes: Successful GET responses are reused until a non-GET mutation clears the cache. Dashboard still fetches the full profile for overview state. Backend code and browser testing remain untouched.
+
 ## 2026-05-21 - Separate First-Time Profile POST Payload
 
 - Decision: Add a dedicated first-time onboarding payload for `POST /v1/profile/onboarding` that sends the loaded registration identity, omits blank generated IDs, and filters default-only repeatable rows.
