@@ -1,5 +1,131 @@
 # Decision Context
 
+## 2026-05-21 - Mirror WhatsApp OTP Request Validation
+
+- Decision: Update the auth phone form validation and phone helper to mirror `POST /v1/auth/whatsapp/request-code` constraints: country code must be `+` plus 1-4 digits and the normalized national phone must be 4-15 digits.
+- Reason: The frontend previously allowed loosely validated phone input and used a stricter local minimum than the backend, so users could see avoidable API errors or inconsistent validation behavior.
+- Notes: The phone field still accepts formatted input, then strips non-digits and leading zeros before validation/submission. Backend code and browser testing remain untouched.
+
+## 2026-05-21 - Dedupe Dashboard Refresh API Calls
+
+- Decision: Add in-memory GET request deduping/caching to the frontend API helper and have `AppShell` read the profile menu identity from `AuthProvider` instead of fetching `/v1/profile/me` separately.
+- Reason: Dashboard refresh triggered overlapping profile requests from auth bootstrapping, the shell, dashboard overview, and sometimes onboarding modals; React dev StrictMode can double those effects and make the network panel show many duplicate calls.
+- Notes: Successful GET responses are reused until a non-GET mutation clears the cache. Dashboard still fetches the full profile for overview state. Backend code and browser testing remain untouched.
+
+## 2026-05-21 - Separate First-Time Profile POST Payload
+
+- Decision: Add a dedicated first-time onboarding payload for `POST /v1/profile/onboarding` that sends the loaded registration identity, omits blank generated IDs, and filters default-only repeatable rows.
+- Reason: The onboarding endpoint requires identity fields to match registration and creates new profile groups/fields itself; sending edited identity values or default tag-only rows can fail the POST or create empty groups.
+- Notes: After a successful first-time POST, edited identity fields are persisted with a follow-up `PATCH /v1/profile/me`. Later profile edits continue using the normal PATCH payload. Backend code and browser testing remain untouched.
+
+## 2026-05-21 - Make Year Of Birth Derived Read-Only
+
+- Decision: Keep Year of birth visible in the profile onboarding/edit form as a read-only value derived from Date of birth, and stop sending `personal.yearOfBirth` in the profile save payload.
+- Reason: The backend derives `yearOfBirth` from the saved `dateOfBirth` field and ignores it as an independently editable top-level personal value.
+- Notes: Hydration still falls back to the API-returned `yearOfBirth`, but changing or clearing Date of birth updates the displayed year locally. Backend code and browser testing remain untouched.
+
+## 2026-05-21 - Display Complete Profile GET Fields
+
+- Decision: Expand the frontend profile page to display all onboarding fields available from `GET /v1/profile/me`, including personal scalar fields, broader work/business fields, top-level social fields, and custom fallback values.
+- Reason: The profile page previously showed only a subset of saved onboarding data, so fields like date of birth, mobile, landline, work contact details, and business metadata could be saved but not visible.
+- Notes: The display reads normalized top-level response keys first and then falls back to `custom` keys for compatibility with existing saved records. Backend code and browser testing remain untouched.
+
+## 2026-05-21 - Omit Blank Profile IDs On Save
+
+- Decision: Change the frontend profile save payload to omit empty `groupId` and `fieldId` values instead of sending `null`, and omit blank personal scalar/custom values until a personal group exists.
+- Reason: The profile PATCH backend treats `null` values inside `personal` as clear-field instructions. On a new personal section, `personal.groupId: null` or blank personal values serialized as `null` can make the backend return before creating the personal group, so personal form values are not saved.
+- Notes: Existing personal groups still send `null` for cleared fields so edit-time clearing behavior is preserved. Backend code and browser testing remain untouched.
+
+## 2026-05-21 - Send Supported Personal Fields Top-Level
+
+- Decision: Change the frontend profile payload so backend-supported personal fields are sent as top-level `personal` properties, while extra personal fields remain in `personal.custom`.
+- Reason: The deployed PATCH response accepted other sections but returned an empty personal section when all personal scalar fields were nested under `custom`.
+- Notes: This is frontend-only and keeps hydration reading both top-level and custom values for compatibility with older saved data.
+
+## 2026-05-21 - Mirror Profile Backend Validation In Form
+
+- Decision: Add frontend validation for profile onboarding/edit fields that mirrors the backend DTO limits, including identity requirements, profile photo payload length, personal postal address lengths, row label lengths, and financial field lengths.
+- Reason: Users should see field-level errors before submit instead of receiving a backend 400 after filling the form.
+- Notes: The profile modal now shows an error count, displays inline errors after blur, and disables Save until the form satisfies the mirrored constraints. Backend code and browser testing remain untouched.
+
+## 2026-05-21 - Broaden Profile Onboarding Hydration
+
+- Decision: Update the profile onboarding modal mapper to hydrate fields from both normalized top-level `/v1/profile/me` response keys and the `custom` keys used by the current frontend save payload.
+- Reason: Saved profile data can come back in different shapes depending on field category and backend flattening, especially social links that may be returned as top-level keys instead of nested custom values.
+- Notes: The change is frontend-only, covers personal, work, business, social, address fallback, and existing financial direct-field hydration, and keeps browser testing skipped per project instruction.
+
+## 2026-05-20 - Send Complete Profile Onboarding Shell
+
+- Decision: Build a dedicated frontend payload for `POST /v1/profile/onboarding` that always includes identity, personal, work, business, socials, and financial shells, with empty arrays for empty repeatable sections.
+- Reason: The live onboarding API expects a complete first-time setup shape even when users skip optional details; sending `{}` can reach the API and fail with a server error.
+- Notes: Normal `PATCH /v1/profile/me` remains compact. The onboarding identity uses the loaded registration values so the backend identity-match guard can pass before any edited identity values are patched separately. Optional shell fields use `null` instead of empty strings.
+
+## 2026-05-20 - Avoid Invalid Empty Profile Fields
+
+- Decision: Send the complete deployed-API-allowed profile payload for profile onboarding and profile patch saves, using `null` for empty optional values and excluding backend-rejected response-only fields.
+- Reason: The deployed backend rejects top-level work/business detail fields and financial `isSensitive`, so the frontend must keep those values inside accepted fields while still letting users save partial details.
+- Notes: Work and business scalar/address values are sent under `custom`, `profileOnboardingCompletedAt` and financial `isSensitive` are excluded, and both `POST /v1/profile/onboarding` and `PATCH /v1/profile/me` share the same frontend payload builder.
+
+## 2026-05-20 - Resolve PR 21 Profile Onboarding Merge Conflict
+
+- Decision: Merge `origin/dev` into `feat/ui-creation` and resolve the profile onboarding conflict by keeping repeatable profile groups, editable identity fields, optional financial rows, and the latest first-time profile initialization path.
+- Reason: PR 21 needed to preserve both branches' user-facing behavior: the feature branch's richer profile form and `dev`'s updated signup setup flow.
+- Notes: Backend files came from `origin/dev` through the merge only; conflict edits were limited to frontend profile onboarding and this decision log. Browser testing remains skipped per project instructions.
+
+## 2026-05-20 - Complete Array-Aware Financial Profile Display
+
+- Decision: Update the profile page financial display to prefer `fieldId` keys for repeated financial rows and show optional bank routing fields.
+- Reason: Financial rows are field-backed array entries, so `fieldId` is the most stable React key when available, and the live API exposes IBAN, SWIFT/BIC, and routing number values that should be visible when saved.
+- Notes: Backend code remains untouched. This is display-only and does not change profile form payload behavior.
+
+## 2026-05-20 - Keep One Visible Row In Repeatable Profile Groups
+
+- Decision: Disable the remove button when a repeatable profile group has only one visible row.
+- Reason: The onboarding/edit wizard should keep a stable input surface for array-backed sections, so users clear the last row manually instead of deleting the entire UI for that section.
+- Notes: Backend code remains untouched. Payload behavior is unchanged because backend will make partially filled financial row fields optional.
+
+## 2026-05-20 - Support Repeatable Profile Wizard Groups
+
+- Decision: Refactor the shared profile onboarding/edit wizard to support multiple work, business, social, bank account, digital wallet, and crypto wallet rows with add/remove controls.
+- Reason: The current profile create/update API accepts arrays for these profile groups, so the UI should let users maintain more than one entry instead of only editing the first saved row.
+- Notes: Keep backend code untouched. Keep validation required only for identity fields in the UI; optional repeated rows are omitted when blank, and row labels are shown as `Label` at the end of each group instead of `Group tag`.
+
+## 2026-05-20 - Add Editable Identity Fields To Profile Wizard
+
+- Decision: Show first name, last name, phone number, and email in step 1 of the profile onboarding/edit wizard. Keep first name, last name, and email editable, while rendering phone number as a read-only muted input.
+- Reason: Users need to review and correct core registration identity details from the same profile form used after signup and from the edit profile button, but phone number should remain locked because it is the verified account identifier.
+- Notes: Backend code remains untouched. For first-time onboarding, section setup still uses `POST /v1/profile/onboarding`; editable identity changes are persisted with `PATCH /v1/profile/me` so the onboarding endpoint's identity-match guard is respected.
+
+## 2026-05-20 - Send Personal Scalars As Custom Profile Fields
+
+- Decision: Keep the personal onboarding UI fields but send mobile, landline, email, date/year of birth, current location, and relationship status under `personal.custom` instead of top-level `personal` keys.
+- Reason: The live profile onboarding API rejects those top-level personal properties and currently only accepts `tag`, `postalAddress`, and `custom` for the personal section.
+- Notes: Hydration still reads legacy top-level personal values when present, then falls back to `personal.custom`. Empty custom values are omitted from outgoing payloads.
+
+## 2026-05-20 - Make Bank Identity Fields Optional In Profile Form
+
+- Decision: Treat bank name, account holder, and account number as optional in the frontend profile onboarding/edit form and payload.
+- Reason: The live profile API does not require those bank account fields, so the form should allow users to save partial bank details instead of blocking on frontend-only validation.
+- Notes: Backend code remains untouched. A bank account is still only sent when the user enters at least one non-currency bank detail, so the default `INR` value alone does not create a blank bank record.
+
+## 2026-05-20 - Render Theme Preview Without App Shell Chrome
+
+- Decision: Remove `AppShell` from `/dashboard/theme-preview` so the design preview renders as a standalone full-page mock interface.
+- Reason: The authenticated app shell sidebar and topbar visually duplicated the preview's internal shell and made it harder to evaluate the proposed ContactBook UI direction.
+- Notes: The route remains protected under `/dashboard/theme-preview`; only the visual wrapper was removed. Production dashboard, backend code, and global theme tokens remain unchanged.
+
+## 2026-05-20 - Prototype Private Contact Memory UI On Theme Preview
+
+- Decision: Redesign only `/dashboard/theme-preview` as a warm, personal ContactBook UI preview using mock data.
+- Reason: The user wants to evaluate the private contact memory direction before changing the production dashboard, app shell, or global shadcn theme tokens.
+- Notes: Keep backend code untouched, avoid browser testing, preserve existing production routes and handlers, and use the preview to explore warm paper/oat/cream surfaces, deep fern actions, onboarding cards, WhatsApp preview, and a prioritized setup journey.
+
+## 2026-05-20 - Prototype Material-Inspired Theme On Static Signed-In Route
+
+- Decision: Add a protected static preview route at `/dashboard/theme-preview` before changing the working signed-in pages or global theme.
+- Reason: The user wants to evaluate a shadcn-professional UI direction with Material 3-inspired tokens before applying it to production flows.
+- Notes: The preview must use mock data only, keep backend code untouched, avoid browser testing, preserve the current teal/green brand direction, and explore richer secondary, tertiary, surface, outline, success, warning, and destructive roles locally first.
+
 ## 2026-05-19 - Add Signed-In UI Redesign Preview
 
 - Decision: Add a frontend-only signed-in preview route for the proposed setup-console redesign before replacing production dashboard/import/profile screens.
@@ -407,6 +533,16 @@
 - Decision: Make each contacts table row navigate to `/dashboard/contacts/:contactId` and remove the separate View action button.
 - Reason: The user requested row clicks to be enough for opening contact details.
 - Notes: Rows support keyboard activation with Enter and Space in addition to pointer clicks.
+
+## 2026-05-20 - Simplify Signup Onboarding And Contact Details
+
+- Decision: Stop routing signup setup users into the card creation modal after the import step.
+- Reason: The user wants new signups to avoid the create-card modal during onboarding; cards remain available from manual card creation paths.
+- Notes: Setup-mode import skip and Google connect completion now return to `/dashboard`.
+
+- Decision: Remove internal identifiers from the contact detail page, including External id and Source metadata.
+- Reason: Imported identifiers are not useful user-facing contact details and make the page feel noisy.
+- Notes: The page still shows primary contact fields, organizations, addresses, URLs, notes, source badge, and created/updated dates.
 
 ## 2026-05-19 - Add Cards Index And Detail Pages
 

@@ -242,7 +242,13 @@ export default function DashboardPage() {
       {onboardingStep === "import" && (
         <ImportOnboardingModal
           mode={isSetupFlow ? "setup" : "create"}
-          onSkip={() => setOnboardingStep("card")}
+          onSkip={() => {
+            if (isSetupFlow) {
+              setOnboardingStep(null);
+              return;
+            }
+            setOnboardingStep("card");
+          }}
         />
       )}
       {onboardingStep === "card" && (

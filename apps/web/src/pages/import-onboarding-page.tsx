@@ -23,12 +23,9 @@ export function ImportOnboardingModal({
   const connectGoogle = async () => {
     setIsConnectingGoogle(true);
     try {
-      const cardNext =
-        mode === "setup"
-          ? "/dashboard?onboarding=card&flow=setup"
-          : "/dashboard?onboarding=card";
+      const nextPath = mode === "setup" ? "/dashboard" : "/dashboard?onboarding=card";
       const url = await startGoogleImportConnection(
-        `/dashboard/import?next=${encodeURIComponent(cardNext)}`,
+        `/dashboard/import?next=${encodeURIComponent(nextPath)}`,
       );
       sessionStorage.setItem(GOOGLE_OAUTH_PENDING_KEY, "1");
       window.location.assign(url);
@@ -87,7 +84,7 @@ export default function ImportOnboardingPage() {
     <AppShell>
       <ImportOnboardingModal
         mode="setup"
-        onSkip={() => navigate("/dashboard?onboarding=card&flow=setup", { replace: true })}
+        onSkip={() => navigate("/dashboard", { replace: true })}
       />
     </AppShell>
   );

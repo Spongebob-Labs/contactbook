@@ -16,12 +16,21 @@ import { DIAL_COUNTRIES } from "@/lib/dial-countries";
 import { buildE164, nationalDigits } from "@/lib/phone";
 import type { VerifyCodeResponse } from "@/lib/types";
 
+const COUNTRY_CODE_PATTERN = /^\+\d{1,4}$/;
+const NATIONAL_PHONE_PATTERN = /^\d{4,15}$/;
+
 const phoneSchema = z.object({
   countryCode: z
     .string()
     .trim()
-    .regex(/^\+\d{1,4}$/, "Enter a valid country code."),
-  national: z.string().min(4, "Enter a valid phone number."),
+    .regex(COUNTRY_CODE_PATTERN, "Enter a valid country code."),
+  national: z
+    .string()
+    .transform((value) => nationalDigits(value))
+    .refine(
+      (value) => NATIONAL_PHONE_PATTERN.test(value),
+      "Enter a 4 to 15 digit phone number.",
+    ),
 });
 
 const otpSchema = z.object({

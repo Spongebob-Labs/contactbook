@@ -4,19 +4,17 @@ import {
   AlertCircle,
   ArrowLeft,
   Building2,
-  CalendarDays,
   Globe,
   Mail,
   MapPin,
   Phone,
-  UserRound,
   type LucideIcon,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
 import {
@@ -180,7 +178,7 @@ export default function ContactDetailPage() {
             </CardContent>
           </Card>
 
-          <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <section className="grid gap-4 md:grid-cols-3">
             <DetailTile
               icon={Mail}
               label="Primary email"
@@ -195,11 +193,6 @@ export default function ContactDetailPage() {
               icon={MapPin}
               label="Location"
               value={getLocation(contact) || "No location"}
-            />
-            <DetailTile
-              icon={UserRound}
-              label="External id"
-              value={contact.externalId}
             />
           </section>
 
@@ -279,7 +272,7 @@ export default function ContactDetailPage() {
             </ListSection>
           </section>
 
-          <section className="grid gap-4 xl:grid-cols-2">
+          <section>
             <ListSection title="URLs" empty="No URLs">
               {contact.urls.length > 0 ? (
                 <div className="grid gap-2">
@@ -304,25 +297,6 @@ export default function ContactDetailPage() {
                 </div>
               ) : null}
             </ListSection>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Source metadata</CardTitle>
-                <CardDescription>Imported contact identifiers</CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-3 text-sm">
-                <DetailTile
-                  icon={CalendarDays}
-                  label="Source revision"
-                  value={contact.sourceRevision ?? "No revision"}
-                />
-                <DetailTile
-                  icon={UserRound}
-                  label="Merge group"
-                  value={contact.mergeGroupId ?? "No merge group"}
-                />
-              </CardContent>
-            </Card>
           </section>
 
           {contact.notes && (

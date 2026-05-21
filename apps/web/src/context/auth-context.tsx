@@ -17,6 +17,7 @@ import type { ProfileMeResponse } from "@/lib/types";
 
 type AuthContextValue = {
   userId: string | null;
+  profileIdentity: ProfileMeResponse["identity"] | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   refreshUser: () => void;
@@ -28,6 +29,9 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [userId, setUserId] = useState<string | null>(() => getCookie("cb_user_id"));
+  const [profileIdentity, setProfileIdentity] = useState<
+    ProfileMeResponse["identity"] | null
+  >(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -41,6 +45,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
         setUserId(getCookie("cb_user_id") ?? profile.identity.primaryEmail);
+        setProfileIdentity(profile.identity);
         setIsAuthenticated(true);
       } catch {
         if (!isMounted) {
@@ -48,6 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         clearContactBookSessionState();
         setUserId(null);
+        setProfileIdentity(null);
         setIsAuthenticated(false);
       } finally {
         if (isMounted) {
@@ -65,6 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refreshUser = useCallback(() => {
     const nextUserId = getCookie("cb_user_id");
     setUserId(nextUserId);
+    setProfileIdentity(null);
     setIsAuthenticated(Boolean(nextUserId));
     setIsLoading(false);
   }, []);
@@ -72,6 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const markAuthenticated = useCallback(() => {
     localStorage.removeItem(GOOGLE_CONNECTED_KEY);
     setUserId(getCookie("cb_user_id"));
+    setProfileIdentity(null);
     setIsAuthenticated(true);
     setIsLoading(false);
   }, []);
@@ -87,6 +95,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearContactBookSessionState();
       await supabase?.auth.signOut().catch(() => undefined);
       setUserId(null);
+      setProfileIdentity(null);
       setIsAuthenticated(false);
       setIsLoading(false);
     }
@@ -95,13 +104,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AuthContextValue>(
     () => ({
       userId,
+      profileIdentity,
       isAuthenticated,
       isLoading,
       refreshUser,
       markAuthenticated,
       logout,
     }),
-    [isAuthenticated, isLoading, logout, markAuthenticated, refreshUser, userId],
+    [
+      isAuthenticated,
+      isLoading,
+      logout,
+      markAuthenticated,
+      profileIdentity,
+      refreshUser,
+      userId,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

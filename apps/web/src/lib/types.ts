@@ -147,6 +147,7 @@ export type ProfileMeResponse = {
     workFax?: string | null;
     workEmail?: string | null;
     workPostalAddress?: PostalAddress;
+    employeeId?: string | null;
     custom?: Record<string, string>;
   }>;
   business: Array<{
@@ -161,26 +162,41 @@ export type ProfileMeResponse = {
     businessFax?: string | null;
     businessEmail?: string | null;
     businessPostalAddress?: PostalAddress;
+    businessType?: string | null;
+    gstin?: string | null;
     custom?: Record<string, string>;
   }>;
   socials: Array<{
     groupId: string;
     tag: string;
+    skype?: string | null;
+    facebook?: string | null;
+    twitter?: string | null;
+    whatsApp?: string | null;
+    blog?: string | null;
+    website?: string | null;
+    linkedin?: string | null;
+    github?: string | null;
     custom?: Record<string, string>;
   }>;
   financial: {
     bankAccounts: Array<{
       groupId: string;
+      fieldId?: string;
       tag: string;
-      bankName: string;
-      accountHolder: string;
-      accountNumber: string;
+      bankName?: string | null;
+      accountHolder?: string | null;
+      accountNumber?: string | null;
+      iban?: string | null;
+      swiftBic?: string | null;
+      routingNumber?: string | null;
       ifsc?: string | null;
       currency: string;
       isSensitive: boolean;
     }>;
     digitalWallets: Array<{
       groupId: string;
+      fieldId?: string;
       tag: string;
       platform: string;
       handleOrLink: string;
@@ -188,6 +204,7 @@ export type ProfileMeResponse = {
     }>;
     cryptoWallets: Array<{
       groupId: string;
+      fieldId?: string;
       tag: string;
       network: string;
       address: string;
