@@ -5,7 +5,7 @@ locals {
   # CD / gcloud must have iam.serviceAccounts.actAs on this SA (granted in github_actions_wif.tf).
   cloud_run_runtime_sa_email = (
     var.cloud_run_service_account_email != null && var.cloud_run_service_account_email != ""
-    ) ? var.cloud_run_service_account_email : "${data.google_project.current.number}-compute@developer.gserviceaccount.com"
+  ) ? var.cloud_run_service_account_email : "${data.google_project.current.number}-compute@developer.gserviceaccount.com"
 
   wif_apis = var.enable_github_actions_wif ? toset([
     "sts.googleapis.com",

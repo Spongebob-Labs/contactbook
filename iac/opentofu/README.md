@@ -4,6 +4,7 @@ This directory provisions:
 
 - **Google Artifact Registry** Docker repository
 - **Cloud Run** service for the API (deploys an image from Artifact Registry)
+- **GCS bucket** `contactbook-profile-photos` for public profile photo URLs (when `create_profile_photos_bucket = true`)
 - Optional: **API enablement** for common required services
 
 The container build uses the existing `apps/api/Dockerfile`, which expects the **repo root** as the build context.
@@ -46,6 +47,30 @@ Outputs include:
 - Cloud Run service URL
 - Artifact Registry repo
 - Deployed image URI
+- `profile_photos_bucket_name` and `profile_photos_public_base_url` (for API env)
+
+## Profile photos bucket (GCS)
+
+When **`create_profile_photos_bucket`** is `true` (default), OpenTofu creates **`contactbook-profile-photos`** (override with `profile_photos_bucket_name`) in **`var.region`** with:
+
+- **Public read** (`allUsers` → `roles/storage.objectViewer`) for `<img src>` URLs
+- **CORS** GET/HEAD for origins in `profile_photos_cors_origins` (align with API `CORS_ORIGIN` / your web app)
+- **`roles/storage.objectAdmin`** on the bucket for the Cloud Run **runtime** service account (`cloud_run_service_account_email` or the project default compute SA)
+
+Ensure **`storage.googleapis.com`** is in `apis` when `enable_apis` is true, then apply:
+
+```bash
+tofu apply
+```
+
+Set in `apps/api/.env` (and `API_ENV_B64` for production):
+
+```bash
+GCS_PROFILE_PHOTOS_BUCKET="<profile_photos_bucket_name output>"
+GCS_PUBLIC_BASE_URL="<profile_photos_public_base_url output>"
+```
+
+To disable bucket creation (e.g. bucket already exists elsewhere), set `create_profile_photos_bucket = false` in `terraform.tfvars`.
 
 ## Remote state (GCS) — optional, migrate later
 
