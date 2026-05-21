@@ -14,6 +14,7 @@ import {
   ValidateIf,
   ValidateNested,
 } from "class-validator";
+import { IsProfilePhotoUrl } from "../validators/is-profile-photo-url.validator";
 import { AddressPayloadDto } from "./address-payload.dto";
 import { BankAccountPayloadDto } from "./bank-account-payload.dto";
 import { CryptoWalletPayloadDto } from "./crypto-wallet-payload.dto";
@@ -51,10 +52,14 @@ export class ProfileMeIdentityUpsertDto {
   @MaxLength(320)
   primaryEmail?: string;
 
-  @ApiPropertyOptional({ nullable: true })
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      "HTTPS URL under GCS_PUBLIC_BASE_URL. Set via POST /profile/me/photo; use null to clear.",
+  })
   @IsOptional()
   @IsString()
-  @MaxLength(20_000)
+  @IsProfilePhotoUrl()
   profilePhoto?: string | null;
 }
 

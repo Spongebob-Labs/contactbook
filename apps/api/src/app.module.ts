@@ -10,6 +10,7 @@ import { IntegrationModule } from "./integration/integration.module";
 import { JobsModule } from "./jobs/jobs.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { ProfileModule } from "./profile/profile.module";
+import { StorageModule } from "./storage/storage.module";
 import { SyncModule } from "./sync/sync.module";
 import { TravelModule } from "./travel/travel.module";
 
@@ -22,6 +23,7 @@ import { TravelModule } from "./travel/travel.module";
     }),
     ScheduleModule.forRoot(),
     PrismaModule,
+    StorageModule,
     HealthModule,
     AuthModule,
     ProfileModule,
