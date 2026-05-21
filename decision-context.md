@@ -1,5 +1,29 @@
 # Decision Context
 
+## 2026-05-21 - Omit Blank Profile IDs On Save
+
+- Decision: Change the frontend profile save payload to omit empty `groupId` and `fieldId` values instead of sending `null`, and omit blank personal scalar/custom values until a personal group exists.
+- Reason: The profile PATCH backend treats `null` values inside `personal` as clear-field instructions. On a new personal section, `personal.groupId: null` or blank personal values serialized as `null` can make the backend return before creating the personal group, so personal form values are not saved.
+- Notes: Existing personal groups still send `null` for cleared fields so edit-time clearing behavior is preserved. Backend code and browser testing remain untouched.
+
+## 2026-05-21 - Send Supported Personal Fields Top-Level
+
+- Decision: Change the frontend profile payload so backend-supported personal fields are sent as top-level `personal` properties, while extra personal fields remain in `personal.custom`.
+- Reason: The deployed PATCH response accepted other sections but returned an empty personal section when all personal scalar fields were nested under `custom`.
+- Notes: This is frontend-only and keeps hydration reading both top-level and custom values for compatibility with older saved data.
+
+## 2026-05-21 - Mirror Profile Backend Validation In Form
+
+- Decision: Add frontend validation for profile onboarding/edit fields that mirrors the backend DTO limits, including identity requirements, profile photo payload length, personal postal address lengths, row label lengths, and financial field lengths.
+- Reason: Users should see field-level errors before submit instead of receiving a backend 400 after filling the form.
+- Notes: The profile modal now shows an error count, displays inline errors after blur, and disables Save until the form satisfies the mirrored constraints. Backend code and browser testing remain untouched.
+
+## 2026-05-21 - Broaden Profile Onboarding Hydration
+
+- Decision: Update the profile onboarding modal mapper to hydrate fields from both normalized top-level `/v1/profile/me` response keys and the `custom` keys used by the current frontend save payload.
+- Reason: Saved profile data can come back in different shapes depending on field category and backend flattening, especially social links that may be returned as top-level keys instead of nested custom values.
+- Notes: The change is frontend-only, covers personal, work, business, social, address fallback, and existing financial direct-field hydration, and keeps browser testing skipped per project instruction.
+
 ## 2026-05-20 - Send Complete Profile Onboarding Shell
 
 - Decision: Build a dedicated frontend payload for `POST /v1/profile/onboarding` that always includes identity, personal, work, business, socials, and financial shells, with empty arrays for empty repeatable sections.

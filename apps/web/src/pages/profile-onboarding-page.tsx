@@ -140,6 +140,8 @@ type OnboardingForm = {
   };
 };
 
+type ValidationErrors = Record<string, string>;
+
 type NullableAddressPayload = {
   street: string | null;
   city: string | null;
@@ -148,7 +150,7 @@ type NullableAddressPayload = {
   country: string | null;
 };
 
-type NullableCustomPayload = Record<string, string | null>;
+type NullableCustomPayload = Record<string, string | null | undefined>;
 
 type FullProfilePayload = {
   identity: {
@@ -159,30 +161,37 @@ type FullProfilePayload = {
     profilePhoto: string | null;
   };
   personal: {
-    groupId: string | null;
-    tag: string | null;
+    groupId: string | undefined;
+    tag: string | null | undefined;
     postalAddress: NullableAddressPayload;
+    mobile: string | null | undefined;
+    landline: string | null | undefined;
+    email: string | null | undefined;
+    dateOfBirth: string | null | undefined;
+    yearOfBirth: string | null | undefined;
+    currentLocation: string | null | undefined;
+    relationshipStatus: string | null | undefined;
     custom: NullableCustomPayload;
   };
   work: Array<{
-    groupId: string | null;
+    groupId: string | undefined;
     tag: string | null;
     custom: NullableCustomPayload;
   }>;
   business: Array<{
-    groupId: string | null;
+    groupId: string | undefined;
     tag: string | null;
     custom: NullableCustomPayload;
   }>;
   socials: Array<{
-    groupId: string | null;
+    groupId: string | undefined;
     tag: string | null;
     custom: NullableCustomPayload;
   }>;
   financial: {
     bankAccounts: Array<{
-      groupId: string | null;
-      fieldId: string | null;
+      groupId: string | undefined;
+      fieldId: string | undefined;
       tag: string | null;
       bankName: string | null;
       accountHolder: string | null;
@@ -194,15 +203,15 @@ type FullProfilePayload = {
       currency: string | null;
     }>;
     digitalWallets: Array<{
-      groupId: string | null;
-      fieldId: string | null;
+      groupId: string | undefined;
+      fieldId: string | undefined;
       tag: string | null;
       platform: string | null;
       handleOrLink: string | null;
     }>;
     cryptoWallets: Array<{
-      groupId: string | null;
-      fieldId: string | null;
+      groupId: string | undefined;
+      fieldId: string | undefined;
       tag: string | null;
       network: string | null;
       address: string | null;
@@ -370,9 +379,37 @@ function nullableText(value: string | null | undefined): string | null {
   return next || null;
 }
 
+function optionalText(value: string | null | undefined): string | undefined {
+  const next = clean(value ?? "");
+  return next || undefined;
+}
+
+function nullableTextForSave(
+  value: string | null | undefined,
+  keepEmptyAsNull: boolean,
+): string | null | undefined {
+  const next = clean(value ?? "");
+  if (next) {
+    return next;
+  }
+  return keepEmptyAsNull ? null : undefined;
+}
+
 function nullableCustom(values: Record<string, string>): NullableCustomPayload {
   return Object.fromEntries(
     Object.entries(values).map(([key, value]) => [key, nullableText(value)]),
+  );
+}
+
+function nullableCustomForSave(
+  values: Record<string, string>,
+  keepEmptyAsNull: boolean,
+): NullableCustomPayload {
+  return Object.fromEntries(
+    Object.entries(values).map(([key, value]) => [
+      key,
+      nullableTextForSave(value, keepEmptyAsNull),
+    ]),
   );
 }
 
@@ -393,11 +430,59 @@ function valueOrEmpty(value: string | null | undefined): string {
   return value ?? "";
 }
 
+function readString(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  return typeof value === "string" ? value : String(value);
+}
+
+function objectValue(source: unknown, key: string): string {
+  if (!source || typeof source !== "object") {
+    return "";
+  }
+  return readString((source as Record<string, unknown>)[key]);
+}
+
+function customFrom(source: unknown): Record<string, unknown> | undefined {
+  if (!source || typeof source !== "object") {
+    return undefined;
+  }
+  const custom = (source as Record<string, unknown>).custom;
+  return custom && typeof custom === "object"
+    ? (custom as Record<string, unknown>)
+    : undefined;
+}
+
+function labelFromCamelKey(key: string): string {
+  return key
+    .replace(/([A-Z])/g, " $1")
+    .replace(/^./, (char) => char.toUpperCase())
+    .trim();
+}
+
 function customValue(
-  custom: Record<string, string> | undefined,
-  key: string,
+  custom: Record<string, unknown> | undefined,
+  ...keys: string[]
 ): string {
-  return custom?.[key] ?? "";
+  const expandedKeys = keys.flatMap((key) => [key, labelFromCamelKey(key)]);
+  for (const key of expandedKeys) {
+    const value = readString(custom?.[key]);
+    if (value) {
+      return value;
+    }
+  }
+  return "";
+}
+
+function profileFieldValue(
+  source: unknown,
+  key: string,
+  ...customKeys: string[]
+) {
+  return (
+    objectValue(source, key) || customValue(customFrom(source), key, ...customKeys)
+  );
 }
 
 function addressToForm(address: PostalAddress | undefined): AddressForm {
@@ -412,7 +497,7 @@ function addressToForm(address: PostalAddress | undefined): AddressForm {
 
 function addressToFormWithCustom(
   address: PostalAddress | undefined,
-  custom: Record<string, string> | undefined,
+  custom: Record<string, unknown> | undefined,
   prefix: string,
 ): AddressForm {
   const formAddress = addressToForm(address);
@@ -442,67 +527,47 @@ function profileToForm(profile: ProfileMeResponse): OnboardingForm {
       ...initialForm.personal,
       groupId: profile.personal.groupId,
       tag: valueOrEmpty(profile.personal.tag) || initialForm.personal.tag,
-      title: customValue(profile.personal.custom, "title"),
-      nickname: customValue(profile.personal.custom, "nickname"),
-      mobile:
-        valueOrEmpty(profile.personal.mobile) ||
-        customValue(profile.personal.custom, "mobile"),
-      landline:
-        valueOrEmpty(profile.personal.landline) ||
-        customValue(profile.personal.custom, "landline"),
-      email:
-        valueOrEmpty(profile.personal.email) ||
-        customValue(profile.personal.custom, "email"),
+      title: profileFieldValue(profile.personal, "title"),
+      nickname: profileFieldValue(profile.personal, "nickname"),
+      mobile: profileFieldValue(profile.personal, "mobile"),
+      landline: profileFieldValue(profile.personal, "landline"),
+      email: profileFieldValue(profile.personal, "email"),
       postalAddress: addressToFormWithCustom(
         profile.personal.postalAddress,
-        profile.personal.custom,
+        customFrom(profile.personal),
         "postal",
       ),
-      dateOfBirth:
-        valueOrEmpty(profile.personal.dateOfBirth) ||
-        customValue(profile.personal.custom, "dateOfBirth"),
-      yearOfBirth:
-        valueOrEmpty(profile.personal.yearOfBirth) ||
-        customValue(profile.personal.custom, "yearOfBirth"),
-      currentLocation:
-        valueOrEmpty(profile.personal.currentLocation) ||
-        customValue(profile.personal.custom, "currentLocation"),
-      kidsNames: customValue(profile.personal.custom, "kidsNames"),
-      partnerName: customValue(profile.personal.custom, "partnerName"),
-      petNames: customValue(profile.personal.custom, "petNames"),
-      relationshipStatus:
-        valueOrEmpty(profile.personal.relationshipStatus) ||
-        customValue(profile.personal.custom, "relationshipStatus"),
-      bloodGroup: customValue(profile.personal.custom, "bloodGroup"),
+      dateOfBirth: profileFieldValue(profile.personal, "dateOfBirth"),
+      yearOfBirth: profileFieldValue(profile.personal, "yearOfBirth"),
+      currentLocation: profileFieldValue(profile.personal, "currentLocation"),
+      kidsNames: profileFieldValue(profile.personal, "kidsNames"),
+      partnerName: profileFieldValue(profile.personal, "partnerName"),
+      petNames: profileFieldValue(profile.personal, "petNames"),
+      relationshipStatus: profileFieldValue(
+        profile.personal,
+        "relationshipStatus",
+      ),
+      bloodGroup: profileFieldValue(profile.personal, "bloodGroup"),
     },
     work: ensureRows(
       profile.work.map((item) => ({
         ...emptyWork(),
         groupId: item.groupId,
         tag: valueOrEmpty(item.tag) || emptyWork().tag,
-        companyName:
-          valueOrEmpty(item.companyName) || customValue(item.custom, "companyName"),
-        companyLogo:
-          valueOrEmpty(item.companyLogo) || customValue(item.custom, "companyLogo"),
-        companyRegNumber:
-          valueOrEmpty(item.companyRegNumber) ||
-          customValue(item.custom, "companyRegNumber"),
-        workTitle:
-          valueOrEmpty(item.workTitle) || customValue(item.custom, "workTitle"),
-        workMobile:
-          valueOrEmpty(item.workMobile) || customValue(item.custom, "workMobile"),
-        workLandline:
-          valueOrEmpty(item.workLandline) ||
-          customValue(item.custom, "workLandline"),
-        workFax: valueOrEmpty(item.workFax) || customValue(item.custom, "workFax"),
-        workEmail:
-          valueOrEmpty(item.workEmail) || customValue(item.custom, "workEmail"),
+        companyName: profileFieldValue(item, "companyName"),
+        companyLogo: profileFieldValue(item, "companyLogo"),
+        companyRegNumber: profileFieldValue(item, "companyRegNumber"),
+        workTitle: profileFieldValue(item, "workTitle"),
+        workMobile: profileFieldValue(item, "workMobile"),
+        workLandline: profileFieldValue(item, "workLandline"),
+        workFax: profileFieldValue(item, "workFax"),
+        workEmail: profileFieldValue(item, "workEmail"),
         workPostalAddress: addressToFormWithCustom(
           item.workPostalAddress,
-          item.custom,
+          customFrom(item),
           "workPostal",
         ),
-        employeeId: customValue(item.custom, "employeeId"),
+        employeeId: profileFieldValue(item, "employeeId"),
       })),
       emptyWork,
     ),
@@ -511,36 +576,21 @@ function profileToForm(profile: ProfileMeResponse): OnboardingForm {
         ...emptyBusiness(),
         groupId: item.groupId,
         tag: valueOrEmpty(item.tag) || emptyBusiness().tag,
-        businessName:
-          valueOrEmpty(item.businessName) ||
-          customValue(item.custom, "businessName"),
-        businessLogo:
-          valueOrEmpty(item.businessLogo) ||
-          customValue(item.custom, "businessLogo"),
-        businessRegNumber:
-          valueOrEmpty(item.businessRegNumber) ||
-          customValue(item.custom, "businessRegNumber"),
-        businessTitle:
-          valueOrEmpty(item.businessTitle) ||
-          customValue(item.custom, "businessTitle"),
-        businessMobile:
-          valueOrEmpty(item.businessMobile) ||
-          customValue(item.custom, "businessMobile"),
-        businessLandline:
-          valueOrEmpty(item.businessLandline) ||
-          customValue(item.custom, "businessLandline"),
-        businessFax:
-          valueOrEmpty(item.businessFax) || customValue(item.custom, "businessFax"),
-        businessEmail:
-          valueOrEmpty(item.businessEmail) ||
-          customValue(item.custom, "businessEmail"),
+        businessName: profileFieldValue(item, "businessName"),
+        businessLogo: profileFieldValue(item, "businessLogo"),
+        businessRegNumber: profileFieldValue(item, "businessRegNumber"),
+        businessTitle: profileFieldValue(item, "businessTitle"),
+        businessMobile: profileFieldValue(item, "businessMobile"),
+        businessLandline: profileFieldValue(item, "businessLandline"),
+        businessFax: profileFieldValue(item, "businessFax"),
+        businessEmail: profileFieldValue(item, "businessEmail"),
         businessPostalAddress: addressToFormWithCustom(
           item.businessPostalAddress,
-          item.custom,
+          customFrom(item),
           "businessPostal",
         ),
-        businessType: customValue(item.custom, "businessType"),
-        gstin: customValue(item.custom, "gstin"),
+        businessType: profileFieldValue(item, "businessType"),
+        gstin: profileFieldValue(item, "gstin"),
       })),
       emptyBusiness,
     ),
@@ -549,16 +599,14 @@ function profileToForm(profile: ProfileMeResponse): OnboardingForm {
         ...emptySocials(),
         groupId: item.groupId,
         tag: valueOrEmpty(item.tag) || emptySocials().tag,
-        skype: customValue(item.custom, "skype"),
-        facebook: customValue(item.custom, "facebook"),
-        twitter: customValue(item.custom, "twitter"),
-        whatsapp:
-          customValue(item.custom, "whatsApp") ||
-          customValue(item.custom, "whatsapp"),
-        blog: customValue(item.custom, "blog"),
-        website: customValue(item.custom, "website"),
-        linkedin: customValue(item.custom, "linkedin"),
-        github: customValue(item.custom, "github"),
+        skype: profileFieldValue(item, "skype"),
+        facebook: profileFieldValue(item, "facebook"),
+        twitter: profileFieldValue(item, "twitter"),
+        whatsapp: profileFieldValue(item, "whatsApp", "whatsapp"),
+        blog: profileFieldValue(item, "blog"),
+        website: profileFieldValue(item, "website"),
+        linkedin: profileFieldValue(item, "linkedin"),
+        github: profileFieldValue(item, "github"),
       })),
       emptySocials,
     ),
@@ -606,7 +654,7 @@ function profileToForm(profile: ProfileMeResponse): OnboardingForm {
   };
 }
 
-const MAX_PROFILE_PHOTO_BYTES = 1024 * 1024;
+const MAX_PROFILE_PHOTO_BYTES = 14 * 1024;
 
 function hasInitializedProfile(profile: ProfileMeResponse) {
   if (profile.profileOnboardingCompletedAt) {
@@ -623,6 +671,167 @@ function hasInitializedProfile(profile: ProfileMeResponse) {
   );
 }
 
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MAX_PROFILE_PHOTO_CHARS = 20_000;
+
+function addRequired(
+  errors: ValidationErrors,
+  path: string,
+  value: string,
+  label: string,
+) {
+  if (!hasText(value)) {
+    errors[path] = `${label} is required.`;
+  }
+}
+
+function addMaxLength(
+  errors: ValidationErrors,
+  path: string,
+  value: string | null | undefined,
+  max: number,
+  label: string,
+) {
+  if ((value ?? "").length > max) {
+    errors[path] = `${label} must be ${max} characters or fewer.`;
+  }
+}
+
+function addEmail(
+  errors: ValidationErrors,
+  path: string,
+  value: string,
+  label: string,
+) {
+  if (hasText(value) && !EMAIL_PATTERN.test(clean(value))) {
+    errors[path] = `${label} must be a valid email address.`;
+  }
+}
+
+function validateAddress(
+  errors: ValidationErrors,
+  prefix: string,
+  address: AddressForm,
+  label: string,
+) {
+  addMaxLength(errors, `${prefix}.street`, address.street, 500, `${label} street`);
+  addMaxLength(errors, `${prefix}.city`, address.city, 200, `${label} city`);
+  addMaxLength(errors, `${prefix}.state`, address.state, 120, `${label} state`);
+  addMaxLength(
+    errors,
+    `${prefix}.pincode`,
+    address.pincode,
+    40,
+    `${label} pincode`,
+  );
+  addMaxLength(errors, `${prefix}.country`, address.country, 120, `${label} country`);
+}
+
+function validateProfileForm(form: OnboardingForm): ValidationErrors {
+  const errors: ValidationErrors = {};
+
+  addRequired(errors, "identity.firstName", form.identity.firstName, "First name");
+  addMaxLength(errors, "identity.firstName", form.identity.firstName, 120, "First name");
+  addRequired(errors, "identity.lastName", form.identity.lastName, "Last name");
+  addMaxLength(errors, "identity.lastName", form.identity.lastName, 120, "Last name");
+  addRequired(errors, "identity.primaryEmail", form.identity.primaryEmail, "Email");
+  addEmail(errors, "identity.primaryEmail", form.identity.primaryEmail, "Email");
+  addMaxLength(errors, "identity.primaryEmail", form.identity.primaryEmail, 320, "Email");
+  addRequired(
+    errors,
+    "identity.primaryPhone",
+    form.identity.primaryPhone,
+    "Phone number",
+  );
+  addMaxLength(
+    errors,
+    "identity.primaryPhone",
+    form.identity.primaryPhone,
+    32,
+    "Phone number",
+  );
+  addMaxLength(
+    errors,
+    "identity.profilePhoto",
+    form.identity.profilePhoto,
+    MAX_PROFILE_PHOTO_CHARS,
+    "Profile photo",
+  );
+
+  addMaxLength(errors, "personal.tag", form.personal.tag, 200, "Label");
+  validateAddress(
+    errors,
+    "personal.postalAddress",
+    form.personal.postalAddress,
+    "Postal address",
+  );
+
+  form.work.forEach((row, index) => {
+    addMaxLength(errors, `work.${index}.tag`, row.tag, 200, "Work label");
+  });
+
+  form.business.forEach((row, index) => {
+    addMaxLength(errors, `business.${index}.tag`, row.tag, 200, "Business label");
+  });
+
+  form.socials.forEach((row, index) => {
+    addMaxLength(errors, `socials.${index}.tag`, row.tag, 200, "Social label");
+  });
+
+  form.financial.bankAccounts.forEach((row, index) => {
+    const prefix = `financial.bankAccounts.${index}`;
+    addMaxLength(errors, `${prefix}.tag`, row.tag, 200, "Bank account label");
+    addMaxLength(errors, `${prefix}.bankName`, row.bankName, 200, "Bank name");
+    addMaxLength(
+      errors,
+      `${prefix}.accountHolder`,
+      row.accountHolder,
+      200,
+      "Account holder",
+    );
+    addMaxLength(
+      errors,
+      `${prefix}.accountNumber`,
+      row.accountNumber,
+      64,
+      "Account number",
+    );
+    addMaxLength(errors, `${prefix}.iban`, row.iban, 64, "IBAN");
+    addMaxLength(errors, `${prefix}.swiftBic`, row.swiftBic, 32, "SWIFT/BIC");
+    addMaxLength(
+      errors,
+      `${prefix}.routingNumber`,
+      row.routingNumber,
+      32,
+      "Routing number",
+    );
+    addMaxLength(errors, `${prefix}.ifsc`, row.ifsc, 32, "IFSC");
+    addMaxLength(errors, `${prefix}.currency`, row.currency, 8, "Currency");
+  });
+
+  form.financial.digitalWallets.forEach((row, index) => {
+    const prefix = `financial.digitalWallets.${index}`;
+    addMaxLength(errors, `${prefix}.tag`, row.tag, 200, "Digital wallet label");
+    addMaxLength(errors, `${prefix}.platform`, row.platform, 120, "Platform");
+    addMaxLength(
+      errors,
+      `${prefix}.handleOrLink`,
+      row.handleOrLink,
+      500,
+      "Handle or link",
+    );
+  });
+
+  form.financial.cryptoWallets.forEach((row, index) => {
+    const prefix = `financial.cryptoWallets.${index}`;
+    addMaxLength(errors, `${prefix}.tag`, row.tag, 200, "Crypto wallet label");
+    addMaxLength(errors, `${prefix}.network`, row.network, 80, "Network");
+    addMaxLength(errors, `${prefix}.address`, row.address, 500, "Address");
+  });
+
+  return errors;
+}
+
 type ProfileOnboardingModalProps = {
   onComplete: () => void;
   onSkip: () => void;
@@ -633,13 +842,38 @@ export function ProfileOnboardingModal({
   onSkip,
 }: ProfileOnboardingModalProps) {
   const [form, setForm] = useState<OnboardingForm>(initialForm);
+  const [touchedFields, setTouchedFields] = useState<Set<string>>(() => new Set());
+  const [showAllErrors, setShowAllErrors] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [hasExistingProfile, setHasExistingProfile] = useState(false);
   const step = steps[stepIndex];
+  const validationErrors = validateProfileForm(form);
+  const validationErrorCount = Object.keys(validationErrors).length;
+  const hasValidationErrors = validationErrorCount > 0;
   const controlsDisabled = isSaving || isLoadingProfile || Boolean(loadError);
+  const saveDisabled = controlsDisabled || hasValidationErrors;
+
+  const markTouched = (path: string) => {
+    setTouchedFields((current) => {
+      if (current.has(path)) {
+        return current;
+      }
+      const next = new Set(current);
+      next.add(path);
+      return next;
+    });
+  };
+
+  const visibleError = (path: string) =>
+    showAllErrors || touchedFields.has(path) ? validationErrors[path] : undefined;
+
+  const validationProps = (path: string) => ({
+    onBlur: () => markTouched(path),
+    "aria-invalid": Boolean(visibleError(path)),
+  });
 
   useEffect(() => {
     let isMounted = true;
@@ -684,14 +918,20 @@ export function ProfileOnboardingModal({
       return;
     }
 
+    markTouched("identity.profilePhoto");
+
     if (file.size > MAX_PROFILE_PHOTO_BYTES) {
-      toast.error("Choose an image under 1 MB.");
+      toast.error("Choose an image under 14 KB.");
       return;
     }
 
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result === "string") {
+        if (reader.result.length > MAX_PROFILE_PHOTO_CHARS) {
+          toast.error("Choose a smaller image.");
+          return;
+        }
         setSectionValue("identity", "profilePhoto", reader.result);
       }
     };
@@ -880,131 +1120,148 @@ export function ProfileOnboardingModal({
   };
 
   const validate = (): string | null => {
-    if (!hasText(form.identity.firstName)) {
-      return "Enter your first name.";
-    }
-    if (!hasText(form.identity.lastName)) {
-      return "Enter your last name.";
-    }
-    if (!hasText(form.identity.primaryEmail)) {
-      return "Enter your email.";
-    }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean(form.identity.primaryEmail))) {
-      return "Enter a valid email address.";
+    if (hasValidationErrors) {
+      setShowAllErrors(true);
+      return `${validationErrorCount} ${
+        validationErrorCount === 1 ? "field needs" : "fields need"
+      } attention before saving.`;
     }
 
     return null;
   };
 
-  const buildProfilePayload = (): FullProfilePayload => ({
-    identity: {
-      firstName: form.identity.firstName.trim(),
-      lastName: form.identity.lastName.trim(),
-      primaryPhone: form.identity.primaryPhone.trim(),
-      primaryEmail: form.identity.primaryEmail.trim(),
-      profilePhoto: nullableText(form.identity.profilePhoto),
-    },
-    personal: {
-      groupId: nullableText(form.personal.groupId),
-      tag: nullableText(form.personal.tag),
-      postalAddress: toNullableAddressPayload(form.personal.postalAddress),
-      custom: nullableCustom({
-        title: form.personal.title,
-        nickname: form.personal.nickname,
-        mobile: form.personal.mobile,
-        landline: form.personal.landline,
-        email: form.personal.email,
-        dateOfBirth: form.personal.dateOfBirth,
-        yearOfBirth: form.personal.yearOfBirth,
-        currentLocation: form.personal.currentLocation,
-        kidsNames: form.personal.kidsNames,
-        partnerName: form.personal.partnerName,
-        petNames: form.personal.petNames,
-        relationshipStatus: form.personal.relationshipStatus,
-        bloodGroup: form.personal.bloodGroup,
-      }),
-    },
-    work: form.work.map((row) => ({
-      groupId: nullableText(row.groupId),
-      tag: nullableText(row.tag),
-      custom: {
-        ...nullableCustom({
-          companyName: row.companyName,
-          companyLogo: row.companyLogo,
-          companyRegNumber: row.companyRegNumber,
-          workTitle: row.workTitle,
-          workMobile: row.workMobile,
-          workLandline: row.workLandline,
-          workFax: row.workFax,
-          workEmail: row.workEmail,
-          employeeId: row.employeeId,
-        }),
-        ...nullableAddressCustom("workPostal", row.workPostalAddress),
+  const buildProfilePayload = (): FullProfilePayload => {
+    const personalGroupId = optionalText(form.personal.groupId);
+    const canClearPersonalFields = Boolean(personalGroupId);
+
+    return {
+      identity: {
+        firstName: form.identity.firstName.trim(),
+        lastName: form.identity.lastName.trim(),
+        primaryPhone: form.identity.primaryPhone.trim(),
+        primaryEmail: form.identity.primaryEmail.trim(),
+        profilePhoto: nullableText(form.identity.profilePhoto),
       },
-    })),
-    business: form.business.map((row) => ({
-      groupId: nullableText(row.groupId),
-      tag: nullableText(row.tag),
-      custom: {
-        ...nullableCustom({
-          businessName: row.businessName,
-          businessLogo: row.businessLogo,
-          businessRegNumber: row.businessRegNumber,
-          businessTitle: row.businessTitle,
-          businessMobile: row.businessMobile,
-          businessLandline: row.businessLandline,
-          businessFax: row.businessFax,
-          businessEmail: row.businessEmail,
-          businessType: row.businessType,
-          gstin: row.gstin,
-        }),
-        ...nullableAddressCustom("businessPostal", row.businessPostalAddress),
+      personal: {
+        groupId: personalGroupId,
+        tag: nullableTextForSave(form.personal.tag, canClearPersonalFields),
+        postalAddress: toNullableAddressPayload(form.personal.postalAddress),
+        mobile: nullableTextForSave(form.personal.mobile, canClearPersonalFields),
+        landline: nullableTextForSave(
+          form.personal.landline,
+          canClearPersonalFields,
+        ),
+        email: nullableTextForSave(form.personal.email, canClearPersonalFields),
+        dateOfBirth: nullableTextForSave(
+          form.personal.dateOfBirth,
+          canClearPersonalFields,
+        ),
+        yearOfBirth: nullableTextForSave(
+          form.personal.yearOfBirth,
+          canClearPersonalFields,
+        ),
+        currentLocation: nullableTextForSave(
+          form.personal.currentLocation,
+          canClearPersonalFields,
+        ),
+        relationshipStatus: nullableTextForSave(
+          form.personal.relationshipStatus,
+          canClearPersonalFields,
+        ),
+        custom: nullableCustomForSave(
+          {
+            title: form.personal.title,
+            nickname: form.personal.nickname,
+            kidsNames: form.personal.kidsNames,
+            partnerName: form.personal.partnerName,
+            petNames: form.personal.petNames,
+            bloodGroup: form.personal.bloodGroup,
+          },
+          canClearPersonalFields,
+        ),
       },
-    })),
-    socials: form.socials.map((row) => ({
-      groupId: nullableText(row.groupId),
-      tag: nullableText(row.tag),
-      custom: nullableCustom({
-        skype: row.skype,
-        facebook: row.facebook,
-        twitter: row.twitter,
-        whatsApp: row.whatsapp,
-        blog: row.blog,
-        website: row.website,
-        linkedin: row.linkedin,
-        github: row.github,
-      }),
-    })),
-    financial: {
-      bankAccounts: form.financial.bankAccounts.map((row) => ({
-        groupId: nullableText(row.groupId),
-        fieldId: nullableText(row.fieldId),
+      work: form.work.map((row) => ({
+        groupId: optionalText(row.groupId),
         tag: nullableText(row.tag),
-        bankName: nullableText(row.bankName),
-        accountHolder: nullableText(row.accountHolder),
-        accountNumber: nullableText(row.accountNumber),
-        iban: nullableText(row.iban),
-        swiftBic: nullableText(row.swiftBic),
-        routingNumber: nullableText(row.routingNumber),
-        ifsc: nullableText(row.ifsc),
-        currency: nullableText(row.currency),
+        custom: {
+          ...nullableCustom({
+            companyName: row.companyName,
+            companyLogo: row.companyLogo,
+            companyRegNumber: row.companyRegNumber,
+            workTitle: row.workTitle,
+            workMobile: row.workMobile,
+            workLandline: row.workLandline,
+            workFax: row.workFax,
+            workEmail: row.workEmail,
+            employeeId: row.employeeId,
+          }),
+          ...nullableAddressCustom("workPostal", row.workPostalAddress),
+        },
       })),
-      digitalWallets: form.financial.digitalWallets.map((row) => ({
-        groupId: nullableText(row.groupId),
-        fieldId: nullableText(row.fieldId),
+      business: form.business.map((row) => ({
+        groupId: optionalText(row.groupId),
         tag: nullableText(row.tag),
-        platform: nullableText(row.platform),
-        handleOrLink: nullableText(row.handleOrLink),
+        custom: {
+          ...nullableCustom({
+            businessName: row.businessName,
+            businessLogo: row.businessLogo,
+            businessRegNumber: row.businessRegNumber,
+            businessTitle: row.businessTitle,
+            businessMobile: row.businessMobile,
+            businessLandline: row.businessLandline,
+            businessFax: row.businessFax,
+            businessEmail: row.businessEmail,
+            businessType: row.businessType,
+            gstin: row.gstin,
+          }),
+          ...nullableAddressCustom("businessPostal", row.businessPostalAddress),
+        },
       })),
-      cryptoWallets: form.financial.cryptoWallets.map((row) => ({
-        groupId: nullableText(row.groupId),
-        fieldId: nullableText(row.fieldId),
+      socials: form.socials.map((row) => ({
+        groupId: optionalText(row.groupId),
         tag: nullableText(row.tag),
-        network: nullableText(row.network),
-        address: nullableText(row.address),
+        custom: nullableCustom({
+          skype: row.skype,
+          facebook: row.facebook,
+          twitter: row.twitter,
+          whatsApp: row.whatsapp,
+          blog: row.blog,
+          website: row.website,
+          linkedin: row.linkedin,
+          github: row.github,
+        }),
       })),
-    },
-  });
+      financial: {
+        bankAccounts: form.financial.bankAccounts.map((row) => ({
+          groupId: optionalText(row.groupId),
+          fieldId: optionalText(row.fieldId),
+          tag: nullableText(row.tag),
+          bankName: nullableText(row.bankName),
+          accountHolder: nullableText(row.accountHolder),
+          accountNumber: nullableText(row.accountNumber),
+          iban: nullableText(row.iban),
+          swiftBic: nullableText(row.swiftBic),
+          routingNumber: nullableText(row.routingNumber),
+          ifsc: nullableText(row.ifsc),
+          currency: nullableText(row.currency),
+        })),
+        digitalWallets: form.financial.digitalWallets.map((row) => ({
+          groupId: optionalText(row.groupId),
+          fieldId: optionalText(row.fieldId),
+          tag: nullableText(row.tag),
+          platform: nullableText(row.platform),
+          handleOrLink: nullableText(row.handleOrLink),
+        })),
+        cryptoWallets: form.financial.cryptoWallets.map((row) => ({
+          groupId: optionalText(row.groupId),
+          fieldId: optionalText(row.fieldId),
+          tag: nullableText(row.tag),
+          network: nullableText(row.network),
+          address: nullableText(row.address),
+        })),
+      },
+    };
+  };
 
   const saveProfile = async () => {
     const error = validate();
@@ -1073,10 +1330,19 @@ export function ProfileOnboardingModal({
                 <h1 className="mt-2 text-2xl font-semibold tracking-normal">
                   {step.title}
                 </h1>
-                <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-                  {step.description}
-                </p>
-              </div>
+	                <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+	                  {step.description}
+	                </p>
+	                {!isLoadingProfile && !loadError && validationErrorCount > 0 && (
+	                  <p className="mt-2 text-sm font-medium text-destructive">
+	                    {validationErrorCount}{" "}
+	                    {validationErrorCount === 1
+	                      ? "field needs attention"
+	                      : "fields need attention"}{" "}
+	                    before saving.
+	                  </p>
+	                )}
+	              </div>
               <Button
                 type="button"
                 variant="ghost"
@@ -1114,48 +1380,56 @@ export function ProfileOnboardingModal({
 
           {!isLoadingProfile && !loadError && step.key === "personal" && (
             <ProfileSection>
-              <ProfilePhotoUpload
-                value={form.identity.profilePhoto}
-                onUpload={uploadProfilePhoto}
-                onClear={() => setSectionValue("identity", "profilePhoto", "")}
-              />
-              <TwoColumn>
-                <Field label="First name">
-                  <Input
-                    autoComplete="given-name"
-                    value={form.identity.firstName}
-                    onChange={(event) =>
-                      setSectionValue("identity", "firstName", event.target.value)
-                    }
-                  />
-                </Field>
-                <Field label="Last name">
-                  <Input
-                    autoComplete="family-name"
-                    value={form.identity.lastName}
-                    onChange={(event) =>
-                      setSectionValue("identity", "lastName", event.target.value)
-                    }
-                  />
-                </Field>
-                <Field label="Email">
-                  <Input
-                    type="email"
-                    autoComplete="email"
-                    value={form.identity.primaryEmail}
-                    onChange={(event) =>
-                      setSectionValue("identity", "primaryEmail", event.target.value)
-                    }
-                  />
-                </Field>
-                <Field label="Phone number">
-                  <Input
-                    value={form.identity.primaryPhone}
-                    readOnly
-                    aria-readonly="true"
-                    className="cursor-default bg-muted text-muted-foreground"
-                  />
-                </Field>
+	              <ProfilePhotoUpload
+	                error={visibleError("identity.profilePhoto")}
+	                value={form.identity.profilePhoto}
+	                onUpload={uploadProfilePhoto}
+	                onClear={() => {
+	                  markTouched("identity.profilePhoto");
+	                  setSectionValue("identity", "profilePhoto", "");
+	                }}
+	              />
+	              <TwoColumn>
+	                <Field label="First name" error={visibleError("identity.firstName")}>
+	                  <Input
+	                    autoComplete="given-name"
+	                    value={form.identity.firstName}
+	                    onChange={(event) =>
+	                      setSectionValue("identity", "firstName", event.target.value)
+	                    }
+	                    {...validationProps("identity.firstName")}
+	                  />
+	                </Field>
+	                <Field label="Last name" error={visibleError("identity.lastName")}>
+	                  <Input
+	                    autoComplete="family-name"
+	                    value={form.identity.lastName}
+	                    onChange={(event) =>
+	                      setSectionValue("identity", "lastName", event.target.value)
+	                    }
+	                    {...validationProps("identity.lastName")}
+	                  />
+	                </Field>
+	                <Field label="Email" error={visibleError("identity.primaryEmail")}>
+	                  <Input
+	                    type="email"
+	                    autoComplete="email"
+	                    value={form.identity.primaryEmail}
+	                    onChange={(event) =>
+	                      setSectionValue("identity", "primaryEmail", event.target.value)
+	                    }
+	                    {...validationProps("identity.primaryEmail")}
+	                  />
+	                </Field>
+	                <Field label="Phone number" error={visibleError("identity.primaryPhone")}>
+	                  <Input
+	                    value={form.identity.primaryPhone}
+	                    readOnly
+	                    aria-readonly="true"
+	                    className="cursor-default bg-muted text-muted-foreground"
+	                    {...validationProps("identity.primaryPhone")}
+	                  />
+	                </Field>
               </TwoColumn>
               <TwoColumn>
                 <Field label="Title">
@@ -1277,17 +1551,21 @@ export function ProfileOnboardingModal({
                   />
                 </Field>
               </TwoColumn>
-              <AddressFields
-                title="Postal address"
-                address={form.personal.postalAddress}
-                onChange={(key, value) => setAddressValue("personal", key, value)}
-              />
-              <Field label="Label">
-                <Input
-                  value={form.personal.tag}
-                  onChange={(event) => setSectionValue("personal", "tag", event.target.value)}
-                />
-              </Field>
+	              <AddressFields
+	                title="Postal address"
+	                address={form.personal.postalAddress}
+	                onChange={(key, value) => setAddressValue("personal", key, value)}
+	                errorFor={visibleError}
+	                onBlurField={markTouched}
+	                pathPrefix="personal.postalAddress"
+	              />
+	              <Field label="Label" error={visibleError("personal.tag")}>
+	                <Input
+	                  value={form.personal.tag}
+	                  onChange={(event) => setSectionValue("personal", "tag", event.target.value)}
+	                  {...validationProps("personal.tag")}
+	                />
+	              </Field>
             </ProfileSection>
           )}
 
@@ -1384,14 +1662,15 @@ export function ProfileOnboardingModal({
                     address={row.workPostalAddress}
                     onChange={(key, value) => setWorkAddressValue(index, key, value)}
                   />
-                  <Field label="Label">
-                    <Input
-                      value={row.tag}
-                      onChange={(event) =>
-                        setWorkValue(index, "tag", event.target.value)
-                      }
-                    />
-                  </Field>
+	                  <Field label="Label" error={visibleError(`work.${index}.tag`)}>
+	                    <Input
+	                      value={row.tag}
+	                      onChange={(event) =>
+	                        setWorkValue(index, "tag", event.target.value)
+	                      }
+	                      {...validationProps(`work.${index}.tag`)}
+	                    />
+	                  </Field>
                 </RepeatablePanel>
               ))}
             </ProfileSection>
@@ -1504,14 +1783,15 @@ export function ProfileOnboardingModal({
                       setBusinessAddressValue(index, key, value)
                     }
                   />
-                  <Field label="Label">
-                    <Input
-                      value={row.tag}
-                      onChange={(event) =>
-                        setBusinessValue(index, "tag", event.target.value)
-                      }
-                    />
-                  </Field>
+	                  <Field label="Label" error={visibleError(`business.${index}.tag`)}>
+	                    <Input
+	                      value={row.tag}
+	                      onChange={(event) =>
+	                        setBusinessValue(index, "tag", event.target.value)
+	                      }
+	                      {...validationProps(`business.${index}.tag`)}
+	                    />
+	                  </Field>
                 </RepeatablePanel>
               ))}
             </ProfileSection>
@@ -1596,14 +1876,15 @@ export function ProfileOnboardingModal({
                       />
                     </Field>
                   </TwoColumn>
-                  <Field label="Label">
-                    <Input
-                      value={row.tag}
-                      onChange={(event) =>
-                        setSocialValue(index, "tag", event.target.value)
-                      }
-                    />
-                  </Field>
+	                  <Field label="Label" error={visibleError(`socials.${index}.tag`)}>
+	                    <Input
+	                      value={row.tag}
+	                      onChange={(event) =>
+	                        setSocialValue(index, "tag", event.target.value)
+	                      }
+	                      {...validationProps(`socials.${index}.tag`)}
+	                    />
+	                  </Field>
                 </RepeatablePanel>
               ))}
             </ProfileSection>
@@ -1626,123 +1907,176 @@ export function ProfileOnboardingModal({
                   }
                 >
                   <TwoColumn>
-                    <Field label="Bank name">
-                      <Input
-                        value={row.bankName}
+	                    <Field
+	                      label="Bank name"
+	                      error={visibleError(`financial.bankAccounts.${index}.bankName`)}
+	                    >
+	                      <Input
+	                        value={row.bankName}
                         onChange={(event) =>
                           setFinancialRowValue(
                             "bankAccounts",
                             index,
                             "bankName",
-                            event.target.value,
-                          )
-                        }
-                      />
-                    </Field>
-                    <Field label="Account holder">
-                      <Input
-                        value={row.accountHolder}
+	                            event.target.value,
+	                          )
+	                        }
+	                        {...validationProps(`financial.bankAccounts.${index}.bankName`)}
+	                      />
+	                    </Field>
+	                    <Field
+	                      label="Account holder"
+	                      error={visibleError(
+	                        `financial.bankAccounts.${index}.accountHolder`,
+	                      )}
+	                    >
+	                      <Input
+	                        value={row.accountHolder}
                         onChange={(event) =>
                           setFinancialRowValue(
                             "bankAccounts",
                             index,
                             "accountHolder",
-                            event.target.value,
-                          )
-                        }
-                      />
-                    </Field>
-                    <Field label="Account number">
-                      <Input
-                        value={row.accountNumber}
+	                            event.target.value,
+	                          )
+	                        }
+	                        {...validationProps(
+	                          `financial.bankAccounts.${index}.accountHolder`,
+	                        )}
+	                      />
+	                    </Field>
+	                    <Field
+	                      label="Account number"
+	                      error={visibleError(
+	                        `financial.bankAccounts.${index}.accountNumber`,
+	                      )}
+	                    >
+	                      <Input
+	                        value={row.accountNumber}
                         onChange={(event) =>
                           setFinancialRowValue(
                             "bankAccounts",
                             index,
                             "accountNumber",
-                            event.target.value,
-                          )
-                        }
-                      />
-                    </Field>
-                    <Field label="IBAN">
-                      <Input
-                        value={row.iban}
+	                            event.target.value,
+	                          )
+	                        }
+	                        {...validationProps(
+	                          `financial.bankAccounts.${index}.accountNumber`,
+	                        )}
+	                      />
+	                    </Field>
+	                    <Field
+	                      label="IBAN"
+	                      error={visibleError(`financial.bankAccounts.${index}.iban`)}
+	                    >
+	                      <Input
+	                        value={row.iban}
                         onChange={(event) =>
                           setFinancialRowValue(
                             "bankAccounts",
                             index,
                             "iban",
-                            event.target.value,
-                          )
-                        }
-                      />
-                    </Field>
-                    <Field label="SWIFT/BIC">
-                      <Input
-                        value={row.swiftBic}
+	                            event.target.value,
+	                          )
+	                        }
+	                        {...validationProps(`financial.bankAccounts.${index}.iban`)}
+	                      />
+	                    </Field>
+	                    <Field
+	                      label="SWIFT/BIC"
+	                      error={visibleError(`financial.bankAccounts.${index}.swiftBic`)}
+	                    >
+	                      <Input
+	                        value={row.swiftBic}
                         onChange={(event) =>
                           setFinancialRowValue(
                             "bankAccounts",
                             index,
                             "swiftBic",
-                            event.target.value,
-                          )
-                        }
-                      />
-                    </Field>
-                    <Field label="Routing number">
-                      <Input
-                        value={row.routingNumber}
+	                            event.target.value,
+	                          )
+	                        }
+	                        {...validationProps(
+	                          `financial.bankAccounts.${index}.swiftBic`,
+	                        )}
+	                      />
+	                    </Field>
+	                    <Field
+	                      label="Routing number"
+	                      error={visibleError(
+	                        `financial.bankAccounts.${index}.routingNumber`,
+	                      )}
+	                    >
+	                      <Input
+	                        value={row.routingNumber}
                         onChange={(event) =>
                           setFinancialRowValue(
                             "bankAccounts",
                             index,
                             "routingNumber",
-                            event.target.value,
-                          )
-                        }
-                      />
-                    </Field>
-                    <Field label="IFSC">
-                      <Input
-                        value={row.ifsc}
+	                            event.target.value,
+	                          )
+	                        }
+	                        {...validationProps(
+	                          `financial.bankAccounts.${index}.routingNumber`,
+	                        )}
+	                      />
+	                    </Field>
+	                    <Field
+	                      label="IFSC"
+	                      error={visibleError(`financial.bankAccounts.${index}.ifsc`)}
+	                    >
+	                      <Input
+	                        value={row.ifsc}
                         onChange={(event) =>
                           setFinancialRowValue(
                             "bankAccounts",
                             index,
                             "ifsc",
-                            event.target.value,
-                          )
-                        }
-                      />
-                    </Field>
-                    <Field label="Currency">
-                      <Input
-                        value={row.currency}
+	                            event.target.value,
+	                          )
+	                        }
+	                        {...validationProps(`financial.bankAccounts.${index}.ifsc`)}
+	                      />
+	                    </Field>
+	                    <Field
+	                      label="Currency"
+	                      error={visibleError(`financial.bankAccounts.${index}.currency`)}
+	                    >
+	                      <Input
+	                        value={row.currency}
                         onChange={(event) =>
                           setFinancialRowValue(
                             "bankAccounts",
                             index,
                             "currency",
-                            event.target.value,
-                          )
-                        }
-                      />
-                    </Field>
-                    <Field label="Label">
-                      <Input
-                        value={row.tag}
+	                            event.target.value,
+	                          )
+	                        }
+	                        maxLength={8}
+	                        {...validationProps(
+	                          `financial.bankAccounts.${index}.currency`,
+	                        )}
+	                      />
+	                    </Field>
+	                    <Field
+	                      label="Label"
+	                      error={visibleError(`financial.bankAccounts.${index}.tag`)}
+	                    >
+	                      <Input
+	                        value={row.tag}
                         onChange={(event) =>
                           setFinancialRowValue(
                             "bankAccounts",
                             index,
                             "tag",
-                            event.target.value,
-                          )
-                        }
-                      />
-                    </Field>
+	                            event.target.value,
+	                          )
+	                        }
+	                        {...validationProps(`financial.bankAccounts.${index}.tag`)}
+	                      />
+	                    </Field>
                   </TwoColumn>
                 </SensitivePanel>
               ))}
@@ -1762,45 +2096,65 @@ export function ProfileOnboardingModal({
                   }
                 >
                   <TwoColumn>
-                    <Field label="Platform">
-                      <Input
-                        value={row.platform}
+	                    <Field
+	                      label="Platform"
+	                      error={visibleError(
+	                        `financial.digitalWallets.${index}.platform`,
+	                      )}
+	                    >
+	                      <Input
+	                        value={row.platform}
                         onChange={(event) =>
                           setFinancialRowValue(
                             "digitalWallets",
                             index,
                             "platform",
-                            event.target.value,
-                          )
-                        }
-                      />
-                    </Field>
-                    <Field label="Handle or link">
-                      <Input
-                        value={row.handleOrLink}
+	                            event.target.value,
+	                          )
+	                        }
+	                        {...validationProps(
+	                          `financial.digitalWallets.${index}.platform`,
+	                        )}
+	                      />
+	                    </Field>
+	                    <Field
+	                      label="Handle or link"
+	                      error={visibleError(
+	                        `financial.digitalWallets.${index}.handleOrLink`,
+	                      )}
+	                    >
+	                      <Input
+	                        value={row.handleOrLink}
                         onChange={(event) =>
                           setFinancialRowValue(
                             "digitalWallets",
                             index,
                             "handleOrLink",
-                            event.target.value,
-                          )
-                        }
-                      />
-                    </Field>
-                    <Field label="Label">
-                      <Input
-                        value={row.tag}
+	                            event.target.value,
+	                          )
+	                        }
+	                        {...validationProps(
+	                          `financial.digitalWallets.${index}.handleOrLink`,
+	                        )}
+	                      />
+	                    </Field>
+	                    <Field
+	                      label="Label"
+	                      error={visibleError(`financial.digitalWallets.${index}.tag`)}
+	                    >
+	                      <Input
+	                        value={row.tag}
                         onChange={(event) =>
                           setFinancialRowValue(
                             "digitalWallets",
                             index,
                             "tag",
-                            event.target.value,
-                          )
-                        }
-                      />
-                    </Field>
+	                            event.target.value,
+	                          )
+	                        }
+	                        {...validationProps(`financial.digitalWallets.${index}.tag`)}
+	                      />
+	                    </Field>
                   </TwoColumn>
                 </SensitivePanel>
               ))}
@@ -1820,45 +2174,61 @@ export function ProfileOnboardingModal({
                   }
                 >
                   <TwoColumn>
-                    <Field label="Network">
-                      <Input
-                        value={row.network}
+	                    <Field
+	                      label="Network"
+	                      error={visibleError(`financial.cryptoWallets.${index}.network`)}
+	                    >
+	                      <Input
+	                        value={row.network}
                         onChange={(event) =>
                           setFinancialRowValue(
                             "cryptoWallets",
                             index,
                             "network",
-                            event.target.value,
-                          )
-                        }
-                      />
-                    </Field>
-                    <Field label="Address">
-                      <Input
-                        value={row.address}
+	                            event.target.value,
+	                          )
+	                        }
+	                        {...validationProps(
+	                          `financial.cryptoWallets.${index}.network`,
+	                        )}
+	                      />
+	                    </Field>
+	                    <Field
+	                      label="Address"
+	                      error={visibleError(`financial.cryptoWallets.${index}.address`)}
+	                    >
+	                      <Input
+	                        value={row.address}
                         onChange={(event) =>
                           setFinancialRowValue(
                             "cryptoWallets",
                             index,
                             "address",
-                            event.target.value,
-                          )
-                        }
-                      />
-                    </Field>
-                    <Field label="Label">
-                      <Input
-                        value={row.tag}
+	                            event.target.value,
+	                          )
+	                        }
+	                        {...validationProps(
+	                          `financial.cryptoWallets.${index}.address`,
+	                        )}
+	                      />
+	                    </Field>
+	                    <Field
+	                      label="Label"
+	                      error={visibleError(`financial.cryptoWallets.${index}.tag`)}
+	                    >
+	                      <Input
+	                        value={row.tag}
                         onChange={(event) =>
                           setFinancialRowValue(
                             "cryptoWallets",
                             index,
                             "tag",
-                            event.target.value,
-                          )
-                        }
-                      />
-                    </Field>
+	                            event.target.value,
+	                          )
+	                        }
+	                        {...validationProps(`financial.cryptoWallets.${index}.tag`)}
+	                      />
+	                    </Field>
                   </TwoColumn>
                 </SensitivePanel>
               ))}
@@ -1889,11 +2259,11 @@ export function ProfileOnboardingModal({
                   <ArrowRight className="h-4 w-4" aria-hidden="true" />
                 </Button>
               ) : (
-                <Button
-                  type="button"
-                  onClick={() => void saveProfile()}
-                  disabled={controlsDisabled}
-                >
+	                <Button
+	                  type="button"
+	                  onClick={() => void saveProfile()}
+	                  disabled={saveDisabled}
+	                >
                   <Check className="h-4 w-4" aria-hidden="true" />
                   Save profile
                 </Button>
@@ -1991,10 +2361,12 @@ function RepeatablePanel({
 }
 
 function ProfilePhotoUpload({
+  error,
   onClear,
   onUpload,
   value,
 }: {
+  error?: string;
   onClear: () => void;
   onUpload: (file: File | undefined) => void;
   value: string;
@@ -2012,7 +2384,8 @@ function ProfilePhotoUpload({
           </div>
           <div>
             <p className="text-sm font-semibold">Profile photo</p>
-            <p className="mt-1 text-sm text-muted-foreground">Upload an image under 1 MB.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Upload an image under 14 KB.</p>
+            {error && <p className="mt-1 text-xs font-medium text-destructive">{error}</p>}
           </div>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
@@ -2041,11 +2414,20 @@ function ProfilePhotoUpload({
   );
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+function Field({
+  children,
+  error,
+  label,
+}: {
+  children: ReactNode;
+  error?: string;
+  label: string;
+}) {
   return (
     <label className="flex flex-col gap-1.5 text-sm font-medium">
       <span>{label}</span>
       {children}
+      {error && <span className="text-xs font-medium text-destructive">{error}</span>}
     </label>
   );
 }
@@ -2055,37 +2437,79 @@ function TwoColumn({ children }: { children: ReactNode }) {
 }
 
 function AddressFields({
+  errorFor,
+  onBlurField,
   title,
   address,
   onChange,
+  pathPrefix,
 }: {
+  errorFor?: (path: string) => string | undefined;
+  onBlurField?: (path: string) => void;
   title: string;
   address: AddressForm;
   onChange: (key: keyof AddressForm, value: string) => void;
+  pathPrefix?: string;
 }) {
+  const validationProps = (key: keyof AddressForm) => {
+    const path = pathPrefix ? `${pathPrefix}.${key}` : "";
+    return path
+      ? {
+          "aria-invalid": Boolean(errorFor?.(path)),
+          onBlur: () => onBlurField?.(path),
+        }
+      : {};
+  };
+
   return (
     <div className="space-y-3 rounded-md border border-border p-3">
       <p className="text-sm font-semibold">{title}</p>
       <TwoColumn>
-        <Field label="Street">
-          <Input value={address.street} onChange={(event) => onChange("street", event.target.value)} />
+        <Field
+          label="Street"
+          error={pathPrefix ? errorFor?.(`${pathPrefix}.street`) : undefined}
+        >
+          <Input
+            value={address.street}
+            onChange={(event) => onChange("street", event.target.value)}
+            {...validationProps("street")}
+          />
         </Field>
-        <Field label="City">
-          <Input value={address.city} onChange={(event) => onChange("city", event.target.value)} />
+        <Field label="City" error={pathPrefix ? errorFor?.(`${pathPrefix}.city`) : undefined}>
+          <Input
+            value={address.city}
+            onChange={(event) => onChange("city", event.target.value)}
+            {...validationProps("city")}
+          />
         </Field>
-        <Field label="State">
-          <Input value={address.state} onChange={(event) => onChange("state", event.target.value)} />
+        <Field
+          label="State"
+          error={pathPrefix ? errorFor?.(`${pathPrefix}.state`) : undefined}
+        >
+          <Input
+            value={address.state}
+            onChange={(event) => onChange("state", event.target.value)}
+            {...validationProps("state")}
+          />
         </Field>
-        <Field label="Pincode">
+        <Field
+          label="Pincode"
+          error={pathPrefix ? errorFor?.(`${pathPrefix}.pincode`) : undefined}
+        >
           <Input
             value={address.pincode}
             onChange={(event) => onChange("pincode", event.target.value)}
+            {...validationProps("pincode")}
           />
         </Field>
-        <Field label="Country">
+        <Field
+          label="Country"
+          error={pathPrefix ? errorFor?.(`${pathPrefix}.country`) : undefined}
+        >
           <Input
             value={address.country}
             onChange={(event) => onChange("country", event.target.value)}
+            {...validationProps("country")}
           />
         </Field>
       </TwoColumn>
