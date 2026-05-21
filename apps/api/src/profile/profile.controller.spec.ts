@@ -23,6 +23,7 @@ import { emptyProfileMeResponse } from "../../test/fixtures/profile-responses";
 import { ProfileController } from "./profile.controller";
 import { ProfileMeUpsertService } from "./profile-me.upsert.service";
 import { ProfileMeSerializerService } from "./profile-me.serializer";
+import { ProfilePhotoService } from "./profile-photo.service";
 
 describe("ProfileController (HTTP)", () => {
   let app: INestApplication;
@@ -32,6 +33,7 @@ describe("ProfileController (HTTP)", () => {
     deleteGroup: jest.Mock;
   };
   let serializer: { build: jest.Mock };
+  let profilePhoto: { upload: jest.Mock; remove: jest.Mock };
 
   beforeEach(async () => {
     upsert = {
@@ -42,10 +44,17 @@ describe("ProfileController (HTTP)", () => {
     serializer = {
       build: jest.fn().mockResolvedValue(emptyProfileMeResponse),
     };
+    profilePhoto = {
+      upload: jest.fn().mockResolvedValue({
+        profilePhoto: "https://storage.example.com/p.jpg",
+      }),
+      remove: jest.fn().mockResolvedValue({ profilePhoto: null }),
+    };
 
     const moduleRef = await createProfileControllerTestModule({
       upsert,
       serializer,
+      profilePhoto,
     });
     app = moduleRef.createNestApplication();
     applyApiTestConfig(app);
@@ -171,6 +180,28 @@ describe("ProfileController (HTTP)", () => {
     );
   });
 
+  it("POST /profile/me/photo forwards multipart file to upload service", async () => {
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+      "base64",
+    );
+    await request(app.getHttpServer() as never)
+      .post("/api/v1/profile/me/photo")
+      .attach("file", png, { filename: "photo.png", contentType: "image/png" })
+      .expect(HttpStatus.OK);
+    expect(profilePhoto.upload).toHaveBeenCalledWith(
+      TEST_USER_ID,
+      expect.objectContaining({ mimetype: "image/png" }),
+    );
+  });
+
+  it("DELETE /profile/me/photo calls remove service", async () => {
+    await request(app.getHttpServer() as never)
+      .delete("/api/v1/profile/me/photo")
+      .expect(HttpStatus.OK);
+    expect(profilePhoto.remove).toHaveBeenCalledWith(TEST_USER_ID);
+  });
+
   it("DELETE /profile/me/groups rejects invalid groupId", async () => {
     await request(app.getHttpServer() as never)
       .delete("/api/v1/profile/me/groups")
@@ -202,6 +233,13 @@ describe("ProfileController auth", () => {
           provide: ProfileMeSerializerService,
           useValue: {
             build: jest.fn().mockResolvedValue(emptyProfileMeResponse),
+          },
+        },
+        {
+          provide: ProfilePhotoService,
+          useValue: {
+            upload: jest.fn(),
+            remove: jest.fn(),
           },
         },
       ],
