@@ -1,5 +1,11 @@
 # Decision Context
 
+## 2026-05-21 - Separate First-Time Profile POST Payload
+
+- Decision: Add a dedicated first-time onboarding payload for `POST /v1/profile/onboarding` that sends the loaded registration identity, omits blank generated IDs, and filters default-only repeatable rows.
+- Reason: The onboarding endpoint requires identity fields to match registration and creates new profile groups/fields itself; sending edited identity values or default tag-only rows can fail the POST or create empty groups.
+- Notes: After a successful first-time POST, edited identity fields are persisted with a follow-up `PATCH /v1/profile/me`. Later profile edits continue using the normal PATCH payload. Backend code and browser testing remain untouched.
+
 ## 2026-05-21 - Make Year Of Birth Derived Read-Only
 
 - Decision: Keep Year of birth visible in the profile onboarding/edit form as a read-only value derived from Date of birth, and stop sending `personal.yearOfBirth` in the profile save payload.

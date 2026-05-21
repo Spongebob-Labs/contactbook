@@ -363,9 +363,108 @@ function hasText(value: string): boolean {
   return clean(value).length > 0;
 }
 
+function hasAnyText(values: Array<string | null | undefined>): boolean {
+  return values.some((value) => hasText(value ?? ""));
+}
+
 function deriveYearOfBirth(dateOfBirth: string | null | undefined): string {
   const match = /^(\d{4})-\d{2}-\d{2}/.exec(clean(dateOfBirth ?? ""));
   return match?.[1] ?? "";
+}
+
+function hasAddressText(address: AddressForm): boolean {
+  return hasAnyText([
+    address.street,
+    address.city,
+    address.state,
+    address.pincode,
+    address.country,
+  ]);
+}
+
+function hasPersonalDetails(personal: OnboardingForm["personal"]): boolean {
+  return (
+    hasAnyText([
+      personal.title,
+      personal.nickname,
+      personal.mobile,
+      personal.landline,
+      personal.email,
+      personal.dateOfBirth,
+      personal.currentLocation,
+      personal.kidsNames,
+      personal.partnerName,
+      personal.petNames,
+      personal.relationshipStatus,
+      personal.bloodGroup,
+    ]) || hasAddressText(personal.postalAddress)
+  );
+}
+
+function hasWorkDetails(row: WorkForm): boolean {
+  return (
+    hasAnyText([
+      row.companyName,
+      row.companyLogo,
+      row.companyRegNumber,
+      row.workTitle,
+      row.workMobile,
+      row.workLandline,
+      row.workFax,
+      row.workEmail,
+      row.employeeId,
+    ]) || hasAddressText(row.workPostalAddress)
+  );
+}
+
+function hasBusinessDetails(row: BusinessForm): boolean {
+  return (
+    hasAnyText([
+      row.businessName,
+      row.businessLogo,
+      row.businessRegNumber,
+      row.businessTitle,
+      row.businessMobile,
+      row.businessLandline,
+      row.businessFax,
+      row.businessEmail,
+      row.businessType,
+      row.gstin,
+    ]) || hasAddressText(row.businessPostalAddress)
+  );
+}
+
+function hasSocialDetails(row: SocialsForm): boolean {
+  return hasAnyText([
+    row.skype,
+    row.facebook,
+    row.twitter,
+    row.whatsapp,
+    row.blog,
+    row.website,
+    row.linkedin,
+    row.github,
+  ]);
+}
+
+function hasBankDetails(row: BankForm): boolean {
+  return hasAnyText([
+    row.bankName,
+    row.accountHolder,
+    row.accountNumber,
+    row.iban,
+    row.swiftBic,
+    row.routingNumber,
+    row.ifsc,
+  ]);
+}
+
+function hasWalletDetails(row: WalletForm): boolean {
+  return hasAnyText([row.platform, row.handleOrLink]);
+}
+
+function hasCryptoDetails(row: CryptoForm): boolean {
+  return hasAnyText([row.network, row.address]);
 }
 
 function toNullableAddressPayload(address: AddressForm): NullableAddressPayload {
@@ -428,6 +527,23 @@ function nullableAddressCustom(
     [`${prefix}Pincode`]: address.pincode,
     [`${prefix}Country`]: address.country,
   });
+}
+
+function nullableAddressCustomForSave(
+  prefix: string,
+  address: AddressForm,
+  keepEmptyAsNull: boolean,
+): NullableCustomPayload {
+  return nullableCustomForSave(
+    {
+      [`${prefix}Street`]: address.street,
+      [`${prefix}City`]: address.city,
+      [`${prefix}State`]: address.state,
+      [`${prefix}Pincode`]: address.pincode,
+      [`${prefix}Country`]: address.country,
+    },
+    keepEmptyAsNull,
+  );
 }
 
 function valueOrEmpty(value: string | null | undefined): string {
@@ -857,6 +973,9 @@ export function ProfileOnboardingModal({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [hasExistingProfile, setHasExistingProfile] = useState(false);
+  const [loadedIdentity, setLoadedIdentity] = useState<
+    OnboardingForm["identity"] | null
+  >(null);
   const step = steps[stepIndex];
   const validationErrors = validateProfileForm(form);
   const validationErrorCount = Object.keys(validationErrors).length;
@@ -894,6 +1013,7 @@ export function ProfileOnboardingModal({
         if (isMounted) {
           const nextForm = profileToForm(profile);
           setForm(nextForm);
+          setLoadedIdentity(nextForm.identity);
           setHasExistingProfile(hasInitializedProfile(profile));
         }
       } catch (error) {
@@ -1278,6 +1398,161 @@ export function ProfileOnboardingModal({
     };
   };
 
+  const buildFirstTimeOnboardingPayload = (): FullProfilePayload => {
+    const identity = loadedIdentity ?? form.identity;
+    const hasPersonal = hasPersonalDetails(form.personal);
+
+    return {
+      identity: {
+        firstName: identity.firstName.trim(),
+        lastName: identity.lastName.trim(),
+        primaryPhone: identity.primaryPhone.trim(),
+        primaryEmail: identity.primaryEmail.trim(),
+        profilePhoto: nullableText(form.identity.profilePhoto),
+      },
+      personal: {
+        groupId: undefined,
+        tag: hasPersonal ? nullableText(form.personal.tag) : undefined,
+        postalAddress: toNullableAddressPayload(form.personal.postalAddress),
+        mobile: nullableTextForSave(form.personal.mobile, false),
+        landline: nullableTextForSave(form.personal.landline, false),
+        email: nullableTextForSave(form.personal.email, false),
+        dateOfBirth: nullableTextForSave(form.personal.dateOfBirth, false),
+        currentLocation: nullableTextForSave(form.personal.currentLocation, false),
+        relationshipStatus: nullableTextForSave(
+          form.personal.relationshipStatus,
+          false,
+        ),
+        custom: nullableCustomForSave(
+          {
+            title: form.personal.title,
+            nickname: form.personal.nickname,
+            kidsNames: form.personal.kidsNames,
+            partnerName: form.personal.partnerName,
+            petNames: form.personal.petNames,
+            bloodGroup: form.personal.bloodGroup,
+          },
+          false,
+        ),
+      },
+      work: form.work.filter(hasWorkDetails).map((row) => ({
+        groupId: undefined,
+        tag: nullableText(row.tag),
+        custom: {
+          ...nullableCustomForSave(
+            {
+              companyName: row.companyName,
+              companyLogo: row.companyLogo,
+              companyRegNumber: row.companyRegNumber,
+              workTitle: row.workTitle,
+              workMobile: row.workMobile,
+              workLandline: row.workLandline,
+              workFax: row.workFax,
+              workEmail: row.workEmail,
+              employeeId: row.employeeId,
+            },
+            false,
+          ),
+          ...nullableAddressCustomForSave(
+            "workPostal",
+            row.workPostalAddress,
+            false,
+          ),
+        },
+      })),
+      business: form.business.filter(hasBusinessDetails).map((row) => ({
+        groupId: undefined,
+        tag: nullableText(row.tag),
+        custom: {
+          ...nullableCustomForSave(
+            {
+              businessName: row.businessName,
+              businessLogo: row.businessLogo,
+              businessRegNumber: row.businessRegNumber,
+              businessTitle: row.businessTitle,
+              businessMobile: row.businessMobile,
+              businessLandline: row.businessLandline,
+              businessFax: row.businessFax,
+              businessEmail: row.businessEmail,
+              businessType: row.businessType,
+              gstin: row.gstin,
+            },
+            false,
+          ),
+          ...nullableAddressCustomForSave(
+            "businessPostal",
+            row.businessPostalAddress,
+            false,
+          ),
+        },
+      })),
+      socials: form.socials.filter(hasSocialDetails).map((row) => ({
+        groupId: undefined,
+        tag: nullableText(row.tag),
+        custom: nullableCustomForSave(
+          {
+            skype: row.skype,
+            facebook: row.facebook,
+            twitter: row.twitter,
+            whatsApp: row.whatsapp,
+            blog: row.blog,
+            website: row.website,
+            linkedin: row.linkedin,
+            github: row.github,
+          },
+          false,
+        ),
+      })),
+      financial: {
+        bankAccounts: form.financial.bankAccounts
+          .filter(hasBankDetails)
+          .map((row) => ({
+            groupId: undefined,
+            fieldId: undefined,
+            tag: nullableText(row.tag),
+            bankName: nullableText(row.bankName),
+            accountHolder: nullableText(row.accountHolder),
+            accountNumber: nullableText(row.accountNumber),
+            iban: nullableText(row.iban),
+            swiftBic: nullableText(row.swiftBic),
+            routingNumber: nullableText(row.routingNumber),
+            ifsc: nullableText(row.ifsc),
+            currency: nullableText(row.currency),
+          })),
+        digitalWallets: form.financial.digitalWallets
+          .filter(hasWalletDetails)
+          .map((row) => ({
+            groupId: undefined,
+            fieldId: undefined,
+            tag: nullableText(row.tag),
+            platform: nullableText(row.platform),
+            handleOrLink: nullableText(row.handleOrLink),
+          })),
+        cryptoWallets: form.financial.cryptoWallets
+          .filter(hasCryptoDetails)
+          .map((row) => ({
+            groupId: undefined,
+            fieldId: undefined,
+            tag: nullableText(row.tag),
+            network: nullableText(row.network),
+            address: nullableText(row.address),
+          })),
+      },
+    };
+  };
+
+  const hasEditableIdentityChanges = () => {
+    if (!loadedIdentity) {
+      return false;
+    }
+    return (
+      form.identity.firstName.trim() !== loadedIdentity.firstName.trim() ||
+      form.identity.lastName.trim() !== loadedIdentity.lastName.trim() ||
+      form.identity.primaryEmail.trim().toLowerCase() !==
+        loadedIdentity.primaryEmail.trim().toLowerCase()
+    );
+  };
+
   const saveProfile = async () => {
     const error = validate();
     if (error) {
@@ -1291,10 +1566,17 @@ export function ProfileOnboardingModal({
       const shouldInitialize = !hasExistingProfile;
       try {
         if (shouldInitialize) {
+          const shouldPatchIdentity = hasEditableIdentityChanges();
           await apiFetch<unknown>("/v1/profile/onboarding", {
             method: "POST",
-            body: payload,
+            body: buildFirstTimeOnboardingPayload(),
           });
+          if (shouldPatchIdentity) {
+            await apiFetch<unknown>("/v1/profile/me", {
+              method: "PATCH",
+              body: { identity: payload.identity },
+            });
+          }
         } else {
           await apiFetch<unknown>("/v1/profile/me", {
             method: "PATCH",
