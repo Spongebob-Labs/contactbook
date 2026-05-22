@@ -1,9 +1,15 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { ContactSource } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
+import {
+  buildContactsListOrderBy,
+  buildContactsListWhere,
+} from "./contacts-list.query";
 import { ContactSerializer } from "./contact.serializer";
 import type { ContactImportSummaryDto } from "./dto/contact-import-summary.dto";
+import type { ContactListResponseDto } from "./dto/contact-list-response.dto";
 import type { ContactDetailDto } from "./dto/contact-response.dto";
+import type { ListContactsQueryDto } from "./dto/list-contacts-query.dto";
 
 const contactInclude = {
   phones: { orderBy: { sortOrder: "asc" as const } },
@@ -72,24 +78,32 @@ export class ContactsService {
     };
   }
 
-  async list(
+  async listPaginated(
     userId: string,
-    source?: ContactSource,
-  ): Promise<ContactDetailDto[]> {
-    const rows = await this.prisma.contact.findMany({
-      where: {
-        userId,
-        deletedAt: null,
-        ...(source ? { source } : {}),
-      },
-      include: contactInclude,
-      orderBy: [
-        { displayName: "asc" },
-        { lastName: "asc" },
-        { firstName: "asc" },
-      ],
-    });
-    return rows.map((row) => this.serializer.toDetail(row));
+    query: ListContactsQueryDto,
+  ): Promise<ContactListResponseDto> {
+    const where = buildContactsListWhere(userId, query);
+    const orderBy = buildContactsListOrderBy(query);
+    const skip = (query.page - 1) * query.limit;
+
+    const [total, rows] = await Promise.all([
+      this.prisma.contact.count({ where }),
+      this.prisma.contact.findMany({
+        where,
+        include: contactInclude,
+        orderBy,
+        skip,
+        take: query.limit,
+      }),
+    ]);
+
+    return {
+      items: rows.map((row) => this.serializer.toDetail(row)),
+      page: query.page,
+      limit: query.limit,
+      total,
+      totalPages: total === 0 ? 0 : Math.ceil(total / query.limit),
+    };
   }
 
   async get(userId: string, id: string): Promise<ContactDetailDto> {

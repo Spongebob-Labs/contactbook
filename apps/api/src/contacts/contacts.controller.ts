@@ -21,8 +21,10 @@ import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { ContactsSyncService } from "./contacts-sync.service";
 import { ContactsService } from "./contacts.service";
 import { ContactImportSummaryDto } from "./dto/contact-import-summary.dto";
+import { ContactListResponseDto } from "./dto/contact-list-response.dto";
 import { ContactDetailDto } from "./dto/contact-response.dto";
 import { ContactSyncResponseDto } from "./dto/contact-sync-response.dto";
+import { ListContactsQueryDto } from "./dto/list-contacts-query.dto";
 
 @ApiTags("Contacts")
 @ApiBearerAuth("access-token")
@@ -75,16 +77,32 @@ export class ContactsController {
   @ApiOperation({
     summary: "List contacts",
     description:
-      "Normalized contact records (phones, emails, organizations, addresses, urls) for the current user.",
+      "Paginated normalized contact records (phones, emails, organizations, addresses, urls) for the current user. Optional search matches first name, last name, and nickname.",
+  })
+  @ApiQuery({ name: "page", required: false, type: Number })
+  @ApiQuery({ name: "limit", required: false, type: Number })
+  @ApiQuery({
+    name: "search",
+    required: false,
+    description: "Matches first name, last name, and nickname (case-insensitive).",
   })
   @ApiQuery({ name: "source", enum: ContactSource, required: false })
-  @ApiOkResponse({ type: [ContactDetailDto] })
+  @ApiQuery({
+    name: "sort",
+    required: false,
+    enum: ["name", "updatedAt", "source"],
+  })
+  @ApiQuery({
+    name: "sortOrder",
+    required: false,
+    enum: ["asc", "desc"],
+  })
+  @ApiOkResponse({ type: ContactListResponseDto })
   list(
     @CurrentUser() user: JwtUserPayload,
-    @Query("source", new ParseEnumPipe(ContactSource, { optional: true }))
-    source?: ContactSource,
+    @Query() query: ListContactsQueryDto,
   ) {
-    return this.contacts.list(user.sub, source);
+    return this.contacts.listPaginated(user.sub, query);
   }
 
   @Get(":id")
