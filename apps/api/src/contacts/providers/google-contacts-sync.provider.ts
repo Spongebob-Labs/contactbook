@@ -16,7 +16,9 @@ import {
   type ContactSyncStats,
 } from "../contact-sync-stats";
 import { ContactUpsertService } from "../contact-upsert.service";
-import { googlePersonToNormalizedContact } from "../google-contact.adapter";
+import { tryGooglePersonForImport } from "../google-contact.adapter";
+import type { ContactImportRun } from "../contact-import-result.mapper";
+import type { ContactImportSkippedItem } from "../contact-import-skipped.types";
 import type { ContactSyncResponseDto } from "../dto/contact-sync-response.dto";
 
 const GOOGLE_PROVIDER = "google";
@@ -34,12 +36,21 @@ export class GoogleContactsSyncProvider {
   ) {}
 
   /** Always runs a full import; never sends a stored sync token to Google. */
-  async import(userId: string): Promise<ContactSyncResponseDto> {
+  async import(userId: string): Promise<ContactImportRun> {
     const stateRow = await this.peopleIntegrationState(userId);
     if (stateRow.syncToken != null) {
       await this.clearSyncToken(userId);
     }
-    return this.runContactsSync(userId, false, { omitSyncToken: true });
+    const skipped: ContactImportSkippedItem[] = [];
+    const result = await this.runContactsSync(userId, false, {
+      omitSyncToken: true,
+      skipped,
+    });
+    return {
+      stats: result.stats,
+      skipped,
+      completedAt: result.lastSyncAt ?? new Date(),
+    };
   }
 
   async sync(userId: string): Promise<ContactSyncResponseDto> {
@@ -50,8 +61,20 @@ export class GoogleContactsSyncProvider {
         this.logger.warn(
           `Google People sync token invalid for user ${userId}; falling back to full import`,
         );
-        const result = await this.import(userId);
-        return { ...result, recoveredFromExpiredToken: true };
+        const run = await this.import(userId);
+        const totalContacts = await this.contactUpsert.countActive(
+          userId,
+          ContactSource.GOOGLE,
+        );
+        return {
+          source: ContactSource.GOOGLE,
+          syncMode: "full",
+          stats: run.stats,
+          processedCount: syncStatsProcessedCount(run.stats),
+          totalContacts,
+          lastSyncAt: run.completedAt,
+          recoveredFromExpiredToken: true,
+        };
       }
       throw this.mapSyncError(userId, error);
     }
@@ -60,7 +83,10 @@ export class GoogleContactsSyncProvider {
   private async runContactsSync(
     userId: string,
     _recoveredFromExpiredToken: boolean,
-    options?: { omitSyncToken?: boolean },
+    options?: {
+      omitSyncToken?: boolean;
+      skipped?: ContactImportSkippedItem[];
+    },
   ): Promise<ContactSyncResponseDto> {
     const people = await this.getAuthorizedPeopleClient(userId);
     const stateRow = await this.peopleIntegrationState(userId);
@@ -84,7 +110,7 @@ export class GoogleContactsSyncProvider {
       });
       const connections = res.data.connections ?? [];
       for (const person of connections) {
-        await this.upsertPerson(userId, person, stats);
+        await this.upsertPerson(userId, person, stats, options?.skipped);
       }
       if (res.data.nextSyncToken) {
         nextSyncToken = res.data.nextSyncToken;
@@ -129,12 +155,14 @@ export class GoogleContactsSyncProvider {
     userId: string,
     person: people_v1.Schema$Person,
     stats: ContactSyncStats,
+    skipped?: ContactImportSkippedItem[],
   ): Promise<void> {
-    const normalized = googlePersonToNormalizedContact(person);
-    if (!normalized) {
+    const parsed = tryGooglePersonForImport(person);
+    if ("skipped" in parsed) {
+      skipped?.push(parsed.skipped);
       return;
     }
-    const result = await this.contactUpsert.upsert(userId, normalized);
+    const result = await this.contactUpsert.upsert(userId, parsed.contact);
     if (!result) {
       return;
     }
