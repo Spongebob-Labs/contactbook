@@ -2,33 +2,52 @@ import { Injectable } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import type { NormalizedContact } from "./normalized-contact.types";
+import {
+  buildDedupKeys as buildContactDedupKeys,
+  flushDedupIndexPending,
+  loadDedupIndex,
+  normalizeEmail,
+  normalizePhone,
+  resolveMergeGroupFromIndex,
+  type DedupIndex,
+  type DedupKey,
+  type MergeGroupResolution,
+} from "./contact-dedup-index";
 
-export type DedupKey = { kind: "email" | "phone"; value: string };
-
-export type MergeGroupResolution = {
-  mergeGroupId: string;
-  duplicateFound: boolean;
+export {
+  buildContactDedupKeys as buildDedupKeys,
+  normalizeEmail,
+  normalizePhone,
+  type DedupIndex,
+  type DedupKey,
+  type MergeGroupResolution,
 };
 
 @Injectable()
 export class ContactDedupService {
   constructor(private readonly prisma: PrismaService) {}
 
+  loadDedupIndex(userId: string) {
+    return loadDedupIndex(userId, this.prisma);
+  }
+
+  resolveMergeGroupFromIndex(
+    index: DedupIndex,
+    contact: NormalizedContact,
+  ): MergeGroupResolution {
+    return resolveMergeGroupFromIndex(index, contact);
+  }
+
+  flushDedupIndexPending(
+    userId: string,
+    index: DedupIndex,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
+    return flushDedupIndexPending(userId, index, tx);
+  }
+
   buildDedupKeys(contact: NormalizedContact): DedupKey[] {
-    const keys = new Map<string, DedupKey>();
-    for (const email of contact.emails) {
-      const value = normalizeEmail(email.value);
-      if (value) {
-        keys.set(`email:${value}`, { kind: "email", value });
-      }
-    }
-    for (const phone of contact.phones) {
-      const value = normalizePhone(phone.value);
-      if (value) {
-        keys.set(`phone:${value}`, { kind: "phone", value });
-      }
-    }
-    return [...keys.values()];
+    return buildContactDedupKeys(contact);
   }
 
   async resolveMergeGroup(
@@ -37,7 +56,7 @@ export class ContactDedupService {
     tx?: Prisma.TransactionClient,
   ): Promise<MergeGroupResolution> {
     const db = tx ?? this.prisma;
-    const keys = this.buildDedupKeys(contact);
+    const keys = buildContactDedupKeys(contact);
     if (keys.length === 0) {
       const group = await db.contactMergeGroup.create({
         data: { userId },
@@ -93,7 +112,7 @@ export class ContactDedupService {
     contact: NormalizedContact,
     tx: Prisma.TransactionClient,
   ): Promise<void> {
-    const keys = this.buildDedupKeys(contact);
+    const keys = buildContactDedupKeys(contact);
     const nextSet = new Set(keys.map((k) => `${k.kind}:${k.value}`));
     const owned = await tx.contactDedupKey.findMany({
       where: { mergeGroupId, userId },
@@ -140,14 +159,4 @@ export class ContactDedupService {
       ),
     );
   }
-}
-
-export function normalizeEmail(value: string): string | null {
-  const t = value.trim().toLowerCase();
-  return t.length > 0 && t.includes("@") ? t : null;
-}
-
-export function normalizePhone(value: string): string | null {
-  const digits = value.replace(/\D/g, "");
-  return digits.length >= 7 ? digits : null;
 }

@@ -19,10 +19,15 @@ describe("ContactsSyncService", () => {
   });
 
   it("dispatches GOOGLE import to google provider", async () => {
-    google.import.mockResolvedValue({ source: ContactSource.GOOGLE });
-    await svc.import("user-1", ContactSource.GOOGLE);
+    google.import.mockResolvedValue({
+      stats: { added: 1, updated: 0, deleted: 0, duplicatesFound: 0 },
+      skipped: [],
+      completedAt: new Date(),
+    });
+    const result = await svc.import("user-1", ContactSource.GOOGLE);
     expect(google.import).toHaveBeenCalledWith("user-1");
     expect(google.sync).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ created: 1, updated: 0, skipped: [] });
   });
 
   it("rejects CSV sync", async () => {

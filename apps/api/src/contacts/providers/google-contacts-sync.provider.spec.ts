@@ -94,7 +94,9 @@ describe("GoogleContactsSyncProvider", () => {
 
     const result = await provider.import(userId);
 
-    expect(result.syncMode).toBe("full");
+    expect(result.stats.added).toBeGreaterThanOrEqual(0);
+    expect(result.skipped).toEqual([]);
+    expect(result.completedAt).toBeInstanceOf(Date);
     expect(listMock).toHaveBeenCalledWith(
       expect.objectContaining({
         syncToken: undefined,
@@ -123,7 +125,6 @@ describe("GoogleContactsSyncProvider", () => {
       where: { userId, source: ContactSource.GOOGLE },
       data: { syncToken: null },
     });
-    expect(result.syncMode).toBe("full");
     expect(listMock).toHaveBeenCalledWith(
       expect.objectContaining({ syncToken: undefined }),
     );
@@ -148,7 +149,6 @@ describe("GoogleContactsSyncProvider", () => {
       where: { userId, source: ContactSource.GOOGLE },
       data: { syncToken: null },
     });
-    expect(result.syncMode).toBe("full");
     expect(listMock).toHaveBeenCalledWith(
       expect.objectContaining({ syncToken: undefined }),
     );

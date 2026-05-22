@@ -113,7 +113,48 @@ Google contact import uses the API-owned OAuth flow:
 3. Google redirects to `GOOGLE_REDIRECT_URI`.
 4. The API stores Google tokens for the signed-in ContactBook user.
 5. The API redirects back to `${WEB_APP_URL}/dashboard/import?google=connected`.
-6. The web app calls `GET /api/v1/contacts/import?source=GOOGLE` to import contacts (or `GET /api/v1/contacts/sync?source=GOOGLE` for detailed sync stats).
+6. The web app calls `GET /api/v1/contacts/import/google` to import contacts (or `GET /api/v1/contacts/sync?source=GOOGLE` for detailed sync stats).
+
+### Other contact import endpoints
+
+| Method | Path | Notes |
+|--------|------|--------|
+| `GET` | `/api/v1/contacts/import/google` | Full Google import; returns import run result |
+| `POST` | `/api/v1/contacts/import/icloud` | Reserved (501 until iCloud connector exists) |
+| `POST` | `/api/v1/contacts/import/vcf` | Multipart field `file` (`.vcf` / `.vcard`, max 50 MB) |
+
+Example VCF upload (do **not** set `Content-Type` manually — `curl -F` adds the multipart boundary automatically):
+
+```bash
+curl -X POST "http://localhost:8001/api/v1/contacts/import/vcf" \
+  -H "Authorization: Bearer <token>" \
+  -F "file=@/path/to/contacts.vcf"
+```
+
+Import endpoints respond with a run-focused body (source is implied by the URL):
+
+```json
+{
+  "completedAt": "2026-05-22T16:16:55.592Z",
+  "created": 6,
+  "updated": 0,
+  "skipped": [
+    {
+      "externalId": "orphan-uid-123",
+      "displayName": "No Contact Info",
+      "firstName": null,
+      "lastName": null,
+      "primaryPhone": null,
+      "primaryEmail": null,
+      "reason": "missing_identity"
+    }
+  ]
+}
+```
+
+`skipped` lists records from the payload that were not stored (use `skipped.length` for the count). For incremental sync stats and deletes, use `GET /api/v1/contacts/sync?source=GOOGLE`.
+
+The legacy `GET /api/v1/contacts/import?source=…` route has been removed.
 
 Local API env:
 
