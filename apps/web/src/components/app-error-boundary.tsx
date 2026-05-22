@@ -18,6 +18,10 @@ export class AppErrorBoundary extends Component<
     console.error(error, info);
   }
 
+  goHome = () => {
+    window.location.assign("/");
+  };
+
   render() {
     if (!this.state.hasError) {
       return this.props.children;
@@ -31,7 +35,12 @@ export class AppErrorBoundary extends Component<
             <p className="text-sm text-muted-foreground">
               The app hit an unexpected error. Refresh the page to try again.
             </p>
-            <Button onClick={() => window.location.reload()}>Refresh</Button>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Button onClick={() => window.location.reload()}>Refresh</Button>
+              <Button variant="outline" onClick={this.goHome}>
+                Go home
+              </Button>
+            </div>
           </div>
         </Alert>
       </main>

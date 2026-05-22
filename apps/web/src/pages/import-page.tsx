@@ -4,13 +4,16 @@ import { AlertCircle, ArrowRight, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
 import { ContactImportOptions } from "@/components/contact-import-options";
+import { SampleDataNotice } from "@/components/sample-data-notice";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { apiFetch } from "@/lib/api";
 import { buildContactImportSummary } from "@/lib/contact-summary";
+import { friendlyErrorMessages, logUiError } from "@/lib/friendly-errors";
 import { startGoogleImportConnection } from "@/lib/google-import";
+import { mockContactsBySource } from "@/lib/mock-data";
 import {
   GOOGLE_CONNECTED_KEY,
   GOOGLE_OAUTH_PENDING_KEY,
@@ -18,6 +21,7 @@ import {
 import type {
   ContactImport,
   ContactImportSummary,
+  ContactListResponse,
   GoogleSyncResponse,
 } from "@/lib/types";
 
@@ -61,18 +65,54 @@ export default function ImportPage() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasConnectedGoogle, setHasConnectedGoogle] = useState(false);
+  const [isMockData, setIsMockData] = useState(false);
 
   const loadImports = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const contactsData = await apiFetch<ContactImport[]>("/v1/contacts?source=GOOGLE");
+      const response = await apiFetch<ContactListResponse>(
+        "/v1/contacts?source=GOOGLE&limit=100&sort=updatedAt&sortOrder=desc",
+      );
+      const contactsData = response.items;
       const summaryData = buildContactImportSummary(contactsData);
+      const googleSummary = summaryData.bySource.find(
+        (item) => item.source === "GOOGLE",
+      );
+      if (googleSummary) {
+        googleSummary.activeCount = response.total;
+        googleSummary.lastSyncAt = response.items[0]?.updatedAt ?? null;
+      } else if (response.total > 0) {
+        summaryData.bySource.push({
+          source: "GOOGLE",
+          activeCount: response.total,
+          deletedCount: 0,
+          lastSyncAt: response.items[0]?.updatedAt ?? null,
+        });
+      }
+      summaryData.totalActive = response.total;
       setImports(contactsData);
       setSummary(summaryData);
       setHasConnectedGoogle(hasGoogleConnectionEvidence(summaryData, contactsData));
+      setIsMockData(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load imports.");
+      logUiError("Could not load imports", err);
+      const response = mockContactsBySource("GOOGLE");
+      const contactsData = response.items;
+      const summaryData = buildContactImportSummary(contactsData);
+      const googleSummary = summaryData.bySource.find(
+        (item) => item.source === "GOOGLE",
+      );
+      if (googleSummary) {
+        googleSummary.activeCount = response.total;
+        googleSummary.lastSyncAt = response.items[0]?.updatedAt ?? null;
+      }
+      summaryData.totalActive = response.total;
+      setImports(contactsData);
+      setSummary(summaryData);
+      setHasConnectedGoogle(true);
+      setIsMockData(true);
+      setError(null);
     } finally {
       setIsLoading(false);
     }
@@ -92,11 +132,12 @@ export default function ImportPage() {
       }
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "Could not sync Google contacts.";
+        err instanceof Error ? err.message : friendlyErrorMessages.sync;
+      logUiError("Could not sync Google contacts", err);
       if (/authorization expired|revoked|reconnect/i.test(message)) {
         setHasConnectedGoogle(false);
       }
-      toast.error(message);
+      toast.error(friendlyErrorMessages.sync);
     } finally {
       setIsSyncing(false);
     }
@@ -110,7 +151,8 @@ export default function ImportPage() {
       window.location.assign(url);
     } catch (err) {
       sessionStorage.removeItem(GOOGLE_OAUTH_PENDING_KEY);
-      toast.error(err instanceof Error ? err.message : "Could not connect Google.");
+      logUiError("Could not connect Google", err);
+      toast.error(friendlyErrorMessages.connect);
       setIsConnectingGoogle(false);
     }
   }, []);
@@ -141,11 +183,8 @@ export default function ImportPage() {
     if (googleState === "error") {
       sessionStorage.removeItem(GOOGLE_OAUTH_PENDING_KEY);
       localStorage.removeItem(GOOGLE_CONNECTED_KEY);
-      toast.error(
-        reason
-          ? `Google connection failed. Reason: ${reason}.`
-          : "Google connection failed.",
-      );
+      logUiError("Google connection failed", reason);
+      toast.error(friendlyErrorMessages.connect);
     }
   }, [navigate, searchParams, syncGoogle]);
 
@@ -179,6 +218,8 @@ export default function ImportPage() {
 
   return (
     <AppShell>
+      {isMockData && <SampleDataNotice />}
+
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="rounded-lg border border-border bg-card p-6 md:p-8">
           <Badge variant="secondary">Google import</Badge>
@@ -263,7 +304,9 @@ export default function ImportPage() {
                   <AlertCircle className="mt-0.5 h-4 w-4 text-destructive" />
                   <div>
                     <p className="font-medium">Could not load import status</p>
-                    <p className="mt-1 text-sm text-muted-foreground">{error}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {friendlyErrorMessages.load}
+                    </p>
                   </div>
                 </Alert>
               )}

@@ -13,6 +13,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { useAuth } from "@/context/auth-context";
 import { apiFetch } from "@/lib/api";
 import { DIAL_COUNTRIES } from "@/lib/dial-countries";
+import { friendlyErrorMessages, logUiError } from "@/lib/friendly-errors";
 import { buildE164, nationalDigits } from "@/lib/phone";
 import type { VerifyCodeResponse } from "@/lib/types";
 
@@ -108,7 +109,8 @@ export default function AuthPage() {
     try {
       buildE164(countryCode, values.national);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Enter a valid phone number.");
+      logUiError("Invalid phone number", error);
+      toast.error("Enter a valid phone number.");
       return;
     }
     setIsBusy(true);
@@ -121,7 +123,8 @@ export default function AuthPage() {
       setStep("otp");
       toast.success("Verification code sent.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not send code.");
+      logUiError("Could not send code", error);
+      toast.error("We couldn't send the code. Please try again.");
     } finally {
       setIsBusy(false);
     }
@@ -148,7 +151,8 @@ export default function AuthPage() {
       setStep("register");
       toast.info("Complete your profile to continue.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not verify code.");
+      logUiError("Could not verify code", error);
+      toast.error(friendlyErrorMessages.auth);
     } finally {
       setIsBusy(false);
     }
@@ -174,7 +178,8 @@ export default function AuthPage() {
       toast.success("Account created.");
       navigate(onboardingPath, { replace: true });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not create account.");
+      logUiError("Could not create account", error);
+      toast.error("We couldn't create your account. Please try again.");
     } finally {
       setIsBusy(false);
     }

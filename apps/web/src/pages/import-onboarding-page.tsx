@@ -6,6 +6,7 @@ import { AppShell } from "@/components/app-shell";
 import { ContactImportOptions } from "@/components/contact-import-options";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { friendlyErrorMessages, logUiError } from "@/lib/friendly-errors";
 import { startGoogleImportConnection } from "@/lib/google-import";
 import { GOOGLE_OAUTH_PENDING_KEY } from "@/lib/session-storage";
 
@@ -31,9 +32,8 @@ export function ImportOnboardingModal({
       window.location.assign(url);
     } catch (error) {
       sessionStorage.removeItem(GOOGLE_OAUTH_PENDING_KEY);
-      toast.error(
-        error instanceof Error ? error.message : "Could not start Google connection.",
-      );
+      logUiError("Could not start Google connection", error);
+      toast.error(friendlyErrorMessages.connect);
       setIsConnectingGoogle(false);
     }
   };

@@ -39,6 +39,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let isMounted = true;
 
     const bootstrapSession = async () => {
+      const currentPath = window.location.pathname;
+      const isPublicRoute =
+        currentPath === "/" ||
+        currentPath === "/auth" ||
+        currentPath === "/auth/callback";
+      const cookieUserId = getCookie("cb_user_id");
+
+      if (isPublicRoute && !cookieUserId) {
+        setUserId(null);
+        setProfileIdentity(null);
+        setIsAuthenticated(false);
+        setIsLoading(false);
+        return;
+      }
+
       try {
         const profile = await apiFetch<ProfileMeResponse>("/v1/profile/me");
         if (!isMounted) {

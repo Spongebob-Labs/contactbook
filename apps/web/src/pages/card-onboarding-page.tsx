@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { apiFetch } from "@/lib/api";
+import { friendlyErrorMessages, logUiError } from "@/lib/friendly-errors";
 import type { ContactCard, ContactCardType } from "@/lib/types";
 
 const cardTypeOptions: Array<{
@@ -72,7 +73,8 @@ export function CardOnboardingModal({
       toast.success(isSetupMode ? "Your first card is ready." : "Card created.");
       onComplete(card);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not create card.");
+      logUiError("Could not create card", error);
+      toast.error(friendlyErrorMessages.save);
     } finally {
       setIsSaving(false);
     }

@@ -98,6 +98,14 @@ export type ContactDetail = ContactImport & {
   deletedAt?: string | null;
 };
 
+export type ContactListResponse = {
+  items: ContactDetail[];
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+};
+
 export type GoogleSyncResponse = {
   syncMode: "full" | "delta";
   processedCount: number;

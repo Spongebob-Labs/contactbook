@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ApiError, apiFetch } from "@/lib/api";
+import { friendlyErrorMessages, logUiError } from "@/lib/friendly-errors";
 import type { PostalAddress, ProfileMeResponse } from "@/lib/types";
 
 type AddressForm = {
@@ -1030,9 +1031,8 @@ export function ProfileOnboardingModal({
         }
       } catch (error) {
         if (isMounted) {
-          setLoadError(
-            error instanceof Error ? error.message : "Could not load your profile.",
-          );
+          logUiError("Could not load profile form", error);
+          setLoadError(friendlyErrorMessages.load);
         }
       } finally {
         if (isMounted) {
@@ -1076,9 +1076,8 @@ export function ProfileOnboardingModal({
       setSectionValue("identity", "profilePhoto", response.profilePhoto ?? "");
       toast.success("Profile photo updated.");
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Could not upload profile photo.",
-      );
+      logUiError("Could not upload profile photo", error);
+      toast.error("We couldn't update your profile photo. Please try again.");
     } finally {
       setIsMutatingProfilePhoto(false);
     }
@@ -1094,9 +1093,8 @@ export function ProfileOnboardingModal({
       setSectionValue("identity", "profilePhoto", "");
       toast.success("Profile photo removed.");
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Could not remove profile photo.",
-      );
+      logUiError("Could not remove profile photo", error);
+      toast.error("We couldn't remove your profile photo. Please try again.");
     } finally {
       setIsMutatingProfilePhoto(false);
     }
@@ -1634,7 +1632,8 @@ export function ProfileOnboardingModal({
       toast.success("Profile saved.");
       onComplete();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not save profile.");
+      logUiError("Could not save profile", err);
+      toast.error(friendlyErrorMessages.save);
     } finally {
       setIsSaving(false);
     }

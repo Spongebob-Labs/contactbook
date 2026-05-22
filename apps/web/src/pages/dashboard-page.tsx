@@ -9,13 +9,15 @@ import {
   UserRound,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
+import { SampleDataNotice } from "@/components/sample-data-notice";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { apiFetch } from "@/lib/api";
-import { buildContactImportSummary } from "@/lib/contact-summary";
+import { logUiError } from "@/lib/friendly-errors";
+import { mockCards, mockContactListResponse, mockContactsBySource, mockProfile } from "@/lib/mock-data";
 import type {
   ContactCard,
-  ContactDetail,
   ContactImportSummary,
+  ContactListResponse,
   ProfileMeResponse,
 } from "@/lib/types";
 import { CardOnboardingModal } from "@/pages/card-onboarding-page";
@@ -63,6 +65,7 @@ export default function DashboardPage() {
   const [cards, setCards] = useState<ContactCard[]>([]);
   const [profile, setProfile] = useState<ProfileMeResponse | null>(null);
   const [importSummary, setImportSummary] = useState<ContactImportSummary | null>(null);
+  const [isMockData, setIsMockData] = useState(false);
   const onboardingStep = getOnboardingStep(searchParams.get("onboarding"));
   const returnTo = getSafeReturnPath(searchParams.get("returnTo"));
   const isSetupFlow = searchParams.get("flow") === "setup";
@@ -144,17 +147,52 @@ export default function DashboardPage() {
 
   const loadOverview = useCallback(async (shouldUpdate: () => boolean = () => true) => {
     try {
-      const [profileData, contactsData] = await Promise.all([
+      const [profileData, contactsData, googleContactsData] = await Promise.all([
         apiFetch<ProfileMeResponse>("/v1/profile/me"),
-        apiFetch<ContactDetail[]>("/v1/contacts"),
+        apiFetch<ContactListResponse>("/v1/contacts?limit=1"),
+        apiFetch<ContactListResponse>(
+          "/v1/contacts?source=GOOGLE&limit=1&sort=updatedAt&sortOrder=desc",
+        ),
       ]);
-      const summaryData = buildContactImportSummary(contactsData);
+      const summaryData: ContactImportSummary = {
+        totalActive: contactsData.total,
+        totalDeleted: 0,
+        bySource:
+          googleContactsData.total > 0
+            ? [
+                {
+                  source: "GOOGLE",
+                  activeCount: googleContactsData.total,
+                  deletedCount: 0,
+                  lastSyncAt: googleContactsData.items[0]?.updatedAt ?? null,
+                },
+              ]
+            : [],
+      };
       if (shouldUpdate()) {
         setProfile(profileData);
         setImportSummary(summaryData);
+        setIsMockData(false);
       }
-    } catch {
-      // The dashboard can still render empty summary states if overview loading fails.
+    } catch (error) {
+      logUiError("Could not load dashboard overview", error);
+      if (shouldUpdate()) {
+        const googleContactsData = mockContactsBySource("GOOGLE");
+        setProfile(mockProfile);
+        setImportSummary({
+          totalActive: mockContactListResponse.total,
+          totalDeleted: 0,
+          bySource: [
+            {
+              source: "GOOGLE",
+              activeCount: googleContactsData.total,
+              deletedCount: 0,
+              lastSyncAt: googleContactsData.items[0]?.updatedAt ?? null,
+            },
+          ],
+        });
+        setIsMockData(true);
+      }
     }
   }, []);
 
@@ -164,9 +202,11 @@ export default function DashboardPage() {
       if (shouldUpdate()) {
         setCards(data);
       }
-    } catch {
+    } catch (error) {
+      logUiError("Could not load dashboard cards", error);
       if (shouldUpdate()) {
-        setCards([]);
+        setCards(mockCards);
+        setIsMockData(true);
       }
     }
   }, []);
@@ -184,6 +224,8 @@ export default function DashboardPage() {
 
   return (
     <AppShell>
+      {isMockData && <SampleDataNotice />}
+
       <section className="grid gap-4 md:grid-cols-2">
         {stats.map((stat) => (
           <Card key={stat.label}>

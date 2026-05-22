@@ -2,12 +2,15 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { AlertCircle, ArrowRight, CreditCard, IdCard, Plus } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
+import { SampleDataNotice } from "@/components/sample-data-notice";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
+import { friendlyErrorMessages, logUiError } from "@/lib/friendly-errors";
+import { mockCards } from "@/lib/mock-data";
 import type { ContactCard, ContactCardType } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -28,6 +31,7 @@ export default function CardsPage() {
   const [cards, setCards] = useState<ContactCard[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isMockData, setIsMockData] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -39,10 +43,14 @@ export default function CardsPage() {
         const data = await apiFetch<ContactCard[]>("/v1/cards");
         if (isMounted) {
           setCards(data);
+          setIsMockData(false);
         }
       } catch (err) {
         if (isMounted) {
-          setError(err instanceof Error ? err.message : "Could not load cards.");
+          logUiError("Could not load cards", err);
+          setCards(mockCards);
+          setIsMockData(true);
+          setError(null);
         }
       } finally {
         if (isMounted) {
@@ -91,10 +99,14 @@ export default function CardsPage() {
           <AlertCircle className="mt-0.5 h-4 w-4 text-destructive" aria-hidden="true" />
           <div>
             <p className="font-medium">Could not load cards</p>
-            <p className="mt-1 text-sm text-muted-foreground">{error}</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {friendlyErrorMessages.load}
+            </p>
           </div>
         </Alert>
       )}
+
+      {isMockData && <SampleDataNotice />}
 
       {!isLoading && !error && cards.length === 0 && (
         <Card>

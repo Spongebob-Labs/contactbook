@@ -1,5 +1,17 @@
 # Decision Context
 
+## 2026-05-22 - Add Safe Read-Only Mock Fallbacks
+
+- Decision: Add frontend-only sample data fallbacks for read-only page data when live reads fail, with a visible sample-data notice on affected pages, while leaving mutations/auth/sync/upload/delete actions dependent on the live server.
+- Reason: The app should remain navigable and understandable when the server is unavailable, but it must not imply that writes or integrations succeeded without a real backend response.
+- Notes: Dashboard, contacts, contact detail, cards, card detail, profile, and import status can show clearly labeled sample data. User-facing errors now use simple non-technical messages while detailed errors are logged to the console. Public home/auth routes skip unnecessary profile bootstrapping when there is no session cookie, and the error boundary includes a Go home action. Backend code and browser testing remain untouched.
+
+## 2026-05-22 - Adopt Paginated Contacts API In Frontend
+
+- Decision: Update contacts-related frontend reads for the new `GET /v1/contacts` response shape `{ items, page, limit, total, totalPages }`, and move the Contacts page table to server-side search, source filtering, sorting, and pagination using TanStack Table for row/column rendering.
+- Reason: The backend now paginates and searches contacts directly, so the frontend should stop fetching all contacts and applying table controls locally.
+- Notes: Contacts page search is debounced, page size is capped to the backend-supported 100 rows, dashboard/import callers now read `items` plus `total`, and the global-looking Contacts page last-sync label was removed because a paginated page should not imply a complete sync summary. Backend code and browser testing remain untouched.
+
 ## 2026-05-22 - Use Dedicated Profile Photo Upload Endpoints
 
 - Decision: Merge latest `origin/dev` into `feat/ui-creation` to bring PR 28's profile photo backend endpoints, then update the frontend profile photo control to upload JPEG, PNG, or WebP files up to 1 MB via `POST /v1/profile/me/photo` and delete via `DELETE /v1/profile/me/photo`.

@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
+  type ColumnDef,
+  flexRender,
+  getCoreRowModel,
+  useReactTable,
+} from "@tanstack/react-table";
+import {
   AlertCircle,
   ArrowDown,
   ArrowUp,
@@ -11,10 +17,17 @@ import {
   UsersRound,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
+import { SampleDataNotice } from "@/components/sample-data-notice";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -27,7 +40,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { apiFetch } from "@/lib/api";
-import { buildContactImportSummary } from "@/lib/contact-summary";
 import {
   formatContactDate,
   getCompany,
@@ -35,10 +47,11 @@ import {
   getInitials,
   getPrimaryEmail,
   getPrimaryPhone,
-  getSearchText,
   getTitle,
 } from "@/lib/contact-display";
-import type { ContactDetail, ContactImportSummary, ContactSource } from "@/lib/types";
+import { friendlyErrorMessages, logUiError } from "@/lib/friendly-errors";
+import { mockContactListResponse } from "@/lib/mock-data";
+import type { ContactDetail, ContactListResponse, ContactSource } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type SourceFilter = "ALL" | Exclude<ContactSource, "MANUAL">;
@@ -54,15 +67,7 @@ const sourceOptions: Array<{ value: SourceFilter; label: string }> = [
   { value: "CALDAV", label: "CalDAV" },
 ];
 
-const pageSizeOptions = [10, 25, 50];
-
-function getGoogleSummary(summary: ContactImportSummary | null) {
-  return summary?.bySource.find((item) => item.source === "GOOGLE") ?? null;
-}
-
-function compareText(current: string, next: string) {
-  return current.localeCompare(next, undefined, { sensitivity: "base" });
-}
+const pageSizeOptions = [25, 50, 100];
 
 function ContactAvatar({ contact }: { contact: ContactDetail }) {
   return (
@@ -72,18 +77,140 @@ function ContactAvatar({ contact }: { contact: ContactDetail }) {
   );
 }
 
+function buildContactsPath({
+  page,
+  pageSize,
+  query,
+  sortDirection,
+  sortKey,
+  sourceFilter,
+}: {
+  page: number;
+  pageSize: number;
+  query: string;
+  sortDirection: SortDirection;
+  sortKey: SortKey;
+  sourceFilter: SourceFilter;
+}) {
+  const params = new URLSearchParams({
+    page: String(page),
+    limit: String(pageSize),
+    sort: sortKey,
+    sortOrder: sortDirection,
+  });
+  const search = query.trim();
+  if (search) {
+    params.set("search", search);
+  }
+  if (sourceFilter !== "ALL") {
+    params.set("source", sourceFilter);
+  }
+  return `/v1/contacts?${params.toString()}`;
+}
+
+function isContactListResponse(value: unknown): value is ContactListResponse {
+  return (
+    Boolean(value) &&
+    typeof value === "object" &&
+    Array.isArray((value as ContactListResponse).items) &&
+    typeof (value as ContactListResponse).total === "number"
+  );
+}
+
 export default function ContactsPage() {
   const navigate = useNavigate();
   const [contacts, setContacts] = useState<ContactDetail[]>([]);
-  const [summary, setSummary] = useState<ContactImportSummary | null>(null);
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("ALL");
   const [sortKey, setSortKey] = useState<SortKey>("name");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(25);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isMockData, setIsMockData] = useState(false);
+
+  const columns = useMemo<ColumnDef<ContactDetail>[]>(
+    () => [
+      {
+        accessorKey: "displayName",
+        header: "Name",
+        cell: ({ row }) => {
+          const contact = row.original;
+          return (
+            <div className="flex min-w-0 items-center gap-3">
+              <ContactAvatar contact={contact} />
+              <div className="min-w-0">
+                <p className="truncate font-medium text-foreground">
+                  {getContactName(contact)}
+                </p>
+                <p className="truncate text-sm text-muted-foreground">
+                  {getCompany(contact) ||
+                    getTitle(contact) ||
+                    contact.source.toLowerCase()}
+                </p>
+              </div>
+            </div>
+          );
+        },
+      },
+      {
+        id: "email",
+        header: "Email",
+        cell: ({ row }) => (
+          <span className="block max-w-64 truncate text-muted-foreground">
+            {getPrimaryEmail(row.original) || "No email"}
+          </span>
+        ),
+      },
+      {
+        id: "phone",
+        header: "Phone",
+        cell: ({ row }) => (
+          <span className="whitespace-nowrap text-muted-foreground">
+            {getPrimaryPhone(row.original) || "No phone"}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "source",
+        header: "Source",
+        cell: ({ row }) => (
+          <Badge variant="secondary">{row.original.source.toLowerCase()}</Badge>
+        ),
+      },
+      {
+        accessorKey: "updatedAt",
+        header: "Updated",
+        cell: ({ row }) => (
+          <span className="whitespace-nowrap text-muted-foreground">
+            {formatContactDate(row.original.updatedAt)}
+          </span>
+        ),
+      },
+    ],
+    [],
+  );
+
+  const table = useReactTable({
+    data: contacts,
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+    manualPagination: true,
+    pageCount: totalPages,
+  });
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setDebouncedQuery(query);
+    }, 300);
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [query]);
 
   useEffect(() => {
     let isMounted = true;
@@ -92,15 +219,36 @@ export default function ContactsPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const contactsData = await apiFetch<ContactDetail[]>("/v1/contacts");
-        const summaryData = buildContactImportSummary(contactsData);
+        const response = await apiFetch<unknown>(
+          buildContactsPath({
+            page,
+            pageSize,
+            query: debouncedQuery,
+            sortDirection,
+            sortKey,
+            sourceFilter,
+          }),
+        );
+        if (!isContactListResponse(response)) {
+          throw new Error("Contacts response was not usable.");
+        }
         if (isMounted) {
-          setContacts(contactsData);
-          setSummary(summaryData);
+          setContacts(response.items);
+          setTotal(response.total);
+          setTotalPages(Math.max(1, response.totalPages));
+          setIsMockData(false);
+          if (response.totalPages > 0 && page > response.totalPages) {
+            setPage(response.totalPages);
+          }
         }
       } catch (err) {
         if (isMounted) {
-          setError(err instanceof Error ? err.message : "Could not load contacts.");
+          logUiError("Could not load contacts", err);
+          setContacts(mockContactListResponse.items);
+          setTotal(mockContactListResponse.total);
+          setTotalPages(mockContactListResponse.totalPages);
+          setIsMockData(true);
+          setError(null);
         }
       } finally {
         if (isMounted) {
@@ -113,50 +261,36 @@ export default function ContactsPage() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [debouncedQuery, page, pageSize, sortDirection, sortKey, sourceFilter]);
 
-  const filteredAndSortedContacts = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
-    return contacts
-      .filter((contact) =>
-        sourceFilter === "ALL" ? true : contact.source === sourceFilter,
-      )
-      .filter((contact) =>
-        normalizedQuery ? getSearchText(contact).includes(normalizedQuery) : true,
-      )
-      .slice()
-      .sort((current, next) => {
-        const direction = sortDirection === "asc" ? 1 : -1;
-        if (sortKey === "updatedAt") {
-          return (
-            (new Date(current.updatedAt).getTime() -
-              new Date(next.updatedAt).getTime()) *
-            direction
-          );
-        }
-        if (sortKey === "source") {
-          return compareText(current.source, next.source) * direction;
-        }
-        return compareText(getContactName(current), getContactName(next)) * direction;
-      });
-  }, [contacts, query, sortDirection, sortKey, sourceFilter]);
-  const totalPages = Math.max(
-    1,
-    Math.ceil(filteredAndSortedContacts.length / pageSize),
-  );
   const currentPage = Math.min(page, totalPages);
-  const paginatedContacts = filteredAndSortedContacts.slice(
-    (currentPage - 1) * pageSize,
-    currentPage * pageSize,
-  );
-  const pageStart =
-    filteredAndSortedContacts.length === 0 ? 0 : (currentPage - 1) * pageSize + 1;
-  const pageEnd = Math.min(currentPage * pageSize, filteredAndSortedContacts.length);
-  const googleSummary = getGoogleSummary(summary);
+  const pageStart = total === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+  const pageEnd = Math.min(currentPage * pageSize, total);
 
-  useEffect(() => {
+  const updateSourceFilter = (value: SourceFilter) => {
+    setSourceFilter(value);
     setPage(1);
-  }, [pageSize, query, sortDirection, sortKey, sourceFilter]);
+  };
+
+  const updateSortKey = (value: SortKey) => {
+    setSortKey(value);
+    setPage(1);
+  };
+
+  const updateSortDirection = () => {
+    setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
+    setPage(1);
+  };
+
+  const updatePageSize = (value: number) => {
+    setPageSize(value);
+    setPage(1);
+  };
+
+  const updateQuery = (value: string) => {
+    setQuery(value);
+    setPage(1);
+  };
 
   return (
     <AppShell>
@@ -165,18 +299,13 @@ export default function ContactsPage() {
           <h1 className="text-2xl font-semibold tracking-normal">Contacts</h1>
         </div>
         <div className="flex w-full flex-col gap-3 lg:max-w-2xl lg:items-end">
-          <div className="flex flex-col items-start gap-1 lg:items-end">
-            <Link
-              to="/dashboard/import"
-              className={buttonVariants({ variant: "default" })}
-            >
-              <Download className="h-4 w-4" aria-hidden="true" />
-              Import contacts
-            </Link>
-            <p className="text-xs text-muted-foreground">
-              Last sync {formatContactDate(googleSummary?.lastSyncAt)}
-            </p>
-          </div>
+          <Link
+            to="/dashboard/import"
+            className={buttonVariants({ variant: "default" })}
+          >
+            <Download className="h-4 w-4" aria-hidden="true" />
+            Import contacts
+          </Link>
         </div>
       </section>
 
@@ -185,17 +314,21 @@ export default function ContactsPage() {
           <AlertCircle className="mt-0.5 h-4 w-4 text-destructive" aria-hidden="true" />
           <div>
             <p className="font-medium">Could not load contacts</p>
-            <p className="mt-1 text-sm text-muted-foreground">{error}</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {friendlyErrorMessages.load}
+            </p>
           </div>
         </Alert>
       )}
+
+      {isMockData && <SampleDataNotice />}
 
       <section>
         <Card className="overflow-hidden">
           <CardHeader className="border-b border-border">
             <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
               <div>
-                <CardTitle>Contacts ({filteredAndSortedContacts.length})</CardTitle>
+                <CardTitle>Contacts ({total})</CardTitle>
                 <CardDescription>
                   Browse imported contacts and open a contact for full details.
                 </CardDescription>
@@ -203,7 +336,7 @@ export default function ContactsPage() {
               <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[180px_150px_120px_minmax(220px,280px)]">
                 <Select
                   value={sourceFilter}
-                  onChange={(event) => setSourceFilter(event.target.value as SourceFilter)}
+                  onChange={(event) => updateSourceFilter(event.target.value as SourceFilter)}
                   aria-label="Filter contacts by source"
                 >
                   {sourceOptions.map((option) => (
@@ -214,7 +347,7 @@ export default function ContactsPage() {
                 </Select>
                 <Select
                   value={sortKey}
-                  onChange={(event) => setSortKey(event.target.value as SortKey)}
+                  onChange={(event) => updateSortKey(event.target.value as SortKey)}
                   aria-label="Sort contacts"
                 >
                   <option value="name">Name</option>
@@ -224,11 +357,7 @@ export default function ContactsPage() {
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() =>
-                    setSortDirection((current) =>
-                      current === "asc" ? "desc" : "asc",
-                    )
-                  }
+                  onClick={updateSortDirection}
                   aria-label="Toggle sort direction"
                 >
                   {sortDirection === "asc" ? (
@@ -242,7 +371,7 @@ export default function ContactsPage() {
                   <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
                     value={query}
-                    onChange={(event) => setQuery(event.target.value)}
+                    onChange={(event) => updateQuery(event.target.value)}
                     placeholder="Search contacts"
                     className="pl-9"
                   />
@@ -259,7 +388,7 @@ export default function ContactsPage() {
               </div>
             )}
 
-            {!isLoading && !error && filteredAndSortedContacts.length === 0 && (
+            {!isLoading && !error && contacts.length === 0 && (
               <div className="flex min-h-80 flex-col items-center justify-center p-6 text-center">
                 <UsersRound className="mb-3 h-9 w-9 text-primary" aria-hidden="true" />
                 <h2 className="font-semibold">No contacts found</h2>
@@ -276,72 +405,57 @@ export default function ContactsPage() {
               </div>
             )}
 
-            {!isLoading && !error && filteredAndSortedContacts.length > 0 && (
+            {!isLoading && !error && contacts.length > 0 && (
               <>
                 <Table>
                   <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Phone</TableHead>
-                      <TableHead>Source</TableHead>
-                      <TableHead>Updated</TableHead>
-                    </TableRow>
+                    {table.getHeaderGroups().map((headerGroup) => (
+                      <TableRow key={headerGroup.id}>
+                        {headerGroup.headers.map((header) => (
+                          <TableHead key={header.id}>
+                            {header.isPlaceholder
+                              ? null
+                              : flexRender(
+                                  header.column.columnDef.header,
+                                  header.getContext(),
+                                )}
+                          </TableHead>
+                        ))}
+                      </TableRow>
+                    ))}
                   </TableHeader>
                   <TableBody>
-                    {paginatedContacts.map((contact) => (
+                    {table.getRowModel().rows.map((row) => (
                       <TableRow
-                        key={contact.id}
+                        key={row.id}
                         role="link"
                         tabIndex={0}
                         className="cursor-pointer"
-                        onClick={() => navigate(`/dashboard/contacts/${contact.id}`)}
+                        onClick={() => navigate(`/dashboard/contacts/${row.original.id}`)}
                         onKeyDown={(event) => {
                           if (event.key === "Enter" || event.key === " ") {
                             event.preventDefault();
-                            navigate(`/dashboard/contacts/${contact.id}`);
+                            navigate(`/dashboard/contacts/${row.original.id}`);
                           }
                         }}
                       >
-                        <TableCell>
-                          <div className="flex min-w-0 items-center gap-3">
-                            <ContactAvatar contact={contact} />
-                            <div className="min-w-0">
-                              <p className="truncate font-medium text-foreground">
-                                {getContactName(contact)}
-                              </p>
-                              <p className="truncate text-sm text-muted-foreground">
-                                {getCompany(contact) ||
-                                  getTitle(contact) ||
-                                  contact.source.toLowerCase()}
-                              </p>
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell className="max-w-64 truncate text-muted-foreground">
-                          {getPrimaryEmail(contact) || "No email"}
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap text-muted-foreground">
-                          {getPrimaryPhone(contact) || "No phone"}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="secondary">{contact.source.toLowerCase()}</Badge>
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap text-muted-foreground">
-                          {formatContactDate(contact.updatedAt)}
-                        </TableCell>
+                        {row.getVisibleCells().map((cell) => (
+                          <TableCell key={cell.id}>
+                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                          </TableCell>
+                        ))}
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
                 <div className="flex flex-col gap-3 border-t border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                   <p className="text-sm text-muted-foreground">
-                    Showing {pageStart}-{pageEnd} of {filteredAndSortedContacts.length}
+                    Showing {pageStart}-{pageEnd} of {total}
                   </p>
                   <div className="flex flex-wrap items-center gap-2">
                     <Select
                       value={String(pageSize)}
-                      onChange={(event) => setPageSize(Number(event.target.value))}
+                      onChange={(event) => updatePageSize(Number(event.target.value))}
                       className="w-28"
                       aria-label="Rows per page"
                     >

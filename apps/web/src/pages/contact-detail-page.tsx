@@ -11,6 +11,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
+import { SampleDataNotice } from "@/components/sample-data-notice";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
@@ -27,6 +28,8 @@ import {
   getPrimaryPhone,
   getTitle,
 } from "@/lib/contact-display";
+import { friendlyErrorMessages, logUiError } from "@/lib/friendly-errors";
+import { mockContactDetail } from "@/lib/mock-data";
 import type { ContactDetail } from "@/lib/types";
 
 function ContactAvatar({ contact }: { contact: ContactDetail }) {
@@ -83,6 +86,7 @@ export default function ContactDetailPage() {
   const [contact, setContact] = useState<ContactDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isMockData, setIsMockData] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -100,10 +104,14 @@ export default function ContactDetailPage() {
         const data = await apiFetch<ContactDetail>(`/v1/contacts/${contactId}`);
         if (isMounted) {
           setContact(data);
+          setIsMockData(false);
         }
       } catch (err) {
         if (isMounted) {
-          setError(err instanceof Error ? err.message : "Could not load contact.");
+          logUiError("Could not load contact", err);
+          setContact(mockContactDetail(contactId));
+          setIsMockData(true);
+          setError(null);
         }
       } finally {
         if (isMounted) {
@@ -135,10 +143,14 @@ export default function ContactDetailPage() {
           <AlertCircle className="mt-0.5 h-4 w-4 text-destructive" aria-hidden="true" />
           <div>
             <p className="font-medium">Could not load contact</p>
-            <p className="mt-1 text-sm text-muted-foreground">{error}</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {friendlyErrorMessages.load}
+            </p>
           </div>
         </Alert>
       )}
+
+      {isMockData && <SampleDataNotice />}
 
       {isLoading && (
         <Card>

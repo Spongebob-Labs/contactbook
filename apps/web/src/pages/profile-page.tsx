@@ -13,12 +13,15 @@ import {
   UserRound,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
+import { SampleDataNotice } from "@/components/sample-data-notice";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
+import { friendlyErrorMessages, logUiError } from "@/lib/friendly-errors";
+import { mockProfile } from "@/lib/mock-data";
 import type { PostalAddress, ProfileMeResponse } from "@/lib/types";
 
 type AddressLike = Partial<PostalAddress>;
@@ -138,6 +141,7 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<ProfileMeResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isMockData, setIsMockData] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -149,10 +153,14 @@ export default function ProfilePage() {
         const data = await apiFetch<ProfileMeResponse>("/v1/profile/me");
         if (isMounted) {
           setProfile(data);
+          setIsMockData(false);
         }
       } catch (err) {
         if (isMounted) {
-          setError(err instanceof Error ? err.message : "Could not load profile.");
+          logUiError("Could not load profile", err);
+          setProfile(mockProfile);
+          setIsMockData(true);
+          setError(null);
         }
       } finally {
         if (isMounted) {
@@ -197,13 +205,17 @@ export default function ProfilePage() {
           <Alert className="flex items-start gap-3">
             <AlertCircle className="mt-0.5 h-4 w-4 text-destructive" />
             <div>
-              <p className="font-medium">Could not load profile</p>
-              <p className="mt-1 text-sm text-muted-foreground">{error}</p>
-            </div>
-          </Alert>
-        )}
+            <p className="font-medium">Could not load profile</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {friendlyErrorMessages.load}
+            </p>
+          </div>
+        </Alert>
+      )}
 
-        {!isLoading && profile && (
+      {isMockData && <SampleDataNotice />}
+
+      {!isLoading && profile && (
           <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
             <div className="flex flex-col gap-5 md:flex-row md:items-center">
               <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-muted">
