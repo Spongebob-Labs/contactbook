@@ -9,6 +9,7 @@ import {
   MaxLength,
   ValidateNested,
 } from "class-validator";
+import { IsProfilePhotoUrl } from "../validators/is-profile-photo-url.validator";
 import { ProfileMePatchDto } from "./profile-me-upsert.dto";
 
 export class ProfileMeOnboardingIdentityDto {
@@ -35,10 +36,14 @@ export class ProfileMeOnboardingIdentityDto {
   @MaxLength(320)
   primaryEmail!: string;
 
-  @ApiPropertyOptional({ nullable: true })
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      "HTTPS URL under GCS_PUBLIC_BASE_URL. Prefer POST /profile/me/photo for uploads.",
+  })
   @IsOptional()
   @IsString()
-  @MaxLength(20_000)
+  @IsProfilePhotoUrl()
   profilePhoto?: string | null;
 }
 

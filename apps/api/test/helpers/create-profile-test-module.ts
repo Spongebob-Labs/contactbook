@@ -2,12 +2,14 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { ProfileController } from "../../src/profile/profile.controller";
 import { ProfileMeSerializerService } from "../../src/profile/profile-me.serializer";
 import { ProfileMeUpsertService } from "../../src/profile/profile-me.upsert.service";
+import { ProfilePhotoService } from "../../src/profile/profile-photo.service";
 import { JwtAuthGuard } from "../../src/auth/jwt-auth.guard";
 import { mockJwtGuard } from "./mock-jwt.guard";
 
 export type ProfileControllerTestOverrides = {
   upsert?: Partial<ProfileMeUpsertService>;
   serializer?: Partial<ProfileMeSerializerService>;
+  profilePhoto?: Partial<ProfilePhotoService>;
   useRealJwtGuard?: boolean;
 };
 
@@ -31,6 +33,14 @@ export async function createProfileControllerTestModule(
         useValue: {
           build: jest.fn(),
           ...overrides.serializer,
+        },
+      },
+      {
+        provide: ProfilePhotoService,
+        useValue: {
+          upload: jest.fn(),
+          remove: jest.fn(),
+          ...overrides.profilePhoto,
         },
       },
     ],

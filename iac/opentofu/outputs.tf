@@ -38,3 +38,15 @@ output "github_actions_service_account_email" {
   value       = var.enable_github_actions_wif ? google_service_account.github_actions[0].email : ""
 }
 
+output "profile_photos_bucket_name" {
+  description = "GCS bucket for profile photos (when create_profile_photos_bucket is true)."
+  value       = var.create_profile_photos_bucket ? google_storage_bucket.profile_photos[0].name : null
+}
+
+output "profile_photos_public_base_url" {
+  description = "Set GCS_PUBLIC_BASE_URL in apps/api/.env to this value."
+  value = var.create_profile_photos_bucket ? (
+    "https://storage.googleapis.com/${google_storage_bucket.profile_photos[0].name}"
+  ) : null
+}
+
