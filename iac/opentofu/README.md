@@ -1,3 +1,12 @@
+# Legacy GCP project stack
+
+OpenTofu for **`c-club-466412`**. Keep this directory and its `terraform.tfstate` unchanged when standing up the new project.
+
+- New project: [`../opentofu-new/`](../opentofu-new/) (`project-c74d38dd-7e12-4d3f-bbf`).
+- To tear down legacy infra later: `cd` here and run `tofu destroy` (with this directory's `terraform.tfvars`).
+
+---
+
 # Contactbook IaC (OpenTofu)
 
 This directory provisions:
