@@ -158,3 +158,32 @@ variable "github_actions_wif_provider_id" {
     error_message = "github_actions_wif_provider_id must be 4-32 chars, lowercase, start with letter, end with alphanumeric."
   }
 }
+
+variable "create_profile_photos_bucket" {
+  description = "If true, create the public-read GCS bucket for profile photo uploads (API GCS_PROFILE_PHOTOS_BUCKET)."
+  type        = bool
+  default     = true
+}
+
+variable "profile_photos_bucket_name" {
+  description = "Globally unique GCS bucket name for profile photos."
+  type        = string
+  default     = "contactbook-profile-photos"
+
+  validation {
+    condition     = can(regex("^[a-z0-9][a-z0-9_.-]{1,61}[a-z0-9]$", var.profile_photos_bucket_name))
+    error_message = "profile_photos_bucket_name must be a valid GCS bucket name (3-63 chars, lowercase)."
+  }
+}
+
+variable "profile_photos_cors_origins" {
+  description = "Browser origins allowed to fetch profile photos from the bucket (CORS GET/HEAD)."
+  type        = list(string)
+  default = [
+    "https://contactbookten.vercel.app",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+  ]
+}

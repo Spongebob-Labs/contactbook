@@ -1,12 +1,12 @@
 # ContactBook
 
-This repository contains **ContactBook**: a pnpm workspace with **Next.js** (`apps/web`) and **NestJS** (`apps/api`) for syncing contacts via web and WhatsApp. **Postgres** is expected to be available locally via **[Supabase CLI](https://supabase.com/docs/guides/cli)** (`supabase start`) or any other host; Prisma maps tables to the default **`public`** schema. A minimal **Docker Compose** file can run the API container against that same database.
+This repository contains **ContactBook**: a pnpm workspace with **Vite + React** (`apps/web`) and **NestJS** (`apps/api`) for syncing contacts via web and WhatsApp. **Postgres** is expected to be available locally via **[Supabase CLI](https://supabase.com/docs/guides/cli)** (`supabase start`) or any other host; Prisma maps tables to the default **`public`** schema. A minimal **Docker Compose** file can run the API container against that same database.
 
 ## Local dev ports (defaults)
 
 | App | Dev (default scripts) | Production |
 |-----|------------------------|------------|
-| Web | **3002** (`pnpm --filter web dev`) | **3000** (`next start`) |
+| Web | **5173** (`pnpm --filter web dev`) | Static build in `apps/web/dist` |
 | API | **8001** (`PORT` unset and `NODE_ENV` not `production`) | **8000** (Docker image sets `NODE_ENV=production`) |
 
 Copy [`apps/api/.env.example`](apps/api/.env.example) and [`apps/web/.env.example`](apps/web/.env.example); they match these ports.
@@ -15,7 +15,7 @@ Copy [`apps/api/.env.example`](apps/api/.env.example) and [`apps/web/.env.exampl
 
 # Stack overview
 
-pnpm workspace for **ContactBook**: **Next.js 16** (App Router, React 19, Tailwind v4, shadcn base-nova), **NestJS 11** (Swagger, CORS, URI versioning, ValidationPipe), **Prisma 7** with **PostgreSQL** via `@prisma/adapter-pg`, and shared packages **`@repo/types`** / **`@repo/utils`**.
+pnpm workspace for **ContactBook**: **Vite + React 19** (React Router, Tailwind v4, shadcn components), **NestJS 11** (Swagger, CORS, URI versioning, ValidationPipe), **Prisma 7** with **PostgreSQL** via `@prisma/adapter-pg`, and shared packages **`@repo/types`** / **`@repo/utils`**.
 
 ## Primary keys (UUID)
 
@@ -31,7 +31,7 @@ Start your global / linked Supabase stack, then point `DATABASE_URL` at the **da
 | API    | http://127.0.0.1:54321        |
 | DB     | `postgresql://postgres:postgres@127.0.0.1:54322/postgres` |
 
-Copy **Publishable** / anon and **Secret** keys from `supabase status` into local `.env` files only — never commit real keys. [`apps/web/.env.example`](apps/web/.env.example) lists `NEXT_PUBLIC_SUPABASE_*` for the web app when you use `@supabase/supabase-js`.
+Copy **Publishable** / anon and **Secret** keys from `supabase status` into local `.env` files only — never commit real keys. [`apps/web/.env.example`](apps/web/.env.example) lists `VITE_SUPABASE_*` for the web app when you use `@supabase/supabase-js`.
 
 ## Requirements
 
@@ -52,7 +52,7 @@ pnpm dev
 
 **Note:** After this change, run `pnpm --filter api prisma migrate reset` on local databases that had the **`contactbook`** schema migration (or reconcile `_prisma_migrations` if you cannot reset). You can drop the old schema with `DROP SCHEMA IF EXISTS contactbook CASCADE;` once data is migrated or discarded.
 
-- Web (dev): [http://localhost:3002](http://localhost:3002) — try [http://localhost:3002/auth](http://localhost:3002/auth) for the WhatsApp OTP sign-in / registration flow (country + phone, then OTP; new users need email).
+- Web (dev): [http://localhost:5173](http://localhost:5173) — try [http://localhost:5173/auth](http://localhost:5173/auth) for the WhatsApp OTP sign-in / registration flow (country + phone, then OTP; new users need email).
 - API health (dev): [http://localhost:8001/api/v1/health](http://localhost:8001/api/v1/health)
 - Swagger (dev): [http://localhost:8001/api/docs](http://localhost:8001/api/docs)
 
@@ -90,7 +90,7 @@ cp docker/.env.example docker/.env
 docker compose -f docker/docker-compose.yml up --build
 ```
 
-Host port **8001** maps to the container’s **8000**. CORS in compose includes `localhost:3002` for the default web dev port.
+Host port **8001** maps to the container’s **8000**. CORS in compose includes `localhost:5173` for the default web dev port.
 
 **Makefile** (optional): `make up` uses [docker/docker-compose.yml](docker/docker-compose.yml).
 
@@ -102,11 +102,44 @@ docker build -f apps/api/Dockerfile -t contactbook-api .
 
 ## Optional Supabase client (web)
 
-`@supabase/supabase-js` is included in `apps/web` for client-side Auth. Add `NEXT_PUBLIC_SUPABASE_*` in `apps/web/.env` when you wire it.
+`@supabase/supabase-js` is included in `apps/web` for client-side Auth. Add `VITE_SUPABASE_*` in `apps/web/.env` when you wire it.
 
-Google OAuth (Supabase → API linking):
+## Google contact import
 
-- **Redirect URL**: add `http://localhost:3002/auth/callback` (and your production equivalent) to Supabase Auth Redirect URLs.
+Google contact import uses the API-owned OAuth flow:
+
+1. The web app calls `GET /api/v1/integrations/google/oauth-url` from `/dashboard/import`.
+2. The browser redirects to Google consent.
+3. Google redirects to `GOOGLE_REDIRECT_URI`.
+4. The API stores Google tokens for the signed-in ContactBook user.
+5. The API redirects back to `${WEB_APP_URL}/dashboard/import?google=connected`.
+6. The web app calls `GET /api/v1/contacts/import?source=GOOGLE` to import contacts (or `GET /api/v1/contacts/sync?source=GOOGLE` for detailed sync stats).
+
+Local API env:
+
+```bash
+WEB_APP_URL="http://localhost:5173"
+GOOGLE_CLIENT_ID=""
+GOOGLE_CLIENT_SECRET=""
+GOOGLE_REDIRECT_URI="http://localhost:8001/api/v1/integrations/google/callback"
+```
+
+Google Cloud setup:
+
+- Enable the People API for the Google Cloud project.
+- Configure the OAuth consent screen and include the contact import scopes.
+- Add this authorized redirect URI for local dev:
+  `http://localhost:8001/api/v1/integrations/google/callback`
+- Add the production API callback URL before deploying production Google import.
+
+The API requests:
+
+- `https://www.googleapis.com/auth/contacts.readonly`
+- `https://www.googleapis.com/auth/calendar.readonly`
+
+Legacy Supabase Google OAuth notes, if you choose to re-enable browser-owned provider linking later:
+
+- **Redirect URL**: add `http://localhost:5173/auth/callback` (and your production equivalent) to Supabase Auth Redirect URLs.
 - **Offline refresh**: include `queryParams: { access_type: 'offline', prompt: 'consent' }` so Google returns a refresh token.
 - **Scopes**: request Google scopes needed by the API integrations:
   - `https://www.googleapis.com/auth/contacts.readonly`
@@ -126,12 +159,12 @@ pnpm --filter web exec shadcn add button
 
 ## Shared packages
 
-`apps/web` and `apps/api` depend on `@repo/types` and `@repo/utils` via `workspace:*`. Next transpiles them via [apps/web/next.config.ts](apps/web/next.config.ts).
+`apps/web` and `apps/api` depend on `@repo/types` and `@repo/utils` via `workspace:*`. Vite resolves the shared package source through [apps/web/vite.config.ts](apps/web/vite.config.ts).
 
 ## CI
 
-[.github/workflows/ci.yml](.github/workflows/ci.yml) runs when `apps/api/**`, `packages/**`, `scripts/**`, or monorepo install roots change; it decodes repository secret **`API_ENV_B64`** (base64 of a full `apps/api/.env` matching [.env.example](apps/api/.env.example)) into `apps/api/.env`, installs with a pnpm filter for **api**, then Prisma generate, build, unit tests, and (on push to `main`/`dev`) a Docker build that passes that file as BuildKit secret **`api_env`**. **ESLint is not run in CI**; run **[scripts/validate-api.sh](scripts/validate-api.sh)** locally (`pnpm validate:api` from the repo root) before you push. Optional secret **`API_ENV_CI_B64`**, when set, is used instead of `API_ENV_B64` in CI (e.g. a non-production database URL). Encode a local env file for GitHub: [scripts/encode-env-for-gh.sh](scripts/encode-env-for-gh.sh).
+[.github/workflows/ci.yml](.github/workflows/ci.yml) runs when `apps/api/**`, `packages/**`, `scripts/**`, or monorepo install roots change; it decodes repository secret **`API_ENV_B64`** (base64 of a full `apps/api/.env` matching [.env.example](apps/api/.env.example)) into `apps/api/.env`, installs with a pnpm filter for **api**, then Prisma generate, build, unit tests, and (on push to `main`/`dev`) a Docker build that passes that file as BuildKit secret **`api_env`**. On push to **`main`** or **`dev`**, images are pushed to Artifact Registry with tags **`:<commit-sha>`** and **`:<0.1.run_number>`** (for example `0.1.42`). **ESLint is not run in CI**; run **[scripts/validate-api.sh](scripts/validate-api.sh)** locally (`pnpm validate:api` from the repo root) before you push. Optional secret **`API_ENV_CI_B64`**, when set, is used instead of `API_ENV_B64` in CI (e.g. a non-production database URL). Encode a local env file for GitHub: [scripts/encode-env-for-gh.sh](scripts/encode-env-for-gh.sh).
 
 ### API GitHub Releases
 
-After a successful **CI** run on a **push** to **`main`** that changes files under **`apps/api/`**, [.github/workflows/release-api.yml](.github/workflows/release-api.yml) creates a **GitHub Release** titled `Contactbook API v<version>`. The git tag is **`api-v<version>`** (for example `api-v0.1.42`) so it does **not** become the newest `v*` tag used by `git describe` for Docker image versioning. Release notes list commits touching **`apps/api/`** since the previous `api-v*` tag (or the last 50 such commits if none). Releases are skipped if that tag already exists (idempotent re-runs).
+After a successful **CI** run on a **push** to **`main`** or **`dev`** that changes files under **`apps/api/`**, [.github/workflows/release-api.yml](.github/workflows/release-api.yml) creates a **GitHub Release** titled `Contactbook API v<version>`. The git tag is **`api-v<version>`** (for example `api-v0.1.42`) so it does **not** become the newest `v*` tag used by `git describe` for Docker image versioning. Release notes list commits touching **`apps/api/`** since the previous `api-v*` tag (or the last 50 such commits if none). Releases are skipped if that tag already exists (idempotent re-runs). **[.github/workflows/cd.yml](.github/workflows/cd.yml)** deploys the same versioned image to Cloud Run after CI on **`main`** or **`dev`**.

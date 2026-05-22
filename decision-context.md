@@ -1,0 +1,629 @@
+# Decision Context
+
+## 2026-05-21 - Mirror WhatsApp OTP Request Validation
+
+- Decision: Update the auth phone form validation and phone helper to mirror `POST /v1/auth/whatsapp/request-code` constraints: country code must be `+` plus 1-4 digits and the normalized national phone must be 4-15 digits.
+- Reason: The frontend previously allowed loosely validated phone input and used a stricter local minimum than the backend, so users could see avoidable API errors or inconsistent validation behavior.
+- Notes: The phone field still accepts formatted input, then strips non-digits and leading zeros before validation/submission. Backend code and browser testing remain untouched.
+
+## 2026-05-21 - Dedupe Dashboard Refresh API Calls
+
+- Decision: Add in-memory GET request deduping/caching to the frontend API helper and have `AppShell` read the profile menu identity from `AuthProvider` instead of fetching `/v1/profile/me` separately.
+- Reason: Dashboard refresh triggered overlapping profile requests from auth bootstrapping, the shell, dashboard overview, and sometimes onboarding modals; React dev StrictMode can double those effects and make the network panel show many duplicate calls.
+- Notes: Successful GET responses are reused until a non-GET mutation clears the cache. Dashboard still fetches the full profile for overview state. Backend code and browser testing remain untouched.
+
+## 2026-05-21 - Separate First-Time Profile POST Payload
+
+- Decision: Add a dedicated first-time onboarding payload for `POST /v1/profile/onboarding` that sends the loaded registration identity, omits blank generated IDs, and filters default-only repeatable rows.
+- Reason: The onboarding endpoint requires identity fields to match registration and creates new profile groups/fields itself; sending edited identity values or default tag-only rows can fail the POST or create empty groups.
+- Notes: After a successful first-time POST, edited identity fields are persisted with a follow-up `PATCH /v1/profile/me`. Later profile edits continue using the normal PATCH payload. Backend code and browser testing remain untouched.
+
+## 2026-05-21 - Make Year Of Birth Derived Read-Only
+
+- Decision: Keep Year of birth visible in the profile onboarding/edit form as a read-only value derived from Date of birth, and stop sending `personal.yearOfBirth` in the profile save payload.
+- Reason: The backend derives `yearOfBirth` from the saved `dateOfBirth` field and ignores it as an independently editable top-level personal value.
+- Notes: Hydration still falls back to the API-returned `yearOfBirth`, but changing or clearing Date of birth updates the displayed year locally. Backend code and browser testing remain untouched.
+
+## 2026-05-21 - Display Complete Profile GET Fields
+
+- Decision: Expand the frontend profile page to display all onboarding fields available from `GET /v1/profile/me`, including personal scalar fields, broader work/business fields, top-level social fields, and custom fallback values.
+- Reason: The profile page previously showed only a subset of saved onboarding data, so fields like date of birth, mobile, landline, work contact details, and business metadata could be saved but not visible.
+- Notes: The display reads normalized top-level response keys first and then falls back to `custom` keys for compatibility with existing saved records. Backend code and browser testing remain untouched.
+
+## 2026-05-21 - Omit Blank Profile IDs On Save
+
+- Decision: Change the frontend profile save payload to omit empty `groupId` and `fieldId` values instead of sending `null`, and omit blank personal scalar/custom values until a personal group exists.
+- Reason: The profile PATCH backend treats `null` values inside `personal` as clear-field instructions. On a new personal section, `personal.groupId: null` or blank personal values serialized as `null` can make the backend return before creating the personal group, so personal form values are not saved.
+- Notes: Existing personal groups still send `null` for cleared fields so edit-time clearing behavior is preserved. Backend code and browser testing remain untouched.
+
+## 2026-05-21 - Send Supported Personal Fields Top-Level
+
+- Decision: Change the frontend profile payload so backend-supported personal fields are sent as top-level `personal` properties, while extra personal fields remain in `personal.custom`.
+- Reason: The deployed PATCH response accepted other sections but returned an empty personal section when all personal scalar fields were nested under `custom`.
+- Notes: This is frontend-only and keeps hydration reading both top-level and custom values for compatibility with older saved data.
+
+## 2026-05-21 - Mirror Profile Backend Validation In Form
+
+- Decision: Add frontend validation for profile onboarding/edit fields that mirrors the backend DTO limits, including identity requirements, profile photo payload length, personal postal address lengths, row label lengths, and financial field lengths.
+- Reason: Users should see field-level errors before submit instead of receiving a backend 400 after filling the form.
+- Notes: The profile modal now shows an error count, displays inline errors after blur, and disables Save until the form satisfies the mirrored constraints. Backend code and browser testing remain untouched.
+
+## 2026-05-21 - Broaden Profile Onboarding Hydration
+
+- Decision: Update the profile onboarding modal mapper to hydrate fields from both normalized top-level `/v1/profile/me` response keys and the `custom` keys used by the current frontend save payload.
+- Reason: Saved profile data can come back in different shapes depending on field category and backend flattening, especially social links that may be returned as top-level keys instead of nested custom values.
+- Notes: The change is frontend-only, covers personal, work, business, social, address fallback, and existing financial direct-field hydration, and keeps browser testing skipped per project instruction.
+
+## 2026-05-20 - Send Complete Profile Onboarding Shell
+
+- Decision: Build a dedicated frontend payload for `POST /v1/profile/onboarding` that always includes identity, personal, work, business, socials, and financial shells, with empty arrays for empty repeatable sections.
+- Reason: The live onboarding API expects a complete first-time setup shape even when users skip optional details; sending `{}` can reach the API and fail with a server error.
+- Notes: Normal `PATCH /v1/profile/me` remains compact. The onboarding identity uses the loaded registration values so the backend identity-match guard can pass before any edited identity values are patched separately. Optional shell fields use `null` instead of empty strings.
+
+## 2026-05-20 - Avoid Invalid Empty Profile Fields
+
+- Decision: Send the complete deployed-API-allowed profile payload for profile onboarding and profile patch saves, using `null` for empty optional values and excluding backend-rejected response-only fields.
+- Reason: The deployed backend rejects top-level work/business detail fields and financial `isSensitive`, so the frontend must keep those values inside accepted fields while still letting users save partial details.
+- Notes: Work and business scalar/address values are sent under `custom`, `profileOnboardingCompletedAt` and financial `isSensitive` are excluded, and both `POST /v1/profile/onboarding` and `PATCH /v1/profile/me` share the same frontend payload builder.
+
+## 2026-05-20 - Resolve PR 21 Profile Onboarding Merge Conflict
+
+- Decision: Merge `origin/dev` into `feat/ui-creation` and resolve the profile onboarding conflict by keeping repeatable profile groups, editable identity fields, optional financial rows, and the latest first-time profile initialization path.
+- Reason: PR 21 needed to preserve both branches' user-facing behavior: the feature branch's richer profile form and `dev`'s updated signup setup flow.
+- Notes: Backend files came from `origin/dev` through the merge only; conflict edits were limited to frontend profile onboarding and this decision log. Browser testing remains skipped per project instructions.
+
+## 2026-05-20 - Complete Array-Aware Financial Profile Display
+
+- Decision: Update the profile page financial display to prefer `fieldId` keys for repeated financial rows and show optional bank routing fields.
+- Reason: Financial rows are field-backed array entries, so `fieldId` is the most stable React key when available, and the live API exposes IBAN, SWIFT/BIC, and routing number values that should be visible when saved.
+- Notes: Backend code remains untouched. This is display-only and does not change profile form payload behavior.
+
+## 2026-05-20 - Keep One Visible Row In Repeatable Profile Groups
+
+- Decision: Disable the remove button when a repeatable profile group has only one visible row.
+- Reason: The onboarding/edit wizard should keep a stable input surface for array-backed sections, so users clear the last row manually instead of deleting the entire UI for that section.
+- Notes: Backend code remains untouched. Payload behavior is unchanged because backend will make partially filled financial row fields optional.
+
+## 2026-05-20 - Support Repeatable Profile Wizard Groups
+
+- Decision: Refactor the shared profile onboarding/edit wizard to support multiple work, business, social, bank account, digital wallet, and crypto wallet rows with add/remove controls.
+- Reason: The current profile create/update API accepts arrays for these profile groups, so the UI should let users maintain more than one entry instead of only editing the first saved row.
+- Notes: Keep backend code untouched. Keep validation required only for identity fields in the UI; optional repeated rows are omitted when blank, and row labels are shown as `Label` at the end of each group instead of `Group tag`.
+
+## 2026-05-20 - Add Editable Identity Fields To Profile Wizard
+
+- Decision: Show first name, last name, phone number, and email in step 1 of the profile onboarding/edit wizard. Keep first name, last name, and email editable, while rendering phone number as a read-only muted input.
+- Reason: Users need to review and correct core registration identity details from the same profile form used after signup and from the edit profile button, but phone number should remain locked because it is the verified account identifier.
+- Notes: Backend code remains untouched. For first-time onboarding, section setup still uses `POST /v1/profile/onboarding`; editable identity changes are persisted with `PATCH /v1/profile/me` so the onboarding endpoint's identity-match guard is respected.
+
+## 2026-05-20 - Send Personal Scalars As Custom Profile Fields
+
+- Decision: Keep the personal onboarding UI fields but send mobile, landline, email, date/year of birth, current location, and relationship status under `personal.custom` instead of top-level `personal` keys.
+- Reason: The live profile onboarding API rejects those top-level personal properties and currently only accepts `tag`, `postalAddress`, and `custom` for the personal section.
+- Notes: Hydration still reads legacy top-level personal values when present, then falls back to `personal.custom`. Empty custom values are omitted from outgoing payloads.
+
+## 2026-05-20 - Make Bank Identity Fields Optional In Profile Form
+
+- Decision: Treat bank name, account holder, and account number as optional in the frontend profile onboarding/edit form and payload.
+- Reason: The live profile API does not require those bank account fields, so the form should allow users to save partial bank details instead of blocking on frontend-only validation.
+- Notes: Backend code remains untouched. A bank account is still only sent when the user enters at least one non-currency bank detail, so the default `INR` value alone does not create a blank bank record.
+
+## 2026-05-20 - Render Theme Preview Without App Shell Chrome
+
+- Decision: Remove `AppShell` from `/dashboard/theme-preview` so the design preview renders as a standalone full-page mock interface.
+- Reason: The authenticated app shell sidebar and topbar visually duplicated the preview's internal shell and made it harder to evaluate the proposed ContactBook UI direction.
+- Notes: The route remains protected under `/dashboard/theme-preview`; only the visual wrapper was removed. Production dashboard, backend code, and global theme tokens remain unchanged.
+
+## 2026-05-20 - Prototype Private Contact Memory UI On Theme Preview
+
+- Decision: Redesign only `/dashboard/theme-preview` as a warm, personal ContactBook UI preview using mock data.
+- Reason: The user wants to evaluate the private contact memory direction before changing the production dashboard, app shell, or global shadcn theme tokens.
+- Notes: Keep backend code untouched, avoid browser testing, preserve existing production routes and handlers, and use the preview to explore warm paper/oat/cream surfaces, deep fern actions, onboarding cards, WhatsApp preview, and a prioritized setup journey.
+
+## 2026-05-20 - Prototype Material-Inspired Theme On Static Signed-In Route
+
+- Decision: Add a protected static preview route at `/dashboard/theme-preview` before changing the working signed-in pages or global theme.
+- Reason: The user wants to evaluate a shadcn-professional UI direction with Material 3-inspired tokens before applying it to production flows.
+- Notes: The preview must use mock data only, keep backend code untouched, avoid browser testing, preserve the current teal/green brand direction, and explore richer secondary, tertiary, surface, outline, success, warning, and destructive roles locally first.
+
+## 2026-05-19 - Add Signed-In UI Redesign Preview
+
+- Decision: Add a frontend-only signed-in preview route for the proposed setup-console redesign before replacing production dashboard/import/profile screens.
+- Reason: The user wants to see the exact coded UI, not an approximate generated image, and asked to approve changes only after seeing a plan first.
+- Notes: The preview must use mock data, existing React/Tailwind/shadcn-style components, avoid backend changes, leave the public landing page untouched, and not require browser testing.
+
+## 2026-05-14 - Clone Repository Into Current Folder
+
+- Decision: Cloned `https://github.com/Spongebob-Labs/contactbook` directly into `/Users/rishabhgoyal/Desktop/code/contactbook`.
+- Reason: The user requested cloning into the current folder, and the folder was empty before cloning.
+- Notes: The repository is checked out on `main` and tracks `origin/main`.
+
+## 2026-05-14 - Create UI Feature Branch From Dev
+
+- Decision: Created `feat/ui-creation` from the current `dev` branch.
+- Reason: The user wants UI creation work isolated from `dev` for a production-grade implementation and review.
+- Notes: The branch is local only at creation time and has not been pushed yet.
+
+## 2026-05-14 - Sync UI Branch With Latest Dev
+
+- Decision: Fast-forwarded `feat/ui-creation` to latest `origin/dev`.
+- Reason: The backend auth and Google import contracts changed on `dev`, and frontend planning should target the current API shape.
+- Notes: The updated backend sends session credentials in exposed `X-Contactbook-*` response headers and still expects Bearer tokens on protected routes.
+
+## 2026-05-14 - Adopt Backend HttpOnly Session Cookie Contract
+
+- Decision: Pulled latest `origin/dev` where backend auth now sets `cb_access_token` and `cb_refresh_token` as httpOnly cookies, plus readable `cb_user_id`.
+- Reason: The frontend should avoid storing raw JWTs in browser-accessible storage and should call protected APIs with credentialed requests.
+- Notes: Protected API auth reads `cb_access_token` from cookies first and still supports Bearer tokens for API clients. Refresh reads `cb_refresh_token` cookie first and `POST /api/v1/auth/logout` clears/revokes the session.
+
+## 2026-05-15 - Replace Web Boilerplate With Vite Frontend
+
+- Decision: Replace the existing Next.js web boilerplate with a fresh React + Vite + TypeScript frontend on port `5173`.
+- Reason: The product is an authenticated client-side contact book dashboard and does not need SSR for the MVP. Vite keeps the frontend simpler while preserving production-grade routing, code splitting, and build checks.
+- Notes: Reuse only useful helpers such as country dialing data and phone normalization. Backend calls should use `credentials: "include"` with httpOnly ContactBook session cookies.
+
+## 2026-05-15 - Use Supabase Browser OAuth For Google Linking
+
+- Decision: Initiate Google OAuth from the frontend through Supabase, then call `POST /api/v1/integrations/google/link-provider` with provider tokens after the FE callback exchanges the auth code.
+- Reason: Backend confirmed the intended Google flow is frontend-owned Supabase OAuth, not the API-owned Google callback route.
+- Notes: The frontend will use `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, and redirect to `/auth/callback?next=/dashboard/import`.
+
+## 2026-05-15 - Remove Stale Next.js Frontend References
+
+- Decision: Remove leftover empty Next.js directories and update repository documentation/config references to the current Vite React frontend.
+- Reason: `apps/web` is now a Vite app on port `5173`; keeping Next.js wording, `NEXT_PUBLIC_*` env names, and port `3002` references would mislead local setup and reviews.
+- Notes: The current Vite frontend remains in place. API CORS defaults now include Vite dev origins on `localhost:5173` and `127.0.0.1:5173`.
+
+## 2026-05-15 - Align Registration Payload With Live API Docs
+
+- Decision: Update the frontend registration form and request body to send top-level `firstName` and `lastName` instead of a single `name` field.
+- Reason: The live backend OpenAPI document for `POST /api/v1/auth/register` requires `phoneVerificationToken`, `firstName`, `lastName`, `phone`, `countryCode`, and `email`.
+- Notes: This is a frontend-only contract alignment. No backend files were changed.
+
+## 2026-05-15 - Decouple Route Auth From Readable User Cookie
+
+- Decision: Add a frontend route-authenticated state that can be marked after successful OTP login or registration, while keeping `userId` populated from `cb_user_id` only when that cookie is readable.
+- Reason: The backend can successfully set session cookies while the browser route guard still sees no readable `cb_user_id`, causing an immediate redirect back to `/auth`.
+- Notes: API security still depends on backend cookies. The frontend flag only controls client-side route gating after a successful auth response.
+
+## 2026-05-15 - Add Skippable Full Profile Onboarding
+
+- Decision: Route newly registered users to a skippable `/onboarding/profile` flow that captures identity, personal, work, business, social, and financial profile details.
+- Reason: Registration only collects compulsory identity fields. A separate onboarding flow lets the product demo the broader ContactBook profile model without blocking account creation.
+- Notes: The frontend saves optional sections through the documented `field-groups` and `fields` APIs, creating groups only for sections with entered data. Financial rows are labeled sensitive.
+
+## 2026-05-15 - Add Profile Menu And Profile Detail Page
+
+- Decision: Add a top-bar profile menu with user details, profile navigation, edit-profile navigation, and logout, plus a `/profile` page backed by `GET /api/v1/profile/me`.
+- Reason: Authenticated users need a persistent account control surface and a place to review the profile data collected during onboarding.
+- Notes: Editing routes to the existing profile builder because the current nested profile response does not expose individual field IDs needed for safe inline patch updates.
+
+## 2026-05-15 - Centralize Account Controls In Top Bar
+
+- Decision: Remove signed-in details and logout controls from the sidebar bottom after adding the top-bar profile menu.
+- Reason: Account actions now have a dedicated location, so keeping them in the sidebar duplicates controls and distracts from navigation.
+- Notes: Sidebar remains focused on workspace navigation only.
+
+## 2026-05-15 - Simplify Profile Menu Actions
+
+- Decision: Rename the profile menu's "View profile" action to "Profile" and remove the separate "Edit profile" action.
+- Reason: The profile page already owns the edit entry point, so the top-bar menu should stay compact and avoid duplicate profile actions.
+- Notes: Users can still edit from `/profile` via the page-level edit button.
+
+## 2026-05-15 - Remove Redundant Topbar Context Copy
+
+- Decision: Remove the "Contact workspace" and "Profile and imports" text block from the topbar left side.
+- Reason: The sidebar already provides workspace and navigation context, while the topbar is now focused on mobile navigation and account controls.
+- Notes: The mobile menu button remains on the left and theme/profile controls remain on the right.
+
+## 2026-05-15 - Remove Sidebar Vertical Divider
+
+- Decision: Remove the hard right border from the sidebar container.
+- Reason: The divider created an unwanted vertical cut after the logo area and made the top chrome feel visually split.
+- Notes: The sidebar header keeps its bottom border for local structure.
+
+## 2026-05-15 - Unify Top Chrome Background
+
+- Decision: Match the sidebar logo strip background to the main topbar background treatment.
+- Reason: The topbar should feel full-width and continuous instead of reading as separate left and right surfaces.
+- Notes: The vertical divider stays removed while both top strips keep their shared bottom border.
+
+## 2026-05-15 - Add Public Landing Page Separate From Auth
+
+- Decision: Make `/` a publicly accessible marketing landing page and keep sign-in/sign-up on the separate `/auth` route.
+- Reason: Marketing needs a measurable public funnel while the product authentication flow remains focused on account access.
+- Notes: The landing page should use ContactBook as the product name with a refreshed visual style, primary `Get started` CTA, secondary `Sign in` CTA, and no pricing or testimonial sections in the first pass.
+
+## 2026-05-15 - Use API-Owned Google OAuth For Imports
+
+- Decision: Change the imports page Google connection flow to request an API-generated Google OAuth URL and let the API callback store Google tokens before redirecting back to the web import page.
+- Reason: Google contact import is a backend-owned integration that needs durable OAuth tokens for People API sync, so the token exchange and refresh path should use the same Google OAuth client configured on the API.
+- Notes: The frontend remains responsible for starting the flow from `/dashboard/import`; the API redirects back to `WEB_APP_URL` with `google=connected` or `google=error`.
+
+## 2026-05-15 - Force Google Account Selection During Import Linking
+
+- Decision: Add `select_account` to the Google OAuth prompt used by the API-owned import connection flow.
+- Reason: Google can otherwise reuse the active Gmail session and link the wrong account for contact import.
+- Notes: The OAuth flow still requests consent and offline access so the API can store refreshable Google tokens for People API sync.
+
+## 2026-05-15 - Bootstrap Frontend Auth From Existing Protected API
+
+- Decision: Have the frontend initialize route auth by calling existing protected API data instead of relying only on the readable `cb_user_id` cookie.
+- Reason: The web app can run on a different origin from the API, so JavaScript cannot reliably read the API-owned `cb_user_id` cookie after page reloads or Google OAuth redirects even when credentialed API calls still work.
+- Notes: This avoids backend changes by using the existing `GET /profile/me` request as the session validation check.
+
+## 2026-05-18 - Refresh Import Page After Failed Google Browser Back
+
+- Decision: Track when Google import OAuth is started and force a clean reload if the import page is restored from browser back/forward cache while that flow is still pending.
+- Reason: Failed Google OAuth can leave the browser on an external Google error page; using the back button can restore stale React state instead of re-running the import page cleanly.
+- Notes: The reload guard is frontend-only, scoped to `/dashboard/import`, and clears itself on known `google=connected` or `google=error` returns.
+
+## 2026-05-18 - Move Google Import OAuth Back To Frontend Supabase Flow
+
+- Decision: Start Google import linking from the frontend with Supabase `signInWithOAuth`, exchange the callback code in the frontend route, then call the backend only once through `POST /v1/integrations/google/link-provider`.
+- Reason: The latest backend on `origin/main` removed the API-owned Google `oauth-url` and `callback` endpoints while keeping encrypted provider-token persistence behind `link-provider`.
+- Notes: The frontend requests offline Google access with contacts, calendar, and profile scopes, requires a Supabase `provider_refresh_token` before linking, and signs out the temporary Supabase session after the backend stores credentials.
+
+## 2026-05-18 - Convert Profile Onboarding To Modal Wizard
+
+- Decision: Present profile onboarding as an always-open modal-style wizard on the onboarding route instead of a full-page form/sidebar layout.
+- Reason: The user requested a multi-step modal, and keeping it route-owned preserves existing skip/save navigation without introducing a dismissible empty page state.
+- Notes: The existing onboarding form state, validation, and frontend API save flow remain unchanged; only the presentation changes.
+
+## 2026-05-18 - Add Safe Google OAuth Callback Failure Reasons
+
+- Decision: Preserve non-secret Google OAuth callback failure reasons in the frontend redirect URL during import linking.
+- Reason: The generic `google=error` state hides whether the failure happened during code exchange, provider token extraction, or backend token persistence.
+- Notes: Reasons must not include provider tokens, JWTs, or raw backend payloads; they are only coarse diagnostic labels for development and support.
+
+## 2026-05-18 - Use Supabase PKCE Flow For Google Import OAuth
+
+- Decision: Configure the browser Supabase client with `flowType: "pkce"` for Google import linking.
+- Reason: The frontend callback exchanges an authorization `code` with `exchangeCodeForSession`, so the OAuth start must use Supabase's PKCE flow rather than an implicit response.
+- Notes: This is frontend-only and keeps `detectSessionInUrl` disabled because `/auth/callback` owns the code exchange explicitly.
+
+## 2026-05-18 - Auto-Sync Google Contacts After Successful Link
+
+- Decision: Automatically run the existing Google contact sync after returning from a successful Google OAuth link.
+- Reason: Users expect contacts to appear after connecting Google; previously connection only stored OAuth credentials and required a separate manual sync click.
+- Notes: Auto-sync is gated by the pending OAuth session marker so refreshing `/dashboard/import?google=connected` does not repeatedly sync contacts.
+
+## 2026-05-18 - Redirect Auth Route For Existing Sessions
+
+- Decision: Redirect authenticated users away from `/auth` after the frontend session bootstrap confirms an active backend session.
+- Reason: Signed-in users should not see the sign-in/register page when directly visiting `/auth`.
+- Notes: The auth page waits for the shared auth context loading state to finish, then redirects to the original protected route when present or `/dashboard` by default.
+
+## 2026-05-18 - Add Post-Onboarding Contact Import Choice
+
+- Decision: Route users from profile onboarding into an import-choice screen with Google active and iCloud/VCF shown as disabled coming-soon options.
+- Reason: Users should be prompted to bring contacts in immediately after signup/profile setup, while unsupported import methods should be visible without implying they are functional.
+- Notes: This is frontend-only. Google uses the existing OAuth flow and iCloud/VCF do not call backend endpoints until contracts exist.
+
+## 2026-05-18 - Use Consolidated Profile Onboarding API
+
+- Decision: Save profile onboarding through the new nested `POST /v1/profile/onboarding` API, falling back to `PATCH /v1/profile/me` for photo-only onboarding.
+- Reason: Backend simplified profile setup into major profile APIs and removed the need for frontend field-group/field orchestration.
+- Notes: The onboarding UI remains unchanged; the frontend now maps form state into the same nested shape returned by `GET /v1/profile/me`.
+
+## 2026-05-18 - Simplify Auth Phone Entry
+
+- Decision: Replace the login country selector with a direct country calling code input plus a separate phone number input.
+- Reason: The login page only needs the backend `countryCode` and `phone` values, and the user requested not to ask for country.
+- Notes: This is frontend-only. The auth requests still send `{ phone, countryCode }`, and the auth panel now uses explicit bottom padding below the card.
+
+## 2026-05-18 - Use Country Code Combobox On Auth
+
+- Decision: Change the auth country code field from free text to a searchable combobox of de-duplicated dialing codes.
+- Reason: The user requested a shadcn-style combobox for country code selection while still not asking for country name.
+- Notes: The combobox remains frontend-only and continues to submit the selected dialing code as `countryCode`.
+
+## 2026-05-18 - Show Countries In Auth Code Dropdown
+
+- Decision: Display country names beside dialing codes in the auth country code dropdown while keeping the selected input value as the code only.
+- Reason: Country names make shared dialing codes easier to identify without reintroducing a separate country field.
+- Notes: Duplicate dialing codes can appear for different countries in the dropdown, but auth requests still submit only the selected `dial` value as `countryCode`.
+
+## 2026-05-18 - Unify Auth Combobox Focus Ring
+
+- Decision: Move the auth country code combobox focus ring from the inner input to the full input/button wrapper.
+- Reason: The previous focus highlight ended before the dropdown button, making the active state look visually cut off.
+- Notes: The combobox filter now also matches combined labels such as `Canada +1` so selected display text still returns the expected dropdown row.
+
+## 2026-05-18 - Refine Auth Form Spacing
+
+- Decision: Increase and normalize login form spacing by using explicit card padding, larger form gaps, and flex-column labels.
+- Reason: The auth form spacing was visually uneven, and inline labels made label/control spacing unreliable.
+- Notes: This is frontend-only and keeps the existing auth request payloads unchanged.
+
+## 2026-05-18 - Fold Identity Upload Into Personal Onboarding
+
+- Decision: Remove the standalone Identity onboarding step and move profile photo capture into the Personal step as an image upload control.
+- Reason: The user requested removing step one and replacing pasted image URL entry with an upload experience.
+- Notes: Backend upload/storage was not added. The selected image is read client-side into the existing `identity.profilePhoto` string field with a 1 MB guard.
+
+## 2026-05-18 - Simplify Onboarding Step Presentation
+
+- Decision: Remove step icons and duplicate section headings/subtitles from the onboarding wizard content.
+- Reason: The outer wizard header already provides the active step title and description, and the stepper should be lighter.
+- Notes: The wizard now has five steps: Personal, Work, Business, Socials, and Financial.
+
+## 2026-05-18 - Make Onboarding Stepper Text Only
+
+- Decision: Remove the remaining completed-step check icon from the onboarding step navigation.
+- Reason: The user requested the stepper show only the step names.
+- Notes: Active state remains communicated through border/background styling.
+
+## 2026-05-18 - Center Onboarding Modal In Shell Viewport
+
+- Decision: Adjust the onboarding wrapper to center the modal within the available shell viewport using balanced page padding.
+- Reason: The previous shortened height calculation made the modal feel off-center relative to the whole screen.
+- Notes: The modal keeps its max width, max height, and internal scroll behavior.
+
+## 2026-05-18 - Remove Onboarding Step Box Navigation
+
+- Decision: Remove the step box navigation and draft-count line below the onboarding heading/subtitle.
+- Reason: The user wanted the step boxes removed from the UI.
+- Notes: Users still move through onboarding with the footer Back and Next buttons, while the top badge shows the current step number.
+
+## 2026-05-18 - Center Onboarding Modal Against Viewport
+
+- Decision: Render the onboarding modal in a fixed full-viewport overlay instead of centering it inside the app shell content column.
+- Reason: The shell sidebar made the modal appear shifted right when it was centered only within the main content area.
+- Notes: The modal keeps internal scrolling and now uses a subtle backdrop over the app chrome.
+
+## 2026-05-18 - Compact Onboarding Form Density
+
+- Decision: Reduce onboarding modal padding, input heights, field gaps, panel padding, and use three-column field grids on wide screens.
+- Reason: The user wanted more of each onboarding step visible without needing modal scrolling.
+- Notes: Compact sizing is scoped to the onboarding modal; internal scrolling remains as a fallback for smaller screens or dense steps.
+
+## 2026-05-18 - Present Import Onboarding As Modal
+
+- Decision: Convert `/onboarding/import` into a fixed viewport-centered modal overlay and add a compact mode for import option cards.
+- Reason: The user wanted the import contacts wizard to match the modal-style onboarding experience.
+- Notes: Google OAuth behavior, skip navigation, and disabled iCloud/VCF options remain unchanged.
+
+## 2026-05-18 - Feature Google Import In Modal Layout
+
+- Decision: Widen the import onboarding modal and add a featured Google layout where Google spans the full first row and iCloud/VCF split the second row.
+- Reason: The user wanted the Google option full width and the remaining two options as half-width stacked rows beneath it.
+- Notes: The featured layout is opt-in for onboarding import and does not change the default import options grid elsewhere.
+
+## 2026-05-18 - Narrow Import Onboarding Modal
+
+- Decision: Reduce the import onboarding modal max width while preserving the featured Google layout.
+- Reason: The user wanted the modal overall width decreased after the featured layout change.
+- Notes: Google remains full-width above the half-width iCloud and VCF cards.
+
+## 2026-05-18 - Further Narrow Import Onboarding Modal
+
+- Decision: Reduce the import onboarding modal max width to `max-w-4xl`.
+- Reason: The user wanted the modal overall width decreased further.
+- Notes: The featured Google row and half-width iCloud/VCF row remain unchanged.
+
+## 2026-05-18 - Align Google Import OAuth Redirect With Working Supabase Flow
+
+- Decision: Use a plain `/auth/callback` Supabase redirect for Google import OAuth, store the post-callback destination in session storage, and pass Google scopes through `queryParams.scope`.
+- Reason: The sibling `alooofone` project successfully uses the same Supabase OAuth pattern with a simple callback URL, while ContactBook's callback query string can require stricter Supabase redirect allow-list entries.
+- Notes: Contacts import keeps `https://www.googleapis.com/auth/contacts.readonly`, preserves calendar/profile scopes, and now reports Supabase callback `error` values as a coarse `oauth_error` reason.
+
+## 2026-05-19 - Tolerate Missing Contact Import Status
+
+- Decision: Render imported contacts with a `PENDING` fallback when the API response omits `status`.
+- Reason: Production import data can contain rows without a status value, and the import page should not crash while rendering incomplete contact import records.
+- Notes: The frontend type now marks import `status` as optional; processed rows still use the success badge and all other statuses use the warning badge.
+
+## 2026-05-19 - Align Import UI With Dev Contact Import API
+
+- Decision: Merge `origin/dev` into `feat/ui-creation` and update the Vite import page to read `firstName`, `lastName`, `mainPhone`, `mainEmail`, `source`, and `createdAt` from contact import rows.
+- Reason: The deployed backend and `origin/dev` now return the simplified contact import model instead of the older `displayNameSnapshot`, `status`, `rawPerson`, and sync timestamp fields.
+- Notes: The import table now shows contact name, primary phone/email, source, and imported date using frontend fallbacks for missing contact fields.
+
+## 2026-05-19 - Move Import UI To Relational Contacts API
+
+- Decision: Merge the latest `origin/dev` relational contacts backend and update the import page to read summary data from `GET /v1/contacts/import` and Google contacts from `GET /v1/contacts?source=GOOGLE`.
+- Reason: The old `GET /v1/integrations/contact-imports` endpoint was removed after Google sync began upserting normalized relational contact records.
+- Notes: The sync toast now uses `processedCount` from `GET /v1/integrations/google/sync`, and the table reads `displayName`, `primaryEmail`, `primaryPhone`, `source`, and timestamps from contact records.
+
+## 2026-05-19 - Prefill Profile Onboarding For Edits
+
+- Decision: Hydrate `/onboarding/profile` from `GET /v1/profile/me` before rendering editable fields.
+- Reason: The profile page routes existing users to the onboarding form for edits, so previously saved profile sections should appear in the form instead of starting from blank defaults.
+- Notes: The current UI supports one work, business, socials, bank, wallet, and crypto row, so the form preloads the first item from each corresponding profile array.
+
+## 2026-05-19 - Hide Google Connect CTA After Import Link
+
+- Decision: Hide the Google authenticate/connect card on the dashboard import page once Google is connected, keeping the sync button as the primary action.
+- Reason: Users who have already linked Google should not see a repeated authenticate CTA because the next expected action is syncing contacts.
+- Notes: The frontend treats a Google summary row with `hasSyncToken` as the persisted connected/synced signal and also marks the page connected immediately after a successful `google=connected` callback.
+
+## 2026-05-19 - Persist Google Import Connected State
+
+- Decision: Store a frontend Google-connected marker after a successful import OAuth callback and hydrate the import page from that marker plus backend import evidence.
+- Reason: A linked Google account can exist before the backend has a sync cursor, so relying only on `hasSyncToken` can leave a stale authenticate CTA visible.
+- Notes: Sync failures that indicate expired or revoked Google authorization clear the marker so the reconnect path can return when it is actually needed.
+
+## 2026-05-19 - Remove Google Auth CTA From Import Page
+
+- Decision: Remove the Google connect/authenticate card from `/dashboard/import` entirely and keep that page focused on syncing and reviewing imported contacts.
+- Reason: The import page should not show duplicate Google authentication entry points after users reach the operational import workflow.
+- Notes: Google authentication remains available through the import onboarding/choice flow, while `/dashboard/import` keeps the sync action as the primary control.
+
+## 2026-05-19 - Keep Non-Google Import Options Visible
+
+- Decision: Show iCloud and VCF import option cards on `/dashboard/import` while hiding only the Google card.
+- Reason: Completing Google import should not remove visibility of other import methods users may want later.
+- Notes: `ContactImportOptions` now supports filtering out Google so onboarding can keep the full source picker and the dashboard import page can show only pending non-Google options.
+
+## 2026-05-19 - Use Future-Action Labels For Locked Imports
+
+- Decision: Replace unavailable wording on locked iCloud and VCF import buttons with the intended future actions, `Connect now` and `Upload`.
+- Reason: Disabled coming-soon cards should preview the action users will eventually take without exposing internal implementation states like connector availability.
+- Notes: The buttons remain disabled and show a lock icon, while the existing `Coming soon` badges continue to communicate feature status.
+
+## 2026-05-19 - Add Mock-Backed Contacts Directory Page
+
+- Decision: Add a frontend-only `/dashboard/contacts` page backed by mock data shaped like the current `GET /v1/contacts` `ContactDetailDto[]` response.
+- Reason: The contacts directory can be built and reviewed before the final API wiring while keeping the page contract-compatible with the backend response.
+- Notes: The page uses TanStack Table for filtering, sorting, and pagination state, shadcn-style combobox filters, and a responsive card view that becomes the default presentation on mobile.
+
+## 2026-05-19 - Add First Card Prompt After Import Onboarding
+
+- Decision: Add `/onboarding/card` as the next onboarding step after profile completion and import choice, using the existing `POST /v1/cards` API.
+- Reason: A first ContactBook card is the next meaningful setup action once a user has created a profile and either imported contacts or skipped import.
+- Notes: The card step stays skippable, Google onboarding redirects to it only after the existing auto-sync succeeds, and no backend code changes are required.
+
+## 2026-05-19 - Show ContactBook Cards On Dashboard
+
+- Decision: Load `GET /v1/cards` on the dashboard and display the user's ContactBook cards in a dedicated card section.
+- Reason: After users create a first card during onboarding, the dashboard should immediately reflect that core product object instead of only showing setup prompts.
+- Notes: The dashboard shows loading, error, empty, and populated card states, with an empty state opening the dashboard card onboarding modal.
+
+## 2026-05-19 - Make Dashboard Own Onboarding Modals
+
+- Decision: Move profile, import, and first-card onboarding into dashboard-owned modal steps keyed by `/dashboard?onboarding=profile|import|card`.
+- Reason: Authenticated users should remain anchored on the dashboard while completing setup instead of moving through standalone onboarding routes.
+- Notes: Legacy `/onboarding/profile`, `/onboarding/import`, and `/onboarding/card` paths now redirect to the matching dashboard modal for compatibility.
+
+## 2026-05-19 - Return Profile Edits To Profile Page
+
+- Decision: Open profile editing as `/dashboard?onboarding=profile&returnTo=/profile` when launched from the profile page.
+- Reason: Users editing from their profile should return to that profile view after saving or skipping, while signup/dashboard onboarding should continue through the setup steps.
+- Notes: Dashboard only honors safe internal `returnTo` paths and otherwise advances profile onboarding to the import step.
+
+## 2026-05-19 - Patch Existing Profiles From Onboarding Modal
+
+- Decision: Have the profile onboarding modal use `PATCH /v1/profile/me` when existing profile groups are already present, while keeping `POST /v1/profile/onboarding` for first-time setup.
+- Reason: The backend intentionally returns `409 Profile already initialized` for repeat calls to the first-time onboarding endpoint.
+- Notes: The frontend also retries once with `PATCH /v1/profile/me` if first-time initialization races into a 409 response.
+
+## 2026-05-19 - Use Contacts Sync Endpoint
+
+- Decision: Change Google contact sync from `/v1/integrations/google/sync` to `/v1/contacts/sync`.
+- Reason: Backend confirmed the integrations Google sync endpoint will be removed and replaced by the contacts sync endpoint.
+- Notes: `GET /v1/contacts/import` was already in use for the import summary/list contract. The remote backend deployment may lag this frontend change until the backend GitHub deployment issue is resolved.
+
+## 2026-05-19 - Align Sync Method With Live API Docs
+
+- Decision: Call Google contact sync as `GET /v1/contacts/sync?source=GOOGLE`.
+- Reason: Live OpenAPI documents `GET /api/v1/contacts/sync` with required `source=GOOGLE|ICLOUD`; POST returns `Cannot POST /api/v1/contacts/sync?source=GOOGLE`.
+- Notes: Passive pages should not call `GET /v1/contacts/import`; use contacts list responses for display status and reserve provider endpoints for explicit import/sync actions.
+
+## 2026-05-19 - Avoid Passive Import Endpoint Calls
+
+- Decision: Stop using `GET /v1/contacts/import` for page-load status and derive frontend import summaries from `GET /v1/contacts` or `GET /v1/contacts?source=GOOGLE`.
+- Reason: Live OpenAPI requires `source` on `/api/v1/contacts/import` and describes it as a provider import operation, so calling it without `source` returns `Validation failed (enum string is expected)` and calling it on passive page loads could unintentionally trigger imports.
+- Notes: Explicit Google sync still uses `GET /v1/contacts/sync?source=GOOGLE`; passive counts use active/deleted contact records and the latest contact `updatedAt` as the visible last activity timestamp.
+
+## 2026-05-19 - Close Card Onboarding After Creation
+
+- Decision: After card creation, return the created card from the onboarding modal, optimistically add it to dashboard state, and replace the URL with `/dashboard`.
+- Reason: The modal is query-param controlled, so leaving setup query state around can make it reappear even after a successful card create.
+- Notes: The dashboard still refreshes cards from `GET /v1/cards` after the optimistic update.
+
+## 2026-05-19 - Move Contact Details To Dedicated Page
+
+- Decision: Replace the contacts side pane with a dedicated `/dashboard/contacts/:contactId` detail page and keep the contacts index as a full-width table.
+- Reason: The user requested contact details on a new page, a cleaner table layout, and controls in the table header.
+- Notes: Live OpenAPI only supports `source` on `GET /v1/contacts`, so search, sort, and pagination are client-side for now; the detail page uses `GET /v1/contacts/:id`.
+
+## 2026-05-19 - Use Contact Rows As Detail Links
+
+- Decision: Make each contacts table row navigate to `/dashboard/contacts/:contactId` and remove the separate View action button.
+- Reason: The user requested row clicks to be enough for opening contact details.
+- Notes: Rows support keyboard activation with Enter and Space in addition to pointer clicks.
+
+## 2026-05-20 - Simplify Signup Onboarding And Contact Details
+
+- Decision: Stop routing signup setup users into the card creation modal after the import step.
+- Reason: The user wants new signups to avoid the create-card modal during onboarding; cards remain available from manual card creation paths.
+- Notes: Setup-mode import skip and Google connect completion now return to `/dashboard`.
+
+- Decision: Remove internal identifiers from the contact detail page, including External id and Source metadata.
+- Reason: Imported identifiers are not useful user-facing contact details and make the page feel noisy.
+- Notes: The page still shows primary contact fields, organizations, addresses, URLs, notes, source badge, and created/updated dates.
+
+## 2026-05-19 - Add Cards Index And Detail Pages
+
+- Decision: Add `/dashboard/cards` for listing ContactBook cards and `/dashboard/cards/:cardId` for a basic card detail view.
+- Reason: Cards are becoming a first-class product area and need a dedicated route beyond the dashboard summary.
+- Notes: The pages use existing `GET /v1/cards` and `GET /v1/cards/{cardId}` APIs, keep card creation routed through the existing onboarding modal, and do not require backend changes.
+
+## 2026-05-19 - Preserve Signup Onboarding Redirect
+
+- Decision: Track the intended post-registration redirect as `/dashboard?onboarding=profile` before marking the auth context authenticated.
+- Reason: Marking the user authenticated can re-render the auth route and trigger its generic authenticated redirect to `/dashboard`, dropping the onboarding query before the dashboard modal opens.
+- Notes: Existing-user login still follows the original protected-route destination, while new signups keep the dashboard-owned onboarding modal flow.
+
+## 2026-05-19 - Make Dashboard Reflect Setup Progress
+
+- Decision: Load profile and import summary state on the dashboard and use it with card state to choose contextual hero copy, checklist status, and stats.
+- Reason: After a user skips profile setup, imports Google contacts, and creates a card, the dashboard should no longer present first-run onboarding CTAs as the primary workspace message.
+- Notes: Profile completion remains optional; imported contacts or created cards are enough to switch the dashboard into an active workspace state.
+
+## 2026-05-19 - Separate Setup Flow From Profile Action
+
+- Decision: Mark first-run profile onboarding links with `flow=setup` and treat plain dashboard profile onboarding as a standalone action.
+- Reason: Skipping profile from the dashboard should close the modal, while skipping profile during signup setup should continue to import contacts.
+- Notes: Signup and legacy `/onboarding/profile` redirects now include `flow=setup`; profile edit and dashboard profile actions stay local unless `returnTo` is present.
+
+## 2026-05-19 - Make Card Wizard Copy Context-Aware
+
+- Decision: Add setup/create modes to the card modal so first-card language appears only during first-run setup.
+- Reason: Reusing the card modal from dashboard and cards pages should not tell users they are creating their first card after they already have cards.
+- Notes: Setup import links encode `flow=setup` before the Google OAuth callback, while regular dashboard card creation uses generic card copy.
+
+## 2026-05-19 - Derive Import Auth State From Backend
+
+- Decision: Stop using the browser-wide `contactbook:google-connected` localStorage marker as source of truth for Google import UI.
+- Reason: Multiple ContactBook accounts in the same browser can otherwise inherit stale Google-connected UI from another user.
+- Notes: Import status now comes from `GET /v1/contacts/import` plus `GET /v1/contacts?source=GOOGLE`; logout clears stale ContactBook OAuth/import keys and signs out any temporary Supabase OAuth session.
+
+## 2026-05-19 - Move Synced Contacts To Contacts Page
+
+- Decision: Replace mock contacts with `GET /v1/contacts` on `/dashboard/contacts` and remove the duplicated imported-contact list from `/dashboard/import`.
+- Reason: The import page should own provider connection and sync status, while the contacts page should be the canonical synced-contact directory.
+- Notes: Contacts now uses a Google Contacts-inspired layout with left counts, central searchable list, and a right detail panel; Import links to Contacts with a CTA.
+
+## 2026-05-19 - Simplify Contacts Directory Copy
+
+- Decision: Remove "synced" explanatory copy from the contacts table and import directory CTA.
+- Reason: The contacts directory should present user records plainly without repeating source or synchronization mechanics in table-level copy.
+- Notes: Empty and import-directory states now refer to contacts/importing contacts directly while keeping the existing navigation to Import and Contacts pages.
+
+## 2026-05-19 - Place Contacts Directory With Import Options
+
+- Decision: Show the Contacts directory card beside the iCloud and VCF import option cards once Google is connected.
+- Reason: After Google is connected, the Google sign-in card is hidden, leaving the import option row as the right place for the directory shortcut.
+- Notes: The directory card remains hidden before Google connection and keeps its existing contacts count, error state, and View contacts CTA.
+
+## 2026-05-19 - Replace Dashboard Card List With CTA
+
+- Decision: Remove individual ContactBook card previews from the dashboard and keep a single CTA to `/dashboard/cards`.
+- Reason: The cards page is now the dedicated place for reviewing and managing cards, while the dashboard should stay focused on summary and navigation.
+- Notes: Dashboard card loading remains only for progress counts and setup state; card record display, empty state, and card-list error UI were removed from the home screen.
+
+## 2026-05-19 - Pair Dashboard Stats With Page Links
+
+- Decision: Show only imported contact and card summary stats on the dashboard, each with a direct link to its dedicated page.
+- Reason: Keeping the statistic and navigation together makes the home screen easier to scan and removes the separate profile stat and cards CTA block.
+- Notes: Imported contacts link to `/dashboard/import`, cards link to `/dashboard/cards`, and profile progress remains represented in the Today checklist.
+
+## 2026-05-19 - Link Contact Stat To Contacts Page
+
+- Decision: Point the imported contacts dashboard CTA to `/dashboard/contacts`.
+- Reason: The contacts page is the canonical place to inspect contact records, while import remains focused on connection and sync controls.
+- Notes: The stat keeps the imported contact count and now uses `View contacts` as its action label.
+
+## 2026-05-19 - Redesign Active Dashboard Hero
+
+- Decision: Replace the active workspace hero copy and button row with a compact workspace overview and two action tiles for Contacts and Cards.
+- Reason: Once setup has started, the dashboard should prioritize fast operational navigation over broad introductory messaging.
+- Notes: Inactive setup states keep their onboarding CTAs, while active users see direct links to `/dashboard/contacts` and `/dashboard/cards`.
+
+## 2026-05-19 - Remove Dashboard Hero Card
+
+- Decision: Remove the dashboard workspace hero card and move summary stat cards to the top of the page.
+- Reason: The dashboard already has direct stat cards with links, so the hero duplicated navigation and pushed the primary metrics down.
+- Notes: The Today checklist remains below the stats, and overview data still feeds summary counts and checklist state.

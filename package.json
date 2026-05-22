@@ -5,7 +5,9 @@
     "dev": "pnpm --parallel -r dev",
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
-    "validate:api": "bash scripts/validate-api.sh"
+    "validate:api": "bash scripts/validate-api.sh",
+    "migrate:api": "bash scripts/migrate-api.sh",
+    "migrate:api:dev": "bash scripts/migrate-api.sh --dev"
   },
   "engines": {
     "node": ">=20",

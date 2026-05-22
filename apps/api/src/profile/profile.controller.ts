@@ -1,16 +1,21 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
   Patch,
   Post,
-  Put,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import {
   ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
@@ -19,14 +24,14 @@ import {
 import type { JwtUserPayload } from "../common/decorators/current-user.decorator";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
+import { ProfileDeleteGroupDto } from "./dto/profile-delete-group.dto";
 import { ProfileMeOnboardingDto } from "./dto/profile-me-onboarding.dto";
-import {
-  ProfileMePatchDto,
-  ProfileMePutDto,
-} from "./dto/profile-me-upsert.dto";
+import { ProfileMePatchDto } from "./dto/profile-me-upsert.dto";
 import { ProfileMeResponseDto } from "./dto/profile-me-response.dto";
+import { ProfilePhotoResponseDto } from "./dto/profile-photo-response.dto";
 import { ProfileMeSerializerService } from "./profile-me.serializer";
 import { ProfileMeUpsertService } from "./profile-me.upsert.service";
+import { ProfilePhotoService } from "./profile-photo.service";
 
 @ApiTags("Profile")
 @ApiBearerAuth("access-token")
@@ -36,6 +41,7 @@ export class ProfileController {
   constructor(
     private readonly profileMe: ProfileMeSerializerService,
     private readonly profileMeUpsert: ProfileMeUpsertService,
+    private readonly profilePhoto: ProfilePhotoService,
   ) {}
 
   @Post("onboarding")
@@ -43,7 +49,72 @@ export class ProfileController {
   @ApiOperation({
     summary: "First-time profile setup after registration",
     description:
-      "Submit personal, work, business, social, and financial sections in one nested JSON body. Core identity fields come from registration; only `identity.profilePhoto` is optional here. Returns 409 if profile data already exists.",
+      "Requires identity (firstName, lastName, primaryEmail, primaryPhone; updates the user record; profilePhoto optional). " +
+      "Request body uses the same flattened shape as GET /profile/me (work.companyName, business.businessName, socials.skype, financial.isSensitive, etc.). " +
+      "Do not send profileOnboardingCompletedAt — the server sets it. Omit groupId/fieldId on first-time setup. Returns 409 if onboarding already completed.",
+  })
+  @ApiBody({
+    type: ProfileMeOnboardingDto,
+    examples: {
+      firstTime: {
+        summary: "First-time onboarding (no groupId/fieldId)",
+        value: {
+          identity: {
+            firstName: "Jane",
+            lastName: "Doe",
+            primaryPhone: "+12025551234",
+            primaryEmail: "jane@example.com",
+            profilePhoto: null,
+          },
+          personal: {
+            tag: "Primary Personal",
+            mobile: "+12025551234",
+          },
+        },
+      },
+      fullProfile: {
+        summary: "Flattened sections (matches GET /profile/me write shape)",
+        value: {
+          identity: {
+            firstName: "Jane",
+            lastName: "Doe",
+            primaryPhone: "+12025551234",
+            primaryEmail: "jane@example.com",
+            profilePhoto: null,
+          },
+          personal: {
+            tag: "Primary Personal",
+            mobile: "+12025551234",
+            postalAddress: {
+              street: "1 Main St",
+              city: "Springfield",
+              state: "IL",
+              pincode: "62701",
+              country: "USA",
+            },
+          },
+          work: [
+            {
+              tag: "Acme Corp",
+              companyName: "Acme Corp",
+              workTitle: "Engineer",
+            },
+          ],
+          financial: {
+            bankAccounts: [
+              {
+                tag: "Primary",
+                bankName: "Example Bank",
+                accountHolder: "Jane Doe",
+                accountNumber: "123456789",
+                currency: "USD",
+                isSensitive: true,
+              },
+            ],
+          },
+        },
+      },
+    },
   })
   @ApiCreatedResponse({ type: ProfileMeResponseDto })
   completeOnboarding(
@@ -64,25 +135,70 @@ export class ProfileController {
     return this.profileMe.build(user.sub);
   }
 
+  @Post("me/photo")
+  @HttpCode(HttpStatus.OK)
+  @UseInterceptors(FileInterceptor("file"))
+  @ApiConsumes("multipart/form-data")
+  @ApiOperation({
+    summary: "Upload profile photo",
+    description:
+      "Stores the image in GCS and sets identity.profilePhoto to the public HTTPS URL. " +
+      "Accepts image/jpeg, image/png, or image/webp up to 1 MB.",
+  })
+  @ApiBody({
+    schema: {
+      type: "object",
+      required: ["file"],
+      properties: {
+        file: { type: "string", format: "binary" },
+      },
+    },
+  })
+  @ApiOkResponse({ type: ProfilePhotoResponseDto })
+  uploadPhoto(
+    @CurrentUser() user: JwtUserPayload,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.profilePhoto.upload(user.sub, file);
+  }
+
+  @Delete("me/photo")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Remove profile photo",
+    description:
+      "Clears identity.profilePhoto and deletes the GCS object when managed.",
+  })
+  @ApiOkResponse({ type: ProfilePhotoResponseDto })
+  deletePhoto(@CurrentUser() user: JwtUserPayload) {
+    return this.profilePhoto.remove(user.sub);
+  }
+
   @Patch("me")
   @ApiOperation({
     summary: "Partially update profile",
     description:
-      "Only top-level sections present in the body are applied. Within each section, arrays are reconciled (items omitted are removed). Omit `groupId` to create a new work/business/social group; omit `fieldId` to create a new financial row.",
+      "Only top-level sections present in the body are applied. Same flattened field names as GET /profile/me. Empty shells are ignored. " +
+      "Use null on personal fields to clear them; identity core fields cannot be null. Remove work/business/social/financial groups via DELETE /profile/me/groups.",
   })
+  @ApiBody({ type: ProfileMePatchDto })
   @ApiOkResponse({ type: ProfileMeResponseDto })
   patchMe(@CurrentUser() user: JwtUserPayload, @Body() dto: ProfileMePatchDto) {
     return this.profileMeUpsert.patch(user.sub, dto);
   }
 
-  @Put("me")
+  @Delete("me/groups")
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: "Update profile sections (same reconcile rules as PATCH)",
+    summary: "Delete a work, business, social, or financial field group",
     description:
-      "Use after GET /profile/me with the full body for whole-form saves, or PATCH a single section for targeted edits.",
+      "Deletes the entire group and its fields. Use PATCH with null to clear personal or identity profile fields.",
   })
   @ApiOkResponse({ type: ProfileMeResponseDto })
-  putMe(@CurrentUser() user: JwtUserPayload, @Body() dto: ProfileMePutDto) {
-    return this.profileMeUpsert.put(user.sub, dto);
+  deleteGroup(
+    @CurrentUser() user: JwtUserPayload,
+    @Body() dto: ProfileDeleteGroupDto,
+  ) {
+    return this.profileMeUpsert.deleteGroup(user.sub, dto);
   }
 }

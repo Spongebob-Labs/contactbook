@@ -57,11 +57,12 @@ enum ConnectionStatus {
   DECLINED
 }
 
-enum ImportSource {
+enum ContactSource {
   GOOGLE
   ICLOUD
   CSV
   VCARD
+  CALDAV
 }
 
 enum OAuthProvider {
@@ -89,6 +90,7 @@ model User {
   firstName String
   lastName  String
   isActive  Boolean  @default(false)
+  profileOnboardingCompletedAt DateTime? @map("profile_onboarding_completed_at")
 
   fieldGroups   FieldGroup[]
   cards         ContactCard[]
@@ -96,8 +98,9 @@ model User {
   initiatedConnections Connection[] @relation("Requester")
   receivedConnections  Connection[] @relation("Receiver")
 
-  imports       ContactImport[]
-  integrations  IntegrationState[]
+  contacts           Contact[]
+  contactMergeGroups ContactMergeGroup[]
+  integrations       IntegrationState[]
   travelEvents  TravelEvent[]
   tags          Tag[]
 
@@ -271,35 +274,147 @@ model CryptoWalletDetail {
 }
 
 model IntegrationState {
-  id         String       @id @default(uuid())
-  userId     String
-  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  source     ImportSource
-  syncToken  String?
-  lastSyncAt DateTime     @default(now())
+  id                 String        @id @default(uuid())
+  userId             String
+  user               User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  source             ContactSource
+  syncToken          String?
+  lastSyncAt         DateTime      @default(now())
+  lastSyncAdded      Int           @default(0)
+  lastSyncUpdated    Int           @default(0)
+  lastSyncDeleted    Int           @default(0)
+  lastSyncDuplicates Int           @default(0)
 
   @@unique([userId, source])
   @@map("integration_states")
 }
 
-model ContactImport {
-  id         String       @id @default(uuid())
-  userId     String
-  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  source     ImportSource
-  externalId String?
-  firstName  String?
-  lastName   String?
-  mainPhone  String?
-  mainEmail  String?
-  rawJson    Json?
-  deletedAt  DateTime?
-
+model ContactMergeGroup {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contacts  Contact[]
+  dedupKeys ContactDedupKey[]
   createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("contact_merge_groups")
+}
+
+model ContactDedupKey {
+  id           String            @id @default(uuid())
+  userId       String
+  mergeGroupId String
+  mergeGroup   ContactMergeGroup @relation(fields: [mergeGroupId], references: [id], onDelete: Cascade)
+  kind         String
+  value        String
+
+  @@unique([userId, kind, value])
+  @@index([mergeGroupId])
+  @@map("contact_dedup_keys")
+}
+
+model Contact {
+  id             String             @id @default(uuid())
+  userId         String
+  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  source         ContactSource
+  externalId     String
+  mergeGroupId   String?
+  mergeGroup     ContactMergeGroup? @relation(fields: [mergeGroupId], references: [id], onDelete: SetNull)
+  sourceRevision String?
+  displayName    String?
+  firstName      String?
+  lastName       String?
+  middleName     String?
+  namePrefix     String?
+  nameSuffix     String?
+  nickname       String?
+  notes          String?
+  deletedAt      DateTime?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  phones        ContactPhone[]
+  emails        ContactEmail[]
+  organizations ContactOrganization[]
+  addresses     ContactAddress[]
+  urls          ContactUrl[]
 
   @@unique([userId, source, externalId])
   @@index([userId, source, deletedAt])
-  @@map("contact_imports")
+  @@index([userId, displayName])
+  @@index([mergeGroupId])
+  @@map("contacts")
+}
+
+model ContactPhone {
+  id        String  @id @default(uuid())
+  contactId String
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  value     String
+  label     String?
+  isPrimary Boolean @default(false)
+  sortOrder Int     @default(0)
+
+  @@index([contactId])
+  @@map("contact_phones")
+}
+
+model ContactEmail {
+  id        String  @id @default(uuid())
+  contactId String
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  value     String
+  label     String?
+  isPrimary Boolean @default(false)
+  sortOrder Int     @default(0)
+
+  @@index([contactId])
+  @@map("contact_emails")
+}
+
+model ContactOrganization {
+  id          String  @id @default(uuid())
+  contactId   String
+  contact     Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  companyName String?
+  department  String?
+  title       String?
+  isPrimary   Boolean @default(false)
+  sortOrder   Int     @default(0)
+
+  @@index([contactId])
+  @@map("contact_organizations")
+}
+
+model ContactAddress {
+  id         String  @id @default(uuid())
+  contactId  String
+  contact    Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  street     String?
+  city       String?
+  region     String?
+  postalCode String?
+  country    String?
+  label      String?
+  isPrimary  Boolean @default(false)
+  sortOrder  Int     @default(0)
+
+  @@index([contactId])
+  @@map("contact_addresses")
+}
+
+model ContactUrl {
+  id        String  @id @default(uuid())
+  contactId String
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  value     String
+  label     String?
+  sortOrder Int     @default(0)
+
+  @@index([contactId])
+  @@map("contact_urls")
 }
 
 model TravelEvent {

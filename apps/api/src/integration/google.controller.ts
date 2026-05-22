@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Post, UseGuards } from "@nestjs/common";
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
@@ -64,19 +64,5 @@ export class GoogleController {
   async disconnect(@CurrentUser() user: JwtUserPayload): Promise<{ ok: true }> {
     await this.google.disconnectGoogle(user.sub);
     return { ok: true };
-  }
-
-  @Get("sync")
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth("access-token")
-  @ApiOperation({ summary: "Run Google People contacts sync" })
-  @ApiOkResponse({
-    description: "Contacts synced successfully",
-    schema: {
-      type: "object",
-    },
-  })
-  sync(@CurrentUser() user: JwtUserPayload) {
-    return this.google.syncContacts(user.sub);
   }
 }

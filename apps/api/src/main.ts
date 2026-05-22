@@ -11,7 +11,7 @@ async function bootstrap(): Promise<void> {
   const allowedOrigins = (
     process.env.CORS_ORIGIN ??
     [
-      "https://contactbook-mu.vercel.app",
+      "https://contactbookten.vercel.app",
       "http://localhost:3000",
       "http://localhost:5173",
       "http://localhost:8000",
@@ -39,6 +39,11 @@ async function bootstrap(): Promise<void> {
       "HTTP API for ContactBook: sync professional and personal contacts via web and WhatsApp.",
     )
     .setVersion("1.0")
+    .addServer("http://localhost:8001", "Local")
+    .addServer(
+      "https://contactbook-api-449864809731.europe-west10.run.app",
+      "Production",
+    )
     .addBearerAuth(
       {
         type: "http",

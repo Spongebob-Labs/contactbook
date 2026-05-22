@@ -1,159 +1,79 @@
-import { ConflictException } from "@nestjs/common";
+import { BadRequestException, ConflictException } from "@nestjs/common";
 import { FieldCategory, FieldType } from "@prisma/client";
+import { ProfileDeletableGroupCategory } from "./dto/profile-deletable-group-category.enum";
 import { ProfileMeUpsertService } from "./profile-me.upsert.service";
+import { registrationIdentity } from "../../test/fixtures/profile-payloads";
+import {
+  createProfileUpsertMocks,
+  type ProfileUpsertMocks,
+} from "../../test/helpers/profile-upsert-mocks";
 
 describe("ProfileMeUpsertService", () => {
-  const userId = "user-1";
-  let prisma: {
-    user: { update: jest.Mock; findUnique: jest.Mock };
-    fieldGroup: {
-      count: jest.Mock;
-      findMany: jest.Mock;
-      create: jest.Mock;
-      update: jest.Mock;
-      delete: jest.Mock;
-      findFirst: jest.Mock;
-    };
-    profileField: {
-      create: jest.Mock;
-      update: jest.Mock;
-      delete: jest.Mock;
-      findFirst: jest.Mock;
-      findUniqueOrThrow: jest.Mock;
-    };
-    $transaction: jest.Mock;
-  };
-  let persistence: {
-    loadGroups: jest.Mock;
-    createGroup: jest.Mock;
-    updateGroupName: jest.Mock;
-    syncGroupFields: jest.Mock;
-    deleteGroup: jest.Mock;
-    upsertFieldById: jest.Mock;
-    createField: jest.Mock;
-    deleteField: jest.Mock;
-    findGroup: jest.Mock;
-  };
-  let serializer: { build: jest.Mock };
+  let mocks: ProfileUpsertMocks;
+
+  function svc() {
+    return new ProfileMeUpsertService(
+      mocks.prisma as never,
+      mocks.persistence as never,
+      mocks.serializer as never,
+    );
+  }
 
   beforeEach(() => {
-    prisma = {
-      user: {
-        update: jest.fn().mockResolvedValue({}),
-        findUnique: jest.fn().mockResolvedValue({
-          firstName: "Jane",
-          lastName: "Doe",
-          email: "jane@example.com",
-          phone: "5551234567",
-          countryCode: "+1",
-        }),
-      },
-      fieldGroup: {
-        count: jest.fn().mockResolvedValue(0),
-        findMany: jest.fn(),
-        create: jest.fn(),
-        update: jest.fn(),
-        delete: jest.fn(),
-        findFirst: jest.fn(),
-      },
-      profileField: {
-        create: jest.fn(),
-        update: jest.fn(),
-        delete: jest.fn(),
-        findFirst: jest.fn(),
-        findUniqueOrThrow: jest.fn(),
-      },
-      $transaction: jest.fn((fn: (p: typeof prisma) => unknown) => fn(prisma)),
-    };
-    persistence = {
-      loadGroups: jest.fn().mockResolvedValue([]),
-      createGroup: jest.fn().mockResolvedValue({
-        id: "new-group",
-        userId,
-        category: FieldCategory.WORK,
-        name: "Acme",
-      }),
-      updateGroupName: jest.fn().mockResolvedValue(undefined),
-      syncGroupFields: jest.fn().mockResolvedValue([]),
-      deleteGroup: jest.fn().mockResolvedValue(undefined),
-      upsertFieldById: jest.fn().mockResolvedValue("field-1"),
-      createField: jest.fn().mockResolvedValue("new-field"),
-      deleteField: jest.fn().mockResolvedValue(undefined),
-      findGroup: jest.fn().mockResolvedValue({
-        id: "g1",
-        category: FieldCategory.WORK,
-      }),
-    };
-    serializer = {
-      build: jest.fn().mockResolvedValue({
-        identity: {},
-        personal: {},
-        work: [],
-        business: [],
-        socials: [],
-        financial: {
-          bankAccounts: [],
-          digitalWallets: [],
-          cryptoWallets: [],
-        },
-      }),
-    };
+    mocks = createProfileUpsertMocks();
   });
 
   it("creates work group when groupId omitted", async () => {
-    const svc = new ProfileMeUpsertService(
-      prisma as never,
-      persistence as never,
-      serializer as never,
-    );
-    await svc.patch(userId, {
+    await svc().patch(mocks.userId, {
       work: [{ tag: "Acme", companyName: "Acme", workTitle: "Dev" }],
     });
-    expect(persistence.createGroup).toHaveBeenCalledWith(
-      userId,
+    expect(mocks.persistence.createGroup).toHaveBeenCalledWith(
+      mocks.userId,
       FieldCategory.WORK,
       "Acme",
     );
-    expect(persistence.syncGroupFields).toHaveBeenCalled();
+    expect(mocks.persistence.syncGroupFields).toHaveBeenCalled();
+  });
+
+  it("does not delete work groups when work is an empty array", async () => {
+    mocks.groups.push({
+      id: "work-1",
+      userId: mocks.userId,
+      category: FieldCategory.WORK,
+      name: "Acme",
+      updatedAt: new Date(),
+      fields: [],
+    } as never);
+    await svc().patch(mocks.userId, { work: [] });
+    expect(mocks.persistence.deleteGroup).not.toHaveBeenCalled();
   });
 
   it("updates identity user fields", async () => {
-    const svc = new ProfileMeUpsertService(
-      prisma as never,
-      persistence as never,
-      serializer as never,
-    );
-    await svc.patch(userId, {
+    await svc().patch(mocks.userId, {
       identity: { firstName: "Jane", lastName: "Doe" },
     });
-    expect(prisma.user.update).toHaveBeenCalledWith({
-      where: { id: userId },
+    expect(mocks.prisma.user.update).toHaveBeenCalledWith({
+      where: { id: mocks.userId },
       data: { firstName: "Jane", lastName: "Doe" },
     });
   });
 
   it("updates financial row by fieldId", async () => {
-    persistence.loadGroups.mockResolvedValue([
-      {
-        id: "fg-fin",
-        userId,
-        category: FieldCategory.FINANCIAL,
-        name: "Banking",
-        fields: [
-          {
-            id: "bank-field-1",
-            type: FieldType.BANK_ACCOUNT,
-            groupId: "fg-fin",
-          },
-        ],
-      },
-    ]);
-    const svc = new ProfileMeUpsertService(
-      prisma as never,
-      persistence as never,
-      serializer as never,
-    );
-    await svc.patch(userId, {
+    mocks.groups.push({
+      id: "fg-fin",
+      userId: mocks.userId,
+      category: FieldCategory.FINANCIAL,
+      name: "Banking",
+      updatedAt: new Date(),
+      fields: [
+        {
+          id: "bank-field-1",
+          type: FieldType.BANK_ACCOUNT,
+          groupId: "fg-fin",
+        },
+      ],
+    } as never);
+    await svc().patch(mocks.userId, {
       financial: {
         bankAccounts: [
           {
@@ -168,92 +88,125 @@ describe("ProfileMeUpsertService", () => {
         ],
       },
     });
-    expect(persistence.upsertFieldById).toHaveBeenCalledWith(
-      userId,
+    expect(mocks.persistence.upsertFieldById).toHaveBeenCalledWith(
+      mocks.userId,
       "bank-field-1",
       expect.objectContaining({ type: FieldType.BANK_ACCOUNT }),
     );
   });
 
+  it.each([
+    ProfileDeletableGroupCategory.WORK,
+    ProfileDeletableGroupCategory.BUSINESS,
+    ProfileDeletableGroupCategory.SOCIAL,
+    ProfileDeletableGroupCategory.FINANCIAL,
+  ])("deletes group for category %s", async (category) => {
+    const fieldCategory =
+      category === ProfileDeletableGroupCategory.WORK
+        ? FieldCategory.WORK
+        : category === ProfileDeletableGroupCategory.BUSINESS
+          ? FieldCategory.BUSINESS
+          : category === ProfileDeletableGroupCategory.SOCIAL
+            ? FieldCategory.SOCIAL
+            : FieldCategory.FINANCIAL;
+    mocks.persistence.findGroup.mockResolvedValue({
+      id: "g-del",
+      category: fieldCategory,
+    });
+    await svc().deleteGroup(mocks.userId, {
+      groupId: "g-del",
+      category,
+    });
+    expect(mocks.persistence.deleteGroup).toHaveBeenCalledWith(
+      mocks.userId,
+      "g-del",
+    );
+  });
+
+  it("rejects delete when category does not match group", async () => {
+    mocks.persistence.findGroup.mockResolvedValue({
+      id: "work-1",
+      category: FieldCategory.WORK,
+    });
+    await expect(
+      svc().deleteGroup(mocks.userId, {
+        groupId: "work-1",
+        category: ProfileDeletableGroupCategory.BUSINESS,
+      }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
   describe("completeOnboarding", () => {
-    it("returns 409 when field groups already exist", async () => {
-      prisma.fieldGroup.count.mockResolvedValue(2);
-      const svc = new ProfileMeUpsertService(
-        prisma as never,
-        persistence as never,
-        serializer as never,
-      );
+    it("returns 409 when onboarding already completed", async () => {
+      mocks.prisma.user.findUnique.mockResolvedValue({
+        profileOnboardingCompletedAt: new Date(),
+      });
       await expect(
-        svc.completeOnboarding(userId, {
-          personal: { tag: "Primary", mobile: "+15551234567" },
+        svc().completeOnboarding(mocks.userId, {
+          identity: registrationIdentity,
         }),
       ).rejects.toThrow(ConflictException);
     });
 
-    it("rejects empty onboarding body", async () => {
-      const svc = new ProfileMeUpsertService(
-        prisma as never,
-        persistence as never,
-        serializer as never,
-      );
-      await expect(svc.completeOnboarding(userId, {})).rejects.toThrow(
-        "Provide at least one profile section",
-      );
+    it("requires identity on onboarding", async () => {
+      await expect(
+        svc().completeOnboarding(
+          mocks.userId,
+          {} as Parameters<ProfileMeUpsertService["completeOnboarding"]>[1],
+        ),
+      ).rejects.toThrow("identity is required");
     });
 
-    it("rejects identity mismatch with registration", async () => {
-      const svc = new ProfileMeUpsertService(
-        prisma as never,
-        persistence as never,
-        serializer as never,
+    it("returns 409 when primaryEmail is already used by another user", async () => {
+      mocks.prisma.user.findUnique.mockImplementation(
+        (args: {
+          where: { id?: string; email?: string };
+          select?: Record<string, boolean>;
+        }) => {
+          if (args.where?.id === mocks.userId) {
+            return Promise.resolve({
+              email: "jane@example.com",
+              phone: "2025551234",
+              countryCode: "+1",
+            });
+          }
+          if (args.where?.email === "taken@example.com") {
+            return Promise.resolve({ id: "other-user" });
+          }
+          return Promise.resolve(null);
+        },
       );
       await expect(
-        svc.completeOnboarding(userId, {
-          personal: { tag: "Primary" },
-          identity: { firstName: "Wrong" },
+        svc().completeOnboarding(mocks.userId, {
+          identity: {
+            ...registrationIdentity,
+            primaryEmail: "taken@example.com",
+          },
         }),
-      ).rejects.toThrow("identity.firstName does not match registration");
+      ).rejects.toThrow(ConflictException);
+      expect(mocks.prisma.user.update).not.toHaveBeenCalled();
     });
 
-    it("initializes profile via put when no field groups exist", async () => {
-      const svc = new ProfileMeUpsertService(
-        prisma as never,
-        persistence as never,
-        serializer as never,
-      );
-      const putSpy = jest.spyOn(svc, "put").mockResolvedValue({
-        identity: {
-          firstName: "Jane",
-          lastName: "Doe",
-          primaryPhone: "+15551234567",
-          primaryEmail: "jane@example.com",
-        },
-        personal: { groupId: "p1", tag: "Primary Personal" },
-        work: [],
-        business: [],
-        socials: [],
+    it("creates financial bank row on onboarding", async () => {
+      await svc().completeOnboarding(mocks.userId, {
+        identity: registrationIdentity,
         financial: {
-          bankAccounts: [],
-          digitalWallets: [],
-          cryptoWallets: [],
+          bankAccounts: [
+            {
+              tag: "Primary Bank",
+              bankName: "HDFC",
+              accountHolder: "Jane",
+              accountNumber: "123456",
+              currency: "INR",
+            },
+          ],
         },
       });
-
-      await svc.completeOnboarding(userId, {
-        personal: { tag: "Primary Personal", mobile: "+15551234567" },
-        identity: {
-          profilePhoto: "https://example.com/photo.jpg",
-          firstName: "Jane",
-        },
-      });
-
-      expect(prisma.fieldGroup.count).toHaveBeenCalledWith({
-        where: { userId },
-      });
-      expect(putSpy).toHaveBeenCalledWith(userId, {
-        personal: { tag: "Primary Personal", mobile: "+15551234567" },
-        identity: { profilePhoto: "https://example.com/photo.jpg" },
-      });
+      expect(mocks.persistence.createGroup).toHaveBeenCalledWith(
+        mocks.userId,
+        FieldCategory.FINANCIAL,
+        "Primary Bank",
+      );
     });
   });
 });
