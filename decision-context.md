@@ -1,5 +1,23 @@
 # Decision Context
 
+## 2026-05-22 - Auto-Create Starter Cards During Setup
+
+- Decision: After setup profile onboarding saves, automatically create two starter card shells from the entered identity: a personal card named from first and last name, and a business card named with a `- Work` suffix. Skip the manual create-card modal in setup flow while keeping manual card creation unchanged elsewhere.
+- Reason: The current card API stores card `name` and `type` only, so the safest production behavior is to create useful starter shells immediately without implying that profile fields are mapped into card contents.
+- Notes: The frontend checks existing live cards by normalized name and type before creating to avoid duplicates when setup is revisited. If starter card creation fails, profile onboarding still completes and the user sees a friendly retry-later message. Backend code and browser testing remain untouched.
+
+## 2026-05-22 - Return To Cards Page After Card Creation
+
+- Decision: When card creation is launched from the cards page, include `returnTo=/dashboard/cards` and redirect back to that page after a successful create. Keep setup/onboarding card creation returning to the dashboard.
+- Reason: Users creating a card from the card list expect to land back in that list, while onboarding should still continue through the setup dashboard flow.
+- Notes: This is frontend-only and preserves the shared card creation modal.
+
+## 2026-05-22 - Remove Card Detail Metadata Panel
+
+- Decision: Remove the right-side metadata panel from the card detail page and replace developer-oriented API copy with product-facing card detail copy.
+- Reason: Card detail should focus on the user-facing card preview rather than exposing implementation metadata such as IDs and API field labels.
+- Notes: This is frontend-only and does not change card data fetching or card creation behavior.
+
 ## 2026-05-22 - Add Safe Read-Only Mock Fallbacks
 
 - Decision: Add frontend-only sample data fallbacks for read-only page data when live reads fail, with a visible sample-data notice on affected pages, while leaving mutations/auth/sync/upload/delete actions dependent on the live server.

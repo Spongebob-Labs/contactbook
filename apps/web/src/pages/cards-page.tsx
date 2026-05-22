@@ -78,7 +78,7 @@ export default function CardsPage() {
           </p>
         </div>
         <Link
-          to="/dashboard?onboarding=card"
+          to="/dashboard?onboarding=card&returnTo=/dashboard/cards"
           className={buttonVariants({ variant: "default" })}
         >
           <Plus className="h-4 w-4" aria-hidden="true" />
@@ -120,7 +120,7 @@ export default function CardsPage() {
               information you want to share.
             </p>
             <Link
-              to="/dashboard?onboarding=card"
+              to="/dashboard?onboarding=card&returnTo=/dashboard/cards"
               className={cn(buttonVariants({ variant: "default" }), "mt-5")}
             >
               <Plus className="h-4 w-4" aria-hidden="true" />

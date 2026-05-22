@@ -21,13 +21,6 @@ const cardTypeLabels: Record<ContactCardType, string> = {
   CUSTOM: "Custom",
 };
 
-function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
-}
-
 export default function CardDetailPage() {
   const { cardId } = useParams();
   const [card, setCard] = useState<ContactCard | null>(null);
@@ -89,15 +82,14 @@ export default function CardDetailPage() {
             {card?.name ?? "ContactBook card"}
           </h1>
           <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-            Basic card information from the current cards API.
+            Basic card information for this ContactBook card.
           </p>
         </div>
       </section>
 
       {isLoading && (
-        <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <section>
           <Skeleton className="h-80 w-full" />
-          <Skeleton className="h-52 w-full" />
         </section>
       )}
 
@@ -116,7 +108,7 @@ export default function CardDetailPage() {
       {isMockData && <SampleDataNotice />}
 
       {!isLoading && !error && card && (
-        <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <section>
           <Card>
             <CardHeader>
               <div className="flex items-start justify-between gap-3">
@@ -147,31 +139,6 @@ export default function CardDetailPage() {
                   </div>
                   <IdCard className="h-6 w-6 shrink-0 text-primary" aria-hidden="true" />
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Metadata</CardTitle>
-              <CardDescription>Current API fields</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <p className="text-xs font-medium uppercase text-muted-foreground">Type</p>
-                <p className="mt-1 text-sm">{cardTypeLabels[card.type]}</p>
-              </div>
-              <div>
-                <p className="text-xs font-medium uppercase text-muted-foreground">Created</p>
-                <p className="mt-1 text-sm">{formatDateTime(card.createdAt)}</p>
-              </div>
-              <div>
-                <p className="text-xs font-medium uppercase text-muted-foreground">Updated</p>
-                <p className="mt-1 text-sm">{formatDateTime(card.updatedAt)}</p>
-              </div>
-              <div>
-                <p className="text-xs font-medium uppercase text-muted-foreground">Card ID</p>
-                <p className="mt-1 break-all text-sm">{card.id}</p>
               </div>
             </CardContent>
           </Card>

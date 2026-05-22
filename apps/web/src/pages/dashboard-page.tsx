@@ -8,6 +8,7 @@ import {
   Sparkles,
   UserRound,
 } from "lucide-react";
+import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
 import { SampleDataNotice } from "@/components/sample-data-notice";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,13 +17,17 @@ import { logUiError } from "@/lib/friendly-errors";
 import { mockCards, mockContactListResponse, mockContactsBySource, mockProfile } from "@/lib/mock-data";
 import type {
   ContactCard,
+  ContactCardType,
   ContactImportSummary,
   ContactListResponse,
   ProfileMeResponse,
 } from "@/lib/types";
 import { CardOnboardingModal } from "@/pages/card-onboarding-page";
 import { ImportOnboardingModal } from "@/pages/import-onboarding-page";
-import { ProfileOnboardingModal } from "@/pages/profile-onboarding-page";
+import {
+  ProfileOnboardingModal,
+  type ProfileOnboardingResult,
+} from "@/pages/profile-onboarding-page";
 
 type OnboardingStep = "profile" | "import" | "card";
 
@@ -57,6 +62,38 @@ function hasInitializedProfile(profile: ProfileMeResponse | null) {
 
 function getGoogleImportSummary(summary: ContactImportSummary | null) {
   return summary?.bySource.find((item) => item.source === "GOOGLE") ?? null;
+}
+
+type StarterCardRequest = {
+  name: string;
+  type: ContactCardType;
+};
+
+function normalizeCardName(name: string) {
+  return name.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function fullNameFromIdentity(identity: ProfileOnboardingResult["identity"]) {
+  const fullName = [identity.firstName, identity.lastName]
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .join(" ");
+
+  if (fullName) {
+    return fullName;
+  }
+
+  return identity.primaryEmail.trim().split("@")[0] || "My ContactBook";
+}
+
+function getStarterCardRequests(
+  identity: ProfileOnboardingResult["identity"],
+): StarterCardRequest[] {
+  const fullName = fullNameFromIdentity(identity);
+  return [
+    { name: fullName, type: "PERSONAL" },
+    { name: `${fullName} - Work`, type: "BUSINESS" },
+  ];
 }
 
 export default function DashboardPage() {
@@ -145,6 +182,50 @@ export default function DashboardPage() {
     setOnboardingStep("import");
   }, [isSetupFlow, navigate, returnTo, setOnboardingStep]);
 
+  const createMissingStarterCards = useCallback(
+    async (identity: ProfileOnboardingResult["identity"]) => {
+      const starterCards = getStarterCardRequests(identity);
+      const liveCards = await apiFetch<ContactCard[]>("/v1/cards");
+      const createdCards: ContactCard[] = [];
+
+      for (const starterCard of starterCards) {
+        const alreadyExists = [...liveCards, ...createdCards].some(
+          (card) =>
+            card.type === starterCard.type &&
+            normalizeCardName(card.name) === normalizeCardName(starterCard.name),
+        );
+
+        if (alreadyExists) {
+          continue;
+        }
+
+        const card = await apiFetch<ContactCard>("/v1/cards", {
+          method: "POST",
+          body: starterCard,
+        });
+        createdCards.push(card);
+      }
+
+      if (createdCards.length > 0) {
+        setCards((current) => {
+          const nextCards = [...createdCards];
+          current.forEach((card) => {
+            if (!nextCards.some((createdCard) => createdCard.id === card.id)) {
+              nextCards.push(card);
+            }
+          });
+          return nextCards;
+        });
+        toast.success(
+          createdCards.length === 1
+            ? "Starter card created."
+            : "Starter cards created.",
+        );
+      }
+    },
+    [],
+  );
+
   const loadOverview = useCallback(async (shouldUpdate: () => boolean = () => true) => {
     try {
       const [profileData, contactsData, googleContactsData] = await Promise.all([
@@ -211,6 +292,32 @@ export default function DashboardPage() {
     }
   }, []);
 
+  const finishSetupProfileStep = useCallback(
+    async (result: ProfileOnboardingResult) => {
+      if (isSetupFlow) {
+        try {
+          await createMissingStarterCards(result.identity);
+        } catch (error) {
+          logUiError("Could not create starter cards", error);
+          toast.error("Your profile was saved, but we couldn't create your cards right now.");
+        }
+      }
+
+      await loadOverview();
+      if (isSetupFlow) {
+        await loadCards();
+      }
+      finishProfileStep();
+    },
+    [
+      createMissingStarterCards,
+      finishProfileStep,
+      isSetupFlow,
+      loadCards,
+      loadOverview,
+    ],
+  );
+
   useEffect(() => {
     let isMounted = true;
     void Promise.all([
@@ -221,6 +328,12 @@ export default function DashboardPage() {
       isMounted = false;
     };
   }, [loadCards, loadOverview]);
+
+  useEffect(() => {
+    if (onboardingStep === "card" && isSetupFlow) {
+      setOnboardingStep(null);
+    }
+  }, [isSetupFlow, onboardingStep, setOnboardingStep]);
 
   return (
     <AppShell>
@@ -274,10 +387,7 @@ export default function DashboardPage() {
 
       {onboardingStep === "profile" && (
         <ProfileOnboardingModal
-          onComplete={() => {
-            void loadOverview();
-            finishProfileStep();
-          }}
+          onComplete={(result) => finishSetupProfileStep(result)}
           onSkip={finishProfileStep}
         />
       )}
@@ -293,14 +403,16 @@ export default function DashboardPage() {
           }}
         />
       )}
-      {onboardingStep === "card" && (
+      {onboardingStep === "card" && !isSetupFlow && (
         <CardOnboardingModal
-          mode={isSetupFlow ? "setup" : "create"}
+          mode="create"
           onComplete={(card) => {
             setCards((current) =>
               current.some((item) => item.id === card.id) ? current : [card, ...current],
             );
-            navigate("/dashboard", { replace: true });
+            navigate(returnTo ?? "/dashboard", {
+              replace: true,
+            });
             void Promise.all([loadCards(), loadOverview()]);
           }}
           onSkip={() => setOnboardingStep(null)}

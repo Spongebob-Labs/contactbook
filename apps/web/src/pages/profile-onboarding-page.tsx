@@ -967,8 +967,12 @@ function validateProfileForm(form: OnboardingForm): ValidationErrors {
   return errors;
 }
 
+export type ProfileOnboardingResult = {
+  identity: FullProfilePayload["identity"];
+};
+
 type ProfileOnboardingModalProps = {
-  onComplete: () => void;
+  onComplete: (result: ProfileOnboardingResult) => void | Promise<void>;
   onSkip: () => void;
 };
 
@@ -1630,7 +1634,7 @@ export function ProfileOnboardingModal({
       }
 
       toast.success("Profile saved.");
-      onComplete();
+      await onComplete({ identity: payload.identity });
     } catch (err) {
       logUiError("Could not save profile", err);
       toast.error(friendlyErrorMessages.save);
