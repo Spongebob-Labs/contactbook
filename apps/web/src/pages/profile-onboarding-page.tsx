@@ -158,7 +158,7 @@ type FullProfilePayload = {
     lastName: string;
     primaryPhone: string;
     primaryEmail: string;
-    profilePhoto: string | null;
+    profilePhoto?: string | null;
   };
   personal: {
     groupId: string | undefined;
@@ -482,6 +482,17 @@ function nullableText(value: string | null | undefined): string | null {
   return next || null;
 }
 
+function profilePhotoForSave(value: string | null | undefined): string | null | undefined {
+  const next = optionalText(value);
+  if (!next) {
+    return null;
+  }
+  if (next.startsWith("data:")) {
+    return undefined;
+  }
+  return next;
+}
+
 function optionalText(value: string | null | undefined): string | undefined {
   const next = clean(value ?? "");
   return next || undefined;
@@ -778,7 +789,16 @@ function profileToForm(profile: ProfileMeResponse): OnboardingForm {
   };
 }
 
-const MAX_PROFILE_PHOTO_BYTES = 14 * 1024;
+const MAX_PROFILE_PHOTO_BYTES = 1_048_576;
+const ALLOWED_PROFILE_PHOTO_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
+
+type ProfilePhotoResponse = {
+  profilePhoto: string | null;
+};
 
 function hasInitializedProfile(profile: ProfileMeResponse) {
   if (profile.profileOnboardingCompletedAt) {
@@ -796,8 +816,6 @@ function hasInitializedProfile(profile: ProfileMeResponse) {
 }
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const MAX_PROFILE_PHOTO_CHARS = 20_000;
-
 function addRequired(
   errors: ValidationErrors,
   path: string,
@@ -874,14 +892,6 @@ function validateProfileForm(form: OnboardingForm): ValidationErrors {
     32,
     "Phone number",
   );
-  addMaxLength(
-    errors,
-    "identity.profilePhoto",
-    form.identity.profilePhoto,
-    MAX_PROFILE_PHOTO_CHARS,
-    "Profile photo",
-  );
-
   addMaxLength(errors, "personal.tag", form.personal.tag, 200, "Label");
   validateAddress(
     errors,
@@ -972,6 +982,7 @@ export function ProfileOnboardingModal({
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isMutatingProfilePhoto, setIsMutatingProfilePhoto] = useState(false);
   const [hasExistingProfile, setHasExistingProfile] = useState(false);
   const [loadedIdentity, setLoadedIdentity] = useState<
     OnboardingForm["identity"] | null
@@ -980,7 +991,8 @@ export function ProfileOnboardingModal({
   const validationErrors = validateProfileForm(form);
   const validationErrorCount = Object.keys(validationErrors).length;
   const hasValidationErrors = validationErrorCount > 0;
-  const controlsDisabled = isSaving || isLoadingProfile || Boolean(loadError);
+  const controlsDisabled =
+    isSaving || isMutatingProfilePhoto || isLoadingProfile || Boolean(loadError);
   const saveDisabled = controlsDisabled || hasValidationErrors;
 
   const markTouched = (path: string) => {
@@ -1036,37 +1048,58 @@ export function ProfileOnboardingModal({
     };
   }, []);
 
-  const uploadProfilePhoto = (file: File | undefined) => {
+  const uploadProfilePhoto = async (file: File | undefined) => {
     if (!file) {
-      return;
-    }
-
-    if (!file.type.startsWith("image/")) {
-      toast.error("Choose an image file.");
       return;
     }
 
     markTouched("identity.profilePhoto");
 
-    if (file.size > MAX_PROFILE_PHOTO_BYTES) {
-      toast.error("Choose an image under 14 KB.");
+    if (!ALLOWED_PROFILE_PHOTO_TYPES.has(file.type)) {
+      toast.error("Choose a JPEG, PNG, or WebP image.");
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        if (reader.result.length > MAX_PROFILE_PHOTO_CHARS) {
-          toast.error("Choose a smaller image.");
-          return;
-        }
-        setSectionValue("identity", "profilePhoto", reader.result);
-      }
-    };
-    reader.onerror = () => {
-      toast.error("Could not read image.");
-    };
-    reader.readAsDataURL(file);
+    if (file.size > MAX_PROFILE_PHOTO_BYTES) {
+      toast.error("Choose an image under 1 MB.");
+      return;
+    }
+
+    setIsMutatingProfilePhoto(true);
+    try {
+      const body = new FormData();
+      body.append("file", file);
+      const response = await apiFetch<ProfilePhotoResponse>("/v1/profile/me/photo", {
+        method: "POST",
+        body,
+      });
+      setSectionValue("identity", "profilePhoto", response.profilePhoto ?? "");
+      toast.success("Profile photo updated.");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Could not upload profile photo.",
+      );
+    } finally {
+      setIsMutatingProfilePhoto(false);
+    }
+  };
+
+  const deleteProfilePhoto = async () => {
+    markTouched("identity.profilePhoto");
+    setIsMutatingProfilePhoto(true);
+    try {
+      await apiFetch<ProfilePhotoResponse>("/v1/profile/me/photo", {
+        method: "DELETE",
+      });
+      setSectionValue("identity", "profilePhoto", "");
+      toast.success("Profile photo removed.");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Could not remove profile photo.",
+      );
+    } finally {
+      setIsMutatingProfilePhoto(false);
+    }
   };
 
   const setSectionValue = <Section extends "identity" | "personal">(
@@ -1279,7 +1312,7 @@ export function ProfileOnboardingModal({
         lastName: form.identity.lastName.trim(),
         primaryPhone: form.identity.primaryPhone.trim(),
         primaryEmail: form.identity.primaryEmail.trim(),
-        profilePhoto: nullableText(form.identity.profilePhoto),
+        profilePhoto: profilePhotoForSave(form.identity.profilePhoto),
       },
       personal: {
         groupId: personalGroupId,
@@ -1408,7 +1441,7 @@ export function ProfileOnboardingModal({
         lastName: identity.lastName.trim(),
         primaryPhone: identity.primaryPhone.trim(),
         primaryEmail: identity.primaryEmail.trim(),
-        profilePhoto: nullableText(form.identity.profilePhoto),
+        profilePhoto: profilePhotoForSave(form.identity.profilePhoto),
       },
       personal: {
         groupId: undefined,
@@ -1677,56 +1710,55 @@ export function ProfileOnboardingModal({
 
           {!isLoadingProfile && !loadError && step.key === "personal" && (
             <ProfileSection>
-	              <ProfilePhotoUpload
-	                error={visibleError("identity.profilePhoto")}
-	                value={form.identity.profilePhoto}
-	                onUpload={uploadProfilePhoto}
-	                onClear={() => {
-	                  markTouched("identity.profilePhoto");
-	                  setSectionValue("identity", "profilePhoto", "");
-	                }}
-	              />
-	              <TwoColumn>
-	                <Field label="First name" error={visibleError("identity.firstName")}>
-	                  <Input
-	                    autoComplete="given-name"
-	                    value={form.identity.firstName}
-	                    onChange={(event) =>
-	                      setSectionValue("identity", "firstName", event.target.value)
-	                    }
-	                    {...validationProps("identity.firstName")}
-	                  />
-	                </Field>
-	                <Field label="Last name" error={visibleError("identity.lastName")}>
-	                  <Input
-	                    autoComplete="family-name"
-	                    value={form.identity.lastName}
-	                    onChange={(event) =>
-	                      setSectionValue("identity", "lastName", event.target.value)
-	                    }
-	                    {...validationProps("identity.lastName")}
-	                  />
-	                </Field>
-	                <Field label="Email" error={visibleError("identity.primaryEmail")}>
-	                  <Input
-	                    type="email"
-	                    autoComplete="email"
-	                    value={form.identity.primaryEmail}
-	                    onChange={(event) =>
-	                      setSectionValue("identity", "primaryEmail", event.target.value)
-	                    }
-	                    {...validationProps("identity.primaryEmail")}
-	                  />
-	                </Field>
-	                <Field label="Phone number" error={visibleError("identity.primaryPhone")}>
-	                  <Input
-	                    value={form.identity.primaryPhone}
-	                    readOnly
-	                    aria-readonly="true"
-	                    className="cursor-default bg-muted text-muted-foreground"
-	                    {...validationProps("identity.primaryPhone")}
-	                  />
-	                </Field>
+              <ProfilePhotoUpload
+                disabled={controlsDisabled}
+                error={visibleError("identity.profilePhoto")}
+                isLoading={isMutatingProfilePhoto}
+                value={form.identity.profilePhoto}
+                onUpload={(file) => void uploadProfilePhoto(file)}
+                onClear={() => void deleteProfilePhoto()}
+              />
+              <TwoColumn>
+                <Field label="First name" error={visibleError("identity.firstName")}>
+                  <Input
+                    autoComplete="given-name"
+                    value={form.identity.firstName}
+                    onChange={(event) =>
+                      setSectionValue("identity", "firstName", event.target.value)
+                    }
+                    {...validationProps("identity.firstName")}
+                  />
+                </Field>
+                <Field label="Last name" error={visibleError("identity.lastName")}>
+                  <Input
+                    autoComplete="family-name"
+                    value={form.identity.lastName}
+                    onChange={(event) =>
+                      setSectionValue("identity", "lastName", event.target.value)
+                    }
+                    {...validationProps("identity.lastName")}
+                  />
+                </Field>
+                <Field label="Email" error={visibleError("identity.primaryEmail")}>
+                  <Input
+                    type="email"
+                    autoComplete="email"
+                    value={form.identity.primaryEmail}
+                    onChange={(event) =>
+                      setSectionValue("identity", "primaryEmail", event.target.value)
+                    }
+                    {...validationProps("identity.primaryEmail")}
+                  />
+                </Field>
+                <Field label="Phone number" error={visibleError("identity.primaryPhone")}>
+                  <Input
+                    value={form.identity.primaryPhone}
+                    readOnly
+                    aria-readonly="true"
+                    className="cursor-default bg-muted text-muted-foreground"
+                    {...validationProps("identity.primaryPhone")}
+                  />
+                </Field>
               </TwoColumn>
               <TwoColumn>
                 <Field label="Title">
@@ -2656,12 +2688,16 @@ function RepeatablePanel({
 }
 
 function ProfilePhotoUpload({
+  disabled,
   error,
+  isLoading,
   onClear,
   onUpload,
   value,
 }: {
+  disabled: boolean;
   error?: string;
+  isLoading: boolean;
   onClear: () => void;
   onUpload: (file: File | undefined) => void;
   value: string;
@@ -2679,18 +2715,26 @@ function ProfilePhotoUpload({
           </div>
           <div>
             <p className="text-sm font-semibold">Profile photo</p>
-            <p className="mt-1 text-sm text-muted-foreground">Upload an image under 14 KB.</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              JPEG, PNG, or WebP under 1 MB.
+            </p>
             {error && <p className="mt-1 text-xs font-medium text-destructive">{error}</p>}
           </div>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
-          <Button type="button" variant="outline" className="relative overflow-hidden">
+          <Button
+            type="button"
+            variant="outline"
+            className="relative overflow-hidden"
+            disabled={disabled}
+          >
             <UploadCloud className="h-4 w-4" aria-hidden="true" />
-            Upload
+            {value ? "Replace" : "Upload"}
             <input
               type="file"
-              accept="image/*"
+              accept="image/jpeg,image/png,image/webp"
               className="absolute inset-0 cursor-pointer opacity-0"
+              disabled={disabled}
               onChange={(event) => {
                 onUpload(event.target.files?.[0]);
                 event.target.value = "";
@@ -2698,13 +2742,16 @@ function ProfilePhotoUpload({
             />
           </Button>
           {value && (
-            <Button type="button" variant="ghost" onClick={onClear}>
+            <Button type="button" variant="ghost" onClick={onClear} disabled={disabled}>
               <X className="h-4 w-4" aria-hidden="true" />
               Remove
             </Button>
           )}
         </div>
       </div>
+      {isLoading && (
+        <p className="text-xs font-medium text-muted-foreground">Updating photo...</p>
+      )}
     </div>
   );
 }

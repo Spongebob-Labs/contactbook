@@ -1,5 +1,11 @@
 # Decision Context
 
+## 2026-05-22 - Use Dedicated Profile Photo Upload Endpoints
+
+- Decision: Merge latest `origin/dev` into `feat/ui-creation` to bring PR 28's profile photo backend endpoints, then update the frontend profile photo control to upload JPEG, PNG, or WebP files up to 1 MB via `POST /v1/profile/me/photo` and delete via `DELETE /v1/profile/me/photo`.
+- Reason: The backend now stores profile photos in GCS and only accepts managed profile photo URLs in `identity.profilePhoto`, so the frontend should stop converting images to base64 data URLs inside the profile save payload.
+- Notes: Replacing a photo uses the same upload endpoint and relies on the backend to remove the previous object. Backend files changed only through the `origin/dev` fast-forward merge; manual edits are frontend-only. Browser testing remains skipped per project instruction.
+
 ## 2026-05-21 - Mirror WhatsApp OTP Request Validation
 
 - Decision: Update the auth phone form validation and phone helper to mirror `POST /v1/auth/whatsapp/request-code` constraints: country code must be `+` plus 1-4 digits and the normalized national phone must be 4-15 digits.
