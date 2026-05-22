@@ -1,9 +1,10 @@
-# Legacy GCP project stack
+# New GCP project stack
 
-OpenTofu for **`c-club-466412`**. Keep this directory and its `terraform.tfstate` unchanged when standing up the new project.
+OpenTofu for **`project-c74d38dd-7e12-4d3f-bbf`**. Local state lives only in this directory (fresh `terraform.tfstate` on first apply).
 
-- New project: [`../opentofu-new/`](../opentofu-new/) (`project-c74d38dd-7e12-4d3f-bbf`).
-- To tear down legacy infra later: `cd` here and run `tofu destroy` (with this directory's `terraform.tfvars`).
+- Auth: impersonates `contactbook-opentofu@project-c74d38dd-7e12-4d3f-bbf.iam.gserviceaccount.com` (see `providers.tf`). Run `gcloud auth application-default login` first.
+- Legacy project **`c-club-466412`** remains in [`../opentofu/`](../opentofu/) — do not change that folder when migrating.
+- **CI/CD cutover** (GitHub variables/secrets, `API_ENV_B64`, OAuth): [`../../docs/gcp-ci-cutover.md`](../../docs/gcp-ci-cutover.md).
 
 ---
 

@@ -1,7 +1,7 @@
 # Cloud Build: no secrets wired here. Prefer GitHub Actions CI for builds with API_ENV_B64 / BuildKit secret `api_env`.
 # To use Cloud Build, add `--secret` / Cloud Build secrets and match apps/api/Dockerfile.
 substitutions:
-  _REGION: us-central1
+  _REGION: europe-west10
   _GAR_REPO: contactbook
   _IMAGE_NAME: api
   _IMAGE_TAG: latest
