@@ -7,7 +7,7 @@
 #   Prisma generate, typecheck, tests, and Docker build (BuildKit file secret `api_env`).
 # - API_ENV_CI_B64 — optional. If set, CI uses this instead of API_ENV_B64 (e.g. CI-only DB URL).
 # - GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_SERVICE_ACCOUNT — required to push images to GAR on push to main/dev.
-#   Pushes tag :<sha> and :<0.1.run_number> for both main and dev.
+#   Pushes a single tag :<0.1.run_number> (e.g. 0.1.42). No provenance/SBOM side manifests; no GitHub build-record artifact.
 #
 # Variables (non-secret): GCP_REGION, GCP_PROJECT_ID — required when pushing images to Artifact Registry.
 
@@ -95,7 +95,6 @@ jobs:
           BASE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/contactbook/api"
           {
             echo "tags<<__EOF__"
-            echo "${BASE}:${{ github.sha }}"
             echo "${BASE}:${VERSION_TAG}"
             echo "__EOF__"
           } >> "$GITHUB_OUTPUT"
@@ -155,11 +154,16 @@ jobs:
       - name: Build and push container image
         if: steps.garpush.outputs.push == 'true'
         uses: docker/build-push-action@v6
+        env:
+          DOCKER_BUILD_RECORD_UPLOAD: false
+          DOCKER_BUILD_SUMMARY: false
         with:
           context: .
           file: apps/api/Dockerfile
           push: true
           tags: ${{ steps.imagetags.outputs.tags }}
+          provenance: false
+          sbom: false
           secret-files: |
             api_env=${{ github.workspace }}/apps/api/.env
           cache-from: type=gha
