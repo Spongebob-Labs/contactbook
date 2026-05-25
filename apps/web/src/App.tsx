@@ -6,9 +6,11 @@ import { ProtectedRoute } from "@/components/protected-route";
 
 const AuthPage = lazy(() => import("@/pages/auth-page"));
 const AuthCallbackPage = lazy(() => import("@/pages/auth-callback-page"));
+const AboutPage = lazy(() => import("@/pages/about-page"));
 const CardDetailPage = lazy(() => import("@/pages/card-detail-page"));
 const CardsPage = lazy(() => import("@/pages/cards-page"));
 const ContactDetailPage = lazy(() => import("@/pages/contact-detail-page"));
+const ContactPage = lazy(() => import("@/pages/contact-page"));
 const ContactsPage = lazy(() => import("@/pages/contacts-page"));
 const DashboardPage = lazy(() => import("@/pages/dashboard-page"));
 const ImportPage = lazy(() => import("@/pages/import-page"));
@@ -22,6 +24,8 @@ export default function App() {
       <Suspense fallback={<PageLoader />}>
         <Routes>
           <Route path="/" element={<LandingPage />} />
+          <Route path="/about" element={<AboutPage />} />
+          <Route path="/contact" element={<ContactPage />} />
           <Route path="/auth" element={<AuthPage />} />
           <Route path="/auth/callback" element={<AuthCallbackPage />} />
           <Route
@@ -112,7 +116,15 @@ export default function App() {
               </ProtectedRoute>
             }
           />
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          <Route
+            path="/dashboard/*"
+            element={
+              <ProtectedRoute>
+                <Navigate to="/dashboard" replace />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>
     </AppErrorBoundary>

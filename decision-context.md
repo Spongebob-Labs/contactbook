@@ -1,5 +1,23 @@
 # Decision Context
 
+## 2026-05-25 - Phase 6 Public Site Polish And Fallbacks
+
+- Decision: Polish the public site foundation by making the public shell's default navigation use real public routes, adding official contact details to the shared footer, and separating unknown public-route fallback from unknown dashboard-route fallback.
+- Reason: After adding Landing, About, and Contact, the public shell should no longer carry stale section defaults from the early landing draft. Public visitors should land back on the public home page for unknown URLs, while unknown dashboard URLs should continue returning authenticated users to the dashboard.
+- Notes: This remains frontend-only. Footer contact details use the official deck phone, email, and ContactID. Backend code and browser testing remain untouched.
+
+## 2026-05-25 - Phase 5 Public Contact Page
+
+- Decision: Add a public `/contact` page using the shared fixed-light public shell, official ContactBook deck contact details, and direct contact actions for phone, email, website, and ContactID.
+- Reason: The public site needs a dedicated contact destination, but adding a form would imply backend submission behavior that is not in scope. Direct official contact methods are production-safe and match the deck-provided content.
+- Notes: Public navigation now points Contact links to `/contact`. The contact page uses the same deck-inspired curves, large faint typography, and reveal behavior as landing/about while avoiding box-heavy layout. Backend code and browser testing remain untouched.
+
+## 2026-05-25 - Phase 4 Public About Page
+
+- Decision: Add a public `/about` page using the shared public shell, deck-inspired typography/graphics, and official ContactBook themes around connectivity, meaningful relationships, mission, and vision.
+- Reason: The public site needs a deeper brand story beyond the landing page while staying aligned with the official deck's theme and avoiding investor-specific pitch content.
+- Notes: The original date-specific "By 2023" vision is modernized into current public wording that preserves the meaning without publishing stale timeline language. The About page remains frontend-only, fixed-light, and uses the reusable public reveal behavior. Backend code and browser testing remain untouched.
+
 ## 2026-05-25 - Phase 3B Continuous Hero Motion
 
 - Decision: Add continuous, subtle hero motion to the public landing page using CSS keyframes for slow image pan/scale, looping connection-path drawing, staggered node pulsing, and gentle proof-point movement.

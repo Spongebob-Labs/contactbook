@@ -15,19 +15,20 @@ import {
   Sparkles,
   UsersRound,
 } from "lucide-react";
-import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import heroCityImage from "@/assets/contactbook-hero-city.webp";
 import { PublicPageShell } from "@/components/public-page-shell";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
+import { usePublicReveal } from "@/lib/use-public-reveal";
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { label: "Problems", href: "#problems" },
   { label: "How it works", href: "#how-it-works" },
   { label: "Why it works", href: "#why-it-works" },
-  { label: "Contact", href: "#contact" },
+  { label: "About", href: "/about" },
+  { label: "Contact", href: "/contact" },
 ];
 
 const proofPoints = [
@@ -113,35 +114,6 @@ const audiences = [
   "Sales teams",
   "Recruitment firms",
 ];
-
-function usePublicReveal() {
-  useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      document
-        .querySelectorAll<HTMLElement>(".public-reveal, .public-draw-path")
-        .forEach((element) => element.classList.add("is-visible"));
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            entry.target.classList.add("is-visible");
-            observer.unobserve(entry.target);
-          }
-        });
-      },
-      { rootMargin: "0px 0px -12% 0px", threshold: 0.15 },
-    );
-
-    document
-      .querySelectorAll<HTMLElement>(".public-reveal, .public-draw-path")
-      .forEach((element) => observer.observe(element));
-
-    return () => observer.disconnect();
-  }, []);
-}
 
 function CurvedConnector({
   className,
