@@ -35,7 +35,12 @@ jobs:
         id: detect
         run: |
           set -euo pipefail
-          if git diff-tree --no-commit-id --name-only -r HEAD | grep -qE '^apps/api/'; then
+          if git rev-parse --verify -q HEAD^1 >/dev/null; then
+            paths=$(git diff --name-only HEAD^1 HEAD)
+          else
+            paths=$(git diff-tree -m --no-commit-id --name-only -r HEAD 2>/dev/null || true)
+          fi
+          if echo "$paths" | grep -qE '^apps/api/'; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "changed=false" >> "$GITHUB_OUTPUT"
