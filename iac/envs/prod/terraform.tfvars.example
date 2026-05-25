@@ -1,0 +1,28 @@
+# Prod — existing live stack (migrated from opentofu-new).
+# Runtime secrets: API_ENV_PROD_B64 (apps/api/.env), not here.
+
+project_id = "project-c74d38dd-7e12-4d3f-bbf"
+region     = "europe-west10"
+
+cloud_run_service_name = "contactbook-api"
+allow_unauthenticated  = true
+container_port         = 8080
+cpu                    = "1"
+memory                 = "1Gi"
+min_instances          = 1
+max_instances          = 2
+
+env = {
+  NODE_ENV = "production"
+}
+
+create_profile_photos_bucket = true
+profile_photos_bucket_name   = "contactbook-profile-photos-c74d38dd"
+
+profile_photos_cors_origins = [
+  "https://contactbookten.vercel.app",
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+]

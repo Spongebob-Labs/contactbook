@@ -1,4 +1,4 @@
-# Creates a GitHub Release for the API when CI succeeds on a push to main or dev that changes apps/api/.
+# Creates a GitHub Release for the API when CI succeeds on a push to main that changes apps/api/.
 # Tags use prefix api-v* so they do not affect git describe --match "v*" used by CI/CD for image versions.
 #
 # Requires default GITHUB_TOKEN permissions: contents write (set on the job).
@@ -18,7 +18,7 @@ jobs:
   release:
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
-      contains(fromJSON('["main","dev"]'), github.event.workflow_run.head_branch) &&
+      github.event.workflow_run.head_branch == 'main' &&
       github.event.workflow_run.event == 'push'
     runs-on: ubuntu-latest
     permissions:
@@ -68,9 +68,11 @@ jobs:
           NOTES_FILE="${RUNNER_TEMP}/release-notes.md"
           PREV=$(git tag -l 'api-v*' --merged HEAD --sort=-creatordate 2>/dev/null | head -1 || true)
           {
-            echo "## apps/api"
+            echo "## apps/api (Prod)"
             echo
-            echo "Image / CD version segment: **${RELEASE_VERSION}** (same formula as CI and CD for \`main\` and \`dev\`)."
+            echo "Prod Cloud Run: **contactbook-api**"
+            echo
+            echo "Image tag: **${RELEASE_VERSION}** (Artifact Registry \`contactbook/api:${RELEASE_VERSION}\`)."
             echo
             if [ -n "${PREV:-}" ] && git rev-parse "$PREV^{}" >/dev/null 2>&1; then
               git log "${PREV}..HEAD" --pretty=format:'- %s (%h)' -- apps/api/ || true

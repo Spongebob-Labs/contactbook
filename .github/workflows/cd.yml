@@ -1,11 +1,16 @@
-# Deploys the API image built and pushed by CI to Cloud Run (after a successful push to main or dev).
+# Deploys the API image built by CI to Cloud Run after a successful push.
 # workflow_run uses this file from the repo DEFAULT BRANCH (main) — merge workflow fixes to main
 # before they apply to dev-triggered CI runs.
 #
-# Secrets: API_ENV_B64 (production: base64 full apps/api/.env), GCP_WORKLOAD_IDENTITY_PROVIDER,
-#   GCP_SERVICE_ACCOUNT
-# Variables: GCP_REGION, GCP_PROJECT_ID — optional CLOUD_RUN_SERVICE (default: contactbook-api)
+# dev  → UAT:  contactbook-api-uat, image :<version>-uat, API_ENV_UAT_B64 (fallback API_ENV_B64)
+# main → Prod: contactbook-api,     image :<version>,     API_ENV_PROD_B64
 #
+# Secrets: API_ENV_UAT_B64, API_ENV_PROD_B64, API_ENV_B64 (UAT fallback),
+#   GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_SERVICE_ACCOUNT
+# Variables: GCP_REGION, GCP_PROJECT_ID,
+#   CLOUD_RUN_SERVICE_UAT (default contactbook-api-uat),
+#   CLOUD_RUN_SERVICE_PROD (default contactbook-api)
+
 name: CD
 
 on:
@@ -14,14 +19,14 @@ on:
     types: [completed]
 
 concurrency:
-  group: cd-${{ github.event.workflow_run.head_sha }}
+  group: cd-${{ github.event.workflow_run.head_branch }}-${{ github.event.workflow_run.head_sha }}
   cancel-in-progress: true
 
 jobs:
-  deploy:
+  deploy-uat:
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
-      contains(fromJSON('["main","dev"]'), github.event.workflow_run.head_branch) &&
+      github.event.workflow_run.head_branch == 'dev' &&
       github.event.workflow_run.event == 'push'
     runs-on: ubuntu-latest
     permissions:
@@ -45,15 +50,20 @@ jobs:
             echo "changed=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Decode API env (production)
+      - name: Decode API env (UAT)
         if: steps.detect.outputs.changed == 'true'
         env:
+          API_ENV_UAT_B64: ${{ secrets.API_ENV_UAT_B64 }}
           API_ENV_B64: ${{ secrets.API_ENV_B64 }}
         run: |
           set -euo pipefail
-          printf '%s' "$API_ENV_B64" | base64 -d > apps/api/.env
+          if [ -n "${API_ENV_UAT_B64:-}" ]; then
+            printf '%s' "$API_ENV_UAT_B64" | base64 -d > apps/api/.env
+          else
+            printf '%s' "$API_ENV_B64" | base64 -d > apps/api/.env
+          fi
           test -s apps/api/.env || {
-            echo "API_ENV_B64 missing or invalid (decoded apps/api/.env is empty)."
+            echo "API_ENV_UAT_B64 or API_ENV_B64 missing or invalid."
             exit 1
           }
 
@@ -72,13 +82,91 @@ jobs:
         if: steps.detect.outputs.changed == 'true'
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Deploy to Cloud Run
+      - name: Deploy to Cloud Run (UAT)
         if: steps.detect.outputs.changed == 'true'
         env:
           REGION: ${{ vars.GCP_REGION }}
           PROJECT: ${{ vars.GCP_PROJECT_ID }}
-          SERVICE: ${{ vars.CLOUD_RUN_SERVICE }}
-          SHA: ${{ github.event.workflow_run.head_sha }}
+          SERVICE: ${{ vars.CLOUD_RUN_SERVICE_UAT }}
+          RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
+        run: |
+          set -euo pipefail
+          if [ -z "$REGION" ] || [ -z "$PROJECT" ]; then
+            echo "Set repository variables GCP_REGION and GCP_PROJECT_ID."
+            exit 1
+          fi
+          SERVICE_NAME="${SERVICE:-contactbook-api-uat}"
+          LATEST_TAG=$(git describe --tags --match "v*" --abbrev=0 2>/dev/null || echo "v0.1")
+          BASE_VERSION=${LATEST_TAG#v}
+          VERSION_TAG="${BASE_VERSION}.${RUN_NUMBER}-uat"
+          IMAGE="${REGION}-docker.pkg.dev/${PROJECT}/contactbook/api:${VERSION_TAG}"
+          gcloud run services update "${SERVICE_NAME}" \
+            --project="${PROJECT}" \
+            --region="${REGION}" \
+            --image="${IMAGE}" \
+            --env-vars-file="${RUNNER_TEMP}/cloudrun-env.json" \
+            --quiet
+
+  deploy-prod:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout at CI commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 1
+          fetch-tags: true
+
+      - name: Detect apps/api changes
+        id: detect
+        run: |
+          set -euo pipefail
+          if git diff-tree --no-commit-id --name-only -r HEAD | grep -qE '^apps/api/'; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Decode API env (Prod)
+        if: steps.detect.outputs.changed == 'true'
+        env:
+          API_ENV_PROD_B64: ${{ secrets.API_ENV_PROD_B64 }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$API_ENV_PROD_B64" | base64 -d > apps/api/.env
+          test -s apps/api/.env || {
+            echo "API_ENV_PROD_B64 missing or invalid."
+            exit 1
+          }
+
+      - name: Convert .env to Cloud Run env JSON
+        if: steps.detect.outputs.changed == 'true'
+        run: python3 scripts/dotenv-to-gcloud-env-json.py apps/api/.env "${RUNNER_TEMP}/cloudrun-env.json"
+
+      - name: Authenticate to Google Cloud
+        if: steps.detect.outputs.changed == 'true'
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        if: steps.detect.outputs.changed == 'true'
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy to Cloud Run (Prod)
+        if: steps.detect.outputs.changed == 'true'
+        env:
+          REGION: ${{ vars.GCP_REGION }}
+          PROJECT: ${{ vars.GCP_PROJECT_ID }}
+          SERVICE: ${{ vars.CLOUD_RUN_SERVICE_PROD }}
           RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
         run: |
           set -euo pipefail

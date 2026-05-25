@@ -1,10 +1,21 @@
-# New GCP project stack
+# Deprecated — use `iac/envs/*`
+
+This root module is **deprecated**. Use:
+
+- [`../envs/platform/`](../envs/platform/) — shared GAR + GitHub WIF
+- [`../envs/prod/`](../envs/prod/) — Prod Cloud Run (`contactbook-api`, existing live stack)
+- [`../envs/uat/`](../envs/uat/) — UAT Cloud Run (`contactbook-api-uat`, new)
+
+Migrate existing state: [`../MIGRATE.md`](../MIGRATE.md). CI/CD: [`../../docs/gcp-ci-cutover.md`](../../docs/gcp-ci-cutover.md).
+
+---
+
+# New GCP project stack (legacy doc)
 
 OpenTofu for **`project-c74d38dd-7e12-4d3f-bbf`**. Local state lives only in this directory (fresh `terraform.tfstate` on first apply).
 
 - Auth: impersonates `contactbook-opentofu@project-c74d38dd-7e12-4d3f-bbf.iam.gserviceaccount.com` (see `providers.tf`). Run `gcloud auth application-default login` first.
 - Legacy project **`c-club-466412`** remains in [`../opentofu/`](../opentofu/) — do not change that folder when migrating.
-- **CI/CD cutover** (GitHub variables/secrets, `API_ENV_B64`, OAuth): [`../../docs/gcp-ci-cutover.md`](../../docs/gcp-ci-cutover.md).
 
 ---
 

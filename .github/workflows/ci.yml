@@ -3,11 +3,13 @@
 # ESLint is not run in CI; run ./scripts/validate-api.sh locally (requires apps/api/.env) before pushing.
 #
 # Secrets (repository Settings → Secrets and variables → Actions):
-# - API_ENV_B64 — required. Base64-encoded full `apps/api/.env` (see apps/api/.env.example). Used for
-#   Prisma generate, typecheck, tests, and Docker build (BuildKit file secret `api_env`).
-# - API_ENV_CI_B64 — optional. If set, CI uses this instead of API_ENV_B64 (e.g. CI-only DB URL).
-# - GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_SERVICE_ACCOUNT — required to push images to GAR on push to main/dev.
-#   Pushes a single tag :<0.1.run_number> (e.g. 0.1.42). No provenance/SBOM side manifests; no GitHub build-record artifact.
+# - API_ENV_UAT_B64 — UAT dotenv for dev push builds (fallback: API_ENV_B64).
+# - API_ENV_PROD_B64 — Prod dotenv for main push builds.
+# - API_ENV_CI_B64 — optional; PR CI tests use this instead of API_ENV_B64 when set.
+# - API_ENV_B64 — legacy UAT fallback when API_ENV_UAT_B64 is unset.
+# - GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_SERVICE_ACCOUNT — push images to GAR on push to main/dev.
+#
+# Image tags: dev → 0.1.<run_number>-uat ; main → 0.1.<run_number>
 #
 # Variables (non-secret): GCP_REGION, GCP_PROJECT_ID — required when pushing images to Artifact Registry.
 
@@ -54,16 +56,31 @@ jobs:
       - name: Decode API env for CI
         env:
           API_ENV_B64: ${{ secrets.API_ENV_B64 }}
+          API_ENV_UAT_B64: ${{ secrets.API_ENV_UAT_B64 }}
+          API_ENV_PROD_B64: ${{ secrets.API_ENV_PROD_B64 }}
           API_ENV_CI_B64: ${{ secrets.API_ENV_CI_B64 }}
         run: |
           set -euo pipefail
-          if [ -n "${API_ENV_CI_B64:-}" ]; then
-            printf '%s' "$API_ENV_CI_B64" | base64 -d > apps/api/.env
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            if [ -n "${API_ENV_CI_B64:-}" ]; then
+              printf '%s' "$API_ENV_CI_B64" | base64 -d > apps/api/.env
+            else
+              printf '%s' "$API_ENV_B64" | base64 -d > apps/api/.env
+            fi
+          elif [ "${{ github.ref }}" = "refs/heads/dev" ]; then
+            if [ -n "${API_ENV_UAT_B64:-}" ]; then
+              printf '%s' "$API_ENV_UAT_B64" | base64 -d > apps/api/.env
+            else
+              printf '%s' "$API_ENV_B64" | base64 -d > apps/api/.env
+            fi
+          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            printf '%s' "$API_ENV_PROD_B64" | base64 -d > apps/api/.env
           else
-            printf '%s' "$API_ENV_B64" | base64 -d > apps/api/.env
+            echo "Unsupported ref for env decode: ${{ github.ref }}"
+            exit 1
           fi
           test -s apps/api/.env || {
-            echo "Decoded apps/api/.env is empty. Configure repository secret API_ENV_B64 (base64 of a dotenv file)."
+            echo "Decoded apps/api/.env is empty. Configure API_ENV_*_B64 (or API_ENV_B64 for PR/UAT fallback)."
             exit 1
           }
 
@@ -92,10 +109,15 @@ jobs:
           LATEST_TAG=$(git describe --tags --match "v*" --abbrev=0 2>/dev/null || echo "v0.1")
           BASE_VERSION=${LATEST_TAG#v}
           VERSION_TAG="${BASE_VERSION}.${RUN_NUMBER}"
+          if [ "${{ github.ref }}" = "refs/heads/dev" ]; then
+            IMAGE_TAG="${VERSION_TAG}-uat"
+          else
+            IMAGE_TAG="${VERSION_TAG}"
+          fi
           BASE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/contactbook/api"
           {
             echo "tags<<__EOF__"
-            echo "${BASE}:${VERSION_TAG}"
+            echo "${BASE}:${IMAGE_TAG}"
             echo "__EOF__"
           } >> "$GITHUB_OUTPUT"
 
