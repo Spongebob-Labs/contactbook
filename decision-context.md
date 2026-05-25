@@ -1,5 +1,35 @@
 # Decision Context
 
+## 2026-05-25 - Phase 3B Continuous Hero Motion
+
+- Decision: Add continuous, subtle hero motion to the public landing page using CSS keyframes for slow image pan/scale, looping connection-path drawing, staggered node pulsing, and gentle proof-point movement.
+- Reason: The hero should feel alive and custom-crafted around the ContactBook connectivity concept, not only animate once on scroll. Keeping the movement slow and varied supports the premium editorial deck feeling without distracting from the headline or CTAs.
+- Notes: Continuous motion is scoped to the hero. Scroll-triggered reveals remain for lower sections. `prefers-reduced-motion` disables the looping hero animation and preserves a static accessible version. Backend code and browser testing remain untouched.
+
+## 2026-05-25 - Phase 3A Landing Typography Curves Graphics And Motion
+
+- Decision: Refine the public landing page with deck-matching public fonts, fewer card boxes, curved section transitions, connection-path graphics, faint oversized brand/contact typography, circular contact nodes, and subtle scroll-triggered reveal animations.
+- Reason: The first landing redesign still read too much like a boxed SaaS dashboard. The official deck uses a more editorial visual language with large typography, whitespace, contact/connectivity motifs, and soft teal/grey accents, so the public page should feel custom-crafted around the brand idea of staying connected.
+- Notes: Public typography uses Times New Roman for display text and Arial for interface/body text, scoped to public pages only. Motion uses IntersectionObserver reveal classes and respects `prefers-reduced-motion`. Decorative graphics avoid generic blobs/orbs and are tied to contact paths, initials, and connectivity. Backend code and browser testing remain untouched.
+
+## 2026-05-25 - Phase 3 Deck-Led Landing Page Redesign
+
+- Decision: Redesign the public landing page around the official ContactBook deck message: "Never lose contact," "the address book that updates itself," connectivity, problems solved, how it works, why it works, use cases, and a contact CTA. Use the deck's city/connectivity image as the hero visual and apply the public fixed-light design tokens throughout.
+- Reason: The public first impression should match the deck's theme and feeling while staying customer-facing. Investor-specific funding, valuation, shareholder-value, and old milestone content remains out of the public landing page because it is pitch-deck material and could distract or create review risk.
+- Notes: The landing page remains frontend-only, uses the reusable public shell, and keeps About/Contact as later phases. Official copy is adapted where needed for clarity and modern public-site tone without changing the core meaning. Backend code and browser testing remain untouched.
+
+## 2026-05-25 - Phase 2 Public Page Shell
+
+- Decision: Introduce a reusable public page shell with shared header, footer, navigation, and a fixed-light `public-light-theme` CSS scope for marketing pages.
+- Reason: Landing, About, and Contact should share the same public chrome and official deck-inspired light theme without depending on the user's app light/dark preference. Keeping this shell separate from the authenticated app shell lets the dashboard/auth/profile theme be updated later without mixing concerns.
+- Notes: The landing page now uses the shared public shell, removes the public theme toggle, and keeps its existing main content for the next landing redesign phase. Public shell tokens cascade shadcn-compatible values locally so existing UI primitives remain usable. Backend code and browser testing remain untouched.
+
+## 2026-05-25 - Phase 1 Public ContactBook Theme Tokens
+
+- Decision: Add centralized public-page ContactBook brand tokens to the Tailwind v4 CSS theme while leaving the existing app-wide shadcn tokens and dark-mode app theme unchanged.
+- Reason: The public landing/about/contact redesign should match the official deck palette first, but future client color changes should happen by editing token values in one place instead of changing individual page components. Logged-in app pages will keep their current changeable light/dark behavior until a later whole-app theme phase.
+- Notes: Public tokens are fixed-light values based on the PPTX palette, including teal, mint, charcoal, grey, white, and light surface colors. Backend code and browser testing remain untouched.
+
 ## 2026-05-25 - Add Frontend VCF Import Flow
 
 - Decision: Enable VCF/vCard file import in both the dashboard import page and the onboarding import modal, posting `.vcf` or `.vcard` files up to 50 MB to `POST /v1/contacts/import/vcf` with multipart field `file`.
