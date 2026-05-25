@@ -1,5 +1,17 @@
 # Decision Context
 
+## 2026-05-25 - Plan Product Owner UI Simplification In Phases
+
+- Decision: Implement the product owner feedback in gated frontend-only phases, stopping after each phase for user review before continuing. Use temporary production-safe copy and placeholder visual areas until deck language and approved media are provided.
+- Reason: The requested changes affect first impressions, signup, onboarding complexity, card positioning, and dashboard focus. A phased approach keeps review risk low and makes it easier to validate the product direction before broader UI changes.
+- Notes: Phase 1 audit found the main frontend touchpoints are `apps/web/src/pages/landing-page.tsx`, `auth-page.tsx`, `profile-onboarding-page.tsx`, `dashboard-page.tsx`, `cards-page.tsx`, `card-onboarding-page.tsx`, `card-detail-page.tsx`, `profile-page.tsx`, and supporting mock/type helpers if needed. Keep the product centered on individuals staying in contact rather than teams or organizations. Preserve automatic creation of two starter cards after onboarding instead of reintroducing the setup card creation wizard. Business logos will use URL entry for now because only profile photo upload endpoints are available. Hide financials from the visible user flow for this simplification pass while preserving safe backend-compatible payload behavior. Backend code and browser testing remain untouched.
+
+## 2026-05-25 - Phase 2 Landing And Auth Simplification
+
+- Decision: Reposition the public landing page around individuals maintaining personal relationships, using temporary production-safe copy and an in-product global relationship visual instead of final approved people imagery. Update the auth phone step so the country code selector and national number appear as one combined phone field while preserving the existing `countryCode` and normalized `phone` request body.
+- Reason: Product owner feedback called out clutter, team-oriented language, and a separated country-code experience. This phase improves first impression and login ergonomics without changing backend contracts or waiting on final deck language/media.
+- Notes: Keep the page clean, shadcn/Tailwind-based, and free of internal placeholder labels. Backend code and browser testing remain untouched.
+
 ## 2026-05-22 - Auto-Create Starter Cards During Setup
 
 - Decision: After setup profile onboarding saves, automatically create two starter card shells from the entered identity: a personal card named from first and last name, and a business card named with a `- Work` suffix. Skip the manual create-card modal in setup flow while keeping manual card creation unchanged elsewhere.

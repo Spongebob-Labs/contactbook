@@ -1,88 +1,92 @@
 import {
   ArrowRight,
   BadgeCheck,
-  Bell,
   CheckCircle2,
   ContactRound,
-  FolderSync,
-  Layers3,
+  Globe2,
+  HeartHandshake,
   LockKeyhole,
   MessageCircle,
   Search,
   ShieldCheck,
   Sparkles,
-  Tag,
   UsersRound,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
 
 const navItems = [
-  { label: "Features", href: "#features" },
-  { label: "Security", href: "#security" },
-  { label: "Workflow", href: "#workflow" },
+  { label: "How it works", href: "#features" },
+  { label: "Privacy", href: "#security" },
+  { label: "Connect", href: "#workflow" },
 ];
 
 const metrics = [
-  { value: "One", label: "shared contact workspace" },
-  { value: "Real-time", label: "team visibility" },
-  { value: "Secure", label: "permission-aware access" },
+  { value: "One", label: "profile people can save" },
+  { value: "Two", label: "starter cards after setup" },
+  { value: "Private", label: "sharing stays intentional" },
 ];
 
 const features = [
   {
     icon: ContactRound,
-    title: "Unified contact profiles",
+    title: "Your details in one place",
     description:
-      "Bring identity, phone, email, notes, and relationship context into one profile your team can trust.",
+      "Create a simple profile with the contact details you want family, friends, and new connections to keep.",
+  },
+  {
+    icon: HeartHandshake,
+    title: "Made for real relationships",
+    description:
+      "Share personal and business cards without asking people to copy numbers from scattered chats.",
   },
   {
     icon: UsersRound,
-    title: "Team contact sharing",
+    title: "Keep connections close",
     description:
-      "Give the right people access to shared contacts without passing spreadsheets back and forth.",
+      "See the cards you have created and the people connected to you from a focused dashboard.",
   },
   {
-    icon: Tag,
-    title: "Groups and custom tags",
+    icon: Globe2,
+    title: "Built for a global network",
     description:
-      "Organize relationships by client, region, expertise, priority, or any workflow your team already uses.",
-  },
-  {
-    icon: Bell,
-    title: "Notes and follow-ups",
-    description:
-      "Keep useful context next to the contact, so every conversation starts with the latest information.",
+      "Start with phone-first access and a profile that works naturally across countries and contexts.",
   },
 ];
 
 const securityItems = [
-  "Protected account access",
-  "Permission-aware sharing",
-  "Organized import workflows",
-  "Privacy-first contact records",
+  "WhatsApp-based account access",
+  "Clear personal and business cards",
+  "Control over what you share",
+  "Contact records designed around people",
 ];
 
 const workflowItems = [
   {
     icon: Search,
-    title: "Find the right contact",
-    description: "Search across clean, structured contact data instead of hunting through scattered lists.",
+    title: "Create your profile",
+    description: "Start with the essentials so your first card feels quick instead of overwhelming.",
   },
   {
-    icon: FolderSync,
-    title: "Import and organize",
-    description: "Start from existing sources, then shape contacts into groups, tags, and profiles.",
+    icon: BadgeCheck,
+    title: "Get starter cards",
+    description: "ContactBook prepares personal and business cards from your setup details.",
   },
   {
     icon: ShieldCheck,
-    title: "Share with confidence",
-    description: "Keep collaboration focused by giving teams access to the contacts they need.",
+    title: "Share intentionally",
+    description: "Use the right card for the right relationship and keep improving it over time.",
   },
+];
+
+const relationshipMoments = [
+  { name: "Maya", place: "Mumbai", detail: "Family card saved", initials: "MP" },
+  { name: "Noah", place: "London", detail: "New number shared", initials: "NC" },
+  { name: "Amina", place: "Nairobi", detail: "Business card updated", initials: "AO" },
 ];
 
 export default function LandingPage() {
@@ -119,19 +123,19 @@ export default function LandingPage() {
       </header>
 
       <section className="border-b border-border/70 bg-background">
-        <div className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-7xl items-center gap-12 px-4 py-12 sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(420px,0.86fr)] lg:px-8">
+        <div className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-7xl items-center gap-12 px-4 py-12 sm:px-6 lg:grid-cols-[minmax(0,0.95fr)_minmax(420px,0.9fr)] lg:px-8">
           <div className="max-w-3xl space-y-7">
             <Badge variant="secondary" className="h-8 gap-2 px-3">
               <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
-              Contact management built for modern teams
+              A personal network that stays current
             </Badge>
             <div className="space-y-5">
               <h1 className="max-w-4xl text-5xl font-semibold leading-[1.02] tracking-normal text-foreground sm:text-6xl lg:text-7xl">
-                One reliable place for every contact your team depends on.
+                Help people keep the right way to reach you.
               </h1>
               <p className="max-w-2xl text-lg leading-8 text-muted-foreground">
-                ContactBook helps teams organize, share, and maintain contact records with the
-                context needed to build stronger relationships.
+                ContactBook lets individuals create simple personal and business cards,
+                share them with the people who matter, and keep contact details easier to maintain.
               </p>
             </div>
             <div className="flex flex-col gap-3 sm:flex-row">
@@ -157,75 +161,75 @@ export default function LandingPage() {
           </div>
 
           <div className="relative">
-            <div className="absolute -left-6 top-10 hidden h-28 w-28 rounded-lg bg-accent/45 blur-3xl lg:block" />
             <div className="relative overflow-hidden rounded-lg border border-border bg-card shadow-2xl shadow-primary/10">
-              <div className="border-b border-border bg-muted/35 px-4 py-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="h-2.5 w-2.5 rounded-full bg-destructive" />
-                    <span className="h-2.5 w-2.5 rounded-full bg-warning" />
-                    <span className="h-2.5 w-2.5 rounded-full bg-success" />
+              <div className="grid min-h-[520px] gap-0 md:grid-cols-[minmax(0,1fr)_210px]">
+                <div className="flex flex-col justify-between gap-8 p-5 sm:p-7">
+                  <div className="space-y-3">
+                    <Badge variant="outline">Global contact card</Badge>
+                    <h2 className="text-3xl font-semibold tracking-normal">Riya Sharma</h2>
+                    <p className="max-w-md text-sm leading-6 text-muted-foreground">
+                      Personal card for family, friends, and new connections.
+                    </p>
                   </div>
-                  <Badge variant="outline">Live workspace</Badge>
-                </div>
-              </div>
-              <div className="grid gap-0 md:grid-cols-[220px_minmax(0,1fr)]">
-                <aside className="hidden border-r border-border bg-muted/25 p-4 md:block">
-                  <div className="mb-5 h-9 rounded-md bg-primary/10" />
-                  {["All contacts", "Shared groups", "Tags", "Imports"].map((item, index) => (
-                    <div
-                      key={item}
-                      className={`mb-2 flex items-center gap-2 rounded-md px-3 py-2 text-sm ${
-                        index === 0 ? "bg-primary text-primary-foreground" : "text-muted-foreground"
-                      }`}
-                    >
-                      <span className="h-2 w-2 rounded-full bg-current" />
-                      {item}
+
+                  <div className="relative rounded-lg border border-border bg-muted/35 p-4">
+                    <div className="absolute right-4 top-4 flex h-12 w-12 items-center justify-center rounded-md bg-primary text-lg font-semibold text-primary-foreground">
+                      RS
                     </div>
-                  ))}
-                </aside>
-                <div className="space-y-4 p-4 sm:p-6">
-                  <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-                    <div>
-                      <p className="text-sm text-muted-foreground">Team directory</p>
-                      <h2 className="text-2xl font-semibold tracking-normal">Priority contacts</h2>
+                    <div className="space-y-2 pr-16">
+                      <p className="text-sm font-medium text-muted-foreground">Shared details</p>
+                      <p className="text-lg font-semibold">Phone, email, home city</p>
+                      <p className="text-sm leading-6 text-muted-foreground">
+                        Clean essentials first, with room to add more later.
+                      </p>
                     </div>
-                    <Button size="sm" variant="secondary">
-                      <UsersRound className="h-4 w-4" aria-hidden="true" />
-                      Share group
-                    </Button>
                   </div>
 
                   <div className="grid gap-3">
-                    {[
-                      ["Avery Johnson", "Partner lead", "Enterprise", "Updated today"],
-                      ["Maya Patel", "Customer success", "Healthcare", "Shared with Sales"],
-                      ["Noah Chen", "Finance advisor", "Investor", "Follow-up set"],
-                    ].map(([name, role, tag, status]) => (
+                    {relationshipMoments.map((moment) => (
                       <div
-                        key={name}
-                        className="grid gap-3 rounded-lg border border-border bg-background p-4 sm:grid-cols-[1fr_auto] sm:items-center"
+                        key={moment.name}
+                        className="flex items-center justify-between gap-4 rounded-lg border border-border bg-background p-4"
                       >
                         <div className="flex items-center gap-3">
-                          <div className="flex h-11 w-11 items-center justify-center rounded-md bg-secondary font-semibold text-secondary-foreground">
-                            {name
-                              .split(" ")
-                              .map((part) => part[0])
-                              .join("")}
+                          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-secondary font-semibold text-secondary-foreground">
+                            {moment.initials}
                           </div>
-                          <div>
-                            <p className="font-medium">{name}</p>
-                            <p className="text-sm text-muted-foreground">{role}</p>
+                          <div className="min-w-0">
+                            <p className="font-medium">{moment.name}</p>
+                            <p className="truncate text-sm text-muted-foreground">{moment.place}</p>
                           </div>
                         </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge variant="secondary">{tag}</Badge>
-                          <Badge variant="outline">{status}</Badge>
-                        </div>
+                        <Badge variant="secondary" className="shrink-0">
+                          {moment.detail}
+                        </Badge>
                       </div>
                     ))}
                   </div>
                 </div>
+
+                <aside className="border-t border-border bg-[oklch(0.96_0.025_160)] p-5 dark:bg-muted/30 md:border-l md:border-t-0">
+                  <div className="flex h-full flex-col justify-between gap-8">
+                    <div className="space-y-4">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-md bg-background text-primary shadow-sm">
+                        <Globe2 className="h-6 w-6" aria-hidden="true" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium">Across countries</p>
+                        <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                          Built for contact details that move with people.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="space-y-3">
+                      {["Personal card", "Business card", "Connections"].map((item) => (
+                        <div key={item} className="rounded-md bg-background/80 px-3 py-2 text-sm font-medium">
+                          {item}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </aside>
               </div>
             </div>
           </div>
@@ -237,7 +241,7 @@ export default function LandingPage() {
           <div className="max-w-2xl space-y-3">
             <Badge variant="outline">Core features</Badge>
             <h2 className="text-3xl font-semibold tracking-normal sm:text-4xl">
-              Replace scattered contact lists with a shared operating system for relationships.
+              A cleaner way to introduce yourself and stay reachable.
             </h2>
           </div>
           <div className="mt-10 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -266,11 +270,11 @@ export default function LandingPage() {
               Secure by design
             </Badge>
             <h2 className="text-3xl font-semibold tracking-normal sm:text-4xl">
-              Give teams access to contacts without losing control of the data.
+              Keep sharing intentional from the first card.
             </h2>
             <p className="text-base leading-7 text-muted-foreground">
-              ContactBook keeps the workspace centered on privacy, account protection, and
-              organized sharing so your relationship data stays useful and intentional.
+              ContactBook keeps setup focused on the details people actually need,
+              while leaving room to add more when a relationship calls for it.
             </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -290,12 +294,12 @@ export default function LandingPage() {
             <div className="space-y-3">
               <Badge variant="warning">Simple workflow</Badge>
               <h2 className="text-3xl font-semibold tracking-normal sm:text-4xl">
-                Start with the contacts you have. Build the workspace your team needs.
+                Start with the essentials. Add depth when you need it.
               </h2>
             </div>
             <p className="text-base leading-7 text-muted-foreground">
-              The first landing page pass focuses on the product promise: centralize contacts,
-              organize them clearly, and share them with confidence.
+              The first experience should feel light: create a profile, receive starter cards,
+              and build your network without a long form getting in the way.
             </p>
           </div>
           <div className="mt-10 grid gap-4 md:grid-cols-3">
@@ -322,11 +326,11 @@ export default function LandingPage() {
           <div className="max-w-2xl space-y-2">
             <Badge className="bg-background text-foreground dark:bg-primary dark:text-primary-foreground">
               <BadgeCheck className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
-              Public landing page
+              ContactBook
             </Badge>
-            <h2 className="text-3xl font-semibold tracking-normal">Ready to organize your team contacts?</h2>
+            <h2 className="text-3xl font-semibold tracking-normal">Ready to make your details easier to share?</h2>
             <p className="text-sm leading-6 text-background/75 dark:text-muted-foreground">
-              Create an account or sign in to continue into the ContactBook workspace.
+              Create an account or sign in to continue to your ContactBook.
             </p>
           </div>
           <Link

@@ -16,6 +16,7 @@ import { DIAL_COUNTRIES } from "@/lib/dial-countries";
 import { friendlyErrorMessages, logUiError } from "@/lib/friendly-errors";
 import { buildE164, nationalDigits } from "@/lib/phone";
 import type { VerifyCodeResponse } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 const COUNTRY_CODE_PATTERN = /^\+\d{1,4}$/;
 const NATIONAL_PHONE_PATTERN = /^\d{4,15}$/;
@@ -200,8 +201,8 @@ export default function AuthPage() {
             Build a contact profile people can actually keep up to date.
           </h1>
           <p className="max-w-lg text-base text-muted-foreground">
-            Sign in with WhatsApp, create your profile, and bring your Google
-            contacts into one focused workspace.
+            Sign in with WhatsApp, create your personal contact profile, and
+            share the right details with family, friends, and new connections.
           </p>
         </div>
         <div className="grid max-w-lg grid-cols-3 gap-3">
@@ -235,28 +236,30 @@ export default function AuthPage() {
             {step === "phone" && (
               <form className="space-y-5" onSubmit={phoneForm.handleSubmit(onRequestCode)}>
                 <label className="flex flex-col gap-2 text-sm font-medium">
-                  <span>Country code</span>
-                  <CountryCodeCombobox
-                    value={selectedCountryCode}
-                    options={COUNTRY_CODE_OPTIONS}
-                    disabled={isBusy}
-                    onChange={(countryCode) =>
-                      phoneForm.setValue("countryCode", countryCode, {
-                        shouldDirty: true,
-                        shouldTouch: true,
-                        shouldValidate: true,
-                      })
-                    }
-                  />
-                </label>
-                <label className="flex flex-col gap-2 text-sm font-medium">
                   <span>Phone number</span>
-                  <Input
-                    inputMode="tel"
-                    autoComplete="tel-national"
-                    placeholder="5551234567"
-                    {...phoneForm.register("national")}
-                  />
+                  <div className="flex h-11 rounded-md border border-input bg-background shadow-xs transition-colors focus-within:ring-2 focus-within:ring-ring">
+                    <CountryCodeCombobox
+                      embedded
+                      value={selectedCountryCode}
+                      options={COUNTRY_CODE_OPTIONS}
+                      disabled={isBusy}
+                      onChange={(countryCode) =>
+                        phoneForm.setValue("countryCode", countryCode, {
+                          shouldDirty: true,
+                          shouldTouch: true,
+                          shouldValidate: true,
+                        })
+                      }
+                    />
+                    <div className="my-2 w-px bg-border" aria-hidden="true" />
+                    <Input
+                      inputMode="tel"
+                      autoComplete="tel-national"
+                      placeholder="5551234567"
+                      className="h-full min-w-0 flex-1 border-0 shadow-none focus-visible:ring-0"
+                      {...phoneForm.register("national")}
+                    />
+                  </div>
                 </label>
                 {phoneForm.formState.errors.countryCode && (
                   <p className="text-sm text-destructive">
@@ -366,11 +369,13 @@ export default function AuthPage() {
 
 function CountryCodeCombobox({
   disabled,
+  embedded = false,
   onChange,
   options,
   value,
 }: {
   disabled?: boolean;
+  embedded?: boolean;
   onChange: (value: string) => void;
   options: CountryCodeOption[];
   value: string;
@@ -401,8 +406,13 @@ function CountryCodeCombobox({
   };
 
   return (
-    <div className="relative">
-      <div className="flex rounded-md border border-input bg-background shadow-xs transition-colors focus-within:ring-2 focus-within:ring-ring">
+    <div className={cn("relative", embedded && "w-28 shrink-0 sm:w-32")}>
+      <div
+        className={cn(
+          "flex rounded-md border border-input bg-background shadow-xs transition-colors focus-within:ring-2 focus-within:ring-ring",
+          embedded && "h-full rounded-none border-0 bg-transparent shadow-none focus-within:ring-0",
+        )}
+      >
         <Input
           inputMode="tel"
           autoComplete="tel-country-code"
@@ -433,7 +443,10 @@ function CountryCodeCombobox({
             setIsOpen(true);
           }}
           placeholder="+1"
-          className="border-0 shadow-none focus-visible:ring-0"
+          className={cn(
+            "border-0 shadow-none focus-visible:ring-0",
+            embedded && "h-full rounded-none bg-transparent px-3",
+          )}
           role="combobox"
           aria-expanded={isOpen}
           aria-controls="country-code-options"
@@ -442,7 +455,10 @@ function CountryCodeCombobox({
           type="button"
           variant="outline"
           disabled={disabled}
-          className="rounded-l-none border-y-0 border-r-0 px-3 shadow-none focus-visible:ring-0"
+          className={cn(
+            "rounded-l-none border-y-0 border-r-0 px-3 shadow-none focus-visible:ring-0",
+            embedded && "h-full rounded-none border-0 bg-transparent px-2 hover:bg-muted",
+          )}
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => {
             setQuery(selectedOption ? `${selectedOption.name} ${selectedOption.dial}` : value);
@@ -458,7 +474,10 @@ function CountryCodeCombobox({
         <div
           id="country-code-options"
           role="listbox"
-          className="absolute z-20 mt-2 max-h-60 w-full overflow-y-auto rounded-md border border-border bg-popover p-2 text-popover-foreground shadow-md"
+          className={cn(
+            "absolute z-20 mt-2 max-h-60 w-full overflow-y-auto rounded-md border border-border bg-popover p-2 text-popover-foreground shadow-md",
+            embedded && "w-72",
+          )}
         >
           {filteredOptions.length > 0 ? (
             filteredOptions.map((option) => (
