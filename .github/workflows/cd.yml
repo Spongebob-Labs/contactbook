@@ -37,14 +37,20 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
-          fetch-depth: 1
+          fetch-depth: 0
           fetch-tags: true
 
       - name: Detect apps/api changes
         id: detect
         run: |
           set -euo pipefail
-          if git diff-tree --no-commit-id --name-only -r HEAD | grep -qE '^apps/api/'; then
+          # Merge commits: diff-tree lists nothing; compare to first parent instead.
+          if git rev-parse --verify -q HEAD^1 >/dev/null; then
+            paths=$(git diff --name-only HEAD^1 HEAD)
+          else
+            paths=$(git diff-tree -m --no-commit-id --name-only -r HEAD 2>/dev/null || true)
+          fi
+          if echo "$paths" | grep -qE '^apps/api/'; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "changed=false" >> "$GITHUB_OUTPUT"
