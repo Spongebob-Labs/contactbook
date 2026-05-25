@@ -44,15 +44,9 @@ function formatDate(value: string | null) {
 
 function hasGoogleConnectionEvidence(
   summary: ContactImportSummary,
-  contacts: ContactImport[],
 ) {
   const googleSummary = summary.bySource.find((item) => item.source === "GOOGLE");
-  return Boolean(
-    googleSummary?.hasSyncToken ||
-      googleSummary?.lastSyncAt ||
-      googleSummary?.activeCount ||
-      contacts.length > 0,
-  );
+  return Boolean(googleSummary?.hasSyncToken);
 }
 
 export default function ImportPage() {
@@ -93,7 +87,7 @@ export default function ImportPage() {
       summaryData.totalActive = response.total;
       setImports(contactsData);
       setSummary(summaryData);
-      setHasConnectedGoogle(hasGoogleConnectionEvidence(summaryData, contactsData));
+      setHasConnectedGoogle((current) => current || hasGoogleConnectionEvidence(summaryData));
       setIsMockData(false);
     } catch (err) {
       logUiError("Could not load imports", err);
@@ -110,7 +104,6 @@ export default function ImportPage() {
       summaryData.totalActive = response.total;
       setImports(contactsData);
       setSummary(summaryData);
-      setHasConnectedGoogle(true);
       setIsMockData(true);
       setError(null);
     } finally {
@@ -124,9 +117,9 @@ export default function ImportPage() {
       const result = await apiFetch<GoogleSyncResponse>(
         "/v1/contacts/sync?source=GOOGLE",
       );
-      setHasConnectedGoogle(true);
       toast.success(`Synced ${result.processedCount} contacts.`);
       await loadImports();
+      setHasConnectedGoogle(true);
       if (nextPath) {
         navigate(nextPath, { replace: true });
       }

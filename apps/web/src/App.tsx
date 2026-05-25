@@ -14,9 +14,6 @@ const DashboardPage = lazy(() => import("@/pages/dashboard-page"));
 const ImportPage = lazy(() => import("@/pages/import-page"));
 const LandingPage = lazy(() => import("@/pages/landing-page"));
 const ProfilePage = lazy(() => import("@/pages/profile-page"));
-const SignedInRedesignPreviewPage = lazy(
-  () => import("@/pages/signed-in-redesign-preview-page"),
-);
 const ThemePreviewPage = lazy(() => import("@/pages/theme-preview-page"));
 
 export default function App() {
@@ -64,14 +61,6 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <DashboardPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/dashboard/ui-preview/:screen?"
-            element={
-              <ProtectedRoute>
-                <SignedInRedesignPreviewPage />
               </ProtectedRoute>
             }
           />

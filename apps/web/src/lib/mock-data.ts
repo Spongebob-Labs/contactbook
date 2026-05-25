@@ -131,22 +131,22 @@ export function mockCardDetail(cardId: string | undefined): ContactCard {
 export const mockProfile: ProfileMeResponse = {
   profileOnboardingCompletedAt: now,
   identity: {
-    firstName: "Rishabh",
-    lastName: "Goyal",
-    primaryPhone: "+91 99999 00000",
-    primaryEmail: "rishabh@example.com",
+    firstName: "Alex",
+    lastName: "Morgan",
+    primaryPhone: "+1 555 0100",
+    primaryEmail: "alex@example.com",
     profilePhoto: null,
   },
   personal: {
     groupId: "sample-personal",
     tag: "Personal",
-    mobile: "+91 99999 00000",
-    email: "rishabh@example.com",
-    currentLocation: "Bengaluru",
+    mobile: "+1 555 0100",
+    email: "alex@example.com",
+    currentLocation: "New York",
     relationshipStatus: null,
     custom: {
-      nickname: "Rishabh",
-      title: "Founder",
+      nickname: "Alex",
+      title: "Product builder",
     },
   },
   work: [

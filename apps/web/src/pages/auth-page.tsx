@@ -61,6 +61,14 @@ const COUNTRY_CODE_OPTIONS = [...DIAL_COUNTRIES].sort((current, next) => {
   return current.name.localeCompare(next.name);
 });
 
+function countryCodeInput(value: string) {
+  return `+${value.replace(/\D/g, "").slice(0, 4)}`;
+}
+
+function phoneNumberInput(value: string) {
+  return value.replace(/\D/g, "").slice(0, 15);
+}
+
 export default function AuthPage() {
   const [step, setStep] = useState<Step>("phone");
   const [isBusy, setIsBusy] = useState(false);
@@ -255,9 +263,20 @@ export default function AuthPage() {
                     <Input
                       inputMode="tel"
                       autoComplete="tel-national"
-                      placeholder="5551234567"
+                      placeholder="Enter phone number"
                       className="h-full min-w-0 flex-1 border-0 shadow-none focus-visible:ring-0"
                       {...phoneForm.register("national")}
+                      onChange={(event) =>
+                        phoneForm.setValue(
+                          "national",
+                          phoneNumberInput(event.target.value),
+                          {
+                            shouldDirty: true,
+                            shouldTouch: true,
+                            shouldValidate: true,
+                          },
+                        )
+                      }
                     />
                   </div>
                 </label>
@@ -435,11 +454,11 @@ function CountryCodeCombobox({
             setIsOpen(false);
           }}
           onChange={(event) => {
-            setQuery(event.target.value);
+            setQuery(countryCodeInput(event.target.value));
             setIsOpen(true);
           }}
           onFocus={() => {
-            setQuery(selectedOption ? `${selectedOption.name} ${selectedOption.dial}` : value);
+            setQuery(value);
             setIsOpen(true);
           }}
           placeholder="+1"
@@ -461,7 +480,7 @@ function CountryCodeCombobox({
           )}
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => {
-            setQuery(selectedOption ? `${selectedOption.name} ${selectedOption.dial}` : value);
+            setQuery(value);
             setIsOpen((current) => !current);
           }}
           aria-label="Show country codes"

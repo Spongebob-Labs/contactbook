@@ -104,7 +104,7 @@ export function CardOnboardingModal({
                 <p className="mt-2 text-sm text-muted-foreground">
                   {isSetupMode
                     ? "Cards let you package the profile details you want to share for a specific context. Start simple now and refine the fields later."
-                    : "Create another shareable card for a personal, business, payment, or custom context."}
+                    : "Create another shareable card for a personal, business, or custom context."}
                 </p>
               </div>
               <Button

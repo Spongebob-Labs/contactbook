@@ -12,6 +12,66 @@
 - Reason: Product owner feedback called out clutter, team-oriented language, and a separated country-code experience. This phase improves first impression and login ergonomics without changing backend contracts or waiting on final deck language/media.
 - Notes: Keep the page clean, shadcn/Tailwind-based, and free of internal placeholder labels. Backend code and browser testing remain untouched.
 
+## 2026-05-25 - Phase 3 Simplify Personal Onboarding
+
+- Decision: Keep the personal onboarding data model and payload compatibility, but make the first personal step show only the essential contact-card fields first: profile photo, first name, last name, nickname, primary email, verified phone, and home address. Move lower-priority personal fields behind an explicit add-fields control. Make the profile photo area itself the upload target so users do not have to discover a small separate upload button.
+- Reason: Product owner feedback described the first contact-card step as abrupt, cluttered, and intimidating. Progressive disclosure reduces first-run friction while preserving access to existing optional fields for users who need them.
+- Notes: This remains frontend-only. Existing saved optional values can still be edited by opening the additional-fields section. Backend code and browser testing remain untouched.
+
+## 2026-05-25 - Remove Person-Specific Placeholder And Sample Identity Text
+
+- Decision: Replace person-specific or overly concrete form placeholders in the current signup/onboarding surfaces with neutral helper placeholders, and neutralize visible preview/mock profile identity values that referenced an individual contributor.
+- Reason: Placeholder text should guide input without implying a real person's data, a specific locale, or internal sample content in production UI.
+- Notes: Remaining `example.com`, `+1 555 010x`, search, and OTP placeholders are generic examples or standard reserved sample values. Backend code and browser testing remain untouched.
+
+## 2026-05-25 - Phase 4 Simplify Work Business And Social Inputs
+
+- Decision: Simplify work and business onboarding screens by showing only the product-owner-approved essentials first, moving secondary details behind add-fields controls, and removing the standalone socials step from the visible wizard. Keep social data in the existing `socials` payload shape by editing the first social row from the relevant personal/business sections.
+- Reason: Users should not have to understand profile categories or maintain a separate socials page during onboarding. Integrating Facebook/Instagram-style personal links and LinkedIn/business web links beside the cards they belong to keeps the flow clearer without changing backend contracts.
+- Notes: Business logo remains a URL field because only profile photo upload endpoints exist. Business description is stored as a custom business field. Existing hidden work/business/social values remain in form state and payloads for compatibility. Backend code and browser testing remain untouched.
+
+## 2026-05-25 - Restrict Auth Phone Inputs To Dialing Characters
+
+- Decision: Sanitize the auth phone step while users type or paste so country code accepts only `+` plus digits and the national phone field accepts digits only.
+- Reason: The combined phone input should prevent accidental letters, spaces, and punctuation before submit while preserving the backend contract of separate `countryCode` and normalized `phone` values.
+- Notes: Keep `inputMode="tel"` instead of `type="number"` because country codes need a plus sign and browser number inputs have inconsistent formatting behavior. Backend code and browser testing remain untouched.
+
+## 2026-05-25 - Phase 5 Hide Financial Surfaces
+
+- Decision: Remove financial/payment surfaces from the visible frontend flow for now: hide financial onboarding, hide financial profile summaries/details, and replace payment-card wording with neutral card wording. Preserve existing financial types, hydration, validation, and payload-building code so old data remains compatible and backend contracts are unchanged.
+- Reason: Product owner feedback asked to omit financials to reduce user overwhelm and keep the app focused on personal/business contact cards.
+- Notes: This is a visibility and copy change only. Dashboard setup detection now ignores hidden financial-only data so completion behavior reflects the visible profile surface. Backend code and browser testing remain untouched.
+
+## 2026-05-25 - Phase 6 Refine Dashboard Around Cards Connections And Completion
+
+- Decision: Reshape the dashboard into summary metrics for connections, cards, and profile completion; add compact visible card tiles; and replace the setup-style checklist with profile completion and lightweight sharing tips.
+- Reason: Product owner feedback asked for a cleaner dashboard that highlights cards created by the user, connection count, profile completion status, and helpful guidance without overwhelming first-time users.
+- Notes: Dashboard card tiles link to card details but keep full card management on the cards page. Profile completion is calculated from visible profile areas only and ignores hidden financial data. Backend code and browser testing remain untouched.
+
+## 2026-05-25 - Phase 7 Clean Up Remaining Copy And Flow Mismatches
+
+- Decision: Remove remaining standalone socials presentation from the profile page by showing Facebook/Instagram with personal details and LinkedIn/website with business details. Align the signed-in preview with the current three-step profile setup and make profile initialization checks ignore hidden financial-only data.
+- Reason: Social links now belong to the relevant personal or business profile context, and hidden financial data should not affect visible onboarding state after financials were removed from the user flow.
+- Notes: The underlying `socials` and `financial` payload shapes remain unchanged for backend compatibility. Backend code and browser testing remain untouched.
+
+## 2026-05-25 - Remove Signed-In Redesign Preview Route
+
+- Decision: Delete the obsolete signed-in redesign preview page and remove its `/dashboard/ui-preview/:screen?` route from the app.
+- Reason: The preview was a temporary design artifact and now duplicates stale flow concepts after the real dashboard/profile/onboarding pages were updated.
+- Notes: The dedicated theme preview route remains available. Backend code and browser testing remain untouched.
+
+## 2026-05-25 - Tighten Google Import Connected State
+
+- Decision: Stop treating existing Google contact rows, last sync timestamps, or sample fallback data as proof that Google is connected on the import page. The page now keeps the sync CTA gated behind explicit connection evidence, OAuth success, or a successful sync in the current flow.
+- Reason: Imported contact history and live Google authorization are different states; showing `Sync contacts` before the user has connected Google is misleading.
+- Notes: This is frontend-only and preserves the existing contacts list and import summary display. Backend code and browser testing remain untouched.
+
+## 2026-05-25 - Preserve ContactBook Auth After Google OAuth Callback
+
+- Decision: After Google provider tokens are linked successfully, explicitly mark the ContactBook frontend session as authenticated before cleaning up the temporary Supabase OAuth session and navigating back to the import page.
+- Reason: `/auth/callback` is a public route, so the auth context can mark the app unauthenticated during the Google OAuth handoff even though the ContactBook backend session is still valid. The protected dashboard route then redirects to `/auth` after a successful link.
+- Notes: This keeps Supabase OAuth scoped to Google token capture and leaves ContactBook WhatsApp/session cookies as the app auth source. Backend code and browser testing remain untouched.
+
 ## 2026-05-22 - Auto-Create Starter Cards During Setup
 
 - Decision: After setup profile onboarding saves, automatically create two starter card shells from the entered identity: a personal card named from first and last name, and a business card named with a `- Work` suffix. Skip the manual create-card modal in setup flow while keeping manual card creation unchanged elsewhere.

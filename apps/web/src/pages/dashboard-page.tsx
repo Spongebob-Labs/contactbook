@@ -2,15 +2,20 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowRight,
+  CheckCircle2,
+  CreditCard,
   IdCard,
   Import,
+  Plus,
   ShieldCheck,
-  Sparkles,
   UserRound,
+  UsersRound,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
 import { SampleDataNotice } from "@/components/sample-data-notice";
+import { Badge } from "@/components/ui/badge";
+import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { apiFetch } from "@/lib/api";
 import { logUiError } from "@/lib/friendly-errors";
@@ -28,8 +33,16 @@ import {
   ProfileOnboardingModal,
   type ProfileOnboardingResult,
 } from "@/pages/profile-onboarding-page";
+import { cn } from "@/lib/utils";
 
 type OnboardingStep = "profile" | "import" | "card";
+
+const cardTypeLabels: Record<ContactCardType, string> = {
+  BUSINESS: "Business",
+  PERSONAL: "Personal",
+  PAYMENT: "Custom",
+  CUSTOM: "Custom",
+};
 
 function getOnboardingStep(value: string | null): OnboardingStep | null {
   if (value === "profile" || value === "import" || value === "card") {
@@ -53,15 +66,75 @@ function hasInitializedProfile(profile: ProfileMeResponse | null) {
     profile.personal.groupId ||
       profile.work.length > 0 ||
       profile.business.length > 0 ||
-      profile.socials.length > 0 ||
-      profile.financial.bankAccounts.length > 0 ||
-      profile.financial.digitalWallets.length > 0 ||
-      profile.financial.cryptoWallets.length > 0,
+      profile.socials.length > 0,
   );
+}
+
+function hasText(value: string | null | undefined) {
+  return Boolean(value?.trim());
+}
+
+function hasAddress(profile: ProfileMeResponse | null) {
+  const address = profile?.personal.postalAddress;
+  if (!address) {
+    return false;
+  }
+  return [
+    address.street,
+    address.city,
+    address.state,
+    address.pincode,
+    address.country,
+  ].some(hasText);
+}
+
+function hasSocialLink(profile: ProfileMeResponse | null) {
+  return Boolean(
+    profile?.socials.some((item) =>
+      [
+        item.facebook,
+        item.website,
+        item.linkedin,
+        item.blog,
+        item.twitter,
+        item.whatsApp,
+        item.custom?.instagram,
+      ].some(hasText),
+    ),
+  );
+}
+
+function getProfileCompletion(profile: ProfileMeResponse | null) {
+  const items = [
+    Boolean(
+      hasText(profile?.identity.firstName) ||
+        hasText(profile?.identity.lastName) ||
+        hasText(profile?.identity.primaryEmail) ||
+        hasText(profile?.identity.primaryPhone),
+    ),
+    hasInitializedProfile(profile),
+    hasAddress(profile),
+    Boolean(profile && (profile.work.length > 0 || profile.business.length > 0)),
+    hasSocialLink(profile),
+  ];
+  const completed = items.filter(Boolean).length;
+  const total = items.length;
+
+  return {
+    completed,
+    total,
+    percent: Math.round((completed / total) * 100),
+  };
 }
 
 function getGoogleImportSummary(summary: ContactImportSummary | null) {
   return summary?.bySource.find((item) => item.source === "GOOGLE") ?? null;
+}
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+  }).format(new Date(value));
 }
 
 type StarterCardRequest = {
@@ -106,7 +179,7 @@ export default function DashboardPage() {
   const onboardingStep = getOnboardingStep(searchParams.get("onboarding"));
   const returnTo = getSafeReturnPath(searchParams.get("returnTo"));
   const isSetupFlow = searchParams.get("flow") === "setup";
-  const hasProfileDetails = hasInitializedProfile(profile);
+  const profileCompletion = getProfileCompletion(profile);
   const googleSummary = getGoogleImportSummary(importSummary);
   const hasGoogleImport = Boolean(
     googleSummary?.hasSyncToken ||
@@ -114,45 +187,56 @@ export default function DashboardPage() {
       googleSummary?.activeCount,
   );
   const hasCards = cards.length > 0;
-  const isWorkspaceStarted = hasGoogleImport || hasCards;
+  const visibleCards = cards.slice(0, 4);
   const stats = [
     {
-      label: "Imported contacts",
+      icon: UsersRound,
+      label: "Connections",
       value: String(importSummary?.totalActive ?? 0),
-      detail: hasGoogleImport ? "Google import active" : "No imports yet",
+      detail: hasGoogleImport ? "Google contacts connected" : "No contacts connected",
       to: "/dashboard/contacts",
       action: "View contacts",
     },
     {
+      icon: IdCard,
       label: "Cards",
       value: String(cards.length),
-      detail: hasCards ? "Ready to share" : "Create your first card",
+      detail: hasCards ? "Personal sharing cards" : "No cards yet",
       to: "/dashboard/cards",
       action: "View cards",
     },
+    {
+      icon: CheckCircle2,
+      label: "Profile",
+      value: `${profileCompletion.percent}%`,
+      detail: `${profileCompletion.completed}/${profileCompletion.total} sections complete`,
+      to: "/dashboard/profile",
+      action: "Review profile",
+    },
   ];
-  const todayItems = [
+  const guidanceItems = [
     {
       icon: UserRound,
-      label: hasProfileDetails ? "Profile details" : "Complete profile",
-      state: hasProfileDetails ? "Started" : "Optional",
+      title: "Keep your personal card current",
+      detail:
+        profileCompletion.percent === 100
+          ? "Your core profile details are ready."
+          : "Add the details friends and family should have.",
     },
     {
       icon: Import,
-      label: hasGoogleImport ? "Google import" : "Connect Google",
-      state: hasGoogleImport ? "Active" : "Ready",
+      title: "Bring your contacts together",
+      detail: hasGoogleImport
+        ? "Your connection list is ready to review."
+        : "Connect contacts when you are ready.",
     },
     {
-      icon: IdCard,
-      label: hasCards ? "Cards" : "Create card",
-      state: hasCards ? "Done" : "Next",
+      icon: ShieldCheck,
+      title: "Share the right card",
+      detail: hasCards
+        ? "Open a card to review what you share."
+        : "Create personal and work cards first.",
     },
-    {
-      icon: Sparkles,
-      label: "Sync imports",
-      state: hasGoogleImport ? "Available" : "After connect",
-    },
-    { icon: ShieldCheck, label: "Privacy", state: "Enabled" },
   ];
 
   const setOnboardingStep = useCallback(
@@ -339,18 +423,21 @@ export default function DashboardPage() {
     <AppShell>
       {isMockData && <SampleDataNotice />}
 
-      <section className="grid gap-4 md:grid-cols-2">
+      <section className="grid gap-4 md:grid-cols-3">
         {stats.map((stat) => (
           <Card key={stat.label}>
             <CardHeader>
-              <CardDescription>{stat.label}</CardDescription>
+              <div className="flex items-center justify-between gap-3">
+                <CardDescription>{stat.label}</CardDescription>
+                <stat.icon className="h-4 w-4 text-primary" aria-hidden="true" />
+              </div>
               <CardTitle className="text-2xl">{stat.value}</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-sm text-muted-foreground">{stat.detail}</p>
               <Link
                 to={stat.to}
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border bg-background px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className={cn(buttonVariants({ variant: "outline" }), "shrink-0")}
               >
                 {stat.action}
                 <ArrowRight className="h-4 w-4" aria-hidden="true" />
@@ -363,22 +450,119 @@ export default function DashboardPage() {
       <section>
         <Card>
           <CardHeader>
-            <CardTitle>Today</CardTitle>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <CardTitle>Your cards</CardTitle>
+                <CardDescription>Visible cards created for sharing</CardDescription>
+              </div>
+              <div className="flex gap-2">
+                <Link
+                  to="/dashboard/cards"
+                  className={cn(buttonVariants({ variant: "outline" }), "shrink-0")}
+                >
+                  View all
+                  <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                </Link>
+                <Link
+                  to="/dashboard?onboarding=card&returnTo=/dashboard"
+                  className={cn(buttonVariants(), "shrink-0")}
+                >
+                  <Plus className="h-4 w-4" aria-hidden="true" />
+                  Add card
+                </Link>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {visibleCards.length > 0 ? (
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                {visibleCards.map((card) => (
+                  <Link
+                    key={card.id}
+                    to={`/dashboard/cards/${card.id}`}
+                    className="group rounded-md border border-border bg-muted/30 p-4 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
+                        <CreditCard className="h-5 w-5" aria-hidden="true" />
+                      </div>
+                      <Badge variant="secondary" className="shrink-0">
+                        {cardTypeLabels[card.type]}
+                      </Badge>
+                    </div>
+                    <p className="mt-4 truncate text-sm font-semibold">{card.name}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Updated {formatDate(card.updatedAt)}
+                    </p>
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-md border border-dashed border-border p-5">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-semibold">No cards yet</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Create a personal or work card when you are ready.
+                    </p>
+                  </div>
+                  <Link
+                    to="/dashboard?onboarding=card&returnTo=/dashboard"
+                    className={cn(buttonVariants(), "shrink-0")}
+                  >
+                    <Plus className="h-4 w-4" aria-hidden="true" />
+                    Add card
+                  </Link>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </section>
+
+      <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]">
+        <Card>
+          <CardHeader>
+            <CardTitle>Profile completion</CardTitle>
             <CardDescription>
-              {isWorkspaceStarted ? "Workspace status" : "Recommended next steps"}
+              {profileCompletion.completed} of {profileCompletion.total} sections complete
             </CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-            {todayItems.map((item) => (
+          <CardContent className="space-y-4">
+            <div className="h-2 rounded-full bg-muted">
               <div
-                key={item.label}
-                className="flex items-center justify-between rounded-md border border-border p-3"
+                className="h-full rounded-full bg-primary"
+                style={{ width: `${profileCompletion.percent}%` }}
+              />
+            </div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-muted-foreground">
+                Complete the details you want available across your contact cards.
+              </p>
+              <Link
+                to="/dashboard/profile"
+                className={cn(buttonVariants({ variant: "outline" }), "shrink-0")}
               >
-                <div className="flex items-center gap-3">
-                  <item.icon className="h-4 w-4 text-primary" aria-hidden="true" />
-                  <span className="text-sm font-medium">{item.label}</span>
+                Review profile
+                <ArrowRight className="h-4 w-4" aria-hidden="true" />
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Helpful tips</CardTitle>
+            <CardDescription>Small checks for cleaner sharing</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {guidanceItems.map((item) => (
+              <div key={item.title} className="flex gap-3 rounded-md border border-border p-3">
+                <item.icon className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+                <div>
+                  <p className="text-sm font-medium">{item.title}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">{item.detail}</p>
                 </div>
-                <span className="text-xs text-muted-foreground">{item.state}</span>
               </div>
             ))}
           </CardContent>

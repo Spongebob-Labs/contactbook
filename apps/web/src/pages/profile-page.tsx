@@ -3,10 +3,8 @@ import { Link } from "react-router-dom";
 import {
   AlertCircle,
   Building2,
-  CircleDollarSign,
   Edit3,
   ExternalLink,
-  Landmark,
   Mail,
   Phone,
   ShieldCheck,
@@ -16,7 +14,6 @@ import { AppShell } from "@/components/app-shell";
 import { SampleDataNotice } from "@/components/sample-data-notice";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
@@ -93,6 +90,14 @@ function profileValue(
   );
 }
 
+function optionalProfileValue(
+  source: object | null | undefined,
+  key: string,
+  ...customKeys: string[]
+): string | null {
+  return source ? profileValue(source, key, ...customKeys) : null;
+}
+
 function addressValue(
   address: AddressLike | undefined,
   custom: CustomRecord | undefined,
@@ -121,16 +126,6 @@ function customEntries(custom: CustomRecord | undefined, exclude: string[] = [])
   return Object.entries(custom ?? {}).filter(
     ([label, value]) => !excluded.has(label) && Boolean(valueOrNull(value)),
   );
-}
-
-function maskMiddle(value: string | null | undefined): string | null {
-  if (!value) {
-    return null;
-  }
-  if (value.length <= 8) {
-    return value;
-  }
-  return `${value.slice(0, 4)}...${value.slice(-4)}`;
 }
 
 function isLinkable(value: string | null): value is string {
@@ -177,16 +172,11 @@ export default function ProfilePage() {
 
   const totals = useMemo(() => {
     if (!profile) {
-      return { work: 0, business: 0, socials: 0, financial: 0 };
+      return { work: 0, business: 0 };
     }
     return {
       work: profile.work.length,
       business: profile.business.length,
-      socials: profile.socials.length,
-      financial:
-        profile.financial.bankAccounts.length +
-        profile.financial.digitalWallets.length +
-        profile.financial.cryptoWallets.length,
     };
   }, [profile]);
 
@@ -259,11 +249,9 @@ export default function ProfilePage() {
 
       {profile && (
         <>
-          <section className="grid gap-4 md:grid-cols-4">
-            <SummaryCard label="Work profiles" value={totals.work} />
-            <SummaryCard label="Businesses" value={totals.business} />
-            <SummaryCard label="Social groups" value={totals.socials} />
-            <SummaryCard label="Financial rows" value={totals.financial} />
+          <section className="grid gap-4 md:grid-cols-2">
+            <SummaryCard label="Work cards" value={totals.work} />
+            <SummaryCard label="Business cards" value={totals.business} />
           </section>
 
           <section className="grid gap-4 xl:grid-cols-2">
@@ -276,7 +264,7 @@ export default function ProfilePage() {
                 <CardDescription>{profile.personal.tag}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <PersonalDetails personal={profile.personal} />
+                <PersonalDetails personal={profile.personal} social={profile.socials[0]} />
               </CardContent>
             </Card>
 
@@ -293,72 +281,8 @@ export default function ProfilePage() {
               icon={Building2}
               empty="No business profiles added yet."
               items={profile.business}
-              render={(item) => <BusinessDetails item={item} />}
+              render={(item) => <BusinessDetails item={item} social={profile.socials[0]} />}
             />
-
-            <ProfileCollection
-              title="Socials"
-              icon={ExternalLink}
-              empty="No social profiles added yet."
-              items={profile.socials}
-              render={(item) => <SocialDetails item={item} />}
-            />
-          </section>
-
-          <section className="grid gap-4 xl:grid-cols-3">
-            <FinancialCard title="Bank accounts" icon={Landmark}>
-              {profile.financial.bankAccounts.length === 0 && (
-                <EmptyState label="No bank accounts added yet." />
-              )}
-              {profile.financial.bankAccounts.map((item) => (
-                <FinancialItem
-                  key={item.fieldId ?? item.groupId}
-                  tag={item.tag}
-                  sensitive={item.isSensitive}
-                >
-                  <DetailRow label="Bank" value={item.bankName} />
-                  <DetailRow label="Holder" value={item.accountHolder} />
-                  <DetailRow label="Account" value={maskMiddle(item.accountNumber)} />
-                  <DetailRow label="IBAN" value={maskMiddle(item.iban)} />
-                  <DetailRow label="SWIFT/BIC" value={item.swiftBic} />
-                  <DetailRow label="Routing number" value={item.routingNumber} />
-                  <DetailRow label="IFSC" value={item.ifsc} />
-                  <DetailRow label="Currency" value={item.currency} />
-                </FinancialItem>
-              ))}
-            </FinancialCard>
-
-            <FinancialCard title="Digital wallets" icon={CircleDollarSign}>
-              {profile.financial.digitalWallets.length === 0 && (
-                <EmptyState label="No digital wallets added yet." />
-              )}
-              {profile.financial.digitalWallets.map((item) => (
-                <FinancialItem
-                  key={item.fieldId ?? item.groupId}
-                  tag={item.tag}
-                  sensitive={item.isSensitive}
-                >
-                  <DetailRow label="Platform" value={item.platform} />
-                  <DetailRow label="Handle or link" value={item.handleOrLink} />
-                </FinancialItem>
-              ))}
-            </FinancialCard>
-
-            <FinancialCard title="Crypto wallets" icon={CircleDollarSign}>
-              {profile.financial.cryptoWallets.length === 0 && (
-                <EmptyState label="No crypto wallets added yet." />
-              )}
-              {profile.financial.cryptoWallets.map((item) => (
-                <FinancialItem
-                  key={item.fieldId ?? item.groupId}
-                  tag={item.tag}
-                  sensitive={item.isSensitive}
-                >
-                  <DetailRow label="Network" value={item.network} />
-                  <DetailRow label="Address" value={maskMiddle(item.address)} />
-                </FinancialItem>
-              ))}
-            </FinancialCard>
           </section>
         </>
       )}
@@ -379,8 +303,10 @@ function SummaryCard({ label, value }: { label: string; value: number }) {
 
 function PersonalDetails({
   personal,
+  social,
 }: {
   personal: ProfileMeResponse["personal"];
+  social?: ProfileMeResponse["socials"][number];
 }) {
   const custom = personal.custom;
   const knownKeys = [
@@ -418,6 +344,8 @@ function PersonalDetails({
     profileValue(personal, "partnerName"),
     profileValue(personal, "petNames"),
     profileValue(personal, "bloodGroup"),
+    optionalProfileValue(social, "facebook"),
+    optionalProfileValue(social, "instagram"),
   ];
 
   if (
@@ -452,6 +380,8 @@ function PersonalDetails({
         />
         <DetailRow label="Pet names" value={profileValue(personal, "petNames")} />
         <DetailRow label="Blood group" value={profileValue(personal, "bloodGroup")} />
+        <LinkedDetailRow label="Facebook" value={optionalProfileValue(social, "facebook")} />
+        <LinkedDetailRow label="Instagram" value={optionalProfileValue(social, "instagram")} />
         <DetailRow
           label="Postal address"
           value={addressValue(personal.postalAddress, custom, "postal")}
@@ -528,8 +458,10 @@ function WorkDetails({ item }: { item: ProfileMeResponse["work"][number] }) {
 
 function BusinessDetails({
   item,
+  social,
 }: {
   item: ProfileMeResponse["business"][number];
+  social?: ProfileMeResponse["socials"][number];
 }) {
   const custom = item.custom;
   const businessLogo = profileValue(item, "businessLogo");
@@ -542,6 +474,7 @@ function BusinessDetails({
     "businessLandline",
     "businessFax",
     "businessEmail",
+    "businessDescription",
     "businessPostalStreet",
     "businessPostalCity",
     "businessPostalState",
@@ -559,6 +492,9 @@ function BusinessDetails({
     profileValue(item, "businessLandline"),
     profileValue(item, "businessFax"),
     profileValue(item, "businessEmail"),
+    profileValue(item, "businessDescription", "description"),
+    optionalProfileValue(social, "linkedin"),
+    optionalProfileValue(social, "website"),
     addressValue(item.businessPostalAddress, custom, "businessPostal"),
     profileValue(item, "businessType"),
     profileValue(item, "gstin"),
@@ -589,59 +525,17 @@ function BusinessDetails({
         <DetailRow label="Fax" value={profileValue(item, "businessFax")} />
         <DetailRow label="Email" value={profileValue(item, "businessEmail")} />
         <DetailRow
+          label="Description"
+          value={profileValue(item, "businessDescription", "description")}
+        />
+        <LinkedDetailRow label="LinkedIn" value={optionalProfileValue(social, "linkedin")} />
+        <LinkedDetailRow label="Website" value={optionalProfileValue(social, "website")} />
+        <DetailRow
           label="Address"
           value={addressValue(item.businessPostalAddress, custom, "businessPostal")}
         />
         <DetailRow label="Business type" value={profileValue(item, "businessType")} />
         <DetailRow label="GSTIN" value={profileValue(item, "gstin")} />
-      </DetailGrid>
-      <CustomDetails custom={custom} exclude={knownKeys} />
-    </>
-  );
-}
-
-function SocialDetails({ item }: { item: ProfileMeResponse["socials"][number] }) {
-  const custom = item.custom;
-  const knownKeys = [
-    "skype",
-    "facebook",
-    "twitter",
-    "whatsApp",
-    "whatsapp",
-    "blog",
-    "website",
-    "linkedin",
-    "github",
-  ];
-  const values = [
-    profileValue(item, "skype"),
-    profileValue(item, "facebook"),
-    profileValue(item, "twitter"),
-    profileValue(item, "whatsApp", "whatsapp"),
-    profileValue(item, "blog"),
-    profileValue(item, "website"),
-    profileValue(item, "linkedin"),
-    profileValue(item, "github"),
-  ];
-
-  if (
-    !values.some(Boolean) &&
-    customEntries(custom, knownKeys).length === 0
-  ) {
-    return <EmptyState label="No details saved in this social group." />;
-  }
-
-  return (
-    <>
-      <DetailGrid>
-        <DetailRow label="Skype" value={profileValue(item, "skype")} />
-        <DetailRow label="Facebook" value={profileValue(item, "facebook")} />
-        <DetailRow label="Twitter" value={profileValue(item, "twitter")} />
-        <DetailRow label="WhatsApp" value={profileValue(item, "whatsApp", "whatsapp")} />
-        <DetailRow label="Blog" value={profileValue(item, "blog")} />
-        <LinkedDetailRow label="Website" value={profileValue(item, "website")} />
-        <LinkedDetailRow label="LinkedIn" value={profileValue(item, "linkedin")} />
-        <LinkedDetailRow label="GitHub" value={profileValue(item, "github")} />
       </DetailGrid>
       <CustomDetails custom={custom} exclude={knownKeys} />
     </>
@@ -753,47 +647,5 @@ function ProfileCollection<T extends { groupId: string; tag: string }>({
         ))}
       </CardContent>
     </Card>
-  );
-}
-
-function FinancialCard({
-  title,
-  icon: Icon,
-  children,
-}: {
-  title: string;
-  icon: typeof Landmark;
-  children: React.ReactNode;
-}) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Icon className="h-4 w-4 text-primary" aria-hidden="true" />
-          {title}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">{children}</CardContent>
-    </Card>
-  );
-}
-
-function FinancialItem({
-  tag,
-  sensitive,
-  children,
-}: {
-  tag: string;
-  sensitive: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="space-y-3 rounded-md border border-border p-4">
-      <div className="flex items-center justify-between gap-3">
-        <Badge variant="secondary">{tag}</Badge>
-        {sensitive && <Badge variant="warning">Sensitive</Badge>}
-      </div>
-      {children}
-    </div>
   );
 }

@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 const cardTypeLabels: Record<ContactCardType, string> = {
   BUSINESS: "Business",
   PERSONAL: "Personal",
-  PAYMENT: "Payment",
+  PAYMENT: "Custom",
   CUSTOM: "Custom",
 };
 
@@ -116,8 +116,8 @@ export default function CardsPage() {
             </div>
             <h2 className="font-semibold">Create your first ContactBook card</h2>
             <p className="mt-2 max-w-md text-sm text-muted-foreground">
-              Build a personal, business, payment, or custom card from the profile
-              information you want to share.
+              Build a personal, business, or custom card from the profile information
+              you want to share.
             </p>
             <Link
               to="/dashboard?onboarding=card&returnTo=/dashboard/cards"

@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 const cardTypeLabels: Record<ContactCardType, string> = {
   BUSINESS: "Business",
   PERSONAL: "Personal",
-  PAYMENT: "Payment",
+  PAYMENT: "Custom",
   CUSTOM: "Custom",
 };
 
