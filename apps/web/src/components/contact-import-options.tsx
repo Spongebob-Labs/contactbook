@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { Cloud, FileUp, Lock, UploadCloud } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,6 +17,8 @@ type ContactImportOptionsProps = {
   className?: string;
   compact?: boolean;
   featuredGoogle?: boolean;
+  onUploadVcf?: (file: File) => void | Promise<void>;
+  isUploadingVcf?: boolean;
 } & (
   | {
       hideGoogle: true;
@@ -48,24 +51,36 @@ const options: ImportOption[] = [
   {
     key: "vcf",
     title: "Upload VCF file",
-    description: "Upload exported vCard files after file import support is available.",
-    badge: "Coming soon",
+    description: "Upload exported vCard files from your device.",
+    badge: "Available",
     icon: FileUp,
-    disabled: true,
   },
 ];
 
 export function ContactImportOptions({
   onConnectGoogle,
   isConnectingGoogle = false,
+  onUploadVcf,
+  isUploadingVcf = false,
   className,
   compact = false,
   featuredGoogle = false,
   hideGoogle = false,
 }: ContactImportOptionsProps) {
+  const vcfInputRef = useRef<HTMLInputElement | null>(null);
   const visibleOptions = hideGoogle
     ? options.filter((option) => option.key !== "google")
     : options;
+
+  const handleVcfFileChange = (file: File | undefined) => {
+    if (!file || !onUploadVcf) {
+      return;
+    }
+    void onUploadVcf(file);
+    if (vcfInputRef.current) {
+      vcfInputRef.current.value = "";
+    }
+  };
 
   return (
     <div
@@ -77,6 +92,8 @@ export function ContactImportOptions({
     >
       {visibleOptions.map((option) => {
         const Icon = option.icon;
+        const isVcfOption = option.key === "vcf";
+        const isDisabled = option.disabled || (isVcfOption && !onUploadVcf);
         return (
           <div
             key={option.key}
@@ -84,7 +101,7 @@ export function ContactImportOptions({
               "flex flex-col rounded-lg border border-border bg-card",
               compact ? "min-h-52 p-4" : "min-h-64 p-5",
               featuredGoogle && option.key === "google" && "lg:col-span-2 lg:min-h-44",
-              option.disabled && "bg-muted/30",
+              isDisabled && "bg-muted/30",
             )}
           >
             <div className="flex items-start justify-between gap-3">
@@ -96,7 +113,7 @@ export function ContactImportOptions({
               >
                 <Icon className={cn(compact ? "h-4 w-4" : "h-5 w-5")} aria-hidden="true" />
               </div>
-              <Badge variant={option.disabled ? "outline" : "success"}>
+              <Badge variant={isDisabled ? "outline" : "success"}>
                 {option.badge}
               </Badge>
             </div>
@@ -116,6 +133,25 @@ export function ContactImportOptions({
                 <UploadCloud className="h-4 w-4" aria-hidden="true" />
                 {isConnectingGoogle ? "Connecting" : "Connect Google"}
               </Button>
+            ) : isVcfOption ? (
+              <>
+                <input
+                  ref={vcfInputRef}
+                  type="file"
+                  accept=".vcf,.vcard,text/vcard,text/x-vcard"
+                  className="sr-only"
+                  onChange={(event) => handleVcfFileChange(event.target.files?.[0])}
+                />
+                <Button
+                  type="button"
+                  className={cn("w-full", compact ? "mt-4" : "mt-5")}
+                  disabled={isUploadingVcf || !onUploadVcf}
+                  onClick={() => vcfInputRef.current?.click()}
+                >
+                  <FileUp className="h-4 w-4" aria-hidden="true" />
+                  {isUploadingVcf ? "Uploading" : "Upload"}
+                </Button>
+              </>
             ) : (
               <Button
                 type="button"
@@ -124,7 +160,7 @@ export function ContactImportOptions({
                 disabled
               >
                 <Lock className="h-4 w-4" aria-hidden="true" />
-                {option.key === "vcf" ? "Upload" : "Connect now"}
+                Connect now
               </Button>
             )}
           </div>

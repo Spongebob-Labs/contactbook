@@ -113,6 +113,17 @@ export type GoogleSyncResponse = {
   lastSyncAt: string | null;
 };
 
+export type ContactImportResult = ContactImportSummary & {
+  importedCount?: number;
+  processedCount?: number;
+  createdCount?: number;
+  updatedCount?: number;
+  skippedCount?: number;
+  totalContacts?: number;
+  message?: string;
+  summary?: ContactImportSummary;
+};
+
 export type PostalAddress = {
   street: string;
   city: string;

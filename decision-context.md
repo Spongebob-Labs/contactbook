@@ -1,5 +1,17 @@
 # Decision Context
 
+## 2026-05-25 - Add Frontend VCF Import Flow
+
+- Decision: Enable VCF/vCard file import in both the dashboard import page and the onboarding import modal, posting `.vcf` or `.vcard` files up to 50 MB to `POST /v1/contacts/import/vcf` with multipart field `file`.
+- Reason: The backend replaced the old generic import endpoint with source-specific imports, and VCF is now an available user-facing contact import option.
+- Notes: Keep Google behavior unchanged for this pass. iCloud remains unavailable, so onboarding treats Google plus VCF as the currently available import actions and shows a continue CTA after those actions are complete instead of auto-advancing. Failed VCF uploads must show safe UI feedback and leave the user in control. Backend code and browser testing remain untouched.
+
+## 2026-05-25 - Make VCF Upload CTA Primary
+
+- Decision: Use the primary button treatment for the VCF upload CTA in the shared import option card.
+- Reason: VCF upload is now an available import action, so it should not read like a secondary or inactive option beside the other import CTAs.
+- Notes: iCloud remains disabled with outline styling. The shared component updates both the dashboard import page and onboarding import modal. Backend code and browser testing remain untouched.
+
 ## 2026-05-25 - Plan Product Owner UI Simplification In Phases
 
 - Decision: Implement the product owner feedback in gated frontend-only phases, stopping after each phase for user review before continuing. Use temporary production-safe copy and placeholder visual areas until deck language and approved media are provided.

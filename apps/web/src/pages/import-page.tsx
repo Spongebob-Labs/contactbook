@@ -18,6 +18,11 @@ import {
   GOOGLE_CONNECTED_KEY,
   GOOGLE_OAUTH_PENDING_KEY,
 } from "@/lib/session-storage";
+import {
+  getContactImportCount,
+  uploadVcfContacts,
+  validateVcfFile,
+} from "@/lib/vcf-import";
 import type {
   ContactImport,
   ContactImportSummary,
@@ -57,7 +62,9 @@ export default function ImportPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isConnectingGoogle, setIsConnectingGoogle] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isUploadingVcf, setIsUploadingVcf] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [vcfError, setVcfError] = useState<string | null>(null);
   const [hasConnectedGoogle, setHasConnectedGoogle] = useState(false);
   const [isMockData, setIsMockData] = useState(false);
 
@@ -65,25 +72,41 @@ export default function ImportPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await apiFetch<ContactListResponse>(
-        "/v1/contacts?source=GOOGLE&limit=100&sort=updatedAt&sortOrder=desc",
-      );
+      const [response, googleResponse, vcfResponse] = await Promise.all([
+        apiFetch<ContactListResponse>("/v1/contacts?limit=100&sort=updatedAt&sortOrder=desc"),
+        apiFetch<ContactListResponse>(
+          "/v1/contacts?source=GOOGLE&limit=1&sort=updatedAt&sortOrder=desc",
+        ),
+        apiFetch<ContactListResponse>(
+          "/v1/contacts?source=VCARD&limit=1&sort=updatedAt&sortOrder=desc",
+        ),
+      ]);
       const contactsData = response.items;
-      const summaryData = buildContactImportSummary(contactsData);
-      const googleSummary = summaryData.bySource.find(
-        (item) => item.source === "GOOGLE",
-      );
-      if (googleSummary) {
-        googleSummary.activeCount = response.total;
-        googleSummary.lastSyncAt = response.items[0]?.updatedAt ?? null;
-      } else if (response.total > 0) {
-        summaryData.bySource.push({
-          source: "GOOGLE",
-          activeCount: response.total,
-          deletedCount: 0,
-          lastSyncAt: response.items[0]?.updatedAt ?? null,
-        });
-      }
+      const summaryData = buildContactImportSummary([
+        ...googleResponse.items,
+        ...vcfResponse.items,
+      ]);
+      const setSourceSummary = (
+        source: ContactImportSummary["bySource"][number]["source"],
+        sourceResponse: ContactListResponse,
+      ) => {
+        const existing = summaryData.bySource.find((item) => item.source === source);
+        if (existing) {
+          existing.activeCount = sourceResponse.total;
+          existing.lastSyncAt = sourceResponse.items[0]?.updatedAt ?? null;
+          return;
+        }
+        if (sourceResponse.total > 0) {
+          summaryData.bySource.push({
+            source,
+            activeCount: sourceResponse.total,
+            deletedCount: 0,
+            lastSyncAt: sourceResponse.items[0]?.updatedAt ?? null,
+          });
+        }
+      };
+      setSourceSummary("GOOGLE", googleResponse);
+      setSourceSummary("VCARD", vcfResponse);
       summaryData.totalActive = response.total;
       setImports(contactsData);
       setSummary(summaryData);
@@ -150,6 +173,34 @@ export default function ImportPage() {
     }
   }, []);
 
+  const uploadVcf = useCallback(async (file: File) => {
+    const validationError = validateVcfFile(file);
+    if (validationError) {
+      setVcfError(validationError);
+      toast.error(validationError);
+      return;
+    }
+
+    setIsUploadingVcf(true);
+    setVcfError(null);
+    try {
+      const result = await uploadVcfContacts(file);
+      const importedCount = getContactImportCount(result);
+      toast.success(
+        importedCount === null
+          ? "VCF contacts imported."
+          : `Imported ${importedCount} contacts from VCF.`,
+      );
+      await loadImports();
+    } catch (err) {
+      logUiError("Could not import VCF contacts", err);
+      setVcfError("We couldn't import that VCF file. Please check the file and try again.");
+      toast.error("We couldn't import that VCF file. Please check the file and try again.");
+    } finally {
+      setIsUploadingVcf(false);
+    }
+  }, [loadImports]);
+
   useEffect(() => {
     void loadImports();
   }, [loadImports]);
@@ -208,6 +259,7 @@ export default function ImportPage() {
   }, []);
 
   const googleSummary = summary?.bySource.find((item) => item.source === "GOOGLE");
+  const vcfSummary = summary?.bySource.find((item) => item.source === "VCARD");
 
   return (
     <AppShell>
@@ -248,12 +300,21 @@ export default function ImportPage() {
               </Button>
             )}
           </div>
+          {vcfError && (
+            <Alert className="mt-5 flex items-start gap-3">
+              <AlertCircle className="mt-0.5 h-4 w-4 text-destructive" aria-hidden="true" />
+              <div>
+                <p className="font-medium">VCF import failed</p>
+                <p className="mt-1 text-sm text-muted-foreground">{vcfError}</p>
+              </div>
+            </Alert>
+          )}
         </div>
 
         <Card>
           <CardHeader>
             <CardTitle>Import status</CardTitle>
-            <CardDescription>Current Google import snapshot</CardDescription>
+            <CardDescription>Current import snapshot</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex items-center justify-between rounded-md border border-border p-3">
@@ -265,13 +326,23 @@ export default function ImportPage() {
             <div className="flex items-center justify-between rounded-md border border-border p-3">
               <span className="text-sm text-muted-foreground">Google contacts</span>
               <span className="text-lg font-semibold">
-                {googleSummary?.activeCount ?? imports.length}
+                {googleSummary?.activeCount ?? 0}
               </span>
             </div>
             <div className="flex items-center justify-between rounded-md border border-border p-3">
-              <span className="text-sm text-muted-foreground">Last sync</span>
+              <span className="text-sm text-muted-foreground">VCF contacts</span>
+              <span className="text-lg font-semibold">
+                {vcfSummary?.activeCount ?? 0}
+              </span>
+            </div>
+            <div className="flex items-center justify-between rounded-md border border-border p-3">
+              <span className="text-sm text-muted-foreground">Last activity</span>
               <span className="text-sm font-medium">
-                {formatDate(googleSummary?.lastSyncAt ?? null)}
+                {formatDate(
+                  [googleSummary?.lastSyncAt, vcfSummary?.lastSyncAt]
+                    .filter((value): value is string => Boolean(value))
+                    .sort((first, second) => new Date(second).getTime() - new Date(first).getTime())[0] ?? null,
+                )}
               </span>
             </div>
           </CardContent>
@@ -283,6 +354,8 @@ export default function ImportPage() {
           hideGoogle={hasConnectedGoogle}
           onConnectGoogle={connectGoogle}
           isConnectingGoogle={isConnectingGoogle}
+          onUploadVcf={uploadVcf}
+          isUploadingVcf={isUploadingVcf}
           className={hasConnectedGoogle ? "lg:contents" : "lg:col-span-3"}
         />
 
