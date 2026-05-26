@@ -1,36 +1,48 @@
-import { ApiProperty } from "@nestjs/swagger";
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Transform } from "class-transformer";
-import { IsString, IsUUID, Matches } from "class-validator";
+import {
+  IsOptional,
+  IsString,
+  IsUUID,
+  Matches,
+  ValidateIf,
+} from "class-validator";
 import { normalizeDialCode } from "../../common/phone.util";
 
 export class CreateConnectionRequestDto {
-  @ApiProperty({
+  @ApiPropertyOptional({
     description:
-      "Recipient national phone number (digits only, must match a registered user).",
+      "Recipient national phone (digits only). Required unless recipientContactId is set.",
     example: "5559876543",
   })
+  @ValidateIf((o: CreateConnectionRequestDto) => !o.recipientContactId)
   @IsString()
   @Matches(/^\d{4,15}$/)
   @Transform(({ value }) =>
     typeof value === "string" ? value.replace(/\D/g, "") : (value as unknown),
   )
-  recipientPhone!: string;
+  recipientPhone?: string;
 
-  @ApiProperty({
-    description: "Recipient E.164 country calling code prefix (e.g. +1, +44).",
+  @ApiPropertyOptional({
+    description: "Recipient E.164 country code. Required with recipientPhone.",
     example: "+1",
   })
+  @ValidateIf((o: CreateConnectionRequestDto) => !o.recipientContactId)
   @IsString()
   @Matches(/^\+\d{1,4}$/)
   @Transform(({ value }) =>
     typeof value === "string" ? normalizeDialCode(value) : (value as unknown),
   )
-  recipientCountryCode!: string;
+  recipientCountryCode?: string;
 
-  @ApiProperty({
-    description: "Contact card the requester will share when accepted.",
+  @ApiPropertyOptional({
+    description:
+      "Recipient from the requester's imported contacts (alternative to phone fields).",
   })
-  @IsString()
+  @ValidateIf(
+    (o: CreateConnectionRequestDto) =>
+      !o.recipientPhone && !o.recipientCountryCode,
+  )
   @IsUUID()
-  sharedCardId!: string;
+  recipientContactId?: string;
 }

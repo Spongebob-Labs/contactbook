@@ -124,4 +124,48 @@ export class TwilioService {
       `ContactBook: ${requesterDisplayName} wants to connect. Reply ACCEPT-${connectionId} or DECLINE-${connectionId}. (Or use quick-reply buttons if your client shows them.)`,
     );
   }
+
+  /**
+   * Card picker prompt. Uses Content API when `TWILIO_WA_CARD_PICK_CONTENT_SID` is set;
+   * otherwise sends plain text with numbered options.
+   */
+  async sendCardSelectionPrompt(
+    toE164: string,
+    body: string,
+    _options: { id: string; name: string; index: number }[],
+  ): Promise<void> {
+    const contentSid = this.config
+      .get<string>("TWILIO_WA_CARD_PICK_CONTENT_SID")
+      ?.trim();
+    if (this.client && this.whatsappFrom && contentSid) {
+      try {
+        await this.client.messages.create({
+          from: this.whatsappFrom,
+          to: toWhatsAppChannelAddress(toE164),
+          contentSid,
+          contentVariables: JSON.stringify({ body }),
+        });
+        return;
+      } catch (err: unknown) {
+        this.logger.warn(
+          "WhatsApp card pick Content failed; falling back to text.",
+          err instanceof Error ? err.stack : err,
+        );
+      }
+    }
+    await this.sendWhatsApp(toE164, body);
+  }
+
+  async sendConnectionSignupInvite(
+    toE164: string,
+    requesterDisplayName: string,
+  ): Promise<void> {
+    const webApp = this.config
+      .get<string>("WEB_APP_URL", "https://contactbook.app")
+      .replace(/\/$/, "");
+    await this.sendWhatsApp(
+      toE164,
+      `ContactBook: ${requesterDisplayName} wants to connect with you. Sign up to accept: ${webApp}`,
+    );
+  }
 }

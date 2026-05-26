@@ -1,10 +1,17 @@
-import { Injectable, Logger } from "@nestjs/common";
-import { type User, ConnectionStatus, WhatsappFlowState } from "@prisma/client";
+import { BadRequestException, Injectable, Logger } from "@nestjs/common";
+import {
+  type User,
+  ConnectionStatus,
+  WhatsappFlowState,
+} from "@prisma/client";
 import {
   e164FromStoredUser,
   inboundE164ToIdentity,
 } from "../common/phone.util";
 import { PrismaService } from "../prisma/prisma.service";
+import { resolveCardIdFromInbound } from "../connection/connection-card-prompt.util";
+import { ConnectionShareService } from "../connection/connection-share.service";
+import type { WhatsappSessionCardMetadata } from "../connection/connection-flow.types";
 import { TwilioService } from "./twilio.service";
 
 @Injectable()
@@ -14,6 +21,7 @@ export class WhatsappWebhookService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly twilio: TwilioService,
+    private readonly connectionShare: ConnectionShareService,
   ) {}
 
   /**
@@ -26,6 +34,14 @@ export class WhatsappWebhookService {
   ): Promise<void> {
     const from = fromRaw.replace(/^whatsapp:/, "");
     const text = (inboundText ?? "").trim();
+
+    const user = await this.findUserFromInboundE164(from);
+    if (user) {
+      const handled = await this.handleActiveSession(user, from, text);
+      if (handled) {
+        return;
+      }
+    }
 
     const accept = /^ACCEPT-([0-9a-f-]{36})$/i.exec(text);
     const decline = /^DECLINE-([0-9a-f-]{36})$/i.exec(text);
@@ -46,6 +62,136 @@ export class WhatsappWebhookService {
     }
 
     this.logger.log(`Unhandled WhatsApp message from ${from}: ${text}`);
+  }
+
+  private async handleActiveSession(
+    user: User,
+    fromPhone: string,
+    text: string,
+  ): Promise<boolean> {
+    const session = await this.prisma.whatsappSession.findFirst({
+      where: {
+        phoneE164: e164FromStoredUser(user),
+        expiresAt: { gt: new Date() },
+        state: {
+          in: [
+            WhatsappFlowState.AWAITING_RECIPIENT_CARD_SELECTION,
+            WhatsappFlowState.AWAITING_REQUESTER_CARD_SELECTION,
+          ],
+        },
+      },
+      orderBy: { updatedAt: "desc" },
+    });
+
+    if (!session?.connectionId) {
+      return false;
+    }
+
+    const metadata = session.metadata as WhatsappSessionCardMetadata | null;
+    const options = metadata?.cardOptions ?? [];
+    const cardId = resolveCardIdFromInbound(text, options);
+    if (!cardId) {
+      await this.twilio.sendWhatsApp(
+        fromPhone,
+        `ContactBook: Please reply with a number between 1 and ${options.length}, or the card name.`,
+      );
+      return true;
+    }
+
+    if (session.state === WhatsappFlowState.AWAITING_RECIPIENT_CARD_SELECTION) {
+      await this.handleRecipientCardPick(
+        session.connectionId,
+        user.id,
+        fromPhone,
+        cardId,
+        options,
+      );
+      return true;
+    }
+
+    if (session.state === WhatsappFlowState.AWAITING_REQUESTER_CARD_SELECTION) {
+      await this.handleRequesterCardPick(
+        session.connectionId,
+        user.id,
+        fromPhone,
+        cardId,
+      );
+      return true;
+    }
+
+    return false;
+  }
+
+  private async handleRecipientCardPick(
+    connectionId: string,
+    receiverUserId: string,
+    fromPhone: string,
+    cardId: string,
+    options: { id: string; name: string }[],
+  ): Promise<void> {
+    try {
+      const result = await this.connectionShare.shareCard(
+        connectionId,
+        receiverUserId,
+        cardId,
+        "recipient",
+      );
+      const cardName =
+        options.find((o) => o.id === cardId)?.name ?? result.sharedCard.name;
+
+      await this.twilio.sendWhatsApp(
+        fromPhone,
+        `ContactBook: You shared your ${cardName} card.`,
+      );
+
+      if (!result.completed) {
+        const connection = await this.prisma.connection.findUniqueOrThrow({
+          where: { id: connectionId },
+        });
+        await this.connectionShare.beginRequesterCardSelection(
+          connectionId,
+          connection.requesterId,
+          cardName,
+        );
+      }
+    } catch (err) {
+      await this.sendShareError(fromPhone, err);
+    }
+  }
+
+  private async handleRequesterCardPick(
+    connectionId: string,
+    requesterUserId: string,
+    fromPhone: string,
+    cardId: string,
+  ): Promise<void> {
+    try {
+      const result = await this.connectionShare.shareCard(
+        connectionId,
+        requesterUserId,
+        cardId,
+        "requester",
+      );
+      if (result.completed) {
+        await this.connectionShare.sendCompletionMessages(connectionId);
+      } else {
+        await this.twilio.sendWhatsApp(
+          fromPhone,
+          "ContactBook: Your card was shared.",
+        );
+      }
+    } catch (err) {
+      await this.sendShareError(fromPhone, err);
+    }
+  }
+
+  private async sendShareError(fromPhone: string, err: unknown): Promise<void> {
+    const message =
+      err instanceof BadRequestException ||
+      err instanceof Error
+        ? err.message
+        : "Could not complete card share.";
+    await this.twilio.sendWhatsApp(fromPhone, `ContactBook: ${message}`);
   }
 
   private async findUserFromInboundE164(e164: string): Promise<User | null> {
@@ -114,29 +260,25 @@ export class WhatsappWebhookService {
       );
       return;
     }
-    await this.prisma.connection.update({
-      where: { id: connectionId },
-      data: { status: ConnectionStatus.ACCEPTED },
+
+    const cardCount = await this.prisma.contactCard.count({
+      where: { userId: user.id },
     });
-    await this.prisma.whatsappSession.updateMany({
-      where: {
-        connectionId,
-        state: WhatsappFlowState.AWAITING_CONNECTION_ACCEPT,
-      },
-      data: { state: WhatsappFlowState.IDLE },
-    });
-    const requester = await this.prisma.user.findUnique({
-      where: { id: connection.requesterId },
-    });
-    await this.twilio.sendWhatsApp(
-      fromPhone,
-      "ContactBook: you accepted the connection.",
-    );
-    if (requester) {
+    if (cardCount === 0) {
       await this.twilio.sendWhatsApp(
-        e164FromStoredUser(requester),
-        "ContactBook: your connection request was accepted.",
+        fromPhone,
+        "ContactBook: Complete your profile and create a card in ContactBook before accepting connections.",
       );
+      return;
+    }
+
+    try {
+      await this.connectionShare.beginRecipientCardSelection(
+        connectionId,
+        user.id,
+      );
+    } catch (err) {
+      await this.sendShareError(fromPhone, err);
     }
   }
 
@@ -158,6 +300,7 @@ export class WhatsappWebhookService {
         receiverId: user.id,
         status: ConnectionStatus.PENDING,
       },
+      include: { requester: true },
     });
     if (!connection) {
       await this.twilio.sendWhatsApp(
@@ -171,15 +314,18 @@ export class WhatsappWebhookService {
       data: { status: ConnectionStatus.DECLINED },
     });
     await this.prisma.whatsappSession.updateMany({
-      where: {
-        connectionId,
-        state: WhatsappFlowState.AWAITING_CONNECTION_ACCEPT,
-      },
+      where: { connectionId },
       data: { state: WhatsappFlowState.IDLE },
     });
     await this.twilio.sendWhatsApp(
       fromPhone,
       "ContactBook: you declined the connection.",
+    );
+    const who =
+      `${user.firstName} ${user.lastName}`.trim() || "Someone";
+    await this.twilio.sendWhatsApp(
+      e164FromStoredUser(connection.requester),
+      `ContactBook: ${who} declined your connection request. No contact details were shared.`,
     );
   }
 }
