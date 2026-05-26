@@ -22,6 +22,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
 import { getCardDisplayDetails } from "@/lib/card-display";
+import { cardTypeStyles } from "@/lib/card-styles";
 import { friendlyErrorMessages, logUiError } from "@/lib/friendly-errors";
 import { mockCardDetail, mockProfile } from "@/lib/mock-data";
 import type { ContactCard, ContactCardType, ProfileMeResponse } from "@/lib/types";
@@ -137,7 +138,7 @@ export default function CardDetailPage() {
         <div>
           <Link
             to="/dashboard/cards"
-            className={cn(buttonVariants({ variant: "ghost" }), "-ml-3 mb-2")}
+            className={cn(buttonVariants({ variant: "ghost" }), "-ml-3 mb-2 rounded-full")}
           >
             <ArrowLeft className="h-4 w-4" aria-hidden="true" />
             Cards
@@ -154,7 +155,7 @@ export default function CardDetailPage() {
           <Button
             type="button"
             variant="outline"
-            className="self-start"
+            className="self-start rounded-full"
             onClick={() => {
               void shareCard(card);
             }}
@@ -211,7 +212,7 @@ export default function CardDetailPage() {
               <Button
                 type="button"
                 variant="outline"
-                className="mt-2 w-full"
+                className="mt-2 w-full rounded-full"
                 onClick={() => {
                   void shareCard(card);
                 }}
@@ -235,10 +236,11 @@ function CardDetailPreview({
   profile: ProfileMeResponse | null;
 }) {
   const details = getCardDisplayDetails(card, profile);
+  const style = cardTypeStyles[card.type];
 
   return (
     <Card className="overflow-hidden">
-      <div className={cn("h-2 bg-gradient-to-r", details.accentClassName)} />
+      <div className={cn("h-2", style.accentClassName)} />
       <CardContent className="p-0">
         <div className="grid min-h-[30rem] lg:grid-cols-[minmax(0,1fr)_18rem]">
           <div className="flex flex-col p-6 md:p-8">
@@ -246,8 +248,8 @@ function CardDetailPreview({
               <div className="flex min-w-0 items-center gap-4">
                 <div
                   className={cn(
-                    "flex h-20 w-20 shrink-0 items-center justify-center rounded-md bg-gradient-to-br text-2xl font-semibold text-white",
-                    details.accentClassName,
+                    "flex h-20 w-20 shrink-0 items-center justify-center rounded-full text-2xl font-semibold shadow-[inset_0_1px_0_rgba(255,255,255,0.35)]",
+                    style.initialsClassName,
                   )}
                 >
                   {details.initials}
@@ -261,7 +263,7 @@ function CardDetailPreview({
                   </p>
                 </div>
               </div>
-              <Badge variant="secondary" className="w-fit shrink-0">
+              <Badge variant="secondary" className={cn("w-fit shrink-0", style.badgeClassName)}>
                 {cardTypeLabels[card.type]}
               </Badge>
             </div>
@@ -275,7 +277,7 @@ function CardDetailPreview({
             </div>
 
             <div className="mt-auto pt-8">
-              <div className="rounded-md border border-border bg-muted/30 p-4">
+              <div className="rounded-[24px] border border-border bg-muted/30 p-4">
                 <p className="text-sm font-medium">Shareable card preview</p>
                 <p className="mt-1 text-sm leading-6 text-muted-foreground">
                   This preview is composed in the frontend from your card name,
@@ -317,8 +319,10 @@ function DetailTile({
   value: string;
 }) {
   return (
-    <div className="flex min-w-0 gap-3 rounded-md border border-border bg-card p-4">
-      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+    <div className="flex min-w-0 gap-3 rounded-full border border-border bg-card p-4 pr-5">
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+        <Icon className="h-4 w-4" aria-hidden="true" />
+      </span>
       <div className="min-w-0">
         <p className="text-xs font-medium uppercase text-muted-foreground">{label}</p>
         <p className="mt-1 truncate text-sm font-medium">{value}</p>
@@ -337,8 +341,10 @@ function RecordLine({
   value: string;
 }) {
   return (
-    <div className="flex items-start gap-3 rounded-md border border-border p-3">
-      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+    <div className="flex items-start gap-3 rounded-full border border-border p-3 pr-5">
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+        <Icon className="h-4 w-4" aria-hidden="true" />
+      </span>
       <div>
         <p className="text-xs font-medium uppercase text-muted-foreground">{label}</p>
         <p className="mt-1 text-sm font-medium">{value}</p>

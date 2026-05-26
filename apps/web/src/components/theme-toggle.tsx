@@ -11,6 +11,7 @@ export function ThemeToggle() {
       type="button"
       variant="outline"
       size="icon"
+      className="rounded-full"
       aria-label={`Switch to ${next} mode`}
       title={`Switch to ${next} mode`}
       onClick={() => setTheme(next)}

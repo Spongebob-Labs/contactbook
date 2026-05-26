@@ -22,6 +22,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
 import { getCardDisplayDetails } from "@/lib/card-display";
+import { cardTypeStyles } from "@/lib/card-styles";
 import { friendlyErrorMessages, logUiError } from "@/lib/friendly-errors";
 import { mockCards, mockProfile } from "@/lib/mock-data";
 import type { ContactCard, ContactCardType, ProfileMeResponse } from "@/lib/types";
@@ -128,17 +129,13 @@ export default function CardsPage() {
     <AppShell>
       <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <Badge variant="secondary">Cards</Badge>
           <h1 className="mt-3 text-3xl font-semibold tracking-normal">
             ContactBook cards
           </h1>
-          <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-            Manage the shareable cards created from your saved profile details.
-          </p>
         </div>
         <Link
           to="/dashboard?onboarding=card&returnTo=/dashboard/cards"
-          className={buttonVariants({ variant: "default" })}
+          className={cn(buttonVariants({ variant: "default" }), "rounded-full")}
         >
           <Plus className="h-4 w-4" aria-hidden="true" />
           Create card
@@ -170,7 +167,7 @@ export default function CardsPage() {
       {!isLoading && !error && cards.length === 0 && (
         <Card>
           <CardContent className="flex min-h-72 flex-col items-center justify-center p-6 text-center">
-            <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-md bg-secondary text-secondary-foreground">
+            <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-full bg-secondary text-secondary-foreground">
               <IdCard className="h-5 w-5" aria-hidden="true" />
             </div>
             <h2 className="font-semibold">Create your first ContactBook card</h2>
@@ -180,7 +177,7 @@ export default function CardsPage() {
             </p>
             <Link
               to="/dashboard?onboarding=card&returnTo=/dashboard/cards"
-              className={cn(buttonVariants({ variant: "default" }), "mt-5")}
+              className={cn(buttonVariants({ variant: "default" }), "mt-5 rounded-full")}
             >
               <Plus className="h-4 w-4" aria-hidden="true" />
               Create card
@@ -208,17 +205,18 @@ function CardsPageContactCard({
   profile: ProfileMeResponse | null;
 }) {
   const details = getCardDisplayDetails(card, profile);
+  const style = cardTypeStyles[card.type];
 
   return (
     <Card className="overflow-hidden">
-      <div className={cn("h-2 bg-gradient-to-r", details.accentClassName)} />
+      <div className={cn("h-2", style.accentClassName)} />
       <CardHeader>
         <div className="flex items-start justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3">
             <div
               className={cn(
-                "flex h-16 w-16 shrink-0 items-center justify-center rounded-md bg-gradient-to-br text-lg font-semibold text-white",
-                details.accentClassName,
+                "flex h-16 w-16 shrink-0 items-center justify-center rounded-full text-lg font-semibold shadow-[inset_0_1px_0_rgba(255,255,255,0.35)]",
+                style.initialsClassName,
               )}
             >
               {details.initials}
@@ -230,7 +228,7 @@ function CardsPageContactCard({
               </CardDescription>
             </div>
           </div>
-          <Badge variant="secondary" className="shrink-0">
+          <Badge variant="secondary" className={cn("shrink-0", style.badgeClassName)}>
             {cardTypeLabels[card.type]}
           </Badge>
         </div>
@@ -252,7 +250,7 @@ function CardsPageContactCard({
           <div className="flex shrink-0 items-center gap-2">
             <Link
               to={getCardDetailPath(card.id)}
-              className={cn(buttonVariants({ variant: "outline" }))}
+              className={cn(buttonVariants({ variant: "outline" }), "rounded-full")}
             >
               View details
               <ArrowRight className="h-4 w-4" aria-hidden="true" />
@@ -261,6 +259,7 @@ function CardsPageContactCard({
               type="button"
               variant="outline"
               size="icon"
+              className="rounded-full"
               aria-label={`Share ${card.name}`}
               title={`Share ${card.name}`}
               onClick={() => {
@@ -284,7 +283,7 @@ function CardPreviewLine({
   value: string;
 }) {
   return (
-    <div className="flex min-w-0 items-center gap-2 rounded-md bg-muted/40 px-3 py-2">
+    <div className="flex min-w-0 items-center gap-2 rounded-full bg-muted/40 px-3 py-2">
       <Icon className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
       <span className="truncate text-muted-foreground">{value}</span>
     </div>

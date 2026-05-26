@@ -1,7 +1,6 @@
 import type { ContactCard, ProfileMeResponse } from "@/lib/types";
 
 export type CardDisplayDetails = {
-  accentClassName: string;
   company: string;
   email: string;
   initials: string;
@@ -80,7 +79,6 @@ export function getCardDisplayDetails(
 
   if (card.type === "BUSINESS") {
     return {
-      accentClassName: "from-emerald-500 via-teal-500 to-cyan-500",
       company: businessCompany,
       email: firstText(business?.businessEmail, work?.workEmail, profile?.identity.primaryEmail, "hello@example.com"),
       initials: initialsFor(card.name),
@@ -105,7 +103,6 @@ export function getCardDisplayDetails(
 
   if (card.type === "CUSTOM" || card.type === "PAYMENT") {
     return {
-      accentClassName: "from-violet-500 via-fuchsia-500 to-rose-500",
       company: firstText(workCompany, "ContactBook"),
       email: firstText(profile?.identity.primaryEmail, "hello@example.com"),
       initials: initialsFor(card.name),
@@ -118,7 +115,6 @@ export function getCardDisplayDetails(
   }
 
   return {
-    accentClassName: "from-sky-500 via-blue-500 to-indigo-500",
     company: workCompany,
     email: firstText(personal?.email, profile?.identity.primaryEmail, "hello@example.com"),
     initials: initialsFor(personName),

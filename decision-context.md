@@ -1,5 +1,59 @@
 # Decision Context
 
+## 2026-05-26 - Type-Colored Contact Card Badges
+
+- Decision: Add shared type-specific badge classes to `card-styles` and apply them to card type badges inside the dashboard, Cards page, and Card Detail contact card UI.
+- Reason: The Personal, Business, and Custom badges should visually match their card accents instead of using the same generic secondary badge background.
+- Notes: Business badges use primary green, Personal badges use the softer secondary token, and Custom/Payment badges use the warm accent token. Backend code and browser testing remain untouched.
+
+## 2026-05-26 - Brand Green Active Sidebar State
+
+- Decision: Change the selected sidebar navigation pill from the secondary surface token to the primary green brand token with primary foreground text.
+- Reason: The active navigation state should clearly match ContactBook's brand color and feel more intentional than the softer secondary highlight.
+- Notes: Inactive sidebar items keep their muted pill styling. Backend code and browser testing remain untouched.
+
+## 2026-05-26 - Distinct Card Type Accents
+
+- Decision: Give Business, Personal, and Custom card previews distinct shared accent treatments: Business uses primary teal, Personal uses a softer secondary surface accent, and Custom/Payment keeps the warm accent token.
+- Reason: Business and Personal cards previously shared the same primary accent, making them harder to distinguish at a glance. Personal briefly used the darker secondary foreground, but that felt too black against the soft card surface, so it now uses the calmer secondary token treatment.
+- Notes: The styling remains centralized in `card-styles`, so dashboard, Cards page, and Card Detail page inherit the same type treatment. Backend code and browser testing remain untouched.
+
+## 2026-05-26 - Cards Page Header Simplification
+
+- Decision: Remove the small `Cards` badge from the Cards page header while keeping per-card type badges on individual card previews.
+- Reason: The page title is already clear, and removing the extra label makes the header feel cleaner and less redundant.
+- Notes: This is frontend-only and does not change card data, card actions, backend behavior, or browser-tested flows.
+
+## 2026-05-26 - Shared Brand Token Card Styling
+
+- Decision: Remove remaining arbitrary blue/purple/emerald card gradients from the shared card display data and centralize card type styling in a token-based `card-styles` helper used across dashboard, cards page, and card detail page.
+- Reason: Card surfaces should use ContactBook's shadcn/Tailwind brand tokens consistently instead of mixing old generic gradient colors with the newer teal/mint/charcoal direction.
+- Notes: Card display data now contains content only, while visual treatment comes from `cardTypeStyles`. Backend code and browser testing remain untouched.
+
+## 2026-05-26 - Dashboard Pill Language
+
+- Decision: Extend the rounded pill visual language into dashboard content controls, overview metrics, tip rows, and action buttons while preserving the premium physical-card shape for the contact card previews.
+- Reason: The topbar, profile menu, and sidebar now use pill styling, so dashboard controls and supporting rows should feel consistent without making the core card designs look bubbly.
+- Notes: The same pill treatment was also applied to Cards page and Card Detail page actions, metadata rows, empty states, and initials badges so card-related surfaces stay visually consistent. Uses existing shadcn/Tailwind tokens and rounded-full styling. Backend code and browser testing remain untouched.
+
+## 2026-05-26 - Fused Dashboard Overview Panel
+
+- Decision: Replace the separate Connections, Cards, and Profile stat cards with one fused ContactBook overview panel containing a relationship summary, compact metric rows, profile readiness visualization, and direct actions.
+- Reason: The three separate stat tiles felt generic and fragmented. Combining related readiness metrics into one branded overview makes the dashboard more intuitive, less cluttered, and more custom to ContactBook.
+- Notes: Navigation destinations and underlying data remain unchanged. After review, the classic stat cards remain the default because they are easier to scan, while the fused panel is preserved behind a compact Classic/Story switch in the app topbar for comparison. The selected dashboard mode is stored in browser localStorage under `contactbook:dashboard-mode` so the preference persists per browser. The panel uses existing shadcn/Tailwind tokens and CSS-only visual motifs. Backend code and browser testing remain untouched.
+
+## 2026-05-26 - Dashboard Relationship Stat Tiles
+
+- Decision: Redesign the dashboard Connections, Cards, and Profile stat cards as brand-token relationship tiles with stronger hierarchy, icon capsules, subtle token backgrounds, integrated text links, and a profile completion progress bar.
+- Reason: The previous stat cards were functional but generic. The dashboard summary should feel more intuitive and visually aligned with the premium ContactBook card direction while preserving the same navigation and data.
+- Notes: This remains frontend-only and uses existing shadcn/Tailwind tokens rather than new colors. Backend code and browser testing remain untouched.
+
+## 2026-05-26 - Phase 1 Premium Physical Dashboard Card Treatment
+
+- Decision: Restyle only the dashboard card previews with a premium physical-card illusion using ContactBook brand tokens: teal primary accents, mint/soft muted surfaces, charcoal foregrounds, and a restrained warm accent for custom/payment variants.
+- Reason: The first premium attempt used off-brand blue-purple accents and still read like generic dashboard cards. The dashboard should make ContactBook cards feel custom, memorable, and premium while staying inside the shadcn/Tailwind token system.
+- Notes: This is the Option 1 direction selected after design research. Backend behavior and card data composition remain unchanged. The dashboard cards section now sits directly on the page instead of inside an outer card wrapper so the premium card previews feel more seamless with the page. Cards page and card detail page are intentionally left for later phases. Backend code and browser testing remain untouched.
+
 ## 2026-05-26 - Phase 3 Card Detail Frontend-Composed Preview
 
 - Decision: Revamp the card detail page into a richer full-card preview using the shared frontend display-details builder, while still fetching only the backend card shell and profile display context.
