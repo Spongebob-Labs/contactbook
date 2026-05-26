@@ -6,7 +6,6 @@
 | [`envs/platform/`](envs/platform/) | `project-c74d38dd-7e12-4d3f-bbf` | **Shared** — GAR, APIs, GitHub WIF |
 | [`envs/prod/`](envs/prod/) | same | **Prod** — `contactbook-api`, `contactbook-profile-photos-c74d38dd` |
 | [`envs/uat/`](envs/uat/) | same | **UAT** — `contactbook-api-uat`, `contactbook-profile-photos-uat-c74d38dd` |
-| [`opentofu-new/`](opentofu-new/) | same | **Deprecated** — do not use |
 
 Each `envs/*` directory has its own `terraform.tfstate` (gitignored).
 

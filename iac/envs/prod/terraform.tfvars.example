@@ -1,4 +1,4 @@
-# Prod — existing live stack (migrated from opentofu-new).
+# Prod — live stack (contactbook-api + profile photos bucket).
 # Runtime secrets: API_ENV_PROD_B64 (apps/api/.env), not here.
 
 project_id = "project-c74d38dd-7e12-4d3f-bbf"

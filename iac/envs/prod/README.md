@@ -1,6 +1,6 @@
 # Prod environment (OpenTofu)
 
-Manages the **live** stack: Cloud Run **`contactbook-api`** and GCS **`contactbook-profile-photos-c74d38dd`** (migrated from `opentofu-new`).
+Manages the **live** Prod stack: Cloud Run **`contactbook-api`** and GCS **`contactbook-profile-photos-c74d38dd`**.
 
 CD on **`main`** deploys images tagged `0.1.<run_number>` here.
 

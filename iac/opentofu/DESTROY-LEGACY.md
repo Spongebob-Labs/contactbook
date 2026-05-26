@@ -1,6 +1,6 @@
 # Decommission legacy project (`c-club-466412`)
 
-When the new stack in [`../opentofu-new/`](../opentofu-new/) is live and you no longer need legacy infra:
+When the new stack in [`../envs/`](../envs/) is live and you no longer need legacy infra:
 
 ```bash
 unset GOOGLE_IMPERSONATE_SERVICE_ACCOUNT

@@ -1,4 +1,4 @@
-# State migration from iac/opentofu-new (single root).
+# State migration from retired single-root layout (historical moved blocks).
 # Copy terraform.tfstate here first, then: tofu init && tofu plan
 # Expect no destroys on GAR, WIF, or enabled APIs.
 

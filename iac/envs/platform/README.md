@@ -4,4 +4,4 @@ Single apply per project: **Artifact Registry** (`contactbook`), **API enablemen
 
 UAT and Prod environment stacks depend on this; apply platform before `envs/uat` or `envs/prod`.
 
-See [`../../MIGRATE.md`](../../MIGRATE.md) when moving state from `iac/opentofu-new`.
+See [`../../MIGRATE.md`](../../MIGRATE.md) when adopting existing GCP resources into state.
