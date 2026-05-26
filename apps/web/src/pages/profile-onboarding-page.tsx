@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAuth } from "@/context/auth-context";
 import { ApiError, apiFetch } from "@/lib/api";
 import { friendlyErrorMessages, logUiError } from "@/lib/friendly-errors";
 import type { PostalAddress, ProfileMeResponse } from "@/lib/types";
@@ -1003,6 +1004,7 @@ export function ProfileOnboardingModal({
   onComplete,
   onSkip,
 }: ProfileOnboardingModalProps) {
+  const { refreshUser } = useAuth();
   const [form, setForm] = useState<OnboardingForm>(initialForm);
   const [showAdditionalPersonalFields, setShowAdditionalPersonalFields] = useState(false);
   const [showAdditionalWorkFields, setShowAdditionalWorkFields] = useState(false);
@@ -1197,6 +1199,7 @@ export function ProfileOnboardingModal({
         body,
       });
       setSectionValue("identity", "profilePhoto", response.profilePhoto ?? "");
+      await refreshUser();
       toast.success("Profile photo updated.");
     } catch (error) {
       logUiError("Could not upload profile photo", error);
@@ -1214,6 +1217,7 @@ export function ProfileOnboardingModal({
         method: "DELETE",
       });
       setSectionValue("identity", "profilePhoto", "");
+      await refreshUser();
       toast.success("Profile photo removed.");
     } catch (error) {
       logUiError("Could not remove profile photo", error);
@@ -1761,6 +1765,7 @@ export function ProfileOnboardingModal({
       }
 
       toast.success("Profile saved.");
+      await refreshUser();
       await onComplete({ identity: payload.identity });
     } catch (err) {
       logUiError("Could not save profile", err);

@@ -1,5 +1,5 @@
-import { lazy, Suspense } from "react";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { lazy, Suspense, useEffect } from "react";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AppErrorBoundary } from "@/components/app-error-boundary";
 import { PageLoader } from "@/components/page-loader";
 import { ProtectedRoute } from "@/components/protected-route";
@@ -18,9 +18,72 @@ const LandingPage = lazy(() => import("@/pages/landing-page"));
 const ProfilePage = lazy(() => import("@/pages/profile-page"));
 const ThemePreviewPage = lazy(() => import("@/pages/theme-preview-page"));
 
+function pageTitleForPath(pathname: string) {
+  if (pathname === "/") {
+    return "ContactBook | Living Contact Cards";
+  }
+  if (pathname === "/about") {
+    return "About ContactBook | ContactBook";
+  }
+  if (pathname === "/contact") {
+    return "Contact ContactBook | ContactBook";
+  }
+  if (pathname === "/auth") {
+    return "Sign In | ContactBook";
+  }
+  if (pathname === "/auth/callback") {
+    return "Connecting Account | ContactBook";
+  }
+  if (pathname === "/profile") {
+    return "Profile | ContactBook";
+  }
+  if (pathname === "/dashboard") {
+    return "Dashboard | ContactBook";
+  }
+  if (pathname === "/dashboard/theme-preview") {
+    return "Theme Preview | ContactBook";
+  }
+  if (pathname === "/dashboard/cards") {
+    return "Cards | ContactBook";
+  }
+  if (pathname.startsWith("/dashboard/cards/")) {
+    return "Card Details | ContactBook";
+  }
+  if (pathname === "/dashboard/contacts") {
+    return "Contacts | ContactBook";
+  }
+  if (pathname.startsWith("/dashboard/contacts/")) {
+    return "Contact Details | ContactBook";
+  }
+  if (pathname === "/dashboard/import") {
+    return "Import Contacts | ContactBook";
+  }
+  if (pathname === "/onboarding/profile") {
+    return "Profile Setup | ContactBook";
+  }
+  if (pathname === "/onboarding/import") {
+    return "Import Setup | ContactBook";
+  }
+  if (pathname === "/onboarding/card") {
+    return "Create Card | ContactBook";
+  }
+  return "ContactBook";
+}
+
+function DocumentTitle() {
+  const { pathname } = useLocation();
+
+  useEffect(() => {
+    document.title = pageTitleForPath(pathname);
+  }, [pathname]);
+
+  return null;
+}
+
 export default function App() {
   return (
     <AppErrorBoundary>
+      <DocumentTitle />
       <Suspense fallback={<PageLoader />}>
         <Routes>
           <Route path="/" element={<LandingPage />} />

@@ -20,7 +20,7 @@ type AuthContextValue = {
   profileIdentity: ProfileMeResponse["identity"] | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  refreshUser: () => void;
+  refreshUser: () => Promise<void>;
   markAuthenticated: () => void;
   logout: () => Promise<void>;
 };
@@ -83,12 +83,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const refreshUser = useCallback(() => {
+  const refreshUser = useCallback(async () => {
     const nextUserId = getCookie("cb_user_id");
-    setUserId(nextUserId);
-    setProfileIdentity(null);
-    setIsAuthenticated(Boolean(nextUserId));
-    setIsLoading(false);
+
+    if (!nextUserId) {
+      setUserId(null);
+      setProfileIdentity(null);
+      setIsAuthenticated(false);
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      const profile = await apiFetch<ProfileMeResponse>("/v1/profile/me");
+      setUserId(getCookie("cb_user_id") ?? profile.identity.primaryEmail);
+      setProfileIdentity(profile.identity);
+      setIsAuthenticated(true);
+    } catch {
+      setUserId(nextUserId);
+      setProfileIdentity(null);
+      setIsAuthenticated(true);
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
   const markAuthenticated = useCallback(() => {

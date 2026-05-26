@@ -1,5 +1,23 @@
 # Decision Context
 
+## 2026-05-26 - App Logo Favicon And Page Metadata
+
+- Decision: Add a modern ContactBook SVG logo, use it as the app shell logo and favicon, add web app manifest/social metadata, and set route-aware page titles from the router.
+- Reason: The app needed production-grade browser metadata and a more distinctive brand mark that fits the living contact-card concept.
+- Notes: The SVG mark uses ContactBook green with a contact card and connection motif. Page titles are generic per route, with detail pages titled Card Details and Contact Details. Backend code and browser testing remain untouched.
+
+## 2026-05-26 - Clickable App Brand Lockup
+
+- Decision: Make the app logo and ContactBook title in the shell brand area one clickable link to the dashboard.
+- Reason: Users expect both the logo and product name to navigate home, and grouping them improves the click target without changing layout.
+- Notes: The link keeps the existing visual treatment with added hover and focus states. Backend code and browser testing remain untouched.
+
+## 2026-05-26 - Topbar Profile Photo Refresh
+
+- Decision: Display the user's saved profile photo in the app topbar profile button and profile submenu, and refresh auth profile identity after profile photo upload/removal or profile save.
+- Reason: The shell should reflect the user's current identity immediately after profile updates instead of waiting for a full session reload.
+- Notes: Auth context `refreshUser` now refetches `/v1/profile/me` and safely falls back to cookie-only auth if the profile read fails. Backend code and browser testing remain untouched.
+
 ## 2026-05-26 - Error Boundary Auto Refresh
 
 - Decision: Let the frontend error boundary automatically refresh the current page up to two times after an unexpected React crash, then fall back to the visible recovery UI.
