@@ -2,24 +2,45 @@
 
 | Directory | GCP project | Purpose |
 |-----------|-------------|---------|
-| [`opentofu/`](opentofu/) | `c-club-466412` | **Legacy** — existing state; run `tofu destroy` here when decommissioning |
-| [`opentofu-new/`](opentofu-new/) | `project-c74d38dd-7e12-4d3f-bbf` | **New** — fresh state; use for all new applies |
+| [`opentofu/`](opentofu/) | `c-club-466412` | **Legacy** — existing state; run `tofu destroy` when decommissioning |
+| [`envs/platform/`](envs/platform/) | `project-c74d38dd-7e12-4d3f-bbf` | **Shared** — GAR, APIs, GitHub WIF |
+| [`envs/prod/`](envs/prod/) | same | **Prod** — `contactbook-api`, `contactbook-profile-photos-c74d38dd` |
+| [`envs/uat/`](envs/uat/) | same | **UAT** — `contactbook-api-uat`, `contactbook-profile-photos-uat-c74d38dd` |
 
-Each directory is an independent OpenTofu root module (separate `terraform.tfstate`).
+Each `envs/*` directory has its own `terraform.tfstate` (gitignored).
 
-## New project: first apply
+## Local apply (Google user ADC)
+
+OpenTofu uses **your** Application Default Credentials — no service-account impersonation.
 
 ```bash
 unset GOOGLE_APPLICATION_CREDENTIALS
+unset GOOGLE_IMPERSONATE_SERVICE_ACCOUNT
 gcloud auth application-default login
-export GOOGLE_IMPERSONATE_SERVICE_ACCOUNT="contactbook-opentofu@project-c74d38dd-7e12-4d3f-bbf.iam.gserviceaccount.com"
-
-cd iac/opentofu-new
-tofu init
-tofu plan
-tofu apply
+gcloud config set project project-c74d38dd-7e12-4d3f-bbf
 ```
 
-See [`opentofu-new/README.md`](opentofu-new/README.md).
+Your Google account needs sufficient IAM on the project (e.g. Owner).
 
-**CI/CD cutover checklist:** [`../docs/gcp-ci-cutover.md`](../docs/gcp-ci-cutover.md) (GitHub secrets/variables — configure manually).
+## Apply order
+
+```bash
+# 1. Platform (GAR + GitHub WIF)
+cd iac/envs/platform
+cp -n terraform.tfvars.example terraform.tfvars
+tofu init && tofu apply
+
+# 2. Prod
+cd ../prod
+cp -n terraform.tfvars.example terraform.tfvars
+tofu init && tofu apply
+
+# 3. UAT
+cd ../uat
+cp -n terraform.tfvars.example terraform.tfvars
+tofu init && tofu apply
+```
+
+**Greenfield destroy + rebuild:** [`DESTROY-AND-REBUILD.md`](DESTROY-AND-REBUILD.md)  
+**State migration (keep existing resources):** [`MIGRATE.md`](MIGRATE.md)  
+**CI/CD secrets:** [`../docs/gcp-ci-cutover.md`](../docs/gcp-ci-cutover.md)

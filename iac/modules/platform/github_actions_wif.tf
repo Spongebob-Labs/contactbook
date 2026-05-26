@@ -85,7 +85,6 @@ resource "google_project_iam_member" "github_actions_run_developer" {
 resource "google_service_account_iam_member" "github_actions_runtime_sa_user" {
   count = var.enable_github_actions_wif ? 1 : 0
 
-  # Lets the GitHub Actions SA deploy new revisions (actAs the revision runtime identity).
   service_account_id = "projects/${var.project_id}/serviceAccounts/${local.cloud_run_runtime_sa_email}"
   role               = "roles/iam.serviceAccountUser"
   member             = "serviceAccount:${google_service_account.github_actions[0].email}"

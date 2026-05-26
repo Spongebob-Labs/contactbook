@@ -1,0 +1,126 @@
+# API deploy pipeline on push to dev (UAT) or main (Prod) only.
+# Tests, builds, and pushes the container image to GAR. CD runs via workflow_run on success.
+# No GitHub Actions artifacts — images live in Artifact Registry only.
+#
+# Secrets: API_ENV_UAT_B64, API_ENV_PROD_B64, API_ENV_B64 (UAT fallback),
+#   GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_SERVICE_ACCOUNT
+# Variables: GCP_REGION, GCP_PROJECT_ID
+#
+# Image tags: dev → 0.1.<run_number>-uat ; main → 0.1.<run_number>
+
+name: CI Deploy
+
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/ci-deploy.yml"
+      - ".github/workflows/cd.yml"
+      - ".github/workflows/api-test.yml"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "package.json"
+      - "apps/api/**"
+      - "packages/**"
+      - "scripts/**"
+
+jobs:
+  test:
+    uses: ./.github/workflows/api-test.yml
+    secrets: inherit
+    with:
+      env_profile: ${{ github.ref == 'refs/heads/dev' && 'uat' || 'prod' }}
+      fetch_depth: 0
+
+  build-push:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Decode API env for Docker build
+        env:
+          API_ENV_B64: ${{ secrets.API_ENV_B64 }}
+          API_ENV_UAT_B64: ${{ secrets.API_ENV_UAT_B64 }}
+          API_ENV_PROD_B64: ${{ secrets.API_ENV_PROD_B64 }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.ref }}" = "refs/heads/dev" ]; then
+            if [ -n "${API_ENV_UAT_B64:-}" ]; then
+              printf '%s' "$API_ENV_UAT_B64" | base64 -d > apps/api/.env
+            else
+              printf '%s' "$API_ENV_B64" | base64 -d > apps/api/.env
+            fi
+          else
+            printf '%s' "$API_ENV_PROD_B64" | base64 -d > apps/api/.env
+          fi
+          test -s apps/api/.env || {
+            echo "Decoded apps/api/.env is empty."
+            exit 1
+          }
+
+      - name: Container image tags
+        id: imagetags
+        env:
+          GCP_REGION: ${{ vars.GCP_REGION }}
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          if [ -z "$GCP_REGION" ] || [ -z "$GCP_PROJECT_ID" ]; then
+            echo "Set repository variables GCP_REGION and GCP_PROJECT_ID to push images to GAR."
+            exit 1
+          fi
+          LATEST_TAG=$(git describe --tags --match "v*" --abbrev=0 2>/dev/null || echo "v0.1")
+          BASE_VERSION=${LATEST_TAG#v}
+          VERSION_TAG="${BASE_VERSION}.${RUN_NUMBER}"
+          if [ "${{ github.ref }}" = "refs/heads/dev" ]; then
+            IMAGE_TAG="${VERSION_TAG}-uat"
+          else
+            IMAGE_TAG="${VERSION_TAG}"
+          fi
+          BASE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/contactbook/api"
+          {
+            echo "tags<<__EOF__"
+            echo "${BASE}:${IMAGE_TAG}"
+            echo "__EOF__"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for GAR
+        run: gcloud auth configure-docker "${{ vars.GCP_REGION }}-docker.pkg.dev" --quiet
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push container image
+        uses: docker/build-push-action@v6
+        env:
+          DOCKER_BUILD_RECORD_UPLOAD: false
+          DOCKER_BUILD_SUMMARY: false
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: true
+          tags: ${{ steps.imagetags.outputs.tags }}
+          provenance: false
+          sbom: false
+          secret-files: |
+            api_env=${{ github.workspace }}/apps/api/.env
+          cache-from: type=gha
+          cache-to: type=gha,mode=min

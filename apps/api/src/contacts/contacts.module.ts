@@ -10,6 +10,7 @@ import { ContactsController } from "./contacts.controller";
 import { ContactsService } from "./contacts.service";
 import { GoogleContactsSyncProvider } from "./providers/google-contacts-sync.provider";
 import { IcloudContactsSyncProvider } from "./providers/icloud-contacts-sync.provider";
+import { VcardContactsImportService } from "./vcard-contacts-import.service";
 
 @Module({
   imports: [PrismaModule, OAuthTokensModule, ConfigModule],
@@ -22,6 +23,7 @@ import { IcloudContactsSyncProvider } from "./providers/icloud-contacts-sync.pro
     ContactDedupService,
     GoogleContactsSyncProvider,
     IcloudContactsSyncProvider,
+    VcardContactsImportService,
   ],
   exports: [
     ContactUpsertService,

@@ -9,15 +9,13 @@ import { ContactSource } from "@prisma/client";
 import { google, people_v1 } from "googleapis";
 import { OAuthTokenService } from "../../oauth-tokens/oauth-token.service";
 import { PrismaService } from "../../prisma/prisma.service";
-import {
-  emptyContactSyncStats,
-  incrementSyncStat,
-  syncStatsProcessedCount,
-  type ContactSyncStats,
-} from "../contact-sync-stats";
+import { syncStatsProcessedCount } from "../contact-sync-stats";
 import { ContactUpsertService } from "../contact-upsert.service";
-import { googlePersonToNormalizedContact } from "../google-contact.adapter";
+import { tryGooglePersonForImport } from "../google-contact.adapter";
+import type { ContactImportRun } from "../contact-import-result.mapper";
+import type { ContactImportSkippedItem } from "../contact-import-skipped.types";
 import type { ContactSyncResponseDto } from "../dto/contact-sync-response.dto";
+import type { NormalizedContact } from "../normalized-contact.types";
 
 const GOOGLE_PROVIDER = "google";
 const OAUTH2_REDIRECT_PLACEHOLDER = "urn:ietf:wg:oauth:2.0:oob";
@@ -34,12 +32,21 @@ export class GoogleContactsSyncProvider {
   ) {}
 
   /** Always runs a full import; never sends a stored sync token to Google. */
-  async import(userId: string): Promise<ContactSyncResponseDto> {
+  async import(userId: string): Promise<ContactImportRun> {
     const stateRow = await this.peopleIntegrationState(userId);
     if (stateRow.syncToken != null) {
       await this.clearSyncToken(userId);
     }
-    return this.runContactsSync(userId, false, { omitSyncToken: true });
+    const skipped: ContactImportSkippedItem[] = [];
+    const result = await this.runContactsSync(userId, false, {
+      omitSyncToken: true,
+      skipped,
+    });
+    return {
+      stats: result.stats,
+      skipped,
+      completedAt: result.lastSyncAt ?? new Date(),
+    };
   }
 
   async sync(userId: string): Promise<ContactSyncResponseDto> {
@@ -50,8 +57,20 @@ export class GoogleContactsSyncProvider {
         this.logger.warn(
           `Google People sync token invalid for user ${userId}; falling back to full import`,
         );
-        const result = await this.import(userId);
-        return { ...result, recoveredFromExpiredToken: true };
+        const run = await this.import(userId);
+        const totalContacts = await this.contactUpsert.countActive(
+          userId,
+          ContactSource.GOOGLE,
+        );
+        return {
+          source: ContactSource.GOOGLE,
+          syncMode: "full",
+          stats: run.stats,
+          processedCount: syncStatsProcessedCount(run.stats),
+          totalContacts,
+          lastSyncAt: run.completedAt,
+          recoveredFromExpiredToken: true,
+        };
       }
       throw this.mapSyncError(userId, error);
     }
@@ -60,7 +79,10 @@ export class GoogleContactsSyncProvider {
   private async runContactsSync(
     userId: string,
     _recoveredFromExpiredToken: boolean,
-    options?: { omitSyncToken?: boolean },
+    options?: {
+      omitSyncToken?: boolean;
+      skipped?: ContactImportSkippedItem[];
+    },
   ): Promise<ContactSyncResponseDto> {
     const people = await this.getAuthorizedPeopleClient(userId);
     const stateRow = await this.peopleIntegrationState(userId);
@@ -68,10 +90,10 @@ export class GoogleContactsSyncProvider {
     const syncMode: "full" | "delta" = this.hasUsableSyncToken(activeSyncToken)
       ? "delta"
       : "full";
-    const stats = emptyContactSyncStats();
     let pageToken: string | undefined;
     let nextSyncToken: string | undefined;
 
+    const connections: people_v1.Schema$Person[] = [];
     for (;;) {
       const res = await people.people.connections.list({
         resourceName: "people/me",
@@ -82,10 +104,9 @@ export class GoogleContactsSyncProvider {
         requestSyncToken: true,
         syncToken: activeSyncToken ?? undefined,
       });
-      const connections = res.data.connections ?? [];
-      for (const person of connections) {
-        await this.upsertPerson(userId, person, stats);
-      }
+      const pageConnections = res.data.connections ?? [];
+      connections.push(...pageConnections);
+
       if (res.data.nextSyncToken) {
         nextSyncToken = res.data.nextSyncToken;
       }
@@ -94,6 +115,21 @@ export class GoogleContactsSyncProvider {
         break;
       }
     }
+
+    const contactsToUpsert: NormalizedContact[] = [];
+    for (const person of connections) {
+      const parsed = tryGooglePersonForImport(person);
+      if ("skipped" in parsed) {
+        options?.skipped?.push(parsed.skipped);
+      } else {
+        contactsToUpsert.push(parsed.contact);
+      }
+    }
+
+    const stats = await this.contactUpsert.upsertBatch(
+      userId,
+      contactsToUpsert,
+    );
 
     const updated = await this.prisma.integrationState.update({
       where: {
@@ -123,26 +159,6 @@ export class GoogleContactsSyncProvider {
       totalContacts,
       lastSyncAt,
     };
-  }
-
-  private async upsertPerson(
-    userId: string,
-    person: people_v1.Schema$Person,
-    stats: ContactSyncStats,
-  ): Promise<void> {
-    const normalized = googlePersonToNormalizedContact(person);
-    if (!normalized) {
-      return;
-    }
-    const result = await this.contactUpsert.upsert(userId, normalized);
-    if (!result) {
-      return;
-    }
-    incrementSyncStat(
-      stats,
-      result.outcome,
-      "duplicateFound" in result ? result.duplicateFound : false,
-    );
   }
 
   private buildOAuthClient(): InstanceType<typeof google.auth.OAuth2> {
