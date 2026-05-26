@@ -218,98 +218,71 @@ function CardDetailPreview({
           </div>
           <div className="pointer-events-none absolute bottom-0 right-0 h-44 w-44 rounded-tl-full border-l border-t border-primary/10 bg-background/30" />
 
-          <div className="relative grid gap-8 xl:grid-cols-[minmax(0,1fr)_20rem]">
-            <div className="flex min-w-0 flex-col">
-              <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-                <div className="flex min-w-0 flex-col gap-5 sm:flex-row sm:items-center">
-                  <div
-                    className={cn(
-                      "flex h-24 w-24 shrink-0 items-center justify-center rounded-full text-3xl font-semibold shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_18px_36px_rgba(20,52,48,0.14)]",
-                      style.initialsClassName,
-                    )}
-                  >
-                    {details.initials}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.32em] text-primary">
-                      ContactBook
-                    </p>
-                    <h2 className="mt-4 truncate text-4xl font-semibold tracking-normal text-foreground md:text-5xl">
-                      {details.name}
-                    </h2>
-                    <p className="mt-3 truncate text-base font-medium text-muted-foreground">
-                      {details.role}
-                    </p>
-                  </div>
+          <div className="relative flex min-w-0 flex-col">
+            <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
+              <div className="flex min-w-0 flex-col gap-5 sm:flex-row sm:items-center">
+                <div
+                  className={cn(
+                    "flex h-24 w-24 shrink-0 items-center justify-center rounded-full text-3xl font-semibold shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_18px_36px_rgba(20,52,48,0.14)]",
+                    style.initialsClassName,
+                  )}
+                >
+                  {details.initials}
                 </div>
-                <div className="flex shrink-0 flex-wrap items-center gap-2">
-                  <Badge variant="secondary" className={cn("w-fit shrink-0", style.badgeClassName)}>
-                    {cardTypeLabels[card.type]}
-                  </Badge>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="rounded-full bg-background/70"
-                    onClick={() => {
-                      void shareCard(card);
-                    }}
-                  >
-                    <Share2 className="h-4 w-4" aria-hidden="true" />
-                    Share card
-                  </Button>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.32em] text-primary">
+                    ContactBook
+                  </p>
+                  <h2 className="mt-4 max-w-5xl break-words text-4xl font-semibold tracking-normal text-foreground md:text-5xl">
+                    {details.name}
+                  </h2>
+                  <p className="mt-3 truncate text-base font-medium text-muted-foreground">
+                    {details.role}
+                  </p>
                 </div>
               </div>
-
-              <div className="mt-10 grid gap-3 sm:grid-cols-2">
-                <DetailTile icon={Building2} label="Company" value={details.company} />
-                <DetailTile icon={Phone} label="Phone" value={details.phone} />
-                <DetailTile icon={Mail} label="Email" value={details.email} />
-                <DetailTile icon={MapPin} label="Location" value={details.location} />
-                <DetailTile icon={Globe2} label="Online" value={details.social} />
-              </div>
-
-              <div className="mt-8 grid gap-3 sm:grid-cols-3">
-                <MetadataChip
-                  icon={CalendarDays}
-                  label="Created"
-                  value={formatDate(card.createdAt)}
-                />
-                <MetadataChip
-                  icon={CalendarDays}
-                  label="Updated"
-                  value={formatDate(card.updatedAt)}
-                />
-                <MetadataChip
-                  icon={Share2}
-                  label="Share type"
-                  value={cardTypeLabels[card.type]}
-                />
+              <div className="flex shrink-0 flex-wrap items-center gap-2">
+                <Badge variant="secondary" className={cn("w-fit shrink-0", style.badgeClassName)}>
+                  {cardTypeLabels[card.type]}
+                </Badge>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="rounded-full bg-background/70"
+                  onClick={() => {
+                    void shareCard(card);
+                  }}
+                >
+                  <Share2 className="h-4 w-4" aria-hidden="true" />
+                  Share card
+                </Button>
               </div>
             </div>
 
-            <div className="flex flex-col justify-between rounded-[28px] border border-border/70 bg-background/65 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.45)]">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary">
-                  Live card
-                </p>
-                <p className="mt-5 text-5xl font-semibold tracking-normal text-foreground">
-                  {details.initials}
-                </p>
-                <p className="mt-4 text-sm leading-6 text-muted-foreground">
-                  Keep this card current and share the details that fit this relationship.
-                </p>
-              </div>
-              <div className="mt-10 space-y-3 text-sm">
-                <div className="rounded-full border border-border bg-card px-4 py-3">
-                  <p className="truncate font-medium">{details.name}</p>
-                </div>
-                <div className="rounded-full border border-border bg-card px-4 py-3">
-                  <p className="truncate text-muted-foreground">{details.email}</p>
-                </div>
-                <div className="rounded-full border border-border bg-card px-4 py-3">
-                  <p className="truncate text-muted-foreground">{details.phone}</p>
-                </div>
-              </div>
+            <div className="mt-10 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              <DetailTile icon={Building2} label="Company" value={details.company} />
+              <DetailTile icon={Phone} label="Phone" value={details.phone} />
+              <DetailTile icon={Mail} label="Email" value={details.email} />
+              <DetailTile icon={MapPin} label="Location" value={details.location} />
+              <DetailTile icon={Globe2} label="Online" value={details.social} />
+            </div>
+
+            <div className="mt-8 grid gap-3 md:grid-cols-3">
+              <MetadataChip
+                icon={CalendarDays}
+                label="Created"
+                value={formatDate(card.createdAt)}
+              />
+              <MetadataChip
+                icon={CalendarDays}
+                label="Updated"
+                value={formatDate(card.updatedAt)}
+              />
+              <MetadataChip
+                icon={Share2}
+                label="Share type"
+                value={cardTypeLabels[card.type]}
+              />
             </div>
           </div>
         </div>

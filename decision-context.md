@@ -8,9 +8,9 @@
 
 ## 2026-05-26 - Full Width Card Detail Dossier
 
-- Decision: Remove the separate Card record panel from the Card Detail page and redesign the page as one full-width premium card dossier containing identity, contact details, metadata chips, and share action inside a single surface.
+- Decision: Remove the separate Card record panel and the internal Live card panel from the Card Detail page, and redesign the page as one full-width premium card dossier containing identity, contact details, metadata chips, and share action inside a single surface.
 - Reason: The separate backend record card exposed implementation details and made the detail page feel fragmented. Digital business card references favor clean, organized, share-first presentation inside one polished profile surface.
-- Notes: The redesign keeps existing fetch, mock fallback, profile-derived display details, and share behavior. Metadata for type, created, and updated dates now lives inside the main card. Backend code and browser testing remain untouched.
+- Notes: The redesign keeps existing fetch, mock fallback, profile-derived display details, and share behavior. Metadata for type, created, and updated dates now lives inside the main card. Card names are allowed to wrap instead of truncating. Backend code and browser testing remain untouched.
 
 ## 2026-05-26 - Dashboard-Style Cards Page Previews
 
