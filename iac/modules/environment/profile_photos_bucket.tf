@@ -14,6 +14,31 @@ resource "google_storage_bucket" "profile_photos" {
     response_header = ["Content-Type", "Content-Length"]
     max_age_seconds = 3600
   }
+
+  dynamic "lifecycle_rule" {
+    for_each = var.enable_photo_lifecycle_rules ? [1] : []
+    content {
+      condition {
+        age = 7
+      }
+      action {
+        type          = "SetStorageClass"
+        storage_class = "NEARLINE"
+      }
+    }
+  }
+
+  dynamic "lifecycle_rule" {
+    for_each = var.enable_photo_lifecycle_rules ? [1] : []
+    content {
+      condition {
+        age = 30
+      }
+      action {
+        type = "Delete"
+      }
+    }
+  }
 }
 
 resource "google_storage_bucket_iam_member" "profile_photos_public_read" {

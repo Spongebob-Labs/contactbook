@@ -89,3 +89,9 @@ variable "profile_photos_cors_origins" {
     "http://127.0.0.1:5173",
   ]
 }
+
+variable "enable_photo_lifecycle_rules" {
+  description = "If true, enables GCS lifecycle rules to move objects to Nearline storage after 7 days and delete them after 30 days."
+  type        = bool
+  default     = false
+}
