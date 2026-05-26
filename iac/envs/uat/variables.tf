@@ -1,9 +1,3 @@
-variable "opentofu_impersonate_service_account" {
-  description = "Service account email for OpenTofu to impersonate (ADC required)."
-  type        = string
-  default     = "contactbook-opentofu@project-c74d38dd-7e12-4d3f-bbf.iam.gserviceaccount.com"
-}
-
 variable "project_id" {
   type = string
 }
