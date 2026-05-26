@@ -52,20 +52,20 @@ describe("GcsProfilePhotoService", () => {
 
   it("builds public URLs and detects managed URLs", () => {
     const svc = createService(baseEnv);
-    const key = "profiles/user-1/abc.jpg";
+    const key = "user-1/abc.jpg";
     const url = svc.buildPublicUrl(key);
     expect(url).toBe(
-      "https://storage.googleapis.com/contactbook-profile-photos/profiles/user-1/abc.jpg",
+      "https://storage.googleapis.com/contactbook-profile-photos/user-1/abc.jpg",
     );
     expect(svc.isManagedUrl(url)).toBe(true);
     expect(svc.objectKeyFromUrl(url)).toBe(key);
   });
 
-  it("uploads with profiles/userId/uuid.ext key", async () => {
+  it("uploads with userId/uuid.ext key", async () => {
     const svc = createService(baseEnv);
     const url = await svc.upload("user-1", Buffer.from("fake"), "image/jpeg");
     expect(url).toMatch(
-      /^https:\/\/storage\.googleapis\.com\/contactbook-profile-photos\/profiles\/user-1\/[0-9a-f-]+\.jpg$/,
+      /^https:\/\/storage\.googleapis\.com\/contactbook-profile-photos\/user-1\/[0-9a-f-]+\.jpg$/,
     );
     expect(mockSave).toHaveBeenCalledWith(
       Buffer.from("fake"),
@@ -81,7 +81,7 @@ describe("GcsProfilePhotoService", () => {
 
   it("deletes managed objects and ignores unknown URLs", async () => {
     const svc = createService(baseEnv);
-    const url = svc.buildPublicUrl("profiles/user-1/old.jpg");
+    const url = svc.buildPublicUrl("user-1/old.jpg");
     await svc.deleteByUrl(url);
     expect(mockDelete).toHaveBeenCalledTimes(1);
     await svc.deleteByUrl("https://other.example.com/x.jpg");

@@ -1,5 +1,6 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { ProfileController } from "../../src/profile/profile.controller";
+import { PhotoController } from "../../src/profile/photo.controller";
 import { ProfileMeSerializerService } from "../../src/profile/profile-me.serializer";
 import { ProfileMeUpsertService } from "../../src/profile/profile-me.upsert.service";
 import { ProfilePhotoService } from "../../src/profile/profile-photo.service";
@@ -17,7 +18,7 @@ export async function createProfileControllerTestModule(
   overrides: ProfileControllerTestOverrides = {},
 ): Promise<TestingModule> {
   const builder = Test.createTestingModule({
-    controllers: [ProfileController],
+    controllers: [ProfileController, PhotoController],
     providers: [
       {
         provide: ProfileMeUpsertService,
