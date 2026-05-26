@@ -1,5 +1,29 @@
 # Decision Context
 
+## 2026-05-26 - Card Detail Header Simplification
+
+- Decision: Remove the `Card details` badge, duplicate card-name heading, and explanatory preview paragraph from the Card Detail page header.
+- Reason: The full-width card surface now carries the card identity and context, so the surrounding page header should stay minimal and action-focused.
+- Notes: The redesigned full-width card detail surface, share action, metadata, and backend behavior remain unchanged. Browser testing remains untouched.
+
+## 2026-05-26 - Full Width Card Detail Dossier
+
+- Decision: Remove the separate Card record panel from the Card Detail page and redesign the page as one full-width premium card dossier containing identity, contact details, metadata chips, and share action inside a single surface.
+- Reason: The separate backend record card exposed implementation details and made the detail page feel fragmented. Digital business card references favor clean, organized, share-first presentation inside one polished profile surface.
+- Notes: The redesign keeps existing fetch, mock fallback, profile-derived display details, and share behavior. Metadata for type, created, and updated dates now lives inside the main card. Backend code and browser testing remain untouched.
+
+## 2026-05-26 - Dashboard-Style Cards Page Previews
+
+- Decision: Update Cards page previews to match the dashboard card design, including the physical-card surface, vertical ribbon, watermark initials, ContactBook eyebrow, structured detail grid, and compact Open/share actions.
+- Reason: The dashboard card treatment is the preferred premium look, and the Cards page should present the same card objects with the same visual quality.
+- Notes: Behavior remains unchanged: Cards page still uses the same backend card records, profile-derived display details, detail navigation, and share action. Backend code and browser testing remain untouched.
+
+## 2026-05-26 - Vertical Card Preview Accent Ribbon
+
+- Decision: Replace the horizontal top accent strip on Cards page and Card Detail page card previews with the same vertical left accent ribbon used on dashboard card previews, and remove explanatory preview copy from Card Detail.
+- Reason: Shared card surfaces should use one premium physical-card treatment, and the frontend-composed preview explanation was product-internal copy that should not appear in production UI.
+- Notes: The vertical ribbon uses shared `cardTypeStyles.foilClassName`, preserving Business, Personal, and Custom accent colors. Backend code and browser testing remain untouched.
+
 ## 2026-05-26 - Auth Page Session Detection
 
 - Decision: Let `/auth` run the normal backend session/profile check instead of treating it as a cookie-gated public route.

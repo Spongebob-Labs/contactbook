@@ -18,7 +18,7 @@ import { SampleDataNotice } from "@/components/sample-data-notice";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
 import { getCardDisplayDetails } from "@/lib/card-display";
@@ -208,51 +208,70 @@ function CardsPageContactCard({
   const style = cardTypeStyles[card.type];
 
   return (
-    <Card className="overflow-hidden">
-      <div className={cn("h-2", style.accentClassName)} />
-      <CardHeader>
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex min-w-0 items-center gap-3">
+    <div className="group rounded-lg bg-background shadow-[0_18px_48px_rgba(20,52,48,0.08)] transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_64px_rgba(20,52,48,0.12)]">
+      <div
+        className={cn(
+          "relative flex min-h-[17.5rem] flex-col overflow-hidden rounded-md border border-border/80 p-5 pl-6",
+          style.faceClassName,
+        )}
+      >
+        <div className={cn("absolute inset-y-0 left-0 w-1.5", style.foilClassName)} />
+        <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-primary/35 to-transparent" />
+        <div
+          className={cn(
+            "pointer-events-none absolute -right-4 top-2 text-[8rem] font-semibold leading-none tracking-normal",
+            style.watermarkClassName,
+          )}
+        >
+          {details.initials}
+        </div>
+        <div className="pointer-events-none absolute bottom-0 right-0 h-24 w-24 rounded-tl-full border-l border-t border-primary/10 bg-background/30" />
+
+        <div className="relative flex items-start justify-between gap-5">
+          <div className="min-w-0">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-primary">
+              ContactBook
+            </p>
+            <p className="mt-5 truncate text-2xl font-semibold tracking-normal text-foreground">
+              {details.name}
+            </p>
+            <p className="mt-2 truncate text-sm font-medium text-muted-foreground">
+              {details.role}
+            </p>
+          </div>
+          <div className="shrink-0 text-right">
             <div
               className={cn(
-                "flex h-16 w-16 shrink-0 items-center justify-center rounded-full text-lg font-semibold shadow-[inset_0_1px_0_rgba(255,255,255,0.35)]",
+                "flex h-12 w-12 items-center justify-center rounded-full text-sm font-semibold shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_10px_22px_rgba(20,52,48,0.13)]",
                 style.initialsClassName,
               )}
             >
               {details.initials}
             </div>
-            <div className="min-w-0">
-              <CardTitle className="truncate text-xl">{details.name}</CardTitle>
-              <CardDescription className="mt-1 truncate">
-                {details.role}
-              </CardDescription>
-            </div>
+            <Badge variant="secondary" className={cn("mt-3", style.badgeClassName)}>
+              {cardTypeLabels[card.type]}
+            </Badge>
           </div>
-          <Badge variant="secondary" className={cn("shrink-0", style.badgeClassName)}>
-            {cardTypeLabels[card.type]}
-          </Badge>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-5">
-        <div className="grid gap-2 text-sm">
-          <CardPreviewLine icon={Building2} value={details.company} />
-          <CardPreviewLine icon={Phone} value={details.phone} />
-          <CardPreviewLine icon={Mail} value={details.email} />
-          <CardPreviewLine icon={MapPin} value={details.location} />
-          <CardPreviewLine icon={Globe2} value={details.social} />
         </div>
 
-        <div className="flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="text-xs text-muted-foreground">
-            <p>Created {formatDate(card.createdAt)}</p>
-            <p className="mt-1">Updated {formatDate(card.updatedAt)}</p>
-          </div>
+        <div className="relative mt-8 grid gap-x-5 gap-y-3 border-y border-border/70 py-4 text-sm sm:grid-cols-2">
+          <CardPreviewLine icon={Building2} label="Company" value={details.company} />
+          <CardPreviewLine icon={Phone} label="Phone" value={details.phone} />
+          <CardPreviewLine icon={Mail} label="Email" value={details.email} />
+          <CardPreviewLine icon={MapPin} label="Location" value={details.location} />
+          <CardPreviewLine icon={Globe2} label="Online" value={details.social} />
+        </div>
+
+        <div className="relative mt-auto flex items-center justify-between gap-3 pt-6">
+          <p className="truncate text-xs font-medium text-muted-foreground">
+            Updated {formatDate(card.updatedAt)}
+          </p>
           <div className="flex shrink-0 items-center gap-2">
             <Link
               to={getCardDetailPath(card.id)}
-              className={cn(buttonVariants({ variant: "outline" }), "rounded-full")}
+              className={cn(buttonVariants({ variant: "outline", size: "sm" }), "rounded-full")}
             >
-              View details
+              Open
               <ArrowRight className="h-4 w-4" aria-hidden="true" />
             </Link>
             <Button
@@ -270,22 +289,29 @@ function CardsPageContactCard({
             </Button>
           </div>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 
 function CardPreviewLine({
   icon: Icon,
+  label,
   value,
 }: {
   icon: typeof Building2;
+  label: string;
   value: string;
 }) {
   return (
-    <div className="flex min-w-0 items-center gap-2 rounded-full bg-muted/40 px-3 py-2">
-      <Icon className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
-      <span className="truncate text-muted-foreground">{value}</span>
+    <div className="flex min-w-0 gap-2">
+      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+      <div className="min-w-0">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+          {label}
+        </p>
+        <p className="mt-1 truncate font-medium text-foreground">{value}</p>
+      </div>
     </div>
   );
 }
