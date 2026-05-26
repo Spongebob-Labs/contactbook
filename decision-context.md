@@ -1,5 +1,17 @@
 # Decision Context
 
+## 2026-05-26 - Seamless Contacts List Layout
+
+- Decision: Keep the Contacts page title and Import contacts CTA, but remove the duplicated inner list title/description and the card shell around the contacts toolbar/table area.
+- Reason: The page-level title already provides context, and flattening the list area makes Contacts feel seamless with the newer dashboard and card page layouts.
+- Notes: Filters, search, table rows, empty state, pagination, contact loading, and backend behavior remain unchanged. Browser testing remains untouched.
+
+## 2026-05-26 - Contacts Source Badge Colors
+
+- Decision: Color-code the Contacts page Source column badges by contact source while keeping the rounded pill badge shape.
+- Reason: Source badges were visually identical, which made the contact list harder to scan. Type-specific token-based colors make imported sources easier to distinguish without changing table behavior.
+- Notes: Google uses primary green, iCloud uses secondary, VCF uses accent, CSV uses success, CalDAV uses warning, and manual stays neutral. Backend code and browser testing remain untouched.
+
 ## 2026-05-26 - Contacts And Import Rounded System
 
 - Decision: Extend the circular and pill-shaped visual language to Contacts and Import surfaces, including action buttons, filters, search input, pagination controls, source/status badges, empty-state icons, import option cards, and import status rows.

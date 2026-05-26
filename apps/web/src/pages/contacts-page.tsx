@@ -21,13 +21,6 @@ import { SampleDataNotice } from "@/components/sample-data-notice";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -68,6 +61,15 @@ const sourceOptions: Array<{ value: SourceFilter; label: string }> = [
 ];
 
 const pageSizeOptions = [25, 50, 100];
+
+const sourceBadgeStyles: Record<ContactSource, string> = {
+  GOOGLE: "bg-primary text-primary-foreground ring-primary/20",
+  ICLOUD: "bg-secondary text-secondary-foreground ring-secondary-foreground/10",
+  CSV: "bg-success/12 text-success ring-success/20",
+  VCARD: "bg-accent text-accent-foreground ring-accent-foreground/10",
+  CALDAV: "bg-warning/15 text-warning ring-warning/25",
+  MANUAL: "border border-border bg-background text-muted-foreground",
+};
 
 function ContactAvatar({ contact }: { contact: ContactDetail }) {
   return (
@@ -179,7 +181,10 @@ export default function ContactsPage() {
         accessorKey: "source",
         header: "Source",
         cell: ({ row }) => (
-          <Badge variant="secondary" className="rounded-full">
+          <Badge
+            variant="secondary"
+            className={cn("rounded-full", sourceBadgeStyles[row.original.source])}
+          >
             {row.original.source.toLowerCase()}
           </Badge>
         ),
@@ -325,66 +330,57 @@ export default function ContactsPage() {
 
       {isMockData && <SampleDataNotice />}
 
-      <section>
-        <Card className="overflow-hidden">
-          <CardHeader className="border-b border-border">
-            <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-              <div>
-                <CardTitle>Contacts ({total})</CardTitle>
-                <CardDescription>
-                  Browse imported contacts and open a contact for full details.
-                </CardDescription>
-              </div>
-              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[180px_150px_120px_minmax(220px,280px)]">
-                <Select
-                  value={sourceFilter}
-                  onChange={(event) => updateSourceFilter(event.target.value as SourceFilter)}
-                  className="rounded-full"
-                  aria-label="Filter contacts by source"
-                >
-                  {sourceOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </Select>
-                <Select
-                  value={sortKey}
-                  onChange={(event) => updateSortKey(event.target.value as SortKey)}
-                  className="rounded-full"
-                  aria-label="Sort contacts"
-                >
-                  <option value="name">Name</option>
-                  <option value="updatedAt">Updated</option>
-                  <option value="source">Source</option>
-                </Select>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="rounded-full"
-                  onClick={updateSortDirection}
-                  aria-label="Toggle sort direction"
-                >
-                  {sortDirection === "asc" ? (
-                    <ArrowUp className="h-4 w-4" aria-hidden="true" />
-                  ) : (
-                    <ArrowDown className="h-4 w-4" aria-hidden="true" />
-                  )}
-                  {sortDirection === "asc" ? "Asc" : "Desc"}
-                </Button>
-                <div className="relative">
-                  <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    value={query}
-                    onChange={(event) => updateQuery(event.target.value)}
-                    placeholder="Search contacts"
-                    className="rounded-full pl-9"
-                  />
-                </div>
-              </div>
+      <section className="space-y-4">
+        <div className="flex justify-end">
+          <div className="grid w-full gap-2 sm:grid-cols-2 lg:w-auto lg:grid-cols-[180px_150px_120px_minmax(220px,280px)]">
+            <Select
+              value={sourceFilter}
+              onChange={(event) => updateSourceFilter(event.target.value as SourceFilter)}
+              className="rounded-full"
+              aria-label="Filter contacts by source"
+            >
+              {sourceOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+            <Select
+              value={sortKey}
+              onChange={(event) => updateSortKey(event.target.value as SortKey)}
+              className="rounded-full"
+              aria-label="Sort contacts"
+            >
+              <option value="name">Name</option>
+              <option value="updatedAt">Updated</option>
+              <option value="source">Source</option>
+            </Select>
+            <Button
+              type="button"
+              variant="outline"
+              className="rounded-full"
+              onClick={updateSortDirection}
+              aria-label="Toggle sort direction"
+            >
+              {sortDirection === "asc" ? (
+                <ArrowUp className="h-4 w-4" aria-hidden="true" />
+              ) : (
+                <ArrowDown className="h-4 w-4" aria-hidden="true" />
+              )}
+              {sortDirection === "asc" ? "Asc" : "Desc"}
+            </Button>
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                value={query}
+                onChange={(event) => updateQuery(event.target.value)}
+                placeholder="Search contacts"
+                className="rounded-full pl-9"
+              />
             </div>
-          </CardHeader>
-          <CardContent className="p-0">
+          </div>
+        </div>
+        <div className="overflow-hidden border-y border-border">
             {isLoading && (
               <div className="space-y-1 p-4">
                 {Array.from({ length: 8 }).map((_, index) => (
@@ -503,8 +499,7 @@ export default function ContactsPage() {
                 </div>
               </>
             )}
-          </CardContent>
-        </Card>
+        </div>
       </section>
     </AppShell>
   );
