@@ -115,7 +115,8 @@ export function googlePersonToSkippedItem(
     firstName: trimOrNull(primaryName?.givenName),
     lastName: trimOrNull(primaryName?.familyName),
     primaryPhone: trimOrNull(phones[primaryIndex(phones)]?.value),
-    primaryEmail: trimOrNull(emails[primaryIndex(emails)]?.value)?.toLowerCase() ?? null,
+    primaryEmail:
+      trimOrNull(emails[primaryIndex(emails)]?.value)?.toLowerCase() ?? null,
     reason,
   };
 }

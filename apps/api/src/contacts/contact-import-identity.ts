@@ -4,10 +4,10 @@ import type { ContactImportSkippedItem } from "./contact-import-skipped.types";
 export function hasImportableIdentity(contact: NormalizedContact): boolean {
   return Boolean(
     contact.displayName ||
-      contact.firstName ||
-      contact.lastName ||
-      contact.phones.length > 0 ||
-      contact.emails.length > 0,
+    contact.firstName ||
+    contact.lastName ||
+    contact.phones.length > 0 ||
+    contact.emails.length > 0,
   );
 }
 

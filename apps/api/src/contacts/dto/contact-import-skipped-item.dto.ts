@@ -3,7 +3,8 @@ import { ContactImportSkipReason } from "../contact-import-skipped.types";
 
 export class ContactImportSkippedItemDto {
   @ApiPropertyOptional({
-    description: "Stable id from the import payload (vCard UID, Google resourceName).",
+    description:
+      "Stable id from the import payload (vCard UID, Google resourceName).",
     nullable: true,
   })
   externalId!: string | null;

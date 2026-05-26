@@ -35,10 +35,7 @@ function propertyValue(prop: VCardProperty | undefined): string | null {
   return trimOrNull(raw);
 }
 
-function propertiesForField(
-  card: VCard,
-  field: string,
-): VCardProperty[] {
+function propertiesForField(card: VCard, field: string): VCardProperty[] {
   const value = card.get(field);
   if (!value) {
     return [];
@@ -187,7 +184,10 @@ export function normalizeVcfText(input: string): string {
   if (!stripped) {
     return "";
   }
-  return stripped.replace(/\r\n/g, "\n").replace(/\r/g, "\n").replace(/\n/g, "\r\n");
+  return stripped
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/\n/g, "\r\n");
 }
 
 export function parseVcfCards(text: string): VCard[] {
@@ -198,7 +198,9 @@ export function parseVcfCards(text: string): VCard[] {
   return vcf.parse(normalized);
 }
 
-export function vcardToNormalizedContact(card: VCard): NormalizedContact | null {
+export function vcardToNormalizedContact(
+  card: VCard,
+): NormalizedContact | null {
   const contact = buildContactFromCard(card);
   if (!hasImportableIdentity(contact)) {
     return null;
@@ -288,6 +290,8 @@ export function parseVcfImport(text: string): VcfParseResult {
 }
 
 /** @deprecated Prefer parseVcfImport for skipped-item reporting. */
-export function parseVcfToNormalizedContacts(text: string): NormalizedContact[] {
+export function parseVcfToNormalizedContacts(
+  text: string,
+): NormalizedContact[] {
   return parseVcfImport(text).contacts;
 }
