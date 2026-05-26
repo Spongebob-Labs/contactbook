@@ -1,0 +1,100 @@
+# Reusable API test job (pnpm, Prisma, tsc, jest). Called by CI (PR) and CI Deploy (push).
+#
+# Inputs:
+#   env_profile — pr | uat | prod (selects which API_ENV_*_B64 secret to decode)
+#   fetch_depth — checkout depth (PR: 1, deploy: 0 for git describe tags)
+
+name: API Test
+
+on:
+  workflow_call:
+    inputs:
+      env_profile:
+        required: true
+        type: string
+        description: pr, uat, or prod
+      fetch_depth:
+        required: false
+        type: number
+        default: 1
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: ${{ inputs.fetch_depth }}
+
+      - name: Decode API env
+        env:
+          ENV_PROFILE: ${{ inputs.env_profile }}
+          API_ENV_B64: ${{ secrets.API_ENV_B64 }}
+          API_ENV_UAT_B64: ${{ secrets.API_ENV_UAT_B64 }}
+          API_ENV_PROD_B64: ${{ secrets.API_ENV_PROD_B64 }}
+          API_ENV_CI_B64: ${{ secrets.API_ENV_CI_B64 }}
+        run: |
+          set -euo pipefail
+          case "$ENV_PROFILE" in
+            pr)
+              if [ -n "${API_ENV_CI_B64:-}" ]; then
+                printf '%s' "$API_ENV_CI_B64" | base64 -d > apps/api/.env
+              else
+                printf '%s' "$API_ENV_B64" | base64 -d > apps/api/.env
+              fi
+              ;;
+            uat)
+              if [ -n "${API_ENV_UAT_B64:-}" ]; then
+                printf '%s' "$API_ENV_UAT_B64" | base64 -d > apps/api/.env
+              else
+                printf '%s' "$API_ENV_B64" | base64 -d > apps/api/.env
+              fi
+              ;;
+            prod)
+              printf '%s' "$API_ENV_PROD_B64" | base64 -d > apps/api/.env
+              ;;
+            *)
+              echo "Invalid env_profile: $ENV_PROFILE (expected pr, uat, or prod)"
+              exit 1
+              ;;
+          esac
+          test -s apps/api/.env || {
+            echo "Decoded apps/api/.env is empty. Configure API_ENV_*_B64 for profile ${ENV_PROFILE}."
+            exit 1
+          }
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Cache Prisma Engine
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules/.prisma
+            node_modules/@prisma/engines
+          key: ${{ runner.os }}-prisma-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-prisma-
+
+      - name: Install dependencies (api + workspace deps)
+        run: pnpm install --frozen-lockfile --filter api...
+
+      - name: Prisma generate (api)
+        run: pnpm -C apps/api prisma:generate
+
+      - name: Typecheck (api)
+        run: pnpm -C apps/api exec tsc -p tsconfig.build.json --noEmit
+
+      - name: Test (api)
+        run: pnpm -C apps/api test

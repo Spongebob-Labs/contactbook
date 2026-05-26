@@ -1,17 +1,10 @@
-# API-only CI: triggers when the Nest app, shared workspace packages, or install roots change.
+# API CI on pull requests only (tests). No GAR push, no CD, no release.
 #
-# ESLint is not run in CI; run ./scripts/validate-api.sh locally (requires apps/api/.env) before pushing.
+# Push to dev/main (merge or direct) uses ci-deploy.yml → cd.yml instead.
 #
-# Secrets (repository Settings → Secrets and variables → Actions):
-# - API_ENV_UAT_B64 — UAT dotenv for dev push builds (fallback: API_ENV_B64).
-# - API_ENV_PROD_B64 — Prod dotenv for main push builds.
-# - API_ENV_CI_B64 — optional; PR CI tests use this instead of API_ENV_B64 when set.
-# - API_ENV_B64 — legacy UAT fallback when API_ENV_UAT_B64 is unset.
-# - GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_SERVICE_ACCOUNT — push images to GAR on push to main/dev.
+# ESLint is not run in CI; run ./scripts/validate-api.sh locally before pushing.
 #
-# Image tags: dev → 0.1.<run_number>-uat ; main → 0.1.<run_number>
-#
-# Variables (non-secret): GCP_REGION, GCP_PROJECT_ID — required when pushing images to Artifact Registry.
+# Secrets: API_ENV_CI_B64 (optional), API_ENV_B64 (PR fallback).
 
 name: CI
 
@@ -20,20 +13,9 @@ on:
     branches: [main, dev]
     paths:
       - ".github/workflows/ci.yml"
+      - ".github/workflows/ci-deploy.yml"
       - ".github/workflows/cd.yml"
-      - ".github/workflows/release-api.yml"
-      - "pnpm-lock.yaml"
-      - "pnpm-workspace.yaml"
-      - "package.json"
-      - "apps/api/**"
-      - "packages/**"
-      - "scripts/**"
-  push:
-    branches: [main, dev]
-    paths:
-      - ".github/workflows/ci.yml"
-      - ".github/workflows/cd.yml"
-      - ".github/workflows/release-api.yml"
+      - ".github/workflows/api-test.yml"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
       - "package.json"
@@ -42,151 +24,9 @@ on:
       - "scripts/**"
 
 jobs:
-  api:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: ${{ github.event_name == 'push' && 0 || 1 }}
-
-      - name: Decode API env for CI
-        env:
-          API_ENV_B64: ${{ secrets.API_ENV_B64 }}
-          API_ENV_UAT_B64: ${{ secrets.API_ENV_UAT_B64 }}
-          API_ENV_PROD_B64: ${{ secrets.API_ENV_PROD_B64 }}
-          API_ENV_CI_B64: ${{ secrets.API_ENV_CI_B64 }}
-        run: |
-          set -euo pipefail
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            if [ -n "${API_ENV_CI_B64:-}" ]; then
-              printf '%s' "$API_ENV_CI_B64" | base64 -d > apps/api/.env
-            else
-              printf '%s' "$API_ENV_B64" | base64 -d > apps/api/.env
-            fi
-          elif [ "${{ github.ref }}" = "refs/heads/dev" ]; then
-            if [ -n "${API_ENV_UAT_B64:-}" ]; then
-              printf '%s' "$API_ENV_UAT_B64" | base64 -d > apps/api/.env
-            else
-              printf '%s' "$API_ENV_B64" | base64 -d > apps/api/.env
-            fi
-          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            printf '%s' "$API_ENV_PROD_B64" | base64 -d > apps/api/.env
-          else
-            echo "Unsupported ref for env decode: ${{ github.ref }}"
-            exit 1
-          fi
-          test -s apps/api/.env || {
-            echo "Decoded apps/api/.env is empty. Configure API_ENV_*_B64 (or API_ENV_B64 for PR/UAT fallback)."
-            exit 1
-          }
-
-      - name: Whether to push image to GAR
-        id: garpush
-        run: |
-          if [ "${{ github.event_name }}" = "push" ] && { [ "${{ github.ref }}" = "refs/heads/main" ] || [ "${{ github.ref }}" = "refs/heads/dev" ]; }; then
-            echo "push=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "push=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Container image tags
-        if: steps.garpush.outputs.push == 'true'
-        id: imagetags
-        env:
-          GCP_REGION: ${{ vars.GCP_REGION }}
-          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-          RUN_NUMBER: ${{ github.run_number }}
-        run: |
-          set -euo pipefail
-          if [ -z "$GCP_REGION" ] || [ -z "$GCP_PROJECT_ID" ]; then
-            echo "Set repository variables GCP_REGION and GCP_PROJECT_ID to push images to GAR."
-            exit 1
-          fi
-          LATEST_TAG=$(git describe --tags --match "v*" --abbrev=0 2>/dev/null || echo "v0.1")
-          BASE_VERSION=${LATEST_TAG#v}
-          VERSION_TAG="${BASE_VERSION}.${RUN_NUMBER}"
-          if [ "${{ github.ref }}" = "refs/heads/dev" ]; then
-            IMAGE_TAG="${VERSION_TAG}-uat"
-          else
-            IMAGE_TAG="${VERSION_TAG}"
-          fi
-          BASE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/contactbook/api"
-          {
-            echo "tags<<__EOF__"
-            echo "${BASE}:${IMAGE_TAG}"
-            echo "__EOF__"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: pnpm
-
-      - name: Cache Prisma Engine
-        uses: actions/cache@v4
-        with:
-          path: |
-            node_modules/.prisma
-            node_modules/@prisma/engines
-          key: ${{ runner.os }}-prisma-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-prisma-
-
-      - name: Install dependencies (api + workspace deps)
-        run: pnpm install --frozen-lockfile --filter api...
-
-      - name: Prisma generate (api)
-        run: pnpm -C apps/api prisma:generate
-
-      - name: Typecheck (api)
-        run: pnpm -C apps/api exec tsc -p tsconfig.build.json --noEmit
-
-      - name: Test (api)
-        run: pnpm -C apps/api test
-
-      - name: Authenticate to Google Cloud
-        if: steps.garpush.outputs.push == 'true'
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
-
-      - name: Set up Cloud SDK
-        if: steps.garpush.outputs.push == 'true'
-        uses: google-github-actions/setup-gcloud@v2
-
-      - name: Configure Docker for GAR
-        if: steps.garpush.outputs.push == 'true'
-        run: gcloud auth configure-docker "${{ vars.GCP_REGION }}-docker.pkg.dev" --quiet
-
-      - name: Set up Docker Buildx
-        if: steps.garpush.outputs.push == 'true'
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build and push container image
-        if: steps.garpush.outputs.push == 'true'
-        uses: docker/build-push-action@v6
-        env:
-          DOCKER_BUILD_RECORD_UPLOAD: false
-          DOCKER_BUILD_SUMMARY: false
-        with:
-          context: .
-          file: apps/api/Dockerfile
-          push: true
-          tags: ${{ steps.imagetags.outputs.tags }}
-          provenance: false
-          sbom: false
-          secret-files: |
-            api_env=${{ github.workspace }}/apps/api/.env
-          cache-from: type=gha
-          cache-to: type=gha,mode=min
+  test:
+    uses: ./.github/workflows/api-test.yml
+    secrets: inherit
+    with:
+      env_profile: pr
+      fetch_depth: 1
