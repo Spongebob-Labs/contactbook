@@ -1,34 +1,38 @@
-# Deploys the API image built and pushed by CI to Cloud Run (after a successful push to main or dev).
-# workflow_run uses this file from the repo DEFAULT BRANCH (main) — merge workflow fixes to main
-# before they apply to dev-triggered CI runs.
+# Deploys the API image built by CI Deploy to Cloud Run after a successful push to dev or main.
+# workflow_run uses this file from the repo DEFAULT BRANCH (main) — merge workflow changes to main
+# before they apply to dev-triggered runs.
 #
-# Secrets: API_ENV_B64 (production: base64 full apps/api/.env), GCP_WORKLOAD_IDENTITY_PROVIDER,
-#   GCP_SERVICE_ACCOUNT
-# Variables: GCP_REGION, GCP_PROJECT_ID — optional CLOUD_RUN_SERVICE (default: contactbook-api)
+# dev  → UAT:  contactbook-api-uat (no GitHub Release)
+# main → Prod: contactbook-api + release-prod (api-v* tag) when deploy actually ran
 #
+# Triggered only by CI Deploy (not PR CI).
+
 name: CD
 
 on:
   workflow_run:
-    workflows: [CI]
+    workflows: [CI Deploy]
     types: [completed]
 
 concurrency:
-  group: cd-${{ github.event.workflow_run.head_sha }}
+  group: cd-${{ github.event.workflow_run.head_branch }}-${{ github.event.workflow_run.head_sha }}
   cancel-in-progress: true
 
 jobs:
-  deploy:
+  deploy-uat:
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
-      contains(fromJSON('["main","dev"]'), github.event.workflow_run.head_branch) &&
-      github.event.workflow_run.event == 'push'
+      github.event.workflow_run.head_branch == 'dev' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
+    outputs:
+      deployed: ${{ steps.set_deployed.outputs.deployed }}
     steps:
-      - name: Checkout at CI commit
+      - name: Checkout at CI Deploy commit
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
@@ -39,7 +43,6 @@ jobs:
         id: detect
         run: |
           set -euo pipefail
-          # Merge commits: diff-tree lists nothing; compare to first parent instead.
           if git rev-parse --verify -q HEAD^1 >/dev/null; then
             paths=$(git diff --name-only HEAD^1 HEAD)
           else
@@ -51,15 +54,20 @@ jobs:
             echo "changed=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Decode API env (production)
+      - name: Decode API env (UAT)
         if: steps.detect.outputs.changed == 'true'
         env:
+          API_ENV_UAT_B64: ${{ secrets.API_ENV_UAT_B64 }}
           API_ENV_B64: ${{ secrets.API_ENV_B64 }}
         run: |
           set -euo pipefail
-          printf '%s' "$API_ENV_B64" | base64 -d > apps/api/.env
+          if [ -n "${API_ENV_UAT_B64:-}" ]; then
+            printf '%s' "$API_ENV_UAT_B64" | base64 -d > apps/api/.env
+          else
+            printf '%s' "$API_ENV_B64" | base64 -d > apps/api/.env
+          fi
           test -s apps/api/.env || {
-            echo "API_ENV_B64 missing or invalid (decoded apps/api/.env is empty)."
+            echo "API_ENV_UAT_B64 or API_ENV_B64 missing or invalid."
             exit 1
           }
 
@@ -78,13 +86,109 @@ jobs:
         if: steps.detect.outputs.changed == 'true'
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Deploy to Cloud Run
+      - name: Deploy to Cloud Run (UAT)
         if: steps.detect.outputs.changed == 'true'
         env:
           REGION: ${{ vars.GCP_REGION }}
           PROJECT: ${{ vars.GCP_PROJECT_ID }}
-          SERVICE: ${{ vars.CLOUD_RUN_SERVICE }}
-          SHA: ${{ github.event.workflow_run.head_sha }}
+          SERVICE: ${{ vars.CLOUD_RUN_SERVICE_UAT }}
+          RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
+        run: |
+          set -euo pipefail
+          if [ -z "$REGION" ] || [ -z "$PROJECT" ]; then
+            echo "Set repository variables GCP_REGION and GCP_PROJECT_ID."
+            exit 1
+          fi
+          SERVICE_NAME="${SERVICE:-contactbook-api-uat}"
+          LATEST_TAG=$(git describe --tags --match "v*" --abbrev=0 2>/dev/null || echo "v0.1")
+          BASE_VERSION=${LATEST_TAG#v}
+          VERSION_TAG="${BASE_VERSION}.${RUN_NUMBER}-uat"
+          IMAGE="${REGION}-docker.pkg.dev/${PROJECT}/contactbook/api:${VERSION_TAG}"
+          gcloud run services update "${SERVICE_NAME}" \
+            --project="${PROJECT}" \
+            --region="${REGION}" \
+            --image="${IMAGE}" \
+            --env-vars-file="${RUNNER_TEMP}/cloudrun-env.json" \
+            --quiet
+
+      - name: Set deployed output
+        id: set_deployed
+        if: always()
+        run: |
+          if [ "${{ steps.detect.outputs.changed }}" = "true" ]; then
+            echo "deployed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "deployed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  deploy-prod:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      deployed: ${{ steps.set_deployed.outputs.deployed }}
+    steps:
+      - name: Checkout at CI Deploy commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Detect apps/api changes
+        id: detect
+        run: |
+          set -euo pipefail
+          if git rev-parse --verify -q HEAD^1 >/dev/null; then
+            paths=$(git diff --name-only HEAD^1 HEAD)
+          else
+            paths=$(git diff-tree -m --no-commit-id --name-only -r HEAD 2>/dev/null || true)
+          fi
+          if echo "$paths" | grep -qE '^apps/api/'; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Decode API env (Prod)
+        if: steps.detect.outputs.changed == 'true'
+        env:
+          API_ENV_PROD_B64: ${{ secrets.API_ENV_PROD_B64 }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$API_ENV_PROD_B64" | base64 -d > apps/api/.env
+          test -s apps/api/.env || {
+            echo "API_ENV_PROD_B64 missing or invalid."
+            exit 1
+          }
+
+      - name: Convert .env to Cloud Run env JSON
+        if: steps.detect.outputs.changed == 'true'
+        run: python3 scripts/dotenv-to-gcloud-env-json.py apps/api/.env "${RUNNER_TEMP}/cloudrun-env.json"
+
+      - name: Authenticate to Google Cloud
+        if: steps.detect.outputs.changed == 'true'
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        if: steps.detect.outputs.changed == 'true'
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy to Cloud Run (Prod)
+        if: steps.detect.outputs.changed == 'true'
+        env:
+          REGION: ${{ vars.GCP_REGION }}
+          PROJECT: ${{ vars.GCP_PROJECT_ID }}
+          SERVICE: ${{ vars.CLOUD_RUN_SERVICE_PROD }}
           RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
         run: |
           set -euo pipefail
@@ -103,3 +207,94 @@ jobs:
             --image="${IMAGE}" \
             --env-vars-file="${RUNNER_TEMP}/cloudrun-env.json" \
             --quiet
+
+      - name: Set deployed output
+        id: set_deployed
+        if: always()
+        run: |
+          if [ "${{ steps.detect.outputs.changed }}" = "true" ]; then
+            echo "deployed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "deployed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  release-prod:
+    needs: deploy-prod
+    if: >-
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.event == 'push' &&
+      needs.deploy-prod.result == 'success' &&
+      needs.deploy-prod.outputs.deployed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout at CI Deploy commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Prepare release metadata and notes
+        id: prep
+        env:
+          RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
+        run: |
+          set -euo pipefail
+          LATEST_TAG=$(git describe --tags --match "v*" --abbrev=0 2>/dev/null || echo "v0.1")
+          BASE_VERSION=${LATEST_TAG#v}
+          RELEASE_VERSION="${BASE_VERSION}.${RUN_NUMBER}"
+          TAG="api-v${RELEASE_VERSION}"
+
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Git tag $TAG already exists; skipping release."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+            echo "release_version=${RELEASE_VERSION}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "release_version=${RELEASE_VERSION}" >> "$GITHUB_OUTPUT"
+
+          NOTES_FILE="${RUNNER_TEMP}/release-notes.md"
+          PREV=$(git tag -l 'api-v*' --merged HEAD --sort=-creatordate 2>/dev/null | head -1 || true)
+          {
+            echo "## apps/api (Prod)"
+            echo
+            echo "Prod Cloud Run: **contactbook-api**"
+            echo
+            echo "Image tag: **${RELEASE_VERSION}** (Artifact Registry \`contactbook/api:${RELEASE_VERSION}\`)."
+            echo
+            if [ -n "${PREV:-}" ] && git rev-parse "$PREV^{}" >/dev/null 2>&1; then
+              git log "${PREV}..HEAD" --pretty=format:'- %s (%h)' -- apps/api/ || true
+            else
+              git log -n 50 --pretty=format:'- %s (%h)' -- apps/api/ || true
+            fi
+            echo
+          } > "$NOTES_FILE"
+
+          if ! grep -qE '^- ' "$NOTES_FILE"; then
+            echo "- (no commit subjects under apps/api/ in this range)" >> "$NOTES_FILE"
+          fi
+
+          echo "notes_path=${NOTES_FILE}" >> "$GITHUB_OUTPUT"
+
+      - name: Create tag and GitHub Release
+        if: steps.prep.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.prep.outputs.tag }}"
+          REL="${{ steps.prep.outputs.release_version }}"
+          NOTES_PATH="${{ steps.prep.outputs.notes_path }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "$TAG" HEAD
+          git push origin "refs/tags/${TAG}"
+          gh release create "$TAG" \
+            --title "Contactbook API v${REL}" \
+            --notes-file "${NOTES_PATH}"

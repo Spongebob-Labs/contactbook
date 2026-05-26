@@ -202,10 +202,18 @@ pnpm --filter web exec shadcn add button
 
 `apps/web` and `apps/api` depend on `@repo/types` and `@repo/utils` via `workspace:*`. Vite resolves the shared package source through [apps/web/vite.config.ts](apps/web/vite.config.ts).
 
-## CI
+## CI / CD
 
-[.github/workflows/ci.yml](.github/workflows/ci.yml) runs when `apps/api/**`, `packages/**`, `scripts/**`, or monorepo install roots change; it decodes repository secret **`API_ENV_B64`** (base64 of a full `apps/api/.env` matching [.env.example](apps/api/.env.example)) into `apps/api/.env`, installs with a pnpm filter for **api**, then Prisma generate, build, unit tests, and (on push to `main`/`dev`) a Docker build that passes that file as BuildKit secret **`api_env`**. On push to **`main`** or **`dev`**, images are pushed to Artifact Registry with a single tag **`:<0.1.run_number>`** (for example `0.1.42`; same version CD deploys). CI does not upload a Docker build-record GitHub artifact or extra provenance/SBOM manifests. **ESLint is not run in CI**; run **[scripts/validate-api.sh](scripts/validate-api.sh)** locally (`pnpm validate:api` from the repo root) before you push. Optional secret **`API_ENV_CI_B64`**, when set, is used instead of `API_ENV_B64` in CI (e.g. a non-production database URL). Encode a local env file for GitHub: [scripts/encode-env-for-gh.sh](scripts/encode-env-for-gh.sh).
+Workflows run only for **`dev`** (UAT) and **`main`** (Prod) when `apps/api/**`, `packages/**`, `scripts/**`, or monorepo install roots change. **ESLint is not run in CI**; run **[scripts/validate-api.sh](scripts/validate-api.sh)** locally before you push.
 
-### API GitHub Releases
+| Trigger | Workflow | What runs |
+|---------|----------|-----------|
+| PR → `dev` or `main` | [ci.yml](.github/workflows/ci.yml) | Tests only (`API_ENV_CI_B64` or `API_ENV_B64`) — no GAR, no deploy, no release |
+| Push / merge → `dev` or `main` | [ci-deploy.yml](.github/workflows/ci-deploy.yml) → [cd.yml](.github/workflows/cd.yml) | Build + push image; deploy Cloud Run |
 
-After a successful **CI** run on a **push** to **`main`** or **`dev`** that changes files under **`apps/api/`**, [.github/workflows/release-api.yml](.github/workflows/release-api.yml) creates a **GitHub Release** titled `Contactbook API v<version>`. The git tag is **`api-v<version>`** (for example `api-v0.1.42`) so it does **not** become the newest `v*` tag used by `git describe` for Docker image versioning. Release notes list commits touching **`apps/api/`** since the previous `api-v*` tag (or the last 50 such commits if none). Releases are skipped if that tag already exists (idempotent re-runs). **[.github/workflows/cd.yml](.github/workflows/cd.yml)** deploys the same versioned image to Cloud Run after CI on **`main`** or **`dev`**.
+- **`dev`**: image `0.1.<run>-uat` → UAT `contactbook-api-uat` — **no** GitHub Release.
+- **`main`**: image `0.1.<run>` → Prod `contactbook-api` → GitHub Release `api-v0.1.<run>` **only** when Prod deploy actually ran (`apps/api` changed).
+
+Shared test steps: [api-test.yml](.github/workflows/api-test.yml). Encode env: [scripts/encode-env-for-gh.sh](scripts/encode-env-for-gh.sh). Secrets and infra: [docs/gcp-ci-cutover.md](docs/gcp-ci-cutover.md).
+
+**Note:** `workflow_run` (CD) uses the workflow files on the **default branch** (`main`). Merge workflow changes to `main` before relying on them for `dev` pushes.

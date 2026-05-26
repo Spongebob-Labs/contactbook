@@ -1,0 +1,21 @@
+output "cloud_run_service_name" {
+  description = "Cloud Run service name."
+  value       = google_cloud_run_v2_service.api.name
+}
+
+output "cloud_run_service_url" {
+  description = "Cloud Run service URL."
+  value       = google_cloud_run_v2_service.api.uri
+}
+
+output "profile_photos_bucket_name" {
+  description = "GCS bucket for profile photos (when create_profile_photos_bucket is true)."
+  value       = var.create_profile_photos_bucket ? google_storage_bucket.profile_photos[0].name : null
+}
+
+output "profile_photos_public_base_url" {
+  description = "Set GCS_PUBLIC_BASE_URL in apps/api/.env to this value."
+  value = var.create_profile_photos_bucket ? (
+    "https://storage.googleapis.com/${google_storage_bucket.profile_photos[0].name}"
+  ) : null
+}
