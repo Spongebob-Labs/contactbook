@@ -1,0 +1,21 @@
+project_id = "project-c74d38dd-7e12-4d3f-bbf"
+region     = "europe-west10"
+
+create_terraform_state_bucket = false
+terraform_state_bucket        = ""
+
+artifact_registry_repo_id     = "contactbook"
+artifact_registry_description = "Docker images for Contactbook services"
+
+enable_apis = true
+apis = [
+  "serviceusage.googleapis.com",
+  "artifactregistry.googleapis.com",
+  "run.googleapis.com",
+  "cloudbuild.googleapis.com",
+  "iam.googleapis.com",
+  "storage.googleapis.com",
+]
+
+enable_github_actions_wif = true
+github_repository         = "Spongebob-Labs/contactbook"

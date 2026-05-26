@@ -1,5 +1,7 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { ContactSource } from "@prisma/client";
+import { toContactImportResult } from "./contact-import-result.mapper";
+import type { ContactImportResultDto } from "./dto/contact-import-result.dto";
 import type { ContactSyncResponseDto } from "./dto/contact-sync-response.dto";
 import { GoogleContactsSyncProvider } from "./providers/google-contacts-sync.provider";
 import { IcloudContactsSyncProvider } from "./providers/icloud-contacts-sync.provider";
@@ -26,8 +28,16 @@ export class ContactsSyncService {
   async import(
     userId: string,
     source: ContactSource,
-  ): Promise<ContactSyncResponseDto> {
-    return this.runForSource(userId, source, "import");
+  ): Promise<ContactImportResultDto> {
+    if (!SYNC_SOURCES.includes(source)) {
+      throw new BadRequestException(
+        `Sync is not supported for source ${source}. Use GOOGLE or ICLOUD.`,
+      );
+    }
+    if (source === ContactSource.GOOGLE) {
+      return toContactImportResult(await this.google.import(userId));
+    }
+    return toContactImportResult(await this.icloud.import(userId));
   }
 
   private async runForSource(
@@ -41,12 +51,8 @@ export class ContactsSyncService {
       );
     }
     if (source === ContactSource.GOOGLE) {
-      return operation === "import"
-        ? this.google.import(userId)
-        : this.google.sync(userId);
+      return this.google.sync(userId);
     }
-    return operation === "import"
-      ? this.icloud.import(userId)
-      : this.icloud.sync(userId);
+    return this.icloud.sync(userId);
   }
 }

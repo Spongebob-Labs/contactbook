@@ -23,3 +23,14 @@ export function incrementSyncStat(
 export function syncStatsProcessedCount(stats: ContactSyncStats): number {
   return stats.added + stats.updated + stats.deleted;
 }
+
+/** Import-run outcome: active existing or dedup link counts as updated; revive from soft-delete counts as created. */
+export function importSyncOutcome(
+  hasActiveExisting: boolean,
+  duplicateFound: boolean,
+): "added" | "updated" {
+  if (hasActiveExisting || duplicateFound) {
+    return "updated";
+  }
+  return "added";
+}
