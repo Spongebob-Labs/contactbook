@@ -42,7 +42,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const currentPath = window.location.pathname;
       const isPublicRoute =
         currentPath === "/" ||
-        currentPath === "/auth" ||
         currentPath === "/auth/callback";
       const cookieUserId = getCookie("cb_user_id");
 

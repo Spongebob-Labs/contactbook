@@ -1,5 +1,11 @@
 # Decision Context
 
+## 2026-05-26 - Auth Page Session Detection
+
+- Decision: Let `/auth` run the normal backend session/profile check instead of treating it as a cookie-gated public route.
+- Reason: The frontend cannot always read API-domain cookies through `document.cookie`, especially when the local frontend points to a separate backend origin. Checking `/v1/profile/me` lets already logged-in users redirect from `/auth` to the dashboard correctly.
+- Notes: Public marketing routes and the OAuth callback still avoid unnecessary session probing when no readable user cookie exists. Backend code and browser testing remain untouched.
+
 ## 2026-05-26 - App Logo Favicon And Page Metadata
 
 - Decision: Add a modern ContactBook SVG logo, use it as the app shell logo and favicon, add web app manifest/social metadata, and set route-aware page titles from the router.
