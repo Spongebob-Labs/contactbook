@@ -202,10 +202,18 @@ pnpm --filter web exec shadcn add button
 
 `apps/web` and `apps/api` depend on `@repo/types` and `@repo/utils` via `workspace:*`. Vite resolves the shared package source through [apps/web/vite.config.ts](apps/web/vite.config.ts).
 
-## CI
+## CI / CD
 
-[.github/workflows/ci.yml](.github/workflows/ci.yml) runs when `apps/api/**`, `packages/**`, `scripts/**`, or monorepo install roots change. It decodes **`API_ENV_UAT_B64`** on push to **`dev`** (fallback **`API_ENV_B64`**) or **`API_ENV_PROD_B64`** on push to **`main`**, then Prisma generate, typecheck, tests, and (on those pushes) a Docker build with BuildKit secret **`api_env`**. Image tags: **`0.1.<run_number>-uat`** on `dev`, **`0.1.<run_number>`** on `main` (shared GAR repo `contactbook/api`). PRs use **`API_ENV_CI_B64`** or **`API_ENV_B64`** without pushing images. **ESLint is not run in CI**; run **[scripts/validate-api.sh](scripts/validate-api.sh)** locally before you push. Encode env files: [scripts/encode-env-for-gh.sh](scripts/encode-env-for-gh.sh). Infra and secrets: [docs/gcp-ci-cutover.md](docs/gcp-ci-cutover.md).
+Workflows run only for **`dev`** (UAT) and **`main`** (Prod) when `apps/api/**`, `packages/**`, `scripts/**`, or monorepo install roots change. **ESLint is not run in CI**; run **[scripts/validate-api.sh](scripts/validate-api.sh)** locally before you push.
 
-### API GitHub Releases
+| Trigger | Workflow | What runs |
+|---------|----------|-----------|
+| PR → `dev` or `main` | [ci.yml](.github/workflows/ci.yml) | Tests only (`API_ENV_CI_B64` or `API_ENV_B64`) — no GAR, no deploy, no release |
+| Push / merge → `dev` or `main` | [ci-deploy.yml](.github/workflows/ci-deploy.yml) → [cd.yml](.github/workflows/cd.yml) | Build + push image; deploy Cloud Run |
 
-After a successful **CI** run on a **push** to **`main`** that changes **`apps/api/`**, [.github/workflows/release-api.yml](.github/workflows/release-api.yml) creates a **GitHub Release** `api-v<version>` (for example `api-v0.1.42`; does not affect `git describe v*`). **[.github/workflows/cd.yml](.github/workflows/cd.yml)** deploys after CI: **`dev`** → UAT `contactbook-api-uat` with tag `0.1.<N>-uat`; **`main`** → Prod `contactbook-api` with tag `0.1.<N>`.
+- **`dev`**: image `0.1.<run>-uat` → UAT `contactbook-api-uat` — **no** GitHub Release.
+- **`main`**: image `0.1.<run>` → Prod `contactbook-api` → GitHub Release `api-v0.1.<run>` **only** when Prod deploy actually ran (`apps/api` changed).
+
+Shared test steps: [api-test.yml](.github/workflows/api-test.yml). Encode env: [scripts/encode-env-for-gh.sh](scripts/encode-env-for-gh.sh). Secrets and infra: [docs/gcp-ci-cutover.md](docs/gcp-ci-cutover.md).
+
+**Note:** `workflow_run` (CD) uses the workflow files on the **default branch** (`main`). Merge workflow changes to `main` before relying on them for `dev` pushes.

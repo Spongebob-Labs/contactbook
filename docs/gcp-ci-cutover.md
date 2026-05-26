@@ -8,7 +8,17 @@ Infrastructure uses **Prod** (existing) and **UAT** (new) in the same GCP projec
 | **Prod** (live today) | [`iac/envs/prod/`](../iac/envs/prod/) | `contactbook-api` | `0.1.<run>` on **`main`** |
 | **UAT** (new) | [`iac/envs/uat/`](../iac/envs/uat/) | `contactbook-api-uat` | `0.1.<run>-uat` on **`dev`** |
 
-State migration: [`iac/MIGRATE.md`](../iac/MIGRATE.md).
+State migration: [`iac/MIGRATE.md`](../iac/MIGRATE.md).  
+Greenfield wipe + local apply: [`iac/DESTROY-AND-REBUILD.md`](../iac/DESTROY-AND-REBUILD.md).
+
+## Local OpenTofu auth
+
+Use your Google user (not `contactbook-opentofu` impersonation):
+
+```bash
+unset GOOGLE_APPLICATION_CREDENTIALS GOOGLE_IMPERSONATE_SERVICE_ACCOUNT
+gcloud auth application-default login
+```
 
 ## OpenTofu outputs (for GitHub)
 
@@ -55,14 +65,27 @@ tofu output -raw profile_photos_public_base_url
 |--------|-------------|----------|
 | `GCP_WORKLOAD_IDENTITY_PROVIDER` | both | `iac/envs/platform` output |
 | `GCP_SERVICE_ACCOUNT` | both | `iac/envs/platform` output |
-| `API_ENV_PROD_B64` | Prod (`main` CI/CD) | Base64 of Prod `apps/api/.env` (today’s live config) |
-| `API_ENV_UAT_B64` | UAT (`dev` CI/CD) | Base64 of UAT `apps/api/.env` after UAT apply |
+| `API_ENV_PROD_B64` | Prod (`main` CI/CD) | Base64 of `apps/api/env/prod.env` |
+| `API_ENV_UAT_B64` | UAT (`dev` CI/CD) | Base64 of `apps/api/env/uat.env` |
 
-**Cutover:** If `API_ENV_UAT_B64` is unset, CI/CD on `dev` falls back to legacy `API_ENV_B64`.
+**Cutover:** If `API_ENV_UAT_B64` is unset, CI Deploy on `dev` falls back to legacy `API_ENV_B64`. PR CI uses `API_ENV_CI_B64` or `API_ENV_B64`.
 
 ```bash
-./scripts/encode-env-for-gh.sh
+./scripts/encode-env-for-gh.sh apps/api/env/prod.env
+./scripts/encode-env-for-gh.sh apps/api/env/uat.env
 ```
+
+### GitHub Actions pipeline
+
+| Event | Workflows |
+|-------|-----------|
+| PR → `dev` / `main` | **CI** — tests only |
+| Push / merge → `dev` | **CI Deploy** → **CD** (`deploy-uat`) — no release |
+| Push / merge → `main` | **CI Deploy** → **CD** (`deploy-prod`) → **release-prod** (main only, if deploy ran) |
+
+Merge to `dev`/`main` is a `push` event (same as a direct push). No workflow artifacts; images are in GAR only.
+
+Merge workflow file changes to **`main`** before `dev` picks up updated `workflow_run` behavior (CD reads workflows from the default branch).
 
 Image URI pattern (shared GAR repo):
 
@@ -71,7 +94,9 @@ Image URI pattern (shared GAR repo):
 - Prod (`main`): `0.1.42`
 - UAT (`dev`): `0.1.42-uat`
 
-## `apps/api/.env` per environment
+## `apps/api/env/` per environment
+
+Keep **`apps/api/env/prod.env`** and **`apps/api/env/uat.env`** (gitignored; templates in `*.env.example`). Encode each for GitHub secrets.
 
 Use **separate** Supabase/DB and URLs per environment.
 
@@ -95,8 +120,9 @@ Keep the **Prod** redirect URI for `contactbook-api`. Add a **second** redirect 
 
 ## Verify after secrets are set
 
-1. Push to **`dev`** → CI tag `…-uat` → CD updates **`contactbook-api-uat`**.
-2. Merge to **`main`** → CI tag `0.1.<N>` → CD updates **`contactbook-api`** → GitHub Release `api-v0.1.<N>`.
+1. Open PR to **`dev`** → **CI** tests only (no CI Deploy / CD / release).
+2. Merge or push to **`dev`** → **CI Deploy** tag `…-uat` → **CD** updates **`contactbook-api-uat`** (no release).
+3. Merge or push to **`main`** with `apps/api` change → **CI Deploy** → **CD** Prod → GitHub Release `api-v0.1.<N>` (only if deploy ran).
 3. `gcloud run services describe contactbook-api --region=europe-west10 --project=project-c74d38dd-7e12-4d3f-bbf`
 4. `gcloud run services describe contactbook-api-uat --region=europe-west10 --project=project-c74d38dd-7e12-4d3f-bbf`
 
