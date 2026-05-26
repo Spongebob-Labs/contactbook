@@ -1,5 +1,17 @@
 # Decision Context
 
+## 2026-05-26 - Cookie-Tolerant Auth Profile Refresh
+
+- Decision: Change auth `refreshUser` to refresh identity through `/v1/profile/me` before making any logout decision, and only mark the session unauthenticated on a confirmed 401.
+- Reason: After profile photo upload, the frontend needs to refresh topbar identity, but local/API-domain cookies may be HTTP-only or otherwise unreadable through `document.cookie`. Treating a missing readable `cb_user_id` as logout incorrectly redirected active users to `/auth`.
+- Notes: Non-auth profile refresh failures now leave the current auth state intact. Backend code and browser testing remain untouched.
+
+## 2026-05-26 - Profile-Enriched Card Detail Sections
+
+- Decision: Enrich the Card Detail page with frontend-composed profile sections for contact, images, business/work, personal, social, and financial information using the current profile API shape while leaving card API payloads unchanged.
+- Reason: The backend card API currently supports the card shell, but the detail page can still preview a richer shareable card by combining that shell with saved profile data. This gives users a better sense of future contact cards without requiring backend changes.
+- Notes: Personal cards may show financial entries only in masked form. Business cards do not show financial details. Custom/payment cards show curated profile-derived sections for now until the backend supports user-selected fields per card. Browser testing remains untouched.
+
 ## 2026-05-26 - Card Detail Header Simplification
 
 - Decision: Remove the `Card details` badge, duplicate card-name heading, and explanatory preview paragraph from the Card Detail page header.
