@@ -4,24 +4,18 @@ import {
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { GcsProfilePhotoService } from "../storage/gcs-profile-photo.service";
-import { ProfileMeSerializerService } from "./profile-me.serializer";
-import { ProfileMeUpsertService } from "./profile-me.upsert.service";
 
 export const PROFILE_PHOTO_MAX_BYTES = 1_048_576;
 
 const ALLOWED_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 export type ProfilePhotoUploadResult = {
-  profilePhoto: string;
+  url: string;
 };
 
 @Injectable()
 export class ProfilePhotoService {
-  constructor(
-    private readonly gcs: GcsProfilePhotoService,
-    private readonly profileUpsert: ProfileMeUpsertService,
-    private readonly profileSerializer: ProfileMeSerializerService,
-  ) {}
+  constructor(private readonly gcs: GcsProfilePhotoService) {}
 
   async upload(
     userId: string,
@@ -30,42 +24,20 @@ export class ProfilePhotoService {
     this.assertConfigured();
     this.validateFile(file);
 
-    const profile = await this.profileSerializer.build(userId);
-    const previousUrl = profile.identity.profilePhoto ?? null;
-
     const url = await this.gcs.upload(userId, file.buffer, file.mimetype);
 
-    try {
-      await this.profileUpsert.patch(userId, {
-        identity: { profilePhoto: url },
-      });
-    } catch (err) {
-      await this.gcs.deleteByUrl(url);
-      throw err;
-    }
-
-    if (previousUrl && previousUrl !== url) {
-      await this.gcs.deleteByUrl(previousUrl);
-    }
-
-    return { profilePhoto: url };
+    return { url };
   }
 
-  async remove(userId: string): Promise<{ profilePhoto: null }> {
+  async remove(url: string): Promise<{ url: string }> {
     this.assertConfigured();
-
-    const profile = await this.profileSerializer.build(userId);
-    const previousUrl = profile.identity.profilePhoto ?? null;
-
-    await this.profileUpsert.patch(userId, {
-      identity: { profilePhoto: null },
-    });
-
-    if (previousUrl) {
-      await this.gcs.deleteByUrl(previousUrl);
+    if (!url) {
+      throw new BadRequestException("url is required");
     }
 
-    return { profilePhoto: null };
+    await this.gcs.deleteByUrl(url);
+
+    return { url };
   }
 
   private assertConfigured(): void {

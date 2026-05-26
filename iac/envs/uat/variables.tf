@@ -61,3 +61,8 @@ variable "profile_photos_bucket_name" {
 variable "profile_photos_cors_origins" {
   type = list(string)
 }
+
+variable "enable_photo_lifecycle_rules" {
+  type    = bool
+  default = true
+}
