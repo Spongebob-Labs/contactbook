@@ -3,9 +3,13 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowRight,
   CheckCircle2,
-  CreditCard,
+  Building2,
+  Globe2,
   IdCard,
   Import,
+  Mail,
+  MapPin,
+  Phone,
   Plus,
   Share2,
   ShieldCheck,
@@ -19,6 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { apiFetch } from "@/lib/api";
+import { getCardDisplayDetails } from "@/lib/card-display";
 import { logUiError } from "@/lib/friendly-errors";
 import { mockCards, mockContactListResponse, mockContactsBySource, mockProfile } from "@/lib/mock-data";
 import type {
@@ -508,46 +513,7 @@ export default function DashboardPage() {
             {visibleCards.length > 0 ? (
               <div className="grid gap-4 md:grid-cols-2">
                 {visibleCards.map((card) => (
-                  <div
-                    key={card.id}
-                    className="group flex min-h-48 flex-col rounded-md border border-border bg-muted/30 p-5 transition-colors hover:bg-muted"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
-                        <CreditCard className="h-6 w-6" aria-hidden="true" />
-                      </div>
-                      <Badge variant="secondary" className="shrink-0">
-                        {cardTypeLabels[card.type]}
-                      </Badge>
-                    </div>
-                    <div className="mt-6 min-w-0 flex-1">
-                      <p className="truncate text-lg font-semibold">{card.name}</p>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        Updated {formatDate(card.updatedAt)}
-                      </p>
-                    </div>
-                    <div className="mt-6 flex items-center justify-between gap-3">
-                      <Link
-                        to={getCardDetailPath(card.id)}
-                        className={cn(buttonVariants({ variant: "outline" }), "min-w-0 flex-1")}
-                      >
-                        Open
-                        <ArrowRight className="h-4 w-4" aria-hidden="true" />
-                      </Link>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        aria-label={`Share ${card.name}`}
-                        title={`Share ${card.name}`}
-                        onClick={() => {
-                          void shareCard(card);
-                        }}
-                      >
-                        <Share2 className="h-4 w-4" aria-hidden="true" />
-                      </Button>
-                    </div>
-                  </div>
+                  <DashboardContactCard key={card.id} card={card} profile={profile} />
                 ))}
               </div>
             ) : (
@@ -656,5 +622,94 @@ export default function DashboardPage() {
         />
       )}
     </AppShell>
+  );
+}
+
+function DashboardContactCard({
+  card,
+  profile,
+}: {
+  card: ContactCard;
+  profile: ProfileMeResponse | null;
+}) {
+  const details = getCardDisplayDetails(card, profile);
+
+  return (
+    <div className="group overflow-hidden rounded-md border border-border bg-card shadow-sm transition-colors hover:bg-muted/30">
+      <div className={cn("h-2 bg-gradient-to-r", details.accentClassName)} />
+      <div className="flex min-h-72 flex-col p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <div
+              className={cn(
+                "flex h-14 w-14 shrink-0 items-center justify-center rounded-md bg-gradient-to-br text-base font-semibold text-white",
+                details.accentClassName,
+              )}
+            >
+              {details.initials}
+            </div>
+            <div className="min-w-0">
+              <p className="truncate text-lg font-semibold">{details.name}</p>
+              <p className="mt-1 truncate text-sm text-muted-foreground">
+                {details.role}
+              </p>
+            </div>
+          </div>
+          <Badge variant="secondary" className="shrink-0">
+            {cardTypeLabels[card.type]}
+          </Badge>
+        </div>
+
+        <div className="mt-5 grid gap-2 text-sm">
+          <CardPreviewLine icon={Building2} value={details.company} />
+          <CardPreviewLine icon={Phone} value={details.phone} />
+          <CardPreviewLine icon={Mail} value={details.email} />
+          <CardPreviewLine icon={MapPin} value={details.location} />
+          <CardPreviewLine icon={Globe2} value={details.social} />
+        </div>
+
+        <div className="mt-auto flex items-center justify-between gap-3 pt-6">
+          <p className="truncate text-xs text-muted-foreground">
+            Updated {formatDate(card.updatedAt)}
+          </p>
+          <div className="flex shrink-0 items-center gap-2">
+            <Link
+              to={getCardDetailPath(card.id)}
+              className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+            >
+              Open
+              <ArrowRight className="h-4 w-4" aria-hidden="true" />
+            </Link>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              aria-label={`Share ${card.name}`}
+              title={`Share ${card.name}`}
+              onClick={() => {
+                void shareCard(card);
+              }}
+            >
+              <Share2 className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CardPreviewLine({
+  icon: Icon,
+  value,
+}: {
+  icon: typeof Building2;
+  value: string;
+}) {
+  return (
+    <div className="flex min-w-0 items-center gap-2 rounded-md bg-muted/40 px-3 py-2">
+      <Icon className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+      <span className="truncate text-muted-foreground">{value}</span>
+    </div>
   );
 }

@@ -1,17 +1,30 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { AlertCircle, ArrowRight, CreditCard, IdCard, Plus } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowRight,
+  Building2,
+  Globe2,
+  IdCard,
+  Mail,
+  MapPin,
+  Phone,
+  Plus,
+  Share2,
+} from "lucide-react";
+import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
 import { SampleDataNotice } from "@/components/sample-data-notice";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
+import { getCardDisplayDetails } from "@/lib/card-display";
 import { friendlyErrorMessages, logUiError } from "@/lib/friendly-errors";
-import { mockCards } from "@/lib/mock-data";
-import type { ContactCard, ContactCardType } from "@/lib/types";
+import { mockCards, mockProfile } from "@/lib/mock-data";
+import type { ContactCard, ContactCardType, ProfileMeResponse } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const cardTypeLabels: Record<ContactCardType, string> = {
@@ -27,8 +40,39 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
+function getCardDetailPath(cardId: string) {
+  return `/dashboard/cards/${cardId}`;
+}
+
+async function shareCard(card: ContactCard) {
+  const url = `${window.location.origin}${getCardDetailPath(card.id)}`;
+  const shareData = {
+    title: card.name,
+    text: `Open ${card.name} in ContactBook.`,
+    url,
+  };
+
+  try {
+    if (navigator.share) {
+      await navigator.share(shareData);
+      return;
+    }
+
+    await navigator.clipboard.writeText(url);
+    toast.success("Card link copied.");
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      return;
+    }
+
+    logUiError("Could not share card", error);
+    toast.error("We couldn't share this card right now.");
+  }
+}
+
 export default function CardsPage() {
   const [cards, setCards] = useState<ContactCard[]>([]);
+  const [profile, setProfile] = useState<ProfileMeResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isMockData, setIsMockData] = useState(false);
@@ -36,30 +80,45 @@ export default function CardsPage() {
   useEffect(() => {
     let isMounted = true;
 
-    const loadCards = async () => {
+    const loadPageData = async () => {
       setIsLoading(true);
       setError(null);
+      let usedMockData = false;
+
       try {
         const data = await apiFetch<ContactCard[]>("/v1/cards");
         if (isMounted) {
           setCards(data);
-          setIsMockData(false);
         }
       } catch (err) {
         if (isMounted) {
           logUiError("Could not load cards", err);
           setCards(mockCards);
-          setIsMockData(true);
           setError(null);
         }
+        usedMockData = true;
+      }
+
+      try {
+        const profileData = await apiFetch<ProfileMeResponse>("/v1/profile/me");
+        if (isMounted) {
+          setProfile(profileData);
+        }
+      } catch (err) {
+        if (isMounted) {
+          logUiError("Could not load profile for card previews", err);
+          setProfile(mockProfile);
+        }
+        usedMockData = true;
       } finally {
         if (isMounted) {
+          setIsMockData(usedMockData);
           setIsLoading(false);
         }
       }
     };
 
-    void loadCards();
+    void loadPageData();
     return () => {
       isMounted = false;
     };
@@ -87,9 +146,9 @@ export default function CardsPage() {
       </section>
 
       {isLoading && (
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <section className="grid gap-4 md:grid-cols-2">
           {Array.from({ length: 6 }).map((_, index) => (
-            <Skeleton key={index} className="h-52 w-full" />
+            <Skeleton key={index} className="h-80 w-full" />
           ))}
         </section>
       )}
@@ -131,49 +190,103 @@ export default function CardsPage() {
       )}
 
       {!isLoading && !error && cards.length > 0 && (
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <section className="grid gap-4 md:grid-cols-2">
           {cards.map((card) => (
-            <Card key={card.id} className="overflow-hidden">
-              <CardHeader>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
-                      <CreditCard className="h-5 w-5" aria-hidden="true" />
-                    </div>
-                    <div className="min-w-0">
-                      <CardTitle className="truncate">{card.name}</CardTitle>
-                      <CardDescription>
-                        Updated {formatDate(card.updatedAt)}
-                      </CardDescription>
-                    </div>
-                  </div>
-                  <Badge variant="secondary" className="shrink-0">
-                    {cardTypeLabels[card.type]}
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="rounded-md border border-border bg-muted/40 p-4">
-                  <p className="truncate text-sm font-medium">{card.name}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Created {formatDate(card.createdAt)}
-                  </p>
-                </div>
-                <Link
-                  to={`/dashboard/cards/${card.id}`}
-                  className={cn(
-                    buttonVariants({ variant: "outline" }),
-                    "mt-4 w-full",
-                  )}
-                >
-                  View details
-                  <ArrowRight className="h-4 w-4" aria-hidden="true" />
-                </Link>
-              </CardContent>
-            </Card>
+            <CardsPageContactCard key={card.id} card={card} profile={profile} />
           ))}
         </section>
       )}
     </AppShell>
+  );
+}
+
+function CardsPageContactCard({
+  card,
+  profile,
+}: {
+  card: ContactCard;
+  profile: ProfileMeResponse | null;
+}) {
+  const details = getCardDisplayDetails(card, profile);
+
+  return (
+    <Card className="overflow-hidden">
+      <div className={cn("h-2 bg-gradient-to-r", details.accentClassName)} />
+      <CardHeader>
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <div
+              className={cn(
+                "flex h-16 w-16 shrink-0 items-center justify-center rounded-md bg-gradient-to-br text-lg font-semibold text-white",
+                details.accentClassName,
+              )}
+            >
+              {details.initials}
+            </div>
+            <div className="min-w-0">
+              <CardTitle className="truncate text-xl">{details.name}</CardTitle>
+              <CardDescription className="mt-1 truncate">
+                {details.role}
+              </CardDescription>
+            </div>
+          </div>
+          <Badge variant="secondary" className="shrink-0">
+            {cardTypeLabels[card.type]}
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <div className="grid gap-2 text-sm">
+          <CardPreviewLine icon={Building2} value={details.company} />
+          <CardPreviewLine icon={Phone} value={details.phone} />
+          <CardPreviewLine icon={Mail} value={details.email} />
+          <CardPreviewLine icon={MapPin} value={details.location} />
+          <CardPreviewLine icon={Globe2} value={details.social} />
+        </div>
+
+        <div className="flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="text-xs text-muted-foreground">
+            <p>Created {formatDate(card.createdAt)}</p>
+            <p className="mt-1">Updated {formatDate(card.updatedAt)}</p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <Link
+              to={getCardDetailPath(card.id)}
+              className={cn(buttonVariants({ variant: "outline" }))}
+            >
+              View details
+              <ArrowRight className="h-4 w-4" aria-hidden="true" />
+            </Link>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              aria-label={`Share ${card.name}`}
+              title={`Share ${card.name}`}
+              onClick={() => {
+                void shareCard(card);
+              }}
+            >
+              <Share2 className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function CardPreviewLine({
+  icon: Icon,
+  value,
+}: {
+  icon: typeof Building2;
+  value: string;
+}) {
+  return (
+    <div className="flex min-w-0 items-center gap-2 rounded-md bg-muted/40 px-3 py-2">
+      <Icon className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+      <span className="truncate text-muted-foreground">{value}</span>
+    </div>
   );
 }

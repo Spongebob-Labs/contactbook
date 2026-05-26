@@ -1,5 +1,23 @@
 # Decision Context
 
+## 2026-05-26 - Phase 3 Card Detail Frontend-Composed Preview
+
+- Decision: Revamp the card detail page into a richer full-card preview using the shared frontend display-details builder, while still fetching only the backend card shell and profile display context.
+- Reason: Users should be able to inspect a newly created card as a complete shareable contact card even though backend card-specific fields are not available yet.
+- Notes: The detail page displays a separate backend record panel for the supported card shell fields and keeps share actions pointed at the existing protected card detail URL. Backend code and browser testing remain untouched.
+
+## 2026-05-26 - Phase 2 Cards Page Frontend-Composed Card UI
+
+- Decision: Apply the frontend-composed shareable card presentation to the Cards page while keeping backend card records limited to `name`, `type`, and timestamps.
+- Reason: The Cards page should show all cards as polished, scannable contact cards using the same display-details builder introduced on the dashboard, without waiting for richer backend card fields.
+- Notes: The page now loads profile data only as display context and falls back to sample profile data if that read fails. Card creation remains routed through the existing dashboard modal and sends only supported fields. Card detail page remains for the next phase. Backend code and browser testing remain untouched.
+
+## 2026-05-26 - Phase 1 Dashboard Frontend-Composed Card Previews
+
+- Decision: Revamp only the dashboard card previews first, using a reusable frontend display-details builder that combines the backend card shell (`name`, `type`, timestamps) with profile-derived and type-specific fallback details.
+- Reason: The backend currently supports card creation with only card name and type, but the home page should still preview cards as real shareable contact cards immediately after creation. Keeping the richer details frontend-composed lets the UI move forward without changing backend contracts.
+- Notes: Newly created cards continue to send only `{ name, type }` to `/v1/cards`; the returned shell is inserted into dashboard state and rendered with generated details. Cards page and card detail page are intentionally left for later phases. Backend code and browser testing remain untouched.
+
 ## 2026-05-26 - Temporary Logo File Inputs For Profile Forms
 
 - Decision: Replace company and business logo URL inputs in the profile onboarding/edit modal with image file inputs that save only the uploaded file name into the existing `companyLogo` and `businessLogo` string fields while showing a temporary local preview for the current form session.
