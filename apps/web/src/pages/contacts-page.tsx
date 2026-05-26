@@ -10,6 +10,7 @@ import {
   AlertCircle,
   ArrowDown,
   ArrowUp,
+  ArrowUpDown,
   ChevronLeft,
   ChevronRight,
   Download,
@@ -71,6 +72,12 @@ const sourceBadgeStyles: Record<ContactSource, string> = {
   MANUAL: "border border-border bg-background text-muted-foreground",
 };
 
+const sortableTableColumns: Partial<Record<string, SortKey>> = {
+  name: "name",
+  source: "source",
+  updatedAt: "updatedAt",
+};
+
 function ContactAvatar({ contact }: { contact: ContactDetail }) {
   return (
     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-secondary text-sm font-semibold text-secondary-foreground">
@@ -119,6 +126,27 @@ function isContactListResponse(value: unknown): value is ContactListResponse {
   );
 }
 
+function getSortTooltipText(
+  columnSortKey: SortKey,
+  label: string,
+  isActive: boolean,
+  sortDirection: SortDirection,
+) {
+  if (!isActive) {
+    return `Click to sort contacts by ${label.toLowerCase()}.`;
+  }
+
+  if (columnSortKey === "updatedAt") {
+    return sortDirection === "asc"
+      ? "Showing oldest first. Click for newest first."
+      : "Showing newest first. Click for oldest first.";
+  }
+
+  return sortDirection === "asc"
+    ? "Showing A to Z. Click for Z to A."
+    : "Showing Z to A. Click for A to Z.";
+}
+
 export default function ContactsPage() {
   const navigate = useNavigate();
   const [contacts, setContacts] = useState<ContactDetail[]>([]);
@@ -135,11 +163,70 @@ export default function ContactsPage() {
   const [error, setError] = useState<string | null>(null);
   const [isMockData, setIsMockData] = useState(false);
 
+  const updateSortColumn = (nextSortKey: SortKey) => {
+    if (nextSortKey === sortKey) {
+      setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(nextSortKey);
+      setSortDirection("asc");
+    }
+    setPage(1);
+  };
+
+  const getHeaderAriaSort = (columnId: string) => {
+    const columnSortKey = sortableTableColumns[columnId];
+    if (!columnSortKey) {
+      return undefined;
+    }
+    if (columnSortKey !== sortKey) {
+      return "none" as const;
+    }
+    return sortDirection === "asc" ? "ascending" as const : "descending" as const;
+  };
+
+  const renderSortableHeader = (columnSortKey: SortKey, label: string) => {
+    const isActive = columnSortKey === sortKey;
+    const SortIcon = isActive
+      ? sortDirection === "asc"
+        ? ArrowUp
+        : ArrowDown
+      : ArrowUpDown;
+    const tooltip = getSortTooltipText(columnSortKey, label, isActive, sortDirection);
+
+    return (
+      <button
+        type="button"
+        className={cn(
+          "group relative -ml-2 inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-full px-2 text-xs font-medium uppercase transition-colors hover:bg-muted hover:text-foreground",
+          isActive ? "text-foreground" : "text-muted-foreground",
+        )}
+        onClick={() => updateSortColumn(columnSortKey)}
+        aria-label={tooltip}
+      >
+        {label}
+        <SortIcon
+          className={cn(
+            "h-3.5 w-3.5",
+            isActive ? "text-primary" : "text-muted-foreground/50",
+          )}
+          aria-hidden="true"
+        />
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 w-max max-w-56 -translate-x-1/2 rounded-full border border-border bg-popover px-3 py-2 text-xs normal-case text-popover-foreground opacity-0 shadow-lg transition-opacity duration-100 group-hover:opacity-100 group-focus-visible:opacity-100"
+        >
+          {tooltip}
+        </span>
+      </button>
+    );
+  };
+
   const columns = useMemo<ColumnDef<ContactDetail>[]>(
     () => [
       {
+        id: "name",
         accessorKey: "displayName",
-        header: "Name",
+        header: () => renderSortableHeader("name", "Name"),
         cell: ({ row }) => {
           const contact = row.original;
           return (
@@ -179,7 +266,7 @@ export default function ContactsPage() {
       },
       {
         accessorKey: "source",
-        header: "Source",
+        header: () => renderSortableHeader("source", "Source"),
         cell: ({ row }) => (
           <Badge
             variant="secondary"
@@ -191,7 +278,7 @@ export default function ContactsPage() {
       },
       {
         accessorKey: "updatedAt",
-        header: "Updated",
+        header: () => renderSortableHeader("updatedAt", "Updated"),
         cell: ({ row }) => (
           <span className="whitespace-nowrap text-muted-foreground">
             {formatContactDate(row.original.updatedAt)}
@@ -199,7 +286,7 @@ export default function ContactsPage() {
         ),
       },
     ],
-    [],
+    [sortDirection, sortKey],
   );
 
   const table = useReactTable({
@@ -279,16 +366,6 @@ export default function ContactsPage() {
     setPage(1);
   };
 
-  const updateSortKey = (value: SortKey) => {
-    setSortKey(value);
-    setPage(1);
-  };
-
-  const updateSortDirection = () => {
-    setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
-    setPage(1);
-  };
-
   const updatePageSize = (value: number) => {
     setPageSize(value);
     setPage(1);
@@ -308,7 +385,7 @@ export default function ContactsPage() {
         <div className="flex w-full flex-col gap-3 lg:max-w-2xl lg:items-end">
           <Link
             to="/dashboard/import"
-            className={cn(buttonVariants({ variant: "default" }), "rounded-full")}
+            className={cn(buttonVariants({ variant: "default" }), "cursor-pointer rounded-full")}
           >
             <Download className="h-4 w-4" aria-hidden="true" />
             Import contacts
@@ -332,11 +409,11 @@ export default function ContactsPage() {
 
       <section className="space-y-4">
         <div className="flex justify-end">
-          <div className="grid w-full gap-2 sm:grid-cols-2 lg:w-auto lg:grid-cols-[180px_150px_120px_minmax(220px,280px)]">
+          <div className="grid w-full gap-2 sm:grid-cols-2 lg:w-auto lg:grid-cols-[180px_minmax(220px,280px)]">
             <Select
               value={sourceFilter}
               onChange={(event) => updateSourceFilter(event.target.value as SourceFilter)}
-              className="rounded-full"
+              className="cursor-pointer rounded-full"
               aria-label="Filter contacts by source"
             >
               {sourceOptions.map((option) => (
@@ -345,30 +422,6 @@ export default function ContactsPage() {
                 </option>
               ))}
             </Select>
-            <Select
-              value={sortKey}
-              onChange={(event) => updateSortKey(event.target.value as SortKey)}
-              className="rounded-full"
-              aria-label="Sort contacts"
-            >
-              <option value="name">Name</option>
-              <option value="updatedAt">Updated</option>
-              <option value="source">Source</option>
-            </Select>
-            <Button
-              type="button"
-              variant="outline"
-              className="rounded-full"
-              onClick={updateSortDirection}
-              aria-label="Toggle sort direction"
-            >
-              {sortDirection === "asc" ? (
-                <ArrowUp className="h-4 w-4" aria-hidden="true" />
-              ) : (
-                <ArrowDown className="h-4 w-4" aria-hidden="true" />
-              )}
-              {sortDirection === "asc" ? "Asc" : "Desc"}
-            </Button>
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
@@ -400,7 +453,10 @@ export default function ContactsPage() {
                 </p>
                 <Link
                   to="/dashboard/import"
-                  className={cn(buttonVariants({ variant: "default" }), "mt-5 rounded-full")}
+                  className={cn(
+                    buttonVariants({ variant: "default" }),
+                    "mt-5 cursor-pointer rounded-full",
+                  )}
                 >
                   <Download className="h-4 w-4" aria-hidden="true" />
                   Import contacts
@@ -415,7 +471,10 @@ export default function ContactsPage() {
                     {table.getHeaderGroups().map((headerGroup) => (
                       <TableRow key={headerGroup.id}>
                         {headerGroup.headers.map((header) => (
-                          <TableHead key={header.id}>
+                          <TableHead
+                            key={header.id}
+                            aria-sort={getHeaderAriaSort(header.column.id)}
+                          >
                             {header.isPlaceholder
                               ? null
                               : flexRender(
@@ -459,7 +518,7 @@ export default function ContactsPage() {
                     <Select
                       value={String(pageSize)}
                       onChange={(event) => updatePageSize(Number(event.target.value))}
-                      className="w-28 rounded-full"
+                      className="w-28 cursor-pointer rounded-full"
                       aria-label="Rows per page"
                     >
                       {pageSizeOptions.map((value) => (
@@ -472,7 +531,7 @@ export default function ContactsPage() {
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="rounded-full"
+                      className="cursor-pointer rounded-full disabled:cursor-not-allowed"
                       onClick={() => setPage((current) => Math.max(1, current - 1))}
                       disabled={currentPage === 1}
                     >
@@ -486,7 +545,7 @@ export default function ContactsPage() {
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="rounded-full"
+                      className="cursor-pointer rounded-full disabled:cursor-not-allowed"
                       onClick={() =>
                         setPage((current) => Math.min(totalPages, current + 1))
                       }

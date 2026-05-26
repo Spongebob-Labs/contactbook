@@ -1,5 +1,35 @@
 # Decision Context
 
+## 2026-05-26 - Error Boundary Auto Refresh
+
+- Decision: Let the frontend error boundary automatically refresh the current page up to two times after an unexpected React crash, then fall back to the visible recovery UI.
+- Reason: Some transient frontend failures may resolve after a reload, and users should not have to manually click refresh before the app attempts recovery.
+- Notes: Retry counts are stored in sessionStorage per current pathname/search to avoid infinite loops. Manual refresh clears the retry counter. Backend code and browser testing remain untouched.
+
+## 2026-05-26 - Custom Contacts Sort Tooltips
+
+- Decision: Replace native browser title tooltips on Contacts sortable headers with instant custom Tailwind tooltips and clearer sorting guidance.
+- Reason: Native tooltips are delayed and visually inconsistent. Sortable table headers are less familiar than toolbar controls, so the tooltip should explain both the current ordering and what the next click will do.
+- Notes: Tooltip text is visual-only while `aria-label` carries the same meaning for assistive technology. No new dependency was added. Backend code and browser testing remain untouched.
+
+## 2026-05-26 - Contacts Clickable Cursor States
+
+- Decision: Add explicit pointer cursor states to clickable Contacts page controls, including sort header buttons, button-styled links, selects, and pagination buttons.
+- Reason: Some clickable controls did not visually switch the mouse cursor on hover, making their interactivity less obvious after moving sorting into column headers.
+- Notes: Search input keeps its text cursor, and table rows already had pointer cursor styling. Backend code and browser testing remain untouched.
+
+## 2026-05-26 - Contacts Sort Header Tooltips
+
+- Decision: Add native tooltip text to Contacts page sortable column header buttons.
+- Reason: Header sort arrows are compact, so hover text clarifies whether a column is unsorted, sorted ascending, or sorted descending and what the next click will do.
+- Notes: No tooltip dependency was added because the app does not currently have a shared tooltip component. Backend code and browser testing remain untouched.
+
+## 2026-05-26 - Contacts Header-Based Sorting
+
+- Decision: Move Contacts page sort controls from separate toolbar inputs into the sortable table headers for Name, Source, and Updated.
+- Reason: Sorting belongs to the column being sorted, and header arrows make the active ascending, descending, or unsorted state easier to understand while reducing toolbar clutter.
+- Notes: The backend query contract remains unchanged with `sort` and `sortOrder`. Email and Phone remain non-sortable display columns. Browser testing remains untouched.
+
 ## 2026-05-26 - Seamless Contacts List Layout
 
 - Decision: Keep the Contacts page title and Import contacts CTA, but remove the duplicated inner list title/description and the card shell around the contacts toolbar/table area.
