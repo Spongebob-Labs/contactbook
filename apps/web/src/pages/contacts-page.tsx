@@ -179,7 +179,9 @@ export default function ContactsPage() {
         accessorKey: "source",
         header: "Source",
         cell: ({ row }) => (
-          <Badge variant="secondary">{row.original.source.toLowerCase()}</Badge>
+          <Badge variant="secondary" className="rounded-full">
+            {row.original.source.toLowerCase()}
+          </Badge>
         ),
       },
       {
@@ -301,7 +303,7 @@ export default function ContactsPage() {
         <div className="flex w-full flex-col gap-3 lg:max-w-2xl lg:items-end">
           <Link
             to="/dashboard/import"
-            className={buttonVariants({ variant: "default" })}
+            className={cn(buttonVariants({ variant: "default" }), "rounded-full")}
           >
             <Download className="h-4 w-4" aria-hidden="true" />
             Import contacts
@@ -337,6 +339,7 @@ export default function ContactsPage() {
                 <Select
                   value={sourceFilter}
                   onChange={(event) => updateSourceFilter(event.target.value as SourceFilter)}
+                  className="rounded-full"
                   aria-label="Filter contacts by source"
                 >
                   {sourceOptions.map((option) => (
@@ -348,6 +351,7 @@ export default function ContactsPage() {
                 <Select
                   value={sortKey}
                   onChange={(event) => updateSortKey(event.target.value as SortKey)}
+                  className="rounded-full"
                   aria-label="Sort contacts"
                 >
                   <option value="name">Name</option>
@@ -357,6 +361,7 @@ export default function ContactsPage() {
                 <Button
                   type="button"
                   variant="outline"
+                  className="rounded-full"
                   onClick={updateSortDirection}
                   aria-label="Toggle sort direction"
                 >
@@ -373,7 +378,7 @@ export default function ContactsPage() {
                     value={query}
                     onChange={(event) => updateQuery(event.target.value)}
                     placeholder="Search contacts"
-                    className="pl-9"
+                    className="rounded-full pl-9"
                   />
                 </div>
               </div>
@@ -390,14 +395,16 @@ export default function ContactsPage() {
 
             {!isLoading && !error && contacts.length === 0 && (
               <div className="flex min-h-80 flex-col items-center justify-center p-6 text-center">
-                <UsersRound className="mb-3 h-9 w-9 text-primary" aria-hidden="true" />
+                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  <UsersRound className="h-6 w-6" aria-hidden="true" />
+                </div>
                 <h2 className="font-semibold">No contacts found</h2>
                 <p className="mt-2 max-w-sm text-sm text-muted-foreground">
                   Import contacts from the Import page, or adjust your search.
                 </p>
                 <Link
                   to="/dashboard/import"
-                  className={cn(buttonVariants({ variant: "default" }), "mt-5")}
+                  className={cn(buttonVariants({ variant: "default" }), "mt-5 rounded-full")}
                 >
                   <Download className="h-4 w-4" aria-hidden="true" />
                   Import contacts
@@ -456,7 +463,7 @@ export default function ContactsPage() {
                     <Select
                       value={String(pageSize)}
                       onChange={(event) => updatePageSize(Number(event.target.value))}
-                      className="w-28"
+                      className="w-28 rounded-full"
                       aria-label="Rows per page"
                     >
                       {pageSizeOptions.map((value) => (
@@ -469,6 +476,7 @@ export default function ContactsPage() {
                       type="button"
                       variant="outline"
                       size="sm"
+                      className="rounded-full"
                       onClick={() => setPage((current) => Math.max(1, current - 1))}
                       disabled={currentPage === 1}
                     >
@@ -482,6 +490,7 @@ export default function ContactsPage() {
                       type="button"
                       variant="outline"
                       size="sm"
+                      className="rounded-full"
                       onClick={() =>
                         setPage((current) => Math.min(totalPages, current + 1))
                       }

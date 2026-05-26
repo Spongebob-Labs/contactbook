@@ -98,7 +98,7 @@ export function ContactImportOptions({
           <div
             key={option.key}
             className={cn(
-              "flex flex-col rounded-lg border border-border bg-card",
+              "flex flex-col rounded-[28px] border border-border bg-card shadow-[0_12px_32px_rgba(20,52,48,0.05)]",
               compact ? "min-h-52 p-4" : "min-h-64 p-5",
               featuredGoogle && option.key === "google" && "lg:col-span-2 lg:min-h-44",
               isDisabled && "bg-muted/30",
@@ -107,13 +107,13 @@ export function ContactImportOptions({
             <div className="flex items-start justify-between gap-3">
               <div
                 className={cn(
-                  "flex items-center justify-center rounded-md bg-secondary text-primary",
+                  "flex items-center justify-center rounded-full bg-secondary text-primary",
                   compact ? "h-9 w-9" : "h-11 w-11",
                 )}
               >
                 <Icon className={cn(compact ? "h-4 w-4" : "h-5 w-5")} aria-hidden="true" />
               </div>
-              <Badge variant={isDisabled ? "outline" : "success"}>
+              <Badge variant={isDisabled ? "outline" : "success"} className="rounded-full">
                 {option.badge}
               </Badge>
             </div>
@@ -126,7 +126,7 @@ export function ContactImportOptions({
             {option.key === "google" ? (
               <Button
                 type="button"
-                className={cn("w-full", compact ? "mt-4" : "mt-5")}
+                className={cn("w-full rounded-full", compact ? "mt-4" : "mt-5")}
                 onClick={onConnectGoogle}
                 disabled={isConnectingGoogle}
               >
@@ -144,7 +144,7 @@ export function ContactImportOptions({
                 />
                 <Button
                   type="button"
-                  className={cn("w-full", compact ? "mt-4" : "mt-5")}
+                  className={cn("w-full rounded-full", compact ? "mt-4" : "mt-5")}
                   disabled={isUploadingVcf || !onUploadVcf}
                   onClick={() => vcfInputRef.current?.click()}
                 >
@@ -155,7 +155,7 @@ export function ContactImportOptions({
             ) : (
               <Button
                 type="button"
-                className={cn("w-full", compact ? "mt-4" : "mt-5")}
+                className={cn("w-full rounded-full", compact ? "mt-4" : "mt-5")}
                 variant="outline"
                 disabled
               >

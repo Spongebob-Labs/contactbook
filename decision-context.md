@@ -1,5 +1,11 @@
 # Decision Context
 
+## 2026-05-26 - Contacts And Import Rounded System
+
+- Decision: Extend the circular and pill-shaped visual language to Contacts and Import surfaces, including action buttons, filters, search input, pagination controls, source/status badges, empty-state icons, import option cards, and import status rows.
+- Reason: The dashboard, shell, cards, and card detail pages now use rounded brand styling, so Contacts and Import should feel part of the same product system instead of retaining older square controls.
+- Notes: This is a styling-only frontend update. Contact loading, filtering, importing, Google sync, VCF upload behavior, backend code, and browser testing remain untouched.
+
 ## 2026-05-26 - Type-Colored Contact Card Badges
 
 - Decision: Add shared type-specific badge classes to `card-styles` and apply them to card type badges inside the dashboard, Cards page, and Card Detail contact card UI.

@@ -23,6 +23,7 @@ import {
   uploadVcfContacts,
   validateVcfFile,
 } from "@/lib/vcf-import";
+import { cn } from "@/lib/utils";
 import type {
   ContactImport,
   ContactImportSummary,
@@ -266,8 +267,10 @@ export default function ImportPage() {
       {isMockData && <SampleDataNotice />}
 
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
-        <div className="rounded-lg border border-border bg-card p-6 md:p-8">
-          <Badge variant="secondary">Google import</Badge>
+        <div className="rounded-[28px] border border-border bg-card p-6 shadow-[0_12px_32px_rgba(20,52,48,0.06)] md:p-8">
+          <Badge variant="secondary" className="rounded-full">
+            Google import
+          </Badge>
           <div className="mt-5 max-w-3xl space-y-4">
             <h1 className="text-3xl font-semibold tracking-normal md:text-4xl">
               Bring your Google contacts into ContactBook.
@@ -283,6 +286,7 @@ export default function ImportPage() {
               <Button
                 type="button"
                 variant="outline"
+                className="rounded-full"
                 onClick={() => void syncGoogle()}
                 disabled={isSyncing}
               >
@@ -292,6 +296,7 @@ export default function ImportPage() {
             ) : (
               <Button
                 type="button"
+                className="rounded-full"
                 onClick={() => void connectGoogle()}
                 disabled={isConnectingGoogle}
               >
@@ -317,25 +322,25 @@ export default function ImportPage() {
             <CardDescription>Current import snapshot</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="flex items-center justify-between rounded-md border border-border p-3">
+            <div className="flex items-center justify-between rounded-full border border-border bg-background/60 p-3 px-4">
               <span className="text-sm text-muted-foreground">Imported contacts</span>
               <span className="text-lg font-semibold">
                 {summary?.totalActive ?? imports.length}
               </span>
             </div>
-            <div className="flex items-center justify-between rounded-md border border-border p-3">
+            <div className="flex items-center justify-between rounded-full border border-border bg-background/60 p-3 px-4">
               <span className="text-sm text-muted-foreground">Google contacts</span>
               <span className="text-lg font-semibold">
                 {googleSummary?.activeCount ?? 0}
               </span>
             </div>
-            <div className="flex items-center justify-between rounded-md border border-border p-3">
+            <div className="flex items-center justify-between rounded-full border border-border bg-background/60 p-3 px-4">
               <span className="text-sm text-muted-foreground">VCF contacts</span>
               <span className="text-lg font-semibold">
                 {vcfSummary?.activeCount ?? 0}
               </span>
             </div>
-            <div className="flex items-center justify-between rounded-md border border-border p-3">
+            <div className="flex items-center justify-between rounded-full border border-border bg-background/60 p-3 px-4">
               <span className="text-sm text-muted-foreground">Last activity</span>
               <span className="text-sm font-medium">
                 {formatDate(
@@ -376,7 +381,7 @@ export default function ImportPage() {
                   </div>
                 </Alert>
               )}
-              <div className="flex flex-col gap-4 rounded-lg border border-border p-4">
+              <div className="flex flex-col gap-4 rounded-[24px] border border-border bg-background/60 p-4">
                 <div>
                   <p className="font-medium">
                     {isLoading
@@ -389,7 +394,7 @@ export default function ImportPage() {
                 </div>
                 <Link
                   to="/dashboard/contacts"
-                  className={buttonVariants({ variant: "default" })}
+                  className={cn(buttonVariants({ variant: "default" }), "rounded-full")}
                 >
                   View contacts
                   <ArrowRight className="h-4 w-4" aria-hidden="true" />
