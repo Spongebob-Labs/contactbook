@@ -12,6 +12,7 @@ import { Link } from "react-router-dom";
 import { PublicPageShell } from "@/components/public-page-shell";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
+import { publicContactImages } from "@/lib/public-images";
 import { usePublicReveal } from "@/lib/use-public-reveal";
 import { cn } from "@/lib/utils";
 
@@ -203,6 +204,36 @@ export default function ContactPage() {
               ContactBook is focused on helping people stay connected across personal,
               social, and professional relationships. The public site keeps that same
               idea simple: clear details, intentional sharing, and fewer lost contacts.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section className="relative overflow-hidden bg-public-background py-24">
+        <div className="relative mx-auto grid max-w-7xl gap-10 px-4 sm:px-6 lg:grid-cols-[0.95fr_1.05fr] lg:items-center lg:px-8">
+          <figure className="public-reveal overflow-hidden rounded-[2rem] bg-public-charcoal text-public-inverse">
+            <img
+              src={publicContactImages[4].src}
+              alt={publicContactImages[4].alt}
+              className="h-[28rem] w-full object-cover"
+              loading="lazy"
+            />
+            <figcaption className="space-y-2 p-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-public-mint">
+                {publicContactImages[4].eyebrow}
+              </p>
+              <p className="text-sm leading-6 text-public-inverse/76">{publicContactImages[4].caption}</p>
+            </figcaption>
+          </figure>
+
+          <div className="public-reveal space-y-5">
+            <Badge className="bg-public-hero text-public-charcoal">From contact to connection</Badge>
+            <h2 className="font-public-display text-5xl font-normal leading-tight tracking-normal text-public-charcoal sm:text-6xl">
+              Every message starts with having the right details.
+            </h2>
+            <p className="text-base leading-8 text-public-muted">
+              Whether someone reaches you by phone, email, or ContactID, the goal is the
+              same: make the next connection simple.
             </p>
           </div>
         </div>

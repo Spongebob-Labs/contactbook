@@ -17,9 +17,11 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import heroCityImage from "@/assets/contactbook-hero-city.webp";
+import { PublicImageCarousel } from "@/components/public-image-carousel";
 import { PublicPageShell } from "@/components/public-page-shell";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
+import { publicContactImages } from "@/lib/public-images";
 import { usePublicReveal } from "@/lib/use-public-reveal";
 import { cn } from "@/lib/utils";
 
@@ -32,9 +34,9 @@ const navItems = [
 ];
 
 const proofPoints = [
-  { value: "Dynamic", label: "contact details that can stay current" },
-  { value: "Private", label: "sharing controlled by the card owner" },
-  { value: "Global", label: "built for relationships across contexts" },
+  { value: "Current", label: "details that can keep pace with life" },
+  { value: "Controlled", label: "share how much, how little, and with whom" },
+  { value: "Complete", label: "fewer gaps, duplicates, and outdated records" },
 ];
 
 const problems = [
@@ -61,15 +63,15 @@ const problems = [
 const workflow = [
   {
     title: "Create your ContactBook",
-    description: "Start with a simple profile and the details you want people to keep.",
+    description: "Start with the details people need so your address book can update itself.",
   },
   {
     title: "Choose what to share",
-    description: "Use personal and business cards to share the right information with the right relationship.",
+    description: "Control how much or how little you share with each relationship.",
   },
   {
     title: "Stay connected",
-    description: "Keep details easier to maintain as people, jobs, homes, and relationships change.",
+    description: "Keep each other’s latest contact details as numbers, homes, jobs, and email addresses change.",
   },
 ];
 
@@ -87,7 +89,7 @@ const strengths = [
   {
     icon: RefreshCw,
     title: "Current",
-    description: "Dynamic contact details help people keep the latest way to reach each other.",
+    description: "Automatic updates help people keep each other’s latest contact details.",
   },
   {
     icon: BadgeCheck,
@@ -110,9 +112,9 @@ const audiences = [
   "Individuals",
   "Networkers",
   "Frequent flyers",
-  "Alumni groups",
-  "Sales teams",
-  "Recruitment firms",
+  "Friends and family",
+  "New connections",
+  "Alumni networks",
 ];
 
 function CurvedConnector({
@@ -201,8 +203,8 @@ export default function LandingPage() {
                 Never lose contact.
               </h1>
               <p className="max-w-3xl text-lg leading-8 text-public-inverse/82 sm:text-xl">
-                We are in the business of connecting people because connectivity is
-                immeasurably valuable professionally, socially, and personally.
+                The address book that updates itself helps people keep current,
+                complete contact details without losing the relationships behind them.
               </p>
             </div>
             <div className="flex flex-col gap-3 sm:flex-row">
@@ -272,9 +274,10 @@ export default function LandingPage() {
               Your address book is almost certainly out of date.
             </h2>
             <p className="text-base leading-7 text-public-muted">
-              ContactBook is built around a simple truth: contact details change, but
-              relationships should not disappear because a phone number, address, or
-              job title moved on.
+              In fact, an address book can be outdated the minute it is updated.
+              ContactBook is built around a simple truth: contact details change,
+              but relationships should not disappear because a phone number,
+              address, or job title moved on.
             </p>
           </div>
 
@@ -309,11 +312,11 @@ export default function LandingPage() {
             <div className="public-reveal space-y-4">
               <Badge className="bg-public-teal text-public-inverse">How it works</Badge>
               <h2 className="font-public-display text-5xl font-normal leading-tight tracking-normal text-public-charcoal sm:text-6xl">
-                A cleaner way to introduce yourself and stay reachable.
+                The address book that updates itself starts with your card.
               </h2>
               <p className="text-base leading-7 text-public-muted">
-                Start with the essentials, share intentionally, and keep contact details
-                easier to maintain as life changes.
+                Start with the essentials, share intentionally, and give people a
+                cleaner way to keep your latest details.
               </p>
             </div>
 
@@ -358,8 +361,8 @@ export default function LandingPage() {
             </div>
             <p className="text-base leading-7 text-public-muted">
               ContactBook turns contact management into a living connection layer:
-              concise enough to use, complete enough to trust, and controlled by the
-              people sharing their details.
+              concise enough to use, complete enough to trust, current enough to
+              matter, and controlled by the people sharing their details.
             </p>
           </div>
 
@@ -382,6 +385,27 @@ export default function LandingPage() {
       </section>
 
       <section className="relative overflow-hidden bg-public-background py-24">
+        <div className="relative mx-auto grid max-w-7xl gap-10 px-4 sm:px-6 lg:grid-cols-[0.7fr_1.3fr] lg:items-center lg:px-8">
+          <div className="public-reveal space-y-4">
+            <Badge className="bg-public-hero text-public-charcoal">
+              <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+              Real connection moments
+            </Badge>
+            <h2 className="font-public-display text-5xl font-normal leading-tight tracking-normal text-public-charcoal sm:text-6xl">
+              From first exchange to lasting contact.
+            </h2>
+            <p className="text-base leading-7 text-public-muted">
+              ContactBook belongs in the everyday moments where people meet, exchange
+              details, and need those details to stay useful.
+            </p>
+          </div>
+          <div className="public-reveal">
+            <PublicImageCarousel images={publicContactImages} className="rounded-[2rem]" />
+          </div>
+        </div>
+      </section>
+
+      <section className="relative overflow-hidden bg-public-surface-muted py-24">
         <p className="public-drift pointer-events-none absolute right-[-2rem] top-0 font-public-display text-[8rem] leading-none text-public-teal/[0.06] sm:text-[13rem]">
           PEOPLE
         </p>
@@ -395,8 +419,9 @@ export default function LandingPage() {
               Designed for people and groups who rely on real networks.
             </h2>
             <p className="text-base leading-7 text-public-muted">
-              From individuals and frequent flyers to alumni groups and relationship-led
-              teams, ContactBook helps contact details keep pace with the people behind them.
+              From family and friends to frequent flyers, alumni networks, and new
+              introductions, ContactBook helps contact details keep pace with the
+              people behind them.
             </p>
           </div>
 

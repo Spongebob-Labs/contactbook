@@ -11,6 +11,7 @@ import { Link } from "react-router-dom";
 import { PublicPageShell } from "@/components/public-page-shell";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
+import { publicContactImages } from "@/lib/public-images";
 import { usePublicReveal } from "@/lib/use-public-reveal";
 import { cn } from "@/lib/utils";
 
@@ -168,6 +169,40 @@ export default function AboutPage() {
               without relying on scattered chats, outdated business cards, or duplicate
               contact records.
             </p>
+          </div>
+        </div>
+      </section>
+
+      <section className="relative overflow-hidden bg-public-charcoal py-24 text-public-inverse">
+        <p className="pointer-events-none absolute right-4 top-8 font-public-display text-[7rem] leading-none text-public-inverse/[0.05] sm:text-[12rem]">
+          PEOPLE
+        </p>
+        <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="public-reveal max-w-3xl space-y-4">
+            <Badge className="bg-public-inverse text-public-charcoal">
+              Relationship moments
+            </Badge>
+            <h2 className="font-public-display text-5xl font-normal leading-tight tracking-normal sm:text-6xl">
+              ContactBook is designed for the moment after people meet.
+            </h2>
+          </div>
+
+          <div className="mt-12 grid gap-4 lg:grid-cols-3">
+            {publicContactImages.slice(0, 3).map((image, index) => (
+              <figure
+                key={image.id}
+                className="public-reveal overflow-hidden rounded-[1.5rem] bg-public-inverse/8"
+                style={{ transitionDelay: `${index * 90}ms` }}
+              >
+                <img src={image.src} alt={image.alt} className="h-72 w-full object-cover" loading="lazy" />
+                <figcaption className="space-y-2 p-5">
+                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-public-mint">
+                    {image.eyebrow}
+                  </p>
+                  <p className="text-sm leading-6 text-public-inverse/76">{image.caption}</p>
+                </figcaption>
+              </figure>
+            ))}
           </div>
         </div>
       </section>

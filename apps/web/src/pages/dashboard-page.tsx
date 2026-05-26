@@ -7,6 +7,7 @@ import {
   IdCard,
   Import,
   Plus,
+  Share2,
   ShieldCheck,
   UserRound,
   UsersRound,
@@ -15,7 +16,7 @@ import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
 import { SampleDataNotice } from "@/components/sample-data-notice";
 import { Badge } from "@/components/ui/badge";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { apiFetch } from "@/lib/api";
 import { logUiError } from "@/lib/friendly-errors";
@@ -135,6 +136,36 @@ function formatDate(value: string) {
   return new Intl.DateTimeFormat(undefined, {
     dateStyle: "medium",
   }).format(new Date(value));
+}
+
+function getCardDetailPath(cardId: string) {
+  return `/dashboard/cards/${cardId}`;
+}
+
+async function shareCard(card: ContactCard) {
+  const url = `${window.location.origin}${getCardDetailPath(card.id)}`;
+  const shareData = {
+    title: card.name,
+    text: `Open ${card.name} in ContactBook.`,
+    url,
+  };
+
+  try {
+    if (navigator.share) {
+      await navigator.share(shareData);
+      return;
+    }
+
+    await navigator.clipboard.writeText(url);
+    toast.success("Card link copied.");
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      return;
+    }
+
+    logUiError("Could not share card", error);
+    toast.error("We couldn't share this card right now.");
+  }
 }
 
 type StarterCardRequest = {
@@ -475,26 +506,48 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             {visibleCards.length > 0 ? (
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <div className="grid gap-4 md:grid-cols-2">
                 {visibleCards.map((card) => (
-                  <Link
+                  <div
                     key={card.id}
-                    to={`/dashboard/cards/${card.id}`}
-                    className="group rounded-md border border-border bg-muted/30 p-4 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="group flex min-h-48 flex-col rounded-md border border-border bg-muted/30 p-5 transition-colors hover:bg-muted"
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
-                        <CreditCard className="h-5 w-5" aria-hidden="true" />
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
+                        <CreditCard className="h-6 w-6" aria-hidden="true" />
                       </div>
                       <Badge variant="secondary" className="shrink-0">
                         {cardTypeLabels[card.type]}
                       </Badge>
                     </div>
-                    <p className="mt-4 truncate text-sm font-semibold">{card.name}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Updated {formatDate(card.updatedAt)}
-                    </p>
-                  </Link>
+                    <div className="mt-6 min-w-0 flex-1">
+                      <p className="truncate text-lg font-semibold">{card.name}</p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Updated {formatDate(card.updatedAt)}
+                      </p>
+                    </div>
+                    <div className="mt-6 flex items-center justify-between gap-3">
+                      <Link
+                        to={getCardDetailPath(card.id)}
+                        className={cn(buttonVariants({ variant: "outline" }), "min-w-0 flex-1")}
+                      >
+                        Open
+                        <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                      </Link>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        aria-label={`Share ${card.name}`}
+                        title={`Share ${card.name}`}
+                        onClick={() => {
+                          void shareCard(card);
+                        }}
+                      >
+                        <Share2 className="h-4 w-4" aria-hidden="true" />
+                      </Button>
+                    </div>
+                  </div>
                 ))}
               </div>
             ) : (

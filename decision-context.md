@@ -1,5 +1,23 @@
 # Decision Context
 
+## 2026-05-26 - Temporary Logo File Inputs For Profile Forms
+
+- Decision: Replace company and business logo URL inputs in the profile onboarding/edit modal with image file inputs that save only the uploaded file name into the existing `companyLogo` and `businessLogo` string fields while showing a temporary local preview for the current form session.
+- Reason: Users should choose a logo through an upload-style control now, but there is not yet a dedicated backend logo upload endpoint and backend code is out of scope. Sending only the filename preserves the current payload shape without storing large data URLs.
+- Notes: The selected image preview uses a browser object URL and is revoked when replaced, removed, row-deleted, or when the modal unmounts. Existing saved logo strings display as filenames/values but cannot render an image preview after reload. Backend code and browser testing remain untouched.
+
+## 2026-05-26 - Larger Dashboard Cards With Share Action
+
+- Decision: Make dashboard card tiles larger and add a per-card share icon action that shares the existing protected card detail URL, using the Web Share API when available and clipboard copy as the fallback.
+- Reason: The dashboard should make user-created cards feel more prominent and immediately shareable without introducing a new public card URL contract or backend work.
+- Notes: The card tile was restructured so opening and sharing are separate controls instead of placing a button inside a link. This remains frontend-only. Backend code and browser testing remain untouched.
+
+## 2026-05-25 - Phase 7 Public Photo Carousel And Remote Image Sources
+
+- Decision: Add real-photo public page visuals using remote Pexels/Unsplash image URLs, a source manifest, and a reusable auto-advancing public image carousel with manual controls and reduced-motion support.
+- Reason: The public pages should feel more custom-crafted and more directly related to ContactBook use cases: meeting people, sharing contact details, using phones, and replacing static business-card exchanges. Remote image URLs avoid adding large binary assets to the repository while the manifest keeps source and license context auditable.
+- Notes: Images are non-AI stock-photo sources selected from Pexels/Unsplash pages marked free to use. Attribution is recorded in `apps/web/src/assets/public/image-sources.md` but not shown in the UI per product preference. Backend code and browser testing remain untouched.
+
 ## 2026-05-25 - Phase 6 Public Site Polish And Fallbacks
 
 - Decision: Polish the public site foundation by making the public shell's default navigation use real public routes, adding official contact details to the shared footer, and separating unknown public-route fallback from unknown dashboard-route fallback.
@@ -131,6 +149,12 @@
 - Decision: After Google provider tokens are linked successfully, explicitly mark the ContactBook frontend session as authenticated before cleaning up the temporary Supabase OAuth session and navigating back to the import page.
 - Reason: `/auth/callback` is a public route, so the auth context can mark the app unauthenticated during the Google OAuth handoff even though the ContactBook backend session is still valid. The protected dashboard route then redirects to `/auth` after a successful link.
 - Notes: This keeps Supabase OAuth scoped to Google token capture and leaves ContactBook WhatsApp/session cookies as the app auth source. Backend code and browser testing remain untouched.
+
+## 2026-05-25 - Apply Approved Deck Language To Consumer Copy
+
+- Decision: Use `ContactBook About Us v1.pdf` as the approved language source for consumer-facing copy, emphasizing `Never lose contact`, `the address book that updates itself`, outdated/incomplete/duplicated contact details, and the Connect/Control/Current/Concise/Complete/Secure value pillars.
+- Reason: Product owner feedback said the deck contains the correct language and the temporary copy should be aligned to it.
+- Notes: Corporate/investor sections from the deck remain out of the primary consumer UI for now so the product stays focused on individuals maintaining relationships. Backend code and browser testing remain untouched.
 
 ## 2026-05-22 - Auto-Create Starter Cards During Setup
 

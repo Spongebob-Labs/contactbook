@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -145,6 +145,13 @@ type OnboardingForm = {
 };
 
 type ValidationErrors = Record<string, string>;
+
+type LogoBucket = "work" | "business";
+
+type LogoPreviewState = {
+  work: Record<number, string>;
+  business: Record<number, string>;
+};
 
 type NullableAddressPayload = {
   street: string | null;
@@ -799,6 +806,8 @@ const ALLOWED_PROFILE_PHOTO_TYPES = new Set([
   "image/png",
   "image/webp",
 ]);
+const MAX_LOGO_IMAGE_BYTES = MAX_PROFILE_PHOTO_BYTES;
+const ALLOWED_LOGO_IMAGE_TYPES = ALLOWED_PROFILE_PHOTO_TYPES;
 
 type ProfilePhotoResponse = {
   profilePhoto: string | null;
@@ -903,10 +912,24 @@ function validateProfileForm(form: OnboardingForm): ValidationErrors {
 
   form.work.forEach((row, index) => {
     addMaxLength(errors, `work.${index}.tag`, row.tag, 200, "Work label");
+    addMaxLength(
+      errors,
+      `work.${index}.companyLogo`,
+      row.companyLogo,
+      500,
+      "Company logo filename",
+    );
   });
 
   form.business.forEach((row, index) => {
     addMaxLength(errors, `business.${index}.tag`, row.tag, 200, "Business label");
+    addMaxLength(
+      errors,
+      `business.${index}.businessLogo`,
+      row.businessLogo,
+      500,
+      "Business logo filename",
+    );
   });
 
   form.socials.forEach((row, index) => {
@@ -991,6 +1014,11 @@ export function ProfileOnboardingModal({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isMutatingProfilePhoto, setIsMutatingProfilePhoto] = useState(false);
+  const [logoPreviews, setLogoPreviews] = useState<LogoPreviewState>({
+    work: {},
+    business: {},
+  });
+  const logoPreviewUrlsRef = useRef<Set<string>>(new Set());
   const [hasExistingProfile, setHasExistingProfile] = useState(false);
   const [loadedIdentity, setLoadedIdentity] = useState<
     OnboardingForm["identity"] | null
@@ -1054,6 +1082,94 @@ export function ProfileOnboardingModal({
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    const logoPreviewUrls = logoPreviewUrlsRef.current;
+    return () => {
+      logoPreviewUrls.forEach((url) => URL.revokeObjectURL(url));
+      logoPreviewUrls.clear();
+    };
+  }, []);
+
+  const setLogoPreview = (
+    bucket: LogoBucket,
+    index: number,
+    previewUrl: string | null,
+  ) => {
+    setLogoPreviews((current) => {
+      const currentPreview = current[bucket][index];
+      if (currentPreview) {
+        URL.revokeObjectURL(currentPreview);
+        logoPreviewUrlsRef.current.delete(currentPreview);
+      }
+
+      const nextBucket = { ...current[bucket] };
+      if (previewUrl) {
+        nextBucket[index] = previewUrl;
+        logoPreviewUrlsRef.current.add(previewUrl);
+      } else {
+        delete nextBucket[index];
+      }
+
+      return { ...current, [bucket]: nextBucket };
+    });
+  };
+
+  const removeLogoPreviewRow = (bucket: LogoBucket, index: number) => {
+    setLogoPreviews((current) => {
+      const nextBucket: Record<number, string> = {};
+
+      Object.entries(current[bucket]).forEach(([key, value]) => {
+        const currentIndex = Number(key);
+        if (currentIndex === index) {
+          URL.revokeObjectURL(value);
+          logoPreviewUrlsRef.current.delete(value);
+          return;
+        }
+
+        nextBucket[currentIndex > index ? currentIndex - 1 : currentIndex] = value;
+      });
+
+      return { ...current, [bucket]: nextBucket };
+    });
+  };
+
+  const selectLogoFile = (
+    bucket: LogoBucket,
+    index: number,
+    file: File | undefined,
+  ) => {
+    if (!file) {
+      return;
+    }
+
+    if (!ALLOWED_LOGO_IMAGE_TYPES.has(file.type)) {
+      toast.error("Choose a JPEG, PNG, or WebP logo.");
+      return;
+    }
+
+    if (file.size > MAX_LOGO_IMAGE_BYTES) {
+      toast.error("Choose a logo under 1 MB.");
+      return;
+    }
+
+    const previewUrl = URL.createObjectURL(file);
+    if (bucket === "work") {
+      setWorkValue(index, "companyLogo", file.name);
+    } else {
+      setBusinessValue(index, "businessLogo", file.name);
+    }
+    setLogoPreview(bucket, index, previewUrl);
+  };
+
+  const clearLogoFile = (bucket: LogoBucket, index: number) => {
+    if (bucket === "work") {
+      setWorkValue(index, "companyLogo", "");
+    } else {
+      setBusinessValue(index, "businessLogo", "");
+    }
+    setLogoPreview(bucket, index, null);
+  };
 
   const uploadProfilePhoto = async (file: File | undefined) => {
     if (!file) {
@@ -1234,6 +1350,10 @@ export function ProfileOnboardingModal({
     index: number,
     createEmpty: () => OnboardingForm[Bucket] extends Array<infer Row> ? Row : never,
   ) => {
+    if (bucket === "work" || bucket === "business") {
+      removeLogoPreviewRow(bucket, index);
+    }
+
     setForm((current) => {
       const rows = (current[bucket] as unknown[]).filter(
         (_, rowIndex) => rowIndex !== index,
@@ -1731,8 +1851,8 @@ export function ProfileOnboardingModal({
               <div className="rounded-md border border-border bg-muted/25 p-3">
                 <p className="text-sm font-semibold">Create your first personal card</p>
                 <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                  Start with the details family, friends, and new connections need most.
-                  You can add more personal fields later.
+                  Add the details people need to keep in touch with you. You can
+                  control what you share and add more fields later.
                 </p>
               </div>
               <TwoColumn>
@@ -1799,7 +1919,7 @@ export function ProfileOnboardingModal({
                   <div>
                     <p className="text-sm font-semibold">More personal fields</p>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      Add extra details only if this card needs them.
+                      Add extra details only when they help people stay connected.
                     </p>
                   </div>
                   <Button
@@ -1958,7 +2078,8 @@ export function ProfileOnboardingModal({
                       <div>
                         <p className="text-sm font-semibold">More work fields</p>
                         <p className="mt-1 text-sm text-muted-foreground">
-                          Add secondary work details only when this profile needs them.
+                          Keep this concise, then add secondary work details only
+                          when they help people reach you.
                         </p>
                       </div>
                       <Button
@@ -1981,14 +2102,15 @@ export function ProfileOnboardingModal({
                     {showAdditionalWorkFields && (
                       <div className="mt-4 border-t border-border pt-4">
                         <TwoColumn>
-                          <Field label="Company logo URL">
-                            <Input
-                              value={row.companyLogo}
-                              onChange={(event) =>
-                                setWorkValue(index, "companyLogo", event.target.value)
-                              }
-                            />
-                          </Field>
+                          <LogoUploadField
+                            disabled={controlsDisabled}
+                            error={visibleError(`work.${index}.companyLogo`)}
+                            label="Company logo"
+                            previewUrl={logoPreviews.work[index]}
+                            value={row.companyLogo}
+                            onClear={() => clearLogoFile("work", index)}
+                            onUpload={(file) => selectLogoFile("work", index, file)}
+                          />
                           <Field label="Company registration number">
                             <Input
                               value={row.companyRegNumber}
@@ -2066,14 +2188,15 @@ export function ProfileOnboardingModal({
                         {...validationProps(`business.${index}.tag`)}
                       />
                     </Field>
-                    <Field label="Business logo URL">
-                      <Input
-                        value={row.businessLogo}
-                        onChange={(event) =>
-                          setBusinessValue(index, "businessLogo", event.target.value)
-                        }
-                      />
-                    </Field>
+                    <LogoUploadField
+                      disabled={controlsDisabled}
+                      error={visibleError(`business.${index}.businessLogo`)}
+                      label="Business logo"
+                      previewUrl={logoPreviews.business[index]}
+                      value={row.businessLogo}
+                      onClear={() => clearLogoFile("business", index)}
+                      onUpload={(file) => selectLogoFile("business", index, file)}
+                    />
                     <Field label="Business name">
                       <Input
                         value={row.businessName}
@@ -2141,7 +2264,8 @@ export function ProfileOnboardingModal({
                       <div>
                         <p className="text-sm font-semibold">More business fields</p>
                         <p className="mt-1 text-sm text-muted-foreground">
-                          Add registration, mobile, or other details only when needed.
+                          Keep the business card clear, then add extra details only
+                          when they make the card more complete.
                         </p>
                       </div>
                       <Button
@@ -2401,6 +2525,80 @@ function ProfilePhotoUpload({
       {isLoading && (
         <p className="text-xs font-medium text-muted-foreground">Updating photo...</p>
       )}
+    </div>
+  );
+}
+
+function LogoUploadField({
+  disabled,
+  error,
+  label,
+  onClear,
+  onUpload,
+  previewUrl,
+  value,
+}: {
+  disabled: boolean;
+  error?: string;
+  label: string;
+  onClear: () => void;
+  onUpload: (file: File | undefined) => void;
+  previewUrl?: string;
+  value: string;
+}) {
+  return (
+    <div className="space-y-2">
+      <p className="text-sm font-medium">{label}</p>
+      <div className="rounded-md border border-border p-3">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <label
+            className={cn(
+              "group flex min-w-0 flex-1 cursor-pointer items-center gap-4 rounded-md border border-dashed border-border bg-muted/30 p-3 transition-colors hover:bg-muted",
+              disabled && "cursor-not-allowed opacity-60 hover:bg-muted/30",
+            )}
+          >
+            <span className="relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-background">
+              {previewUrl ? (
+                <img src={previewUrl} alt="" className="h-full w-full object-cover" />
+              ) : (
+                <UploadCloud className="h-6 w-6 text-muted-foreground" aria-hidden="true" />
+              )}
+              <span className="absolute inset-x-0 bottom-0 bg-foreground/70 px-2 py-1 text-center text-xs font-medium text-background opacity-0 transition-opacity group-hover:opacity-100">
+                {value ? "Replace" : "Upload"}
+              </span>
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-semibold" title={value}>
+                {value || "Choose logo image"}
+              </span>
+              <span className="mt-1 block text-sm text-muted-foreground">
+                Upload JPEG, PNG, or WebP under 1 MB.
+              </span>
+              {error && (
+                <span className="mt-1 block text-xs font-medium text-destructive">
+                  {error}
+                </span>
+              )}
+            </span>
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="sr-only"
+              disabled={disabled}
+              onChange={(event) => {
+                onUpload(event.target.files?.[0]);
+                event.target.value = "";
+              }}
+            />
+          </label>
+          {value && (
+            <Button type="button" variant="ghost" onClick={onClear} disabled={disabled}>
+              <X className="h-4 w-4" aria-hidden="true" />
+              Remove
+            </Button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

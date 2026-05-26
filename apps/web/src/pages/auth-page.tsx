@@ -204,17 +204,17 @@ export default function AuthPage() {
           <span className="font-semibold">ContactBook</span>
         </div>
         <div className="max-w-xl space-y-5">
-          <p className="text-sm font-medium text-primary">Private by design</p>
+          <p className="text-sm font-medium text-primary">Never lose contact</p>
           <h1 className="text-5xl font-semibold tracking-normal text-foreground">
-            Build a contact profile people can actually keep up to date.
+            Create the address book profile that updates itself.
           </h1>
           <p className="max-w-lg text-base text-muted-foreground">
-            Sign in with WhatsApp, create your personal contact profile, and
-            share the right details with family, friends, and new connections.
+            Sign in with WhatsApp, create your personal ContactBook, and choose
+            the details family, friends, and new connections can keep current.
           </p>
         </div>
         <div className="grid max-w-lg grid-cols-3 gap-3">
-          {["OTP login", "Google import", "Dark mode"].map((item) => (
+          {["Connect", "Control", "Current"].map((item) => (
             <div key={item} className="rounded-lg border border-border bg-card p-3 text-sm">
               <Check className="mb-3 h-4 w-4 text-primary" aria-hidden="true" />
               {item}
