@@ -16,7 +16,7 @@ export function assertVcfUploadFile(
     throw new BadRequestException(
       isMultipart
         ? 'Missing required multipart field "file".'
-        : 'Expected multipart/form-data with form field "file". Use curl --form \'file=@path.vcf\' (or FormData in the browser); do not send JSON or set Content-Type manually without attaching the file.',
+        : "Expected multipart/form-data with form field \"file\". Use curl --form 'file=@path.vcf' (or FormData in the browser); do not send JSON or set Content-Type manually without attaching the file.",
     );
   }
   if (!file.buffer?.length) {

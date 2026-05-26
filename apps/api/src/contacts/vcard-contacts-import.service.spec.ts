@@ -67,9 +67,9 @@ describe("VcardContactsImportService", () => {
   });
 
   it("rejects missing file", async () => {
-    await expect(svc.importFromFile("user-1", undefined)).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
+    await expect(
+      svc.importFromFile("user-1", undefined),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it("rejects empty file", async () => {

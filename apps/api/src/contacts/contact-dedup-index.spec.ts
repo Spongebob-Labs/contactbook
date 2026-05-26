@@ -63,6 +63,8 @@ describe("contact-dedup-index", () => {
 
     const index = await loadDedupIndex(userId, prisma as never);
     expect(index.keyToMergeGroup.get("email:jane@example.com")).toBe("group-1");
-    expect(index.groupMembers.get("group-1")?.has("GOOGLE:people/a")).toBe(true);
+    expect(index.groupMembers.get("group-1")?.has("GOOGLE:people/a")).toBe(
+      true,
+    );
   });
 });

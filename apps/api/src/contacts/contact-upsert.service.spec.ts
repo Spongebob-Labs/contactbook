@@ -197,7 +197,10 @@ describe("ContactUpsertService", () => {
       resolveMergeGroupFromIndex: jest
         .fn()
         .mockReturnValueOnce({ mergeGroupId: "group-a", duplicateFound: false })
-        .mockReturnValueOnce({ mergeGroupId: "group-b", duplicateFound: false }),
+        .mockReturnValueOnce({
+          mergeGroupId: "group-b",
+          duplicateFound: false,
+        }),
       flushDedupIndexPending: jest.fn().mockResolvedValue(undefined),
       resolveMergeGroup: jest.fn(),
       refreshKeysForContact: jest.fn(),

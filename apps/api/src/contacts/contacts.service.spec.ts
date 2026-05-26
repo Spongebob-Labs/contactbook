@@ -94,7 +94,10 @@ describe("ContactsService.listPaginated", () => {
     const prisma = { contact: { count, findMany } };
     const svc = new ContactsService(prisma as never, new ContactSerializer());
 
-    const result = await svc.listPaginated("user-1", new ListContactsQueryDto());
+    const result = await svc.listPaginated(
+      "user-1",
+      new ListContactsQueryDto(),
+    );
 
     expect(count).toHaveBeenCalledWith({
       where: { userId: "user-1", deletedAt: null },
@@ -177,7 +180,10 @@ describe("ContactsService.listPaginated", () => {
     };
     const svc = new ContactsService(prisma as never, new ContactSerializer());
 
-    const result = await svc.listPaginated("user-1", new ListContactsQueryDto());
+    const result = await svc.listPaginated(
+      "user-1",
+      new ListContactsQueryDto(),
+    );
 
     expect(result).toEqual({
       items: [],

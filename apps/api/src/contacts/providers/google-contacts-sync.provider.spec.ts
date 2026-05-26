@@ -23,10 +23,11 @@ describe("GoogleContactsSyncProvider", () => {
   };
 
   const contactUpsert = {
-    upsert: jest.fn().mockResolvedValue({
-      outcome: "added",
-      duplicateFound: false,
-      contact: { id: "c1" },
+    upsertBatch: jest.fn().mockResolvedValue({
+      added: 1,
+      updated: 0,
+      deleted: 0,
+      duplicatesFound: 0,
     }),
     countActive: jest.fn().mockResolvedValue(1),
   };
@@ -97,6 +98,15 @@ describe("GoogleContactsSyncProvider", () => {
     expect(result.stats.added).toBeGreaterThanOrEqual(0);
     expect(result.skipped).toEqual([]);
     expect(result.completedAt).toBeInstanceOf(Date);
+    expect(contactUpsert.upsertBatch).toHaveBeenCalledWith(
+      userId,
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: ContactSource.GOOGLE,
+          externalId: "people/1",
+        }),
+      ]),
+    );
     expect(listMock).toHaveBeenCalledWith(
       expect.objectContaining({
         syncToken: undefined,
@@ -119,7 +129,7 @@ describe("GoogleContactsSyncProvider", () => {
       contactUpsert as never,
     );
 
-    const result = await provider.import(userId);
+    await provider.import(userId);
 
     expect(prisma.integrationState.updateMany).toHaveBeenCalledWith({
       where: { userId, source: ContactSource.GOOGLE },
@@ -143,7 +153,7 @@ describe("GoogleContactsSyncProvider", () => {
       contactUpsert as never,
     );
 
-    const result = await provider.import(userId);
+    await provider.import(userId);
 
     expect(prisma.integrationState.updateMany).toHaveBeenCalledWith({
       where: { userId, source: ContactSource.GOOGLE },
@@ -176,6 +186,7 @@ describe("GoogleContactsSyncProvider", () => {
     const result = await provider.sync(userId);
     expect(result.recoveredFromExpiredToken).toBe(true);
     expect(result.syncMode).toBe("full");
+    expect(contactUpsert.upsertBatch).toHaveBeenCalled();
     expect(listMock).toHaveBeenCalledTimes(2);
     const calls = listMock.mock.calls as Array<
       [{ syncToken?: string }] | undefined
