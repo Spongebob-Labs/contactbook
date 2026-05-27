@@ -84,6 +84,13 @@ enum ConnectionInviteRecipientKind {
   EXTERNAL
 }
 
+enum WebhookDlqStatus {
+  PENDING
+  RETRYING
+  SUCCEEDED
+  FAILED
+}
+
 enum ConnectionInviteStatus {
   PENDING
   DECLINED
@@ -539,4 +546,32 @@ model WhatsappSession {
 
   @@index([phoneE164, state])
   @@map("whatsapp_sessions")
+}
+
+/**
+ * Stores inbound Twilio webhook payloads that failed on the primary endpoint
+ * and were captured by the fallback. A cron job retries them with exponential
+ * backoff until they succeed or exhaust all attempts.
+ */
+model WebhookDeadLetter {
+  id         String           @id @default(uuid())
+  /// Identifies the webhook source, e.g. "twilio_whatsapp". Extensible for future sources.
+  source     String           @default("twilio_whatsapp")
+  /// Full form-urlencoded body parsed into key-value pairs.
+  payload    Json
+  /// Captured HTTP headers required for processing (e.g. x-twilio-signature).
+  headers    Json
+  /// The exact URL Twilio targeted — needed to re-validate the signature on retry.
+  webhookUrl String
+  status     WebhookDlqStatus @default(PENDING)
+  attempts   Int              @default(0)
+  lastError  String?
+  /// When null the record is ready to retry immediately.
+  nextRetryAt DateTime?
+  resolvedAt  DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([status, nextRetryAt])
+  @@map("webhook_dead_letters")
 }
