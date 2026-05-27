@@ -149,7 +149,7 @@ type ValidationErrors = Record<string, string>;
 
 type LogoBucket = "work" | "business";
 
-type LogoPreviewState = {
+type LogoMutationState = {
   work: Record<number, string>;
   business: Record<number, string>;
 };
@@ -810,9 +810,32 @@ const ALLOWED_PROFILE_PHOTO_TYPES = new Set([
 const MAX_LOGO_IMAGE_BYTES = MAX_PROFILE_PHOTO_BYTES;
 const ALLOWED_LOGO_IMAGE_TYPES = ALLOWED_PROFILE_PHOTO_TYPES;
 
-type ProfilePhotoResponse = {
-  profilePhoto: string | null;
+type PhotoResponse = {
+  url: string;
 };
+
+function isHttpUrl(value: string | null | undefined): value is string {
+  const next = clean(value ?? "");
+  if (!next) {
+    return false;
+  }
+  try {
+    const url = new URL(next);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function collectPhotoUrls(form: OnboardingForm): Set<string> {
+  return new Set(
+    [
+      form.identity.profilePhoto,
+      ...form.work.map((row) => row.companyLogo),
+      ...form.business.map((row) => row.businessLogo),
+    ].filter(isHttpUrl),
+  );
+}
 
 function hasInitializedProfile(profile: ProfileMeResponse) {
   if (profile.profileOnboardingCompletedAt) {
@@ -918,7 +941,7 @@ function validateProfileForm(form: OnboardingForm): ValidationErrors {
       `work.${index}.companyLogo`,
       row.companyLogo,
       500,
-      "Company logo filename",
+      "Company logo URL",
     );
   });
 
@@ -929,7 +952,7 @@ function validateProfileForm(form: OnboardingForm): ValidationErrors {
       `business.${index}.businessLogo`,
       row.businessLogo,
       500,
-      "Business logo filename",
+      "Business logo URL",
     );
   });
 
@@ -1016,11 +1039,12 @@ export function ProfileOnboardingModal({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isMutatingProfilePhoto, setIsMutatingProfilePhoto] = useState(false);
-  const [logoPreviews, setLogoPreviews] = useState<LogoPreviewState>({
+  const [logoMutations, setLogoMutations] = useState<LogoMutationState>({
     work: {},
     business: {},
   });
-  const logoPreviewUrlsRef = useRef<Set<string>>(new Set());
+  const pendingPhotoDeletesRef = useRef<Set<string>>(new Set());
+  const unsavedPhotoUploadsRef = useRef<Set<string>>(new Set());
   const [hasExistingProfile, setHasExistingProfile] = useState(false);
   const [loadedIdentity, setLoadedIdentity] = useState<
     OnboardingForm["identity"] | null
@@ -1029,8 +1053,15 @@ export function ProfileOnboardingModal({
   const validationErrors = validateProfileForm(form);
   const validationErrorCount = Object.keys(validationErrors).length;
   const hasValidationErrors = validationErrorCount > 0;
+  const isMutatingLogo =
+    Object.keys(logoMutations.work).length > 0 ||
+    Object.keys(logoMutations.business).length > 0;
   const controlsDisabled =
-    isSaving || isMutatingProfilePhoto || isLoadingProfile || Boolean(loadError);
+    isSaving ||
+    isMutatingProfilePhoto ||
+    isMutatingLogo ||
+    isLoadingProfile ||
+    Boolean(loadError);
   const saveDisabled = controlsDisabled || hasValidationErrors;
 
   const markTouched = (path: string) => {
@@ -1051,6 +1082,59 @@ export function ProfileOnboardingModal({
     onBlur: () => markTouched(path),
     "aria-invalid": Boolean(visibleError(path)),
   });
+
+  const deletePhotoUrls = async (
+    urls: string[],
+    reason: string,
+    showFailureToast = false,
+  ) => {
+    if (urls.length === 0) {
+      return;
+    }
+
+    const results = await Promise.allSettled(
+      urls.map((url) =>
+        apiFetch<unknown>("/v1/photo", {
+          method: "DELETE",
+          body: { url },
+        }),
+      ),
+    );
+
+    const failedCount = results.filter((result) => result.status === "rejected").length;
+    if (failedCount > 0) {
+      logUiError(reason, results);
+      if (showFailureToast) {
+        toast.error("Profile saved, but we could not clean up every old image.");
+      }
+    }
+  };
+
+  const cleanupUnsavedPhotoUploads = async () => {
+    const urls = [...unsavedPhotoUploadsRef.current];
+    unsavedPhotoUploadsRef.current.clear();
+    await deletePhotoUrls(urls, "Could not clean up unsaved image uploads");
+  };
+
+  const cleanupPhotosAfterSuccessfulSave = async (savedPhotoUrls: Set<string>) => {
+    const staleUnsavedUrls = [...unsavedPhotoUploadsRef.current].filter(
+      (url) => !savedPhotoUrls.has(url),
+    );
+    const pendingDeleteUrls = [...pendingPhotoDeletesRef.current].filter(
+      (url) => !savedPhotoUrls.has(url),
+    );
+    const urlsToDelete = [...new Set([...pendingDeleteUrls, ...staleUnsavedUrls])];
+
+    pendingPhotoDeletesRef.current.clear();
+    staleUnsavedUrls.forEach((url) => unsavedPhotoUploadsRef.current.delete(url));
+    savedPhotoUrls.forEach((url) => unsavedPhotoUploadsRef.current.delete(url));
+
+    await deletePhotoUrls(
+      urlsToDelete,
+      "Could not clean up replaced or removed image uploads",
+      true,
+    );
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -1086,29 +1170,20 @@ export function ProfileOnboardingModal({
   }, []);
 
   useEffect(() => {
-    const logoPreviewUrls = logoPreviewUrlsRef.current;
     return () => {
-      logoPreviewUrls.forEach((url) => URL.revokeObjectURL(url));
-      logoPreviewUrls.clear();
+      void cleanupUnsavedPhotoUploads();
     };
   }, []);
 
-  const setLogoPreview = (
+  const setLogoMutation = (
     bucket: LogoBucket,
     index: number,
-    previewUrl: string | null,
+    message: string | null,
   ) => {
-    setLogoPreviews((current) => {
-      const currentPreview = current[bucket][index];
-      if (currentPreview) {
-        URL.revokeObjectURL(currentPreview);
-        logoPreviewUrlsRef.current.delete(currentPreview);
-      }
-
+    setLogoMutations((current) => {
       const nextBucket = { ...current[bucket] };
-      if (previewUrl) {
-        nextBucket[index] = previewUrl;
-        logoPreviewUrlsRef.current.add(previewUrl);
+      if (message) {
+        nextBucket[index] = message;
       } else {
         delete nextBucket[index];
       }
@@ -1117,15 +1192,13 @@ export function ProfileOnboardingModal({
     });
   };
 
-  const removeLogoPreviewRow = (bucket: LogoBucket, index: number) => {
-    setLogoPreviews((current) => {
+  const removeLogoMutationRow = (bucket: LogoBucket, index: number) => {
+    setLogoMutations((current) => {
       const nextBucket: Record<number, string> = {};
 
       Object.entries(current[bucket]).forEach(([key, value]) => {
         const currentIndex = Number(key);
         if (currentIndex === index) {
-          URL.revokeObjectURL(value);
-          logoPreviewUrlsRef.current.delete(value);
           return;
         }
 
@@ -1136,7 +1209,23 @@ export function ProfileOnboardingModal({
     });
   };
 
-  const selectLogoFile = (
+  const trackPhotoRemoval = (url: string | null | undefined) => {
+    if (!isHttpUrl(url)) {
+      return;
+    }
+    if (unsavedPhotoUploadsRef.current.has(url)) {
+      return;
+    }
+    pendingPhotoDeletesRef.current.add(url);
+  };
+
+  const getLogoValue = (bucket: LogoBucket, index: number) => {
+    return bucket === "work"
+      ? form.work[index]?.companyLogo
+      : form.business[index]?.businessLogo;
+  };
+
+  const selectLogoFile = async (
     bucket: LogoBucket,
     index: number,
     file: File | undefined,
@@ -1155,22 +1244,48 @@ export function ProfileOnboardingModal({
       return;
     }
 
-    const previewUrl = URL.createObjectURL(file);
-    if (bucket === "work") {
-      setWorkValue(index, "companyLogo", file.name);
-    } else {
-      setBusinessValue(index, "businessLogo", file.name);
+    markTouched(
+      bucket === "work"
+        ? `work.${index}.companyLogo`
+        : `business.${index}.businessLogo`,
+    );
+    setLogoMutation(bucket, index, "Uploading logo...");
+    try {
+      const previousLogoUrl = getLogoValue(bucket, index);
+      const body = new FormData();
+      body.append("file", file);
+      const response = await apiFetch<PhotoResponse>("/v1/photo", {
+        method: "POST",
+        body,
+      });
+
+      if (!isHttpUrl(response.url)) {
+        throw new Error("Logo upload did not return a valid URL.");
+      }
+
+      trackPhotoRemoval(previousLogoUrl);
+      unsavedPhotoUploadsRef.current.add(response.url);
+      if (bucket === "work") {
+        setWorkValue(index, "companyLogo", response.url);
+      } else {
+        setBusinessValue(index, "businessLogo", response.url);
+      }
+      toast.success(`${bucket === "work" ? "Company" : "Business"} logo uploaded.`);
+    } catch (error) {
+      logUiError("Could not upload logo", error);
+      toast.error("We couldn't upload that logo. Please try again.");
+    } finally {
+      setLogoMutation(bucket, index, null);
     }
-    setLogoPreview(bucket, index, previewUrl);
   };
 
   const clearLogoFile = (bucket: LogoBucket, index: number) => {
+    trackPhotoRemoval(getLogoValue(bucket, index));
     if (bucket === "work") {
       setWorkValue(index, "companyLogo", "");
     } else {
       setBusinessValue(index, "businessLogo", "");
     }
-    setLogoPreview(bucket, index, null);
   };
 
   const uploadProfilePhoto = async (file: File | undefined) => {
@@ -1192,15 +1307,22 @@ export function ProfileOnboardingModal({
 
     setIsMutatingProfilePhoto(true);
     try {
+      const previousPhotoUrl = form.identity.profilePhoto;
       const body = new FormData();
       body.append("file", file);
-      const response = await apiFetch<ProfilePhotoResponse>("/v1/profile/me/photo", {
+      const response = await apiFetch<PhotoResponse>("/v1/photo", {
         method: "POST",
         body,
       });
-      setSectionValue("identity", "profilePhoto", response.profilePhoto ?? "");
-      await refreshUser();
-      toast.success("Profile photo updated.");
+
+      if (!isHttpUrl(response.url)) {
+        throw new Error("Profile photo upload did not return a valid URL.");
+      }
+
+      trackPhotoRemoval(previousPhotoUrl);
+      unsavedPhotoUploadsRef.current.add(response.url);
+      setSectionValue("identity", "profilePhoto", response.url);
+      toast.success("Profile photo uploaded. Save your profile to keep it.");
     } catch (error) {
       logUiError("Could not upload profile photo", error);
       toast.error("We couldn't update your profile photo. Please try again.");
@@ -1211,20 +1333,9 @@ export function ProfileOnboardingModal({
 
   const deleteProfilePhoto = async () => {
     markTouched("identity.profilePhoto");
-    setIsMutatingProfilePhoto(true);
-    try {
-      await apiFetch<ProfilePhotoResponse>("/v1/profile/me/photo", {
-        method: "DELETE",
-      });
-      setSectionValue("identity", "profilePhoto", "");
-      await refreshUser();
-      toast.success("Profile photo removed.");
-    } catch (error) {
-      logUiError("Could not remove profile photo", error);
-      toast.error("We couldn't remove your profile photo. Please try again.");
-    } finally {
-      setIsMutatingProfilePhoto(false);
-    }
+    trackPhotoRemoval(form.identity.profilePhoto);
+    setSectionValue("identity", "profilePhoto", "");
+    toast.success("Profile photo removed. Save your profile to keep this change.");
   };
 
   const setSectionValue = <Section extends "identity" | "personal">(
@@ -1354,8 +1465,13 @@ export function ProfileOnboardingModal({
     index: number,
     createEmpty: () => OnboardingForm[Bucket] extends Array<infer Row> ? Row : never,
   ) => {
-    if (bucket === "work" || bucket === "business") {
-      removeLogoPreviewRow(bucket, index);
+    if (bucket === "work") {
+      trackPhotoRemoval(form.work[index]?.companyLogo);
+      removeLogoMutationRow(bucket, index);
+    }
+    if (bucket === "business") {
+      trackPhotoRemoval(form.business[index]?.businessLogo);
+      removeLogoMutationRow(bucket, index);
     }
 
     setForm((current) => {
@@ -1764,6 +1880,7 @@ export function ProfileOnboardingModal({
         }
       }
 
+      await cleanupPhotosAfterSuccessfulSave(collectPhotoUrls(form));
       toast.success("Profile saved.");
       await refreshUser();
       await onComplete({ identity: payload.identity });
@@ -1776,8 +1893,10 @@ export function ProfileOnboardingModal({
   };
 
   const skipProfile = () => {
-    toast.info("You can complete your profile later.");
-    onSkip();
+    void cleanupUnsavedPhotoUploads().finally(() => {
+      toast.info("You can complete your profile later.");
+      onSkip();
+    });
   };
 
   return (
@@ -1812,7 +1931,7 @@ export function ProfileOnboardingModal({
                 type="button"
                 variant="ghost"
                 onClick={skipProfile}
-                disabled={isSaving || isLoadingProfile}
+                disabled={isSaving || isLoadingProfile || isMutatingProfilePhoto || isMutatingLogo}
                 className="self-start"
               >
                 Skip for now
@@ -2106,62 +2225,69 @@ export function ProfileOnboardingModal({
 
                     {showAdditionalWorkFields && (
                       <div className="mt-4 border-t border-border pt-4">
-                        <TwoColumn>
-                          <LogoUploadField
-                            disabled={controlsDisabled}
-                            error={visibleError(`work.${index}.companyLogo`)}
-                            label="Company logo"
-                            previewUrl={logoPreviews.work[index]}
-                            value={row.companyLogo}
-                            onClear={() => clearLogoFile("work", index)}
-                            onUpload={(file) => selectLogoFile("work", index, file)}
-                          />
-                          <Field label="Company registration number">
-                            <Input
-                              value={row.companyRegNumber}
-                              onChange={(event) =>
-                                setWorkValue(
-                                  index,
-                                  "companyRegNumber",
-                                  event.target.value,
-                                )
+                        <MediaFieldsLayout
+                          media={
+                            <LogoUploadField
+                              disabled={
+                                controlsDisabled || Boolean(logoMutations.work[index])
                               }
+                              error={visibleError(`work.${index}.companyLogo`)}
+                              isLoading={Boolean(logoMutations.work[index])}
+                              label="Company logo"
+                              value={row.companyLogo}
+                              onClear={() => clearLogoFile("work", index)}
+                              onUpload={(file) => void selectLogoFile("work", index, file)}
                             />
-                          </Field>
-                          <Field label="Work landline">
-                            <Input
-                              value={row.workLandline}
-                              onChange={(event) =>
-                                setWorkValue(index, "workLandline", event.target.value)
-                              }
-                            />
-                          </Field>
-                          <Field label="Work fax">
-                            <Input
-                              value={row.workFax}
-                              onChange={(event) =>
-                                setWorkValue(index, "workFax", event.target.value)
-                              }
-                            />
-                          </Field>
-                          <Field label="Employee ID">
-                            <Input
-                              value={row.employeeId}
-                              onChange={(event) =>
-                                setWorkValue(index, "employeeId", event.target.value)
-                              }
-                            />
-                          </Field>
-                          <Field label="Label" error={visibleError(`work.${index}.tag`)}>
-                            <Input
-                              value={row.tag}
-                              onChange={(event) =>
-                                setWorkValue(index, "tag", event.target.value)
-                              }
-                              {...validationProps(`work.${index}.tag`)}
-                            />
-                          </Field>
-                        </TwoColumn>
+                          }
+                        >
+                          <TwoColumn>
+                            <Field label="Company registration number">
+                              <Input
+                                value={row.companyRegNumber}
+                                onChange={(event) =>
+                                  setWorkValue(
+                                    index,
+                                    "companyRegNumber",
+                                    event.target.value,
+                                  )
+                                }
+                              />
+                            </Field>
+                            <Field label="Work landline">
+                              <Input
+                                value={row.workLandline}
+                                onChange={(event) =>
+                                  setWorkValue(index, "workLandline", event.target.value)
+                                }
+                              />
+                            </Field>
+                            <Field label="Work fax">
+                              <Input
+                                value={row.workFax}
+                                onChange={(event) =>
+                                  setWorkValue(index, "workFax", event.target.value)
+                                }
+                              />
+                            </Field>
+                            <Field label="Label" error={visibleError(`work.${index}.tag`)}>
+                              <Input
+                                value={row.tag}
+                                onChange={(event) =>
+                                  setWorkValue(index, "tag", event.target.value)
+                                }
+                                {...validationProps(`work.${index}.tag`)}
+                              />
+                            </Field>
+                            <Field label="Employee ID">
+                              <Input
+                                value={row.employeeId}
+                                onChange={(event) =>
+                                  setWorkValue(index, "employeeId", event.target.value)
+                                }
+                              />
+                            </Field>
+                          </TwoColumn>
+                        </MediaFieldsLayout>
                       </div>
                     )}
                   </div>
@@ -2193,20 +2319,21 @@ export function ProfileOnboardingModal({
                         {...validationProps(`business.${index}.tag`)}
                       />
                     </Field>
-                    <LogoUploadField
-                      disabled={controlsDisabled}
-                      error={visibleError(`business.${index}.businessLogo`)}
-                      label="Business logo"
-                      previewUrl={logoPreviews.business[index]}
-                      value={row.businessLogo}
-                      onClear={() => clearLogoFile("business", index)}
-                      onUpload={(file) => selectLogoFile("business", index, file)}
-                    />
                     <Field label="Business name">
                       <Input
                         value={row.businessName}
                         onChange={(event) =>
                           setBusinessValue(index, "businessName", event.target.value)
+                        }
+                      />
+                    </Field>
+                  </TwoColumn>
+                  <TwoColumn>
+                    <Field label="Business mobile">
+                      <Input
+                        value={row.businessMobile}
+                        onChange={(event) =>
+                          setBusinessValue(index, "businessMobile", event.target.value)
                         }
                       />
                     </Field>
@@ -2292,68 +2419,75 @@ export function ProfileOnboardingModal({
 
                     {showAdditionalBusinessFields && (
                       <div className="mt-4 border-t border-border pt-4">
-                        <TwoColumn>
-                          <Field label="Business mobile">
-                            <Input
-                              value={row.businessMobile}
-                              onChange={(event) =>
-                                setBusinessValue(
-                                  index,
-                                  "businessMobile",
-                                  event.target.value,
-                                )
+                        <MediaFieldsLayout
+                          media={
+                            <LogoUploadField
+                              disabled={
+                                controlsDisabled ||
+                                Boolean(logoMutations.business[index])
+                              }
+                              error={visibleError(`business.${index}.businessLogo`)}
+                              isLoading={Boolean(logoMutations.business[index])}
+                              label="Business logo"
+                              value={row.businessLogo}
+                              onClear={() => clearLogoFile("business", index)}
+                              onUpload={(file) =>
+                                void selectLogoFile("business", index, file)
                               }
                             />
-                          </Field>
-                          <Field label="Business registration number">
-                            <Input
-                              value={row.businessRegNumber}
-                              onChange={(event) =>
-                                setBusinessValue(
-                                  index,
-                                  "businessRegNumber",
-                                  event.target.value,
-                                )
-                              }
-                            />
-                          </Field>
-                          <Field label="Business title">
-                            <Input
-                              value={row.businessTitle}
-                              onChange={(event) =>
-                                setBusinessValue(
-                                  index,
-                                  "businessTitle",
-                                  event.target.value,
-                                )
-                              }
-                            />
-                          </Field>
-                          <Field label="Business fax">
-                            <Input
-                              value={row.businessFax}
-                              onChange={(event) =>
-                                setBusinessValue(index, "businessFax", event.target.value)
-                              }
-                            />
-                          </Field>
-                          <Field label="Business type">
-                            <Input
-                              value={row.businessType}
-                              onChange={(event) =>
-                                setBusinessValue(index, "businessType", event.target.value)
-                              }
-                            />
-                          </Field>
-                          <Field label="GSTIN">
-                            <Input
-                              value={row.gstin}
-                              onChange={(event) =>
-                                setBusinessValue(index, "gstin", event.target.value)
-                              }
-                            />
-                          </Field>
-                        </TwoColumn>
+                          }
+                        >
+                          <TwoColumn>
+                            <Field label="Business registration number">
+                              <Input
+                                value={row.businessRegNumber}
+                                onChange={(event) =>
+                                  setBusinessValue(
+                                    index,
+                                    "businessRegNumber",
+                                    event.target.value,
+                                  )
+                                }
+                              />
+                            </Field>
+                            <Field label="Business title">
+                              <Input
+                                value={row.businessTitle}
+                                onChange={(event) =>
+                                  setBusinessValue(
+                                    index,
+                                    "businessTitle",
+                                    event.target.value,
+                                  )
+                                }
+                              />
+                            </Field>
+                            <Field label="Business fax">
+                              <Input
+                                value={row.businessFax}
+                                onChange={(event) =>
+                                  setBusinessValue(index, "businessFax", event.target.value)
+                                }
+                              />
+                            </Field>
+                            <Field label="Business type">
+                              <Input
+                                value={row.businessType}
+                                onChange={(event) =>
+                                  setBusinessValue(index, "businessType", event.target.value)
+                                }
+                              />
+                            </Field>
+                            <Field label="GSTIN">
+                              <Input
+                                value={row.gstin}
+                                onChange={(event) =>
+                                  setBusinessValue(index, "gstin", event.target.value)
+                                }
+                              />
+                            </Field>
+                          </TwoColumn>
+                        </MediaFieldsLayout>
                       </div>
                     )}
                   </div>
@@ -2537,32 +2671,35 @@ function ProfilePhotoUpload({
 function LogoUploadField({
   disabled,
   error,
+  isLoading,
   label,
   onClear,
   onUpload,
-  previewUrl,
   value,
 }: {
   disabled: boolean;
   error?: string;
+  isLoading: boolean;
   label: string;
   onClear: () => void;
   onUpload: (file: File | undefined) => void;
-  previewUrl?: string;
   value: string;
 }) {
+  const previewUrl = isHttpUrl(value) ? value : undefined;
+  const displayValue = value ? (previewUrl ? "Logo uploaded" : value) : "Choose logo image";
+
   return (
-    <div className="space-y-2">
+    <div className="flex h-full flex-col gap-1.5">
       <p className="text-sm font-medium">{label}</p>
-      <div className="rounded-md border border-border p-3">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex min-h-9 flex-1 flex-col rounded-md border border-border p-2.5">
+        <div className="flex flex-1 flex-col gap-2">
           <label
             className={cn(
-              "group flex min-w-0 flex-1 cursor-pointer items-center gap-4 rounded-md border border-dashed border-border bg-muted/30 p-3 transition-colors hover:bg-muted",
+              "group flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-md border border-dashed border-border bg-muted/30 p-2.5 transition-colors hover:bg-muted",
               disabled && "cursor-not-allowed opacity-60 hover:bg-muted/30",
             )}
           >
-            <span className="relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-background">
+            <span className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-background">
               {previewUrl ? (
                 <img src={previewUrl} alt="" className="h-full w-full object-cover" />
               ) : (
@@ -2574,10 +2711,10 @@ function LogoUploadField({
             </span>
             <span className="min-w-0">
               <span className="block truncate text-sm font-semibold" title={value}>
-                {value || "Choose logo image"}
+                {displayValue}
               </span>
-              <span className="mt-1 block text-sm text-muted-foreground">
-                Upload JPEG, PNG, or WebP under 1 MB.
+              <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                JPEG, PNG, or WebP under 1 MB.
               </span>
               {error && (
                 <span className="mt-1 block text-xs font-medium text-destructive">
@@ -2597,13 +2734,39 @@ function LogoUploadField({
             />
           </label>
           {value && (
-            <Button type="button" variant="ghost" onClick={onClear} disabled={disabled}>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={onClear}
+              disabled={disabled}
+              className="h-8 w-full justify-center"
+            >
               <X className="h-4 w-4" aria-hidden="true" />
               Remove
             </Button>
           )}
         </div>
+        {isLoading && (
+          <p className="mt-3 text-xs font-medium text-muted-foreground">
+            Updating logo...
+          </p>
+        )}
       </div>
+    </div>
+  );
+}
+
+function MediaFieldsLayout({
+  children,
+  media,
+}: {
+  children: ReactNode;
+  media: ReactNode;
+}) {
+  return (
+    <div className="grid items-stretch gap-3 xl:grid-cols-[minmax(14rem,0.75fr)_minmax(0,2.25fr)]">
+      <div className="flex min-w-0">{media}</div>
+      <div className="min-w-0">{children}</div>
     </div>
   );
 }

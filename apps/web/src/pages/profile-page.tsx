@@ -435,7 +435,11 @@ function WorkDetails({ item }: { item: ProfileMeResponse["work"][number] }) {
     <>
       <DetailGrid>
         <DetailRow label="Company" value={profileValue(item, "companyName")} />
-        <LinkedDetailRow label="Company logo" value={companyLogo} />
+        <ImageDetailRow
+          alt="Company logo"
+          label="Company logo"
+          value={companyLogo}
+        />
         <DetailRow
           label="Registration number"
           value={profileValue(item, "companyRegNumber")}
@@ -511,7 +515,11 @@ function BusinessDetails({
     <>
       <DetailGrid>
         <DetailRow label="Business" value={profileValue(item, "businessName")} />
-        <LinkedDetailRow label="Business logo" value={businessLogo} />
+        <ImageDetailRow
+          alt="Business logo"
+          label="Business logo"
+          value={businessLogo}
+        />
         <DetailRow
           label="Registration number"
           value={profileValue(item, "businessRegNumber")}
@@ -582,6 +590,45 @@ function LinkedDetailRow({
       >
         <span className="min-w-0 break-all">{value}</span>
         <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+      </a>
+    </div>
+  );
+}
+
+function ImageDetailRow({
+  alt,
+  label,
+  value,
+}: {
+  alt: string;
+  label: string;
+  value?: string | null;
+}) {
+  if (!value) {
+    return null;
+  }
+  if (!isLinkable(value)) {
+    return <DetailRow label={label} value={value} />;
+  }
+  return (
+    <div className="grid gap-2 text-sm">
+      <span className="text-xs font-medium uppercase text-muted-foreground">{label}</span>
+      <a
+        href={value}
+        target="_blank"
+        rel="noreferrer"
+        className="group inline-flex w-fit max-w-full items-center gap-3 rounded-md border border-border bg-muted/30 p-2 transition-colors hover:bg-muted"
+      >
+        <span className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-background">
+          <img src={value} alt={alt} className="h-full w-full object-contain" />
+        </span>
+        <span className="min-w-0 max-w-64 truncate font-medium text-primary">
+          Open image
+        </span>
+        <ExternalLink
+          className="h-3.5 w-3.5 shrink-0 text-primary"
+          aria-hidden="true"
+        />
       </a>
     </div>
   );

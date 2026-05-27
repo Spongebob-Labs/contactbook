@@ -1,5 +1,29 @@
 # Decision Context
 
+## 2026-05-27 - Profile Logo Field Layout
+
+- Decision: Rework the profile edit form logo areas so the company and business logo upload controls sit beside two rows of text-only inputs on wider screens, while stacking naturally on smaller screens.
+- Reason: The logo upload control is taller than standard text inputs; pairing it with multiple neighboring fields makes the form rhythm intentional and better organized instead of leaving uneven grid height.
+- Notes: Upload/delete behavior is unchanged. The company logo area fits five nearby work fields beside the uploader, and the business logo now lives in the More business fields section beside five advanced business fields. Logo upload cards stretch to align with the paired text-field block edges on wider screens, and the remove action sits below the upload target to prevent horizontal overlap. Frontend-only change; backend code and browser testing remain untouched.
+
+## 2026-05-27 - Profile Page Public Logo Images
+
+- Decision: Render saved company and business logo URLs as image previews on the Profile page, while keeping a text fallback for old non-URL logo values.
+- Reason: The shared photo API returns public image URLs, so profile read surfaces should display the actual saved images directly instead of showing only clickable URL text.
+- Notes: Profile header already displays `identity.profilePhoto`; this change adds equivalent visual handling for work `companyLogo` and business `businessLogo`. Frontend-only change; backend code and browser testing remain untouched.
+
+## 2026-05-27 - Shared Photo Upload Cleanup
+
+- Decision: Upload profile photos, company logos, and business logos through `POST /v1/photo`, store the returned public URL in the frontend profile form, and persist those URLs through the existing profile save payload.
+- Reason: The backend now exposes one shared photo API for profile and general images, and the profile update API should remain the source of truth for whether a public image URL is attached to a profile.
+- Notes: Removed or replaced saved image URLs are deleted with `DELETE /v1/photo` and body `{ url }` only after the profile save succeeds. Newly uploaded but unsaved image URLs are cleaned up if the user skips/cancels or replaces/removes them before saving. Saved URLs from `GET /v1/profile/me` are rendered directly as public images. Frontend-only change; backend code and browser testing remain untouched.
+
+## 2026-05-27 - Production API Base Domain
+
+- Decision: Update the frontend production `VITE_API_URL` to `https://api.getcontactbook.com/api`.
+- Reason: Production frontend API calls should use the public ContactBook API domain while keeping the base URL at the API root, so request paths like `/v1/profile/me` compose to `/api/v1/profile/me` instead of the Swagger docs route.
+- Notes: Local dev `.env.local` was also aligned to the same API root because Vite dev mode gives it priority over production env values. Frontend config only. Backend code and browser testing remain untouched.
+
 ## 2026-05-26 - Cookie-Tolerant Auth Profile Refresh
 
 - Decision: Change auth `refreshUser` to refresh identity through `/v1/profile/me` before making any logout decision, and only mark the session unauthenticated on a confirmed 401.
