@@ -8,6 +8,7 @@ import { GoogleController } from "./google.controller";
 import { GoogleService } from "./google.service";
 import { TwilioWebhookController } from "./twilio-webhook.controller";
 import { WhatsappWebhookService } from "./whatsapp-webhook.service";
+import { WebhookDlqService } from "./webhook-dlq.service";
 
 @Module({
   imports: [
@@ -18,7 +19,7 @@ import { WhatsappWebhookService } from "./whatsapp-webhook.service";
     ConnectionModule,
   ],
   controllers: [GoogleController, TwilioWebhookController],
-  providers: [GoogleService, WhatsappWebhookService],
+  providers: [GoogleService, WhatsappWebhookService, WebhookDlqService],
   exports: [GoogleService, TwilioNestModule],
 })
 export class IntegrationModule {}
