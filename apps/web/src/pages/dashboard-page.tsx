@@ -192,8 +192,8 @@ type StarterCardRequest = {
   type: ContactCardType;
 };
 
-function normalizeCardName(name: string) {
-  return name.trim().replace(/\s+/g, " ").toLowerCase();
+function hasCardType(cards: ContactCard[], type: ContactCardType) {
+  return cards.some((card) => card.type === type);
 }
 
 function fullNameFromIdentity(identity: ProfileOnboardingResult["identity"]) {
@@ -265,7 +265,7 @@ export default function DashboardPage() {
       label: "Profile",
       value: `${profileCompletion.percent}%`,
       detail: `${profileCompletion.completed}/${profileCompletion.total} sections complete`,
-      to: "/dashboard/profile",
+      to: "/profile",
       action: "Review profile",
       tone: "profile",
       progress: profileCompletion.percent,
@@ -323,19 +323,17 @@ export default function DashboardPage() {
     setOnboardingStep("import");
   }, [isSetupFlow, navigate, returnTo, setOnboardingStep]);
 
-  const createMissingStarterCards = useCallback(
+  const completeSetupStarterCards = useCallback(
     async (identity: ProfileOnboardingResult["identity"]) => {
-      const starterCards = getStarterCardRequests(identity);
       const liveCards = await apiFetch<ContactCard[]>("/v1/cards");
+      const starterCards = getStarterCardRequests(identity);
       const createdCards: ContactCard[] = [];
 
       for (const starterCard of starterCards) {
-        const alreadyExists = [...liveCards, ...createdCards].some(
-          (card) =>
-            card.type === starterCard.type &&
-            normalizeCardName(card.name) === normalizeCardName(starterCard.name),
+        const alreadyExists = hasCardType(
+          [...liveCards, ...createdCards],
+          starterCard.type,
         );
-
         if (alreadyExists) {
           continue;
         }
@@ -437,7 +435,7 @@ export default function DashboardPage() {
     async (result: ProfileOnboardingResult) => {
       if (isSetupFlow) {
         try {
-          await createMissingStarterCards(result.identity);
+          await completeSetupStarterCards(result.identity);
         } catch (error) {
           logUiError("Could not create starter cards", error);
           toast.error("Your profile was saved, but we couldn't create your cards right now.");
@@ -451,7 +449,7 @@ export default function DashboardPage() {
       finishProfileStep();
     },
     [
-      createMissingStarterCards,
+      completeSetupStarterCards,
       finishProfileStep,
       isSetupFlow,
       loadCards,
@@ -583,7 +581,7 @@ export default function DashboardPage() {
                 Complete the details you want available across your contact cards.
               </p>
               <Link
-                to="/dashboard/profile"
+                to="/profile"
                 className={cn(buttonVariants({ variant: "outline" }), "shrink-0 rounded-full")}
               >
                 Review profile
@@ -617,7 +615,7 @@ export default function DashboardPage() {
       {onboardingStep === "profile" && (
         <ProfileOnboardingModal
           onComplete={(result) => finishSetupProfileStep(result)}
-          onSkip={finishProfileStep}
+          onSkip={(result) => finishSetupProfileStep(result)}
         />
       )}
       {onboardingStep === "import" && (
@@ -821,7 +819,7 @@ function DashboardOverviewPanel({
               <ArrowRight className="h-4 w-4" aria-hidden="true" />
             </Link>
             <Link
-              to="/dashboard/profile"
+              to="/profile"
               className={cn(buttonVariants({ variant: "default", size: "sm" }))}
             >
               Review profile

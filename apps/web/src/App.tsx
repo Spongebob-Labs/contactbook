@@ -111,7 +111,7 @@ export default function App() {
             path="/onboarding/card"
             element={
               <ProtectedRoute>
-                <Navigate to="/dashboard?onboarding=card" replace />
+                <Navigate to="/dashboard" replace />
               </ProtectedRoute>
             }
           />

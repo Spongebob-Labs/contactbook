@@ -1,5 +1,17 @@
 # Decision Context
 
+## 2026-05-27 - Resumable Setup Starter Cards
+
+- Decision: Make setup starter card creation resumable by card type: any existing `PERSONAL` card satisfies the personal starter, any existing `BUSINESS` card satisfies the business starter, and missing starter types are created as needed. Redirect `/onboarding/card` to `/dashboard` instead of opening the manual card modal.
+- Reason: Remote dev backend creates a default `Personal` card during profile onboarding. Frontend setup must recognize that card as the personal starter and create the missing business starter; if profile onboarding is skipped, frontend should still create the missing starter types from the loaded identity.
+- Notes: Manual card creation through dashboard/cards page CTAs remains unchanged. Backend code and browser testing remain untouched.
+
+## 2026-05-27 - Dashboard Profile CTA Route
+
+- Decision: Point dashboard profile review CTAs to `/profile` instead of `/dashboard/profile`.
+- Reason: The app's routed Profile page lives at `/profile`, so dashboard stat and overview actions should navigate to that existing page instead of an unmatched dashboard subroute.
+- Notes: Frontend routing/link fix only. Backend code and browser testing remain untouched.
+
 ## 2026-05-27 - Profile Logo Field Layout
 
 - Decision: Rework the profile edit form logo areas so the company and business logo upload controls sit beside two rows of text-only inputs on wider screens, while stacking naturally on smaller screens.

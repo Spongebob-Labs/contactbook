@@ -1020,7 +1020,7 @@ export type ProfileOnboardingResult = {
 
 type ProfileOnboardingModalProps = {
   onComplete: (result: ProfileOnboardingResult) => void | Promise<void>;
-  onSkip: () => void;
+  onSkip: (result: ProfileOnboardingResult) => void | Promise<void>;
 };
 
 export function ProfileOnboardingModal({
@@ -1894,8 +1894,17 @@ export function ProfileOnboardingModal({
 
   const skipProfile = () => {
     void cleanupUnsavedPhotoUploads().finally(() => {
+      const identity = loadedIdentity ?? form.identity;
       toast.info("You can complete your profile later.");
-      onSkip();
+      void onSkip({
+        identity: {
+          firstName: identity.firstName.trim(),
+          lastName: identity.lastName.trim(),
+          primaryPhone: identity.primaryPhone.trim(),
+          primaryEmail: identity.primaryEmail.trim(),
+          profilePhoto: profilePhotoForSave(identity.profilePhoto),
+        },
+      });
     });
   };
 
