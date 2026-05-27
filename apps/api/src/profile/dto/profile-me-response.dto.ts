@@ -226,3 +226,23 @@ export class ProfileMeResponseDto {
   @ApiProperty({ type: () => ProfileMeFinancialDto })
   financial!: ProfileMeFinancialDto;
 }
+
+export class ProfileOnboardingResponseDto {
+  @ApiProperty({ type: () => ProfileMeIdentityDto })
+  identity!: ProfileMeIdentityDto;
+
+  @ApiProperty({ type: () => ProfileMePersonalDto })
+  personal!: ProfileMePersonalDto;
+
+  @ApiProperty({ type: [ProfileMeWorkItemDto] })
+  work!: ProfileMeWorkItemDto[];
+
+  @ApiProperty({ type: [ProfileMeBusinessItemDto] })
+  business!: ProfileMeBusinessItemDto[];
+
+  @ApiProperty({ type: [ProfileMeSocialItemDto] })
+  socials!: ProfileMeSocialItemDto[];
+
+  @ApiProperty({ type: () => ProfileMeFinancialDto })
+  financial!: ProfileMeFinancialDto;
+}

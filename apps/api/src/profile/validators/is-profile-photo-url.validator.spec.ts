@@ -1,5 +1,9 @@
 import { validate } from "class-validator";
-import { ProfileMeIdentityUpsertDto } from "../dto/profile-me-upsert.dto";
+import {
+  ProfileMeBusinessUpsertDto,
+  ProfileMeIdentityUpsertDto,
+  ProfileMeWorkUpsertDto,
+} from "../dto/profile-me-upsert.dto";
 
 describe("IsProfilePhotoUrl", () => {
   const originalBase = process.env.GCS_PUBLIC_BASE_URL;
@@ -39,5 +43,35 @@ describe("IsProfilePhotoUrl", () => {
       "https://storage.googleapis.com/contactbook-profile-photos/profiles/u/1.jpg";
     const ok = await validate(dto);
     expect(ok).toHaveLength(0);
+  });
+
+  it("validates companyLogo correctly under GCS rules", async () => {
+    process.env.GCS_PUBLIC_BASE_URL =
+      "https://storage.googleapis.com/contactbook-profile-photos";
+
+    const dto = new ProfileMeWorkUpsertDto();
+    dto.companyLogo = "https://storage.example.com/logo.png";
+    let errors = await validate(dto);
+    expect(errors.some((e) => e.property === "companyLogo")).toBe(true);
+
+    dto.companyLogo =
+      "https://storage.googleapis.com/contactbook-profile-photos/profiles/u/logo.png";
+    errors = await validate(dto);
+    expect(errors.some((e) => e.property === "companyLogo")).toBe(false);
+  });
+
+  it("validates businessLogo correctly under GCS rules", async () => {
+    process.env.GCS_PUBLIC_BASE_URL =
+      "https://storage.googleapis.com/contactbook-profile-photos";
+
+    const dto = new ProfileMeBusinessUpsertDto();
+    dto.businessLogo = "https://storage.example.com/logo.png";
+    let errors = await validate(dto);
+    expect(errors.some((e) => e.property === "businessLogo")).toBe(true);
+
+    dto.businessLogo =
+      "https://storage.googleapis.com/contactbook-profile-photos/profiles/u/logo.png";
+    errors = await validate(dto);
+    expect(errors.some((e) => e.property === "businessLogo")).toBe(false);
   });
 });

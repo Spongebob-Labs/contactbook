@@ -23,9 +23,13 @@ import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { ProfileDeleteGroupDto } from "./dto/profile-delete-group.dto";
 import { ProfileMeOnboardingDto } from "./dto/profile-me-onboarding.dto";
 import { ProfileMePatchDto } from "./dto/profile-me-upsert.dto";
-import { ProfileMeResponseDto } from "./dto/profile-me-response.dto";
+import {
+  ProfileMeResponseDto,
+  ProfileOnboardingResponseDto,
+} from "./dto/profile-me-response.dto";
 import { ProfileMeSerializerService } from "./profile-me.serializer";
 import { ProfileMeUpsertService } from "./profile-me.upsert.service";
+import type { ProfileMeResponse } from "./profile-me.types";
 
 @ApiTags("Profile")
 @ApiBearerAuth("access-token")
@@ -109,12 +113,15 @@ export class ProfileController {
       },
     },
   })
-  @ApiCreatedResponse({ type: ProfileMeResponseDto })
-  completeOnboarding(
+  @ApiCreatedResponse({ type: ProfileOnboardingResponseDto })
+  async completeOnboarding(
     @CurrentUser() user: JwtUserPayload,
     @Body() dto: ProfileMeOnboardingDto,
-  ) {
-    return this.profileMeUpsert.completeOnboarding(user.sub, dto);
+  ): Promise<Omit<ProfileMeResponse, "profileOnboardingCompletedAt">> {
+    const result = await this.profileMeUpsert.completeOnboarding(user.sub, dto);
+    const rest = { ...result } as Partial<ProfileMeResponse>;
+    delete rest.profileOnboardingCompletedAt;
+    return rest as Omit<ProfileMeResponse, "profileOnboardingCompletedAt">;
   }
 
   @Get("me")
