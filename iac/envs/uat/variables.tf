@@ -66,3 +66,8 @@ variable "enable_photo_lifecycle_rules" {
   type    = bool
   default = true
 }
+
+variable "custom_domain" {
+  type    = string
+  default = null
+}

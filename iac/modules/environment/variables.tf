@@ -95,3 +95,9 @@ variable "enable_photo_lifecycle_rules" {
   type        = bool
   default     = false
 }
+
+variable "custom_domain" {
+  description = "Custom domain to map to this Cloud Run service (e.g. api.example.com). Leave empty to skip mapping."
+  type        = string
+  default     = null
+}

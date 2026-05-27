@@ -1,7 +1,7 @@
 # UAT — new stack (greenfield apply). Runtime secrets: API_ENV_UAT_B64.
 
 project_id = "project-c74d38dd-7e12-4d3f-bbf"
-region     = "europe-west10"
+region     = "europe-west1"
 
 cloud_run_service_name = "contactbook-api-uat"
 allow_unauthenticated  = true
@@ -26,3 +26,5 @@ profile_photos_cors_origins = [
   "http://localhost:5173",
   "http://127.0.0.1:5173",
 ]
+
+custom_domain = "uat.api.getcontactbook.com"
