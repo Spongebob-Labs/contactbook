@@ -20,9 +20,23 @@ export class OtpService {
    * otherwise null (registration path after OTP is verified separately).
    */
   async sendPhoneOtp(phoneE164: string, userId: string | null): Promise<void> {
+    const expiresAt = new Date(Date.now() + OTP_TTL_MS);
+
+    if (this.twilio.isVerifyConfigured()) {
+      await this.prisma.otpSession.create({
+        data: {
+          userId,
+          phoneE164,
+          codeHash: "twilio-verify",
+          expiresAt,
+        },
+      });
+      await this.twilio.sendVerificationOtp(phoneE164);
+      return;
+    }
+
     const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
     const codeHash = await bcrypt.hash(code, 10);
-    const expiresAt = new Date(Date.now() + OTP_TTL_MS);
     await this.prisma.otpSession.create({
       data: {
         userId,
@@ -57,7 +71,12 @@ export class OtpService {
     if (!session) {
       throw new UnauthorizedException("Invalid or expired code");
     }
-    if (this.twilio.isClientConfigured()) {
+    if (this.twilio.isVerifyConfigured()) {
+      const ok = await this.twilio.verifyVerificationOtp(phoneE164, code);
+      if (!ok) {
+        throw new UnauthorizedException("Invalid or expired code");
+      }
+    } else if (this.twilio.isClientConfigured()) {
       const ok = await bcrypt.compare(code, session.codeHash);
       if (!ok) {
         throw new UnauthorizedException("Invalid or expired code");
