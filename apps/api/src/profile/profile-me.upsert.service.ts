@@ -3,7 +3,7 @@ import {
   ConflictException,
   Injectable,
 } from "@nestjs/common";
-import { FieldCategory, FieldType, Prisma } from "@prisma/client";
+import { CardType, FieldCategory, FieldType, Prisma } from "@prisma/client";
 import { inboundE164ToIdentity, normalizeDialCode } from "../common/phone.util";
 import { PrismaService } from "../prisma/prisma.service";
 import type { ProfileDeleteGroupDto } from "./dto/profile-delete-group.dto";
@@ -107,6 +107,80 @@ export class ProfileMeUpsertService {
       where: { id: userId },
       data: { profileOnboardingCompletedAt: new Date() },
     });
+
+    const groups = await this.prisma.fieldGroup.findMany({
+      where: { userId },
+      include: { fields: true },
+    });
+
+    // 1. Automatically create 1 Personal card
+    const personalCard = await this.prisma.contactCard.create({
+      data: {
+        userId,
+        name: "Personal",
+        type: CardType.PERSONAL,
+      },
+    });
+
+    const personalFieldIds = groups
+      .filter(
+        (g) =>
+          g.category === FieldCategory.IDENTITY ||
+          g.category === FieldCategory.PERSONAL ||
+          g.category === FieldCategory.SOCIAL,
+      )
+      .flatMap((g) => g.fields.map((f) => f.id));
+
+    if (personalFieldIds.length > 0) {
+      await this.prisma.cardFieldMapping.createMany({
+        data: personalFieldIds.map((fieldId) => ({
+          cardId: personalCard.id,
+          fieldId,
+        })),
+      });
+    }
+
+    // 2. Automatically create 1 Work card per work group added
+    const workGroups = groups.filter((g) => g.category === FieldCategory.WORK);
+    for (const g of workGroups) {
+      const card = await this.prisma.contactCard.create({
+        data: {
+          userId,
+          name: g.name,
+          type: CardType.BUSINESS,
+        },
+      });
+      if (g.fields.length > 0) {
+        await this.prisma.cardFieldMapping.createMany({
+          data: g.fields.map((f) => ({
+            cardId: card.id,
+            fieldId: f.id,
+          })),
+        });
+      }
+    }
+
+    // 3. Automatically create 1 Business card per business group added
+    const businessGroups = groups.filter(
+      (g) => g.category === FieldCategory.BUSINESS,
+    );
+    for (const g of businessGroups) {
+      const card = await this.prisma.contactCard.create({
+        data: {
+          userId,
+          name: g.name,
+          type: CardType.BUSINESS,
+        },
+      });
+      if (g.fields.length > 0) {
+        await this.prisma.cardFieldMapping.createMany({
+          data: g.fields.map((f) => ({
+            cardId: card.id,
+            fieldId: f.id,
+          })),
+        });
+      }
+    }
 
     return this.serializer.build(userId);
   }
