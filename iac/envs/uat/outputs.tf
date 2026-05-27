@@ -13,3 +13,8 @@ output "profile_photos_bucket_name" {
 output "profile_photos_public_base_url" {
   value = module.environment.profile_photos_public_base_url
 }
+
+output "custom_domain_dns_records" {
+  description = "DNS records to configure in Namecheap for uat.api.getcontactbook.com"
+  value       = module.environment.custom_domain_dns_records
+}

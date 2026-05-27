@@ -41,7 +41,7 @@ async function bootstrap(): Promise<void> {
     .setVersion("1.0")
     .addServer("http://localhost:8001", "Local")
     .addServer(
-      "https://contactbook-api-449864809731.europe-west10.run.app",
+      "https://contactbook-api-449864809731.europe-west1.run.app",
       "Production",
     )
     .addBearerAuth(
