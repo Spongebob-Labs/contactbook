@@ -15,10 +15,6 @@ import { ConnectionService } from "./connection.service";
     ConnectionInviteService,
     ConnectionShareService,
   ],
-  exports: [
-    ConnectionService,
-    ConnectionInviteService,
-    ConnectionShareService,
-  ],
+  exports: [ConnectionService, ConnectionInviteService, ConnectionShareService],
 })
 export class ConnectionModule {}

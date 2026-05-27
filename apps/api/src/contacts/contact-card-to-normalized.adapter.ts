@@ -145,9 +145,7 @@ export function contactCardToNormalizedContact(
       case FieldType.ADDRESS:
         if (field.address) {
           flushOrg(false);
-          addresses.push(
-            addressFromDetail(field.address, label, isPrimary),
-          );
+          addresses.push(addressFromDetail(field.address, label, isPrimary));
         }
         break;
       case FieldType.URL:

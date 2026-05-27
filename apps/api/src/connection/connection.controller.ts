@@ -18,9 +18,7 @@ import {
 } from "./dto/create-connection-response.dto";
 
 function toConnectionDto(
-  connection: Awaited<
-    ReturnType<ConnectionService["listForUser"]>
-  >[number],
+  connection: Awaited<ReturnType<ConnectionService["listForUser"]>>[number],
 ): ConnectionResponseDto {
   return {
     type: "connection",

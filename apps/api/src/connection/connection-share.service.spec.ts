@@ -79,7 +79,12 @@ describe("ConnectionShareService", () => {
       status: ConnectionStatus.ACCEPTED,
     });
 
-    const result = await svc.shareCard("conn-1", receiver.id, "card-r", "recipient");
+    const result = await svc.shareCard(
+      "conn-1",
+      receiver.id,
+      "card-r",
+      "recipient",
+    );
     expect(contactUpsert.upsert).toHaveBeenCalledWith(
       requester.id,
       expect.objectContaining({ source: "CONTACTBOOK" }),

@@ -183,11 +183,7 @@ export class ConnectionService {
             hasSharedBack: false,
           },
         });
-        await this.setupRecipientSessionAndInvite(
-          connection,
-          recipient,
-          who,
-        );
+        await this.setupRecipientSessionAndInvite(connection, recipient, who);
         return { type: "connection", connection };
       }
     }
@@ -240,7 +236,9 @@ export class ConnectionService {
     phone: string;
   } {
     const trimmed = value.trim();
-    const e164 = trimmed.startsWith("+") ? trimmed : `+${trimmed.replace(/\D/g, "")}`;
+    const e164 = trimmed.startsWith("+")
+      ? trimmed
+      : `+${trimmed.replace(/\D/g, "")}`;
     const identity = inboundE164ToIdentity(e164);
     if (!identity) {
       throw new BadRequestException(
