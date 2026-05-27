@@ -127,7 +127,7 @@ export class ContactUpsertService {
     });
   }
 
-  /** Batched import path for large VCF uploads (and future provider bulk syncs). */
+  /** Batched import path for large VCF uploads and provider bulk syncs (Google). */
   async upsertBatch(
     userId: string,
     contacts: NormalizedContact[],
@@ -187,9 +187,9 @@ export class ContactUpsertService {
           }),
         ),
       );
-      for (const _ of toDelete) {
+      toDelete.forEach(() => {
         incrementSyncStat(stats, "deleted");
-      }
+      });
     }
 
     if (active.length === 0) {
@@ -211,8 +211,7 @@ export class ContactUpsertService {
         this.dedup.resolveMergeGroupFromIndex(index, contact);
       const existing = existingByExternalId.get(contact.externalId);
       const existingId = existing?.id;
-      const hasActiveExisting =
-        existing != null && existing.deletedAt == null;
+      const hasActiveExisting = existing != null && existing.deletedAt == null;
       incrementSyncStat(
         stats,
         importSyncOutcome(hasActiveExisting, duplicateFound),

@@ -32,16 +32,26 @@ export class SyncService {
     const connections = await this.prisma.connection.findMany({
       where: {
         status: ConnectionStatus.ACCEPTED,
-        sharedCardId: contactCardId,
+        OR: [
+          { requesterSharedCardId: contactCardId },
+          { receiverSharedCardId: contactCardId },
+        ],
       },
       include: { requester: true, receiver: true },
     });
     for (const c of connections) {
       try {
-        if (c.sharedCardId === contactCardId && c.receiver.phone) {
+        if (c.requesterSharedCardId === contactCardId) {
           const who = `${c.requester.firstName} ${c.requester.lastName}`.trim();
           await this.twilio.sendWhatsApp(
             e164FromStoredUser(c.receiver),
+            `ContactBook: ${who || "Your connection"} updated a shared contact card.`,
+          );
+        }
+        if (c.receiverSharedCardId === contactCardId) {
+          const who = `${c.receiver.firstName} ${c.receiver.lastName}`.trim();
+          await this.twilio.sendWhatsApp(
+            e164FromStoredUser(c.requester),
             `ContactBook: ${who || "Your connection"} updated a shared contact card.`,
           );
         }

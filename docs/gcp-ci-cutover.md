@@ -55,7 +55,7 @@ tofu output -raw profile_photos_public_base_url
 | Variable | Value |
 |----------|--------|
 | `GCP_PROJECT_ID` | `project-c74d38dd-7e12-4d3f-bbf` |
-| `GCP_REGION` | `europe-west10` |
+| `GCP_REGION` | `europe-west1` |
 | `CLOUD_RUN_SERVICE_PROD` | `contactbook-api` (optional; default) |
 | `CLOUD_RUN_SERVICE_UAT` | `contactbook-api-uat` (optional; default) |
 
@@ -89,7 +89,7 @@ Merge workflow file changes to **`main`** before `dev` picks up updated `workflo
 
 Image URI pattern (shared GAR repo):
 
-`europe-west10-docker.pkg.dev/project-c74d38dd-7e12-4d3f-bbf/contactbook/api:<tag>`
+`europe-west1-docker.pkg.dev/project-c74d38dd-7e12-4d3f-bbf/contactbook/api:<tag>`
 
 - Prod (`main`): `0.1.42`
 - UAT (`dev`): `0.1.42-uat`
@@ -123,8 +123,8 @@ Keep the **Prod** redirect URI for `contactbook-api`. Add a **second** redirect 
 1. Open PR to **`dev`** → **CI** tests only (no CI Deploy / CD / release).
 2. Merge or push to **`dev`** → **CI Deploy** tag `…-uat` → **CD** updates **`contactbook-api-uat`** (no release).
 3. Merge or push to **`main`** with `apps/api` change → **CI Deploy** → **CD** Prod → GitHub Release `api-v0.1.<N>` (only if deploy ran).
-3. `gcloud run services describe contactbook-api --region=europe-west10 --project=project-c74d38dd-7e12-4d3f-bbf`
-4. `gcloud run services describe contactbook-api-uat --region=europe-west10 --project=project-c74d38dd-7e12-4d3f-bbf`
+3. `gcloud run services describe contactbook-api --region=europe-west1 --project=project-c74d38dd-7e12-4d3f-bbf`
+4. `gcloud run services describe contactbook-api-uat --region=europe-west1 --project=project-c74d38dd-7e12-4d3f-bbf`
 
 ## Rollback
 

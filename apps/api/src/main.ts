@@ -40,10 +40,8 @@ async function bootstrap(): Promise<void> {
     )
     .setVersion("1.0")
     .addServer("http://localhost:8001", "Local")
-    .addServer(
-      "https://contactbook-api-449864809731.europe-west10.run.app",
-      "Production",
-    )
+    .addServer("https://uat.api.getcontactbook.com", "UAT")
+    .addServer("https://api.getcontactbook.com", "Production")
     .addBearerAuth(
       {
         type: "http",
@@ -80,8 +78,7 @@ async function bootstrap(): Promise<void> {
   );
 
   const port = Number(
-    process.env.PORT ??
-      (process.env.NODE_ENV === "production" ? 8080 : 8001),
+    process.env.PORT ?? (process.env.NODE_ENV === "production" ? 8080 : 8001),
   );
   await app.listen(port, "0.0.0.0");
 }

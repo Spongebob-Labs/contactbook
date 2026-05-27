@@ -17,4 +17,6 @@ module "environment" {
   create_profile_photos_bucket = var.create_profile_photos_bucket
   profile_photos_bucket_name   = var.profile_photos_bucket_name
   profile_photos_cors_origins  = var.profile_photos_cors_origins
+  enable_photo_lifecycle_rules = var.enable_photo_lifecycle_rules
+  custom_domain                = var.custom_domain
 }

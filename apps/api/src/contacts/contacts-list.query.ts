@@ -8,7 +8,7 @@ import {
 function normalizeSearch(search: string | undefined): string | undefined {
   const trimmed = search?.trim();
   return trimmed && trimmed.length > 0 ? trimmed : undefined;
-} 
+}
 
 export function buildContactsListWhere(
   userId: string,

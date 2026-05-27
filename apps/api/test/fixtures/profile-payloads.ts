@@ -161,13 +161,11 @@ export const deleteWorkGroupDto = {
 export const validConnectionRequest = {
   recipientPhone: "5559876543",
   recipientCountryCode: "+1",
-  sharedCardId: "22222222-2222-4222-8222-222222222222",
 };
 
 export const invalidConnectionRequest = {
   recipientPhone: "abc",
   recipientCountryCode: "+1",
-  sharedCardId: "not-a-uuid",
 };
 
 export const validWhatsappRequest = {

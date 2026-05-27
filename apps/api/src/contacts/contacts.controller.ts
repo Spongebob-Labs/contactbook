@@ -141,7 +141,8 @@ export class ContactsController {
   @ApiQuery({
     name: "search",
     required: false,
-    description: "Matches first name, last name, and nickname (case-insensitive).",
+    description:
+      "Matches first name, last name, and nickname (case-insensitive).",
   })
   @ApiQuery({ name: "source", enum: ContactSource, required: false })
   @ApiQuery({

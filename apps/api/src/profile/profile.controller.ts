@@ -7,15 +7,11 @@ import {
   HttpStatus,
   Patch,
   Post,
-  UploadedFile,
   UseGuards,
-  UseInterceptors,
 } from "@nestjs/common";
-import { FileInterceptor } from "@nestjs/platform-express";
 import {
   ApiBearerAuth,
   ApiBody,
-  ApiConsumes,
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
@@ -27,11 +23,13 @@ import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { ProfileDeleteGroupDto } from "./dto/profile-delete-group.dto";
 import { ProfileMeOnboardingDto } from "./dto/profile-me-onboarding.dto";
 import { ProfileMePatchDto } from "./dto/profile-me-upsert.dto";
-import { ProfileMeResponseDto } from "./dto/profile-me-response.dto";
-import { ProfilePhotoResponseDto } from "./dto/profile-photo-response.dto";
+import {
+  ProfileMeResponseDto,
+  ProfileOnboardingResponseDto,
+} from "./dto/profile-me-response.dto";
 import { ProfileMeSerializerService } from "./profile-me.serializer";
 import { ProfileMeUpsertService } from "./profile-me.upsert.service";
-import { ProfilePhotoService } from "./profile-photo.service";
+import type { ProfileMeResponse } from "./profile-me.types";
 
 @ApiTags("Profile")
 @ApiBearerAuth("access-token")
@@ -41,7 +39,6 @@ export class ProfileController {
   constructor(
     private readonly profileMe: ProfileMeSerializerService,
     private readonly profileMeUpsert: ProfileMeUpsertService,
-    private readonly profilePhoto: ProfilePhotoService,
   ) {}
 
   @Post("onboarding")
@@ -116,12 +113,15 @@ export class ProfileController {
       },
     },
   })
-  @ApiCreatedResponse({ type: ProfileMeResponseDto })
-  completeOnboarding(
+  @ApiCreatedResponse({ type: ProfileOnboardingResponseDto })
+  async completeOnboarding(
     @CurrentUser() user: JwtUserPayload,
     @Body() dto: ProfileMeOnboardingDto,
-  ) {
-    return this.profileMeUpsert.completeOnboarding(user.sub, dto);
+  ): Promise<Omit<ProfileMeResponse, "profileOnboardingCompletedAt">> {
+    const result = await this.profileMeUpsert.completeOnboarding(user.sub, dto);
+    const rest = { ...result } as Partial<ProfileMeResponse>;
+    delete rest.profileOnboardingCompletedAt;
+    return rest as Omit<ProfileMeResponse, "profileOnboardingCompletedAt">;
   }
 
   @Get("me")
@@ -133,45 +133,6 @@ export class ProfileController {
   @ApiOkResponse({ type: ProfileMeResponseDto })
   getMe(@CurrentUser() user: JwtUserPayload) {
     return this.profileMe.build(user.sub);
-  }
-
-  @Post("me/photo")
-  @HttpCode(HttpStatus.OK)
-  @UseInterceptors(FileInterceptor("file"))
-  @ApiConsumes("multipart/form-data")
-  @ApiOperation({
-    summary: "Upload profile photo",
-    description:
-      "Stores the image in GCS and sets identity.profilePhoto to the public HTTPS URL. " +
-      "Accepts image/jpeg, image/png, or image/webp up to 1 MB.",
-  })
-  @ApiBody({
-    schema: {
-      type: "object",
-      required: ["file"],
-      properties: {
-        file: { type: "string", format: "binary" },
-      },
-    },
-  })
-  @ApiOkResponse({ type: ProfilePhotoResponseDto })
-  uploadPhoto(
-    @CurrentUser() user: JwtUserPayload,
-    @UploadedFile() file: Express.Multer.File,
-  ) {
-    return this.profilePhoto.upload(user.sub, file);
-  }
-
-  @Delete("me/photo")
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: "Remove profile photo",
-    description:
-      "Clears identity.profilePhoto and deletes the GCS object when managed.",
-  })
-  @ApiOkResponse({ type: ProfilePhotoResponseDto })
-  deletePhoto(@CurrentUser() user: JwtUserPayload) {
-    return this.profilePhoto.remove(user.sub);
   }
 
   @Patch("me")
