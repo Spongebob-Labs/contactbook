@@ -37,7 +37,9 @@ describe("contactCardToNormalizedContact", () => {
     expect(contact.source).toBe(ContactSource.CONTACTBOOK);
     expect(contact.externalId).toBe(contactbookUserExternalId("user-1"));
     expect(contact.phones).toHaveLength(1);
-    expect(contact.emails.every((e) => e.value !== "secret@example.com")).toBe(true);
+    expect(contact.emails.every((e) => e.value !== "secret@example.com")).toBe(
+      true,
+    );
     expect(contact.displayName).toBe("Jane Doe");
   });
 

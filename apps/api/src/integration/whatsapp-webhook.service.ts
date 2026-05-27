@@ -1,9 +1,5 @@
 import { BadRequestException, Injectable, Logger } from "@nestjs/common";
-import {
-  type User,
-  ConnectionStatus,
-  WhatsappFlowState,
-} from "@prisma/client";
+import { type User, ConnectionStatus, WhatsappFlowState } from "@prisma/client";
 import {
   e164FromStoredUser,
   inboundE164ToIdentity,
@@ -187,8 +183,7 @@ export class WhatsappWebhookService {
 
   private async sendShareError(fromPhone: string, err: unknown): Promise<void> {
     const message =
-      err instanceof BadRequestException ||
-      err instanceof Error
+      err instanceof BadRequestException || err instanceof Error
         ? err.message
         : "Could not complete card share.";
     await this.twilio.sendWhatsApp(fromPhone, `ContactBook: ${message}`);
@@ -321,8 +316,7 @@ export class WhatsappWebhookService {
       fromPhone,
       "ContactBook: you declined the connection.",
     );
-    const who =
-      `${user.firstName} ${user.lastName}`.trim() || "Someone";
+    const who = `${user.firstName} ${user.lastName}`.trim() || "Someone";
     await this.twilio.sendWhatsApp(
       e164FromStoredUser(connection.requester),
       `ContactBook: ${who} declined your connection request. No contact details were shared.`,

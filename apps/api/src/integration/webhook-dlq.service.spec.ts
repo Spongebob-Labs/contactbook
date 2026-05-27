@@ -130,7 +130,11 @@ describe("WebhookDlqService", () => {
     it("prefers ButtonText over Body when both present", async () => {
       const record = {
         ...baseRecord,
-        payload: { From: "whatsapp:+12025551234", Body: "fallback", ButtonText: "  Accept  " },
+        payload: {
+          From: "whatsapp:+12025551234",
+          Body: "fallback",
+          ButtonText: "  Accept  ",
+        },
       };
       prisma.webhookDeadLetter.findMany.mockResolvedValue([record]);
       prisma.webhookDeadLetter.update.mockResolvedValue({});

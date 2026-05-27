@@ -1,7 +1,4 @@
-import {
-  BadRequestException,
-  ConflictException,
-} from "@nestjs/common";
+import { BadRequestException, ConflictException } from "@nestjs/common";
 import { ConnectionStatus } from "@prisma/client";
 import { ConnectionService } from "./connection.service";
 

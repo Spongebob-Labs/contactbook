@@ -34,7 +34,9 @@ export class TwilioWebhookController {
   ): Promise<string> {
     const enabled = this.config.get<string>("TWILIO_INBOUND_WEBHOOK_ENABLED");
     if (enabled !== "true") {
-      throw new NotFoundException("Inbound webhook not enabled on this environment.");
+      throw new NotFoundException(
+        "Inbound webhook not enabled on this environment.",
+      );
     }
     const publicBase = this.config
       .get<string>("APP_PUBLIC_URL", "http://localhost:8000")
@@ -74,7 +76,9 @@ export class TwilioWebhookController {
    */
   @Post("whatsapp/fallback")
   @HttpCode(200)
-  @ApiOperation({ summary: "Twilio inbound WhatsApp fallback (dead-letter capture)" })
+  @ApiOperation({
+    summary: "Twilio inbound WhatsApp fallback (dead-letter capture)",
+  })
   async whatsappFallback(
     @Req() req: RawBodyRequest<Request>,
     @Headers("x-twilio-signature") signature: string | undefined,

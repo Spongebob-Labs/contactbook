@@ -96,8 +96,7 @@ export class WebhookDlqService {
         this.logger.log(`DLQ record ${record.id} succeeded on retry`);
       } catch (err: unknown) {
         const newAttempts = record.attempts + 1;
-        const errorMessage =
-          err instanceof Error ? err.message : String(err);
+        const errorMessage = err instanceof Error ? err.message : String(err);
 
         if (newAttempts >= MAX_ATTEMPTS) {
           await this.prisma.webhookDeadLetter.update({

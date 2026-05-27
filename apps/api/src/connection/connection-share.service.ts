@@ -112,8 +112,10 @@ export class ConnectionShareService {
       }
     }
 
-    const sharer: User = role === "recipient" ? connection.receiver : connection.requester;
-    const peer: User = role === "recipient" ? connection.requester : connection.receiver;
+    const sharer: User =
+      role === "recipient" ? connection.receiver : connection.requester;
+    const peer: User =
+      role === "recipient" ? connection.requester : connection.receiver;
 
     const card = await this.prisma.contactCard.findFirst({
       where: { id: cardId, userId: sharer.id },
