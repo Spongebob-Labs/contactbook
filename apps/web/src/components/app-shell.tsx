@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 
 const nav = [
   { to: "/dashboard", label: "Dashboard", icon: Home },
+  { to: "/profile", label: "Profile", icon: UserRound },
   { to: "/dashboard/cards", label: "Cards", icon: CreditCard },
   { to: "/dashboard/contacts", label: "Contacts", icon: UsersRound },
   { to: "/dashboard/import", label: "Import", icon: Import },

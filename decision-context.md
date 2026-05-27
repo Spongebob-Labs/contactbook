@@ -1,5 +1,59 @@
 # Decision Context
 
+## 2026-05-27 - Profile Record List Details
+
+- Decision: Render Profile record card details as a lightweight two-column list instead of separate boxed mini-cards for each field.
+- Reason: Dashboard contact cards use compact list-like details inside one premium card surface; matching that pattern makes Profile cards feel lighter, denser, and more consistent.
+- Notes: Card-level structure remains through the premium record card surface and section dividers. Backend code and browser testing remain untouched.
+
+## 2026-05-27 - Premium Profile Record Cards
+
+- Decision: Redesign Profile tab content as premium profile record cards that are visual siblings to Dashboard/Cards contact-card surfaces, and add Profile as a first-class sidebar navigation item.
+- Reason: Profile should feel like the same high-quality ContactBook app as Dashboard while remaining a profile-management surface. Work and Business tabs can contain multiple record cards, each led by the saved company or business logo when available.
+- Notes: Profile cards use the same dashboard-inspired ingredients: accent ribbon, soft token gradients, rounded metadata, media mark, and structured detail rows. Backend code and browser testing remain untouched.
+
+## 2026-05-27 - Profile Logo Plain Image Presentation
+
+- Decision: Remove the pill-shaped visual container from company and business logo images on the Profile page, leaving only a clean non-clickable image area.
+- Reason: Logos should present as brand marks, not as images placed inside a separate pill-shaped UI surface.
+- Notes: The surrounding detail row keeps the page's rounded system. Backend code and browser testing remain untouched.
+
+## 2026-05-27 - Profile Logo Border Removal
+
+- Decision: Remove the visible border from company and business logo tiles on the Profile page while keeping the rounded, non-clickable logo presentation.
+- Reason: Logo images should read as clean brand marks instead of framed controls or file previews.
+- Notes: Styling-only frontend update. Backend code and browser testing remain untouched.
+
+## 2026-05-27 - Profile Page Rounded Pill System
+
+- Decision: Extend the app's rounded circle and pill visual language to the Profile page through the profile avatar, edit action, connected tabs, icon capsules, group badges, empty states, logo tiles, and saved group panels.
+- Reason: Dashboard, card, contact, and shell surfaces already use rounded actions, circular avatars, and pill-like metadata. The Profile page should feel visually consistent with those newer surfaces while keeping the main full-page card within the existing card radius system.
+- Notes: Styling-only frontend update. Connected tabs, remembered active tab, non-clickable logos, backend code, and browser testing remain unchanged.
+
+## 2026-05-27 - Profile Page Centered Key Tab Content
+
+- Decision: Center the icon, label, and count content inside each connected Profile page tab key.
+- Reason: Centered content makes the piano-key tab control feel balanced and clearly tab-like rather than like three row actions.
+- Notes: Connected key layout, remembered active tab, and primary green active state remain unchanged. Frontend-only Profile page styling update; backend code and browser testing remain untouched.
+
+## 2026-05-27 - Profile Page Connected Key Tabs
+
+- Decision: Refine the Profile page tabs into a connected piano-key style control with no spacing between tab buttons.
+- Reason: The connected shape better communicates that Personal, Work, and Business are mutually exclusive sections where only one tab can be active at a time.
+- Notes: Active tab still uses the primary green token. Frontend-only Profile page styling update; backend code and browser testing remain untouched.
+
+## 2026-05-27 - Profile Page Card Tabs Active State
+
+- Decision: Replace the subtle segmented Profile page tabs with larger card-like section buttons and use the primary green token for the selected tab.
+- Reason: The previous selected tab state was too understated and did not make the active Personal, Work, or Business section immediately obvious.
+- Notes: This is a frontend-only Profile page styling update. Backend code and browser testing remain untouched.
+
+## 2026-05-27 - Profile Page Tabbed Dossier
+
+- Decision: Redesign the Profile page as one full-page card dossier with Personal, Work, and Business tabs that mirror the profile onboarding steps. Remember the selected tab across refreshes in localStorage, and render company/business logos as non-clickable logo tiles instead of link/button-style image actions.
+- Reason: Profile details are easier to scan when grouped by the same mental model used during onboarding, and saved logos should feel like brand marks in the UI rather than files to open.
+- Notes: This is a frontend-only Profile page update. Backend code and browser testing remain untouched.
+
 ## 2026-05-27 - Resumable Setup Starter Cards
 
 - Decision: Make setup starter card creation resumable by card type: any existing `PERSONAL` card satisfies the personal starter, any existing `BUSINESS` card satisfies the business starter, and missing starter types are created as needed. Redirect `/onboarding/card` to `/dashboard` instead of opening the manual card modal.
