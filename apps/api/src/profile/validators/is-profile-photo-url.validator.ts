@@ -1,5 +1,6 @@
 import {
   registerDecorator,
+  ValidationArguments,
   ValidationOptions,
   ValidatorConstraint,
   ValidatorConstraintInterface,
@@ -35,12 +36,12 @@ export class IsProfilePhotoUrlConstraint implements ValidatorConstraintInterface
     return value.startsWith(prefix);
   }
 
-  defaultMessage(): string {
+  defaultMessage(args: ValidationArguments): string {
     const prefix = getProfilePhotoUrlPrefix();
     if (prefix) {
-      return `profilePhoto must be an HTTPS URL under ${prefix}`;
+      return `${args.property} must be an HTTPS URL under ${prefix}`;
     }
-    return "profilePhoto must be a valid HTTPS URL (data URLs are not allowed)";
+    return `${args.property} must be a valid HTTPS URL (data URLs are not allowed)`;
   }
 }
 
