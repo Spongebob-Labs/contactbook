@@ -1,14 +1,7 @@
-import {
-  Body,
-  Controller,
-  Get,
-  Param,
-  ParseUUIDPipe,
-  Post,
-  UseGuards,
-} from "@nestjs/common";
+import { Body, Controller, Get, Post, UseGuards } from "@nestjs/common";
 import {
   ApiBearerAuth,
+  ApiConflictResponse,
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
@@ -19,6 +12,27 @@ import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { ConnectionService } from "./connection.service";
 import { CreateConnectionRequestDto } from "./dto/create-connection-request.dto";
+import {
+  ConnectionInviteResponseDto,
+  ConnectionResponseDto,
+} from "./dto/create-connection-response.dto";
+
+function toConnectionDto(
+  connection: Awaited<ReturnType<ConnectionService["listForUser"]>>[number],
+): ConnectionResponseDto {
+  return {
+    type: "connection",
+    id: connection.id,
+    status: connection.status,
+    requesterId: connection.requesterId,
+    receiverId: connection.receiverId,
+    requesterSharedCardId: connection.requesterSharedCardId,
+    receiverSharedCardId: connection.receiverSharedCardId,
+    hasSharedBack: connection.hasSharedBack,
+    createdAt: connection.createdAt,
+    updatedAt: connection.updatedAt,
+  };
+}
 
 @ApiTags("Connections")
 @ApiBearerAuth("access-token")
@@ -29,27 +43,10 @@ export class ConnectionController {
 
   @Get()
   @ApiOperation({ summary: "List connections for current user" })
-  @ApiOkResponse({
-    description: "List of connections",
-    schema: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          id: { type: "string" },
-          status: { type: "string", example: "PENDING" },
-          requesterId: { type: "string" },
-          receiverId: { type: "string" },
-          sharedCardId: { type: "string", nullable: true },
-          hasSharedBack: { type: "boolean" },
-          createdAt: { type: "string", format: "date-time" },
-          updatedAt: { type: "string", format: "date-time" },
-        },
-      },
-    },
-  })
-  list(@CurrentUser() user: JwtUserPayload) {
-    return this.connections.listForUser(user.sub);
+  @ApiOkResponse({ type: [ConnectionResponseDto] })
+  async list(@CurrentUser() user: JwtUserPayload) {
+    const rows = await this.connections.listForUser(user.sub);
+    return rows.map(toConnectionDto);
   }
 
   @Post("requests")
@@ -57,104 +54,63 @@ export class ConnectionController {
     summary: "Send a connection request (WhatsApp to recipient)",
   })
   @ApiCreatedResponse({
-    description: "Connection request sent successfully",
+    description: "Connection created or invite sent",
     schema: {
-      type: "object",
-      properties: {
-        id: { type: "string" },
-        status: { type: "string", example: "PENDING" },
-        requesterId: { type: "string" },
-        receiverId: { type: "string" },
-        sharedCardId: { type: "string", nullable: true },
-        hasSharedBack: { type: "boolean" },
-        createdAt: { type: "string", format: "date-time" },
-        updatedAt: { type: "string", format: "date-time" },
-      },
+      oneOf: [
+        { $ref: "#/components/schemas/ConnectionResponseDto" },
+        { $ref: "#/components/schemas/ConnectionInviteResponseDto" },
+      ],
     },
   })
-  create(
+  async create(
     @CurrentUser() user: JwtUserPayload,
     @Body() dto: CreateConnectionRequestDto,
-  ) {
-    return this.connections.createRequest(user.sub, dto);
+  ): Promise<ConnectionResponseDto | ConnectionInviteResponseDto> {
+    const result = await this.connections.createRequest(user.sub, dto);
+    if (result.type === "connection") {
+      return toConnectionDto(result.connection);
+    }
+    return {
+      type: "invite",
+      id: result.invite.id,
+      recipientKind: result.invite.recipientKind,
+      recipientContactId: result.invite.recipientContactId,
+      recipientCountryCode: result.invite.recipientCountryCode,
+      recipientPhone: result.invite.recipientPhone,
+      status: result.invite.status,
+      expiresAt: result.invite.expiresAt,
+      createdAt: result.invite.createdAt,
+    };
   }
 
   @Post(":id/accept")
   @ApiOperation({
-    summary: "Accept pending connection (API path; WhatsApp also supported)",
+    summary: "Accept pending connection (WhatsApp only)",
   })
-  @ApiCreatedResponse({
-    description: "Connection accepted successfully",
-    schema: {
-      type: "object",
-      properties: {
-        id: { type: "string" },
-        status: { type: "string", example: "ACCEPTED" },
-        requesterId: { type: "string" },
-        receiverId: { type: "string" },
-        sharedCardId: { type: "string", nullable: true },
-        hasSharedBack: { type: "boolean" },
-        createdAt: { type: "string", format: "date-time" },
-        updatedAt: { type: "string", format: "date-time" },
-      },
-    },
+  @ApiConflictResponse({
+    description: "Completion must happen via WhatsApp",
   })
-  accept(
-    @CurrentUser() user: JwtUserPayload,
-    @Param("id", ParseUUIDPipe) id: string,
-  ) {
-    return this.connections.accept(id, user.sub);
+  accept() {
+    return this.connections.assertWhatsAppOnlyCompletion();
   }
 
   @Post(":id/decline")
-  @ApiOperation({ summary: "Decline pending connection" })
-  @ApiCreatedResponse({
-    description: "Connection declined successfully",
-    schema: {
-      type: "object",
-      properties: {
-        id: { type: "string" },
-        status: { type: "string", example: "DECLINED" },
-        requesterId: { type: "string" },
-        receiverId: { type: "string" },
-        sharedCardId: { type: "string", nullable: true },
-        hasSharedBack: { type: "boolean" },
-        createdAt: { type: "string", format: "date-time" },
-        updatedAt: { type: "string", format: "date-time" },
-      },
-    },
+  @ApiOperation({ summary: "Decline pending connection (WhatsApp only)" })
+  @ApiConflictResponse({
+    description: "Completion must happen via WhatsApp",
   })
-  decline(
-    @CurrentUser() user: JwtUserPayload,
-    @Param("id", ParseUUIDPipe) id: string,
-  ) {
-    return this.connections.decline(id, user.sub);
+  decline() {
+    return this.connections.assertWhatsAppOnlyCompletion();
   }
 
   @Post(":id/share-back")
   @ApiOperation({
-    summary: "Mark that the receiver has shared back (hasSharedBack)",
+    summary: "Share back (WhatsApp only)",
   })
-  @ApiCreatedResponse({
-    description: "Share back marked successfully",
-    schema: {
-      type: "object",
-      properties: {
-        id: { type: "string" },
-        status: { type: "string", example: "ACCEPTED" },
-        requesterId: { type: "string" },
-        receiverId: { type: "string" },
-        sharedCardId: { type: "string", nullable: true },
-        hasSharedBack: { type: "boolean" },
-        createdAt: { type: "string", format: "date-time" },
-        updatedAt: { type: "string", format: "date-time" },
-      },
-    },
+  @ApiConflictResponse({
+    description: "Completion must happen via WhatsApp",
   })
-  shareBack(
-    @CurrentUser() user: JwtUserPayload,
-    @Param("id", ParseUUIDPipe) id: string,
-  ) {
-    return this.connections.shareBack(id, user.sub);
+  shareBack() {
+    return this.connections.assertWhatsAppOnlyCompletion();
   }
 }

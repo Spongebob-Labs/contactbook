@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { StorageModule } from "../storage/storage.module";
 import { SyncModule } from "../sync/sync.module";
+import { PhotoController } from "./photo.controller";
 import { ProfileController } from "./profile.controller";
 import { ProfileMeSerializerService } from "./profile-me.serializer";
 import { ProfileMeUpsertService } from "./profile-me.upsert.service";
@@ -9,7 +10,7 @@ import { ProfilePhotoService } from "./profile-photo.service";
 
 @Module({
   imports: [SyncModule, StorageModule],
-  controllers: [ProfileController],
+  controllers: [ProfileController, PhotoController],
   providers: [
     ProfilePersistenceService,
     ProfileMeSerializerService,

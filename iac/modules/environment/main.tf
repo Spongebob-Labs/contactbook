@@ -70,3 +70,18 @@ resource "google_cloud_run_v2_service_iam_member" "public_invoker" {
   role   = "roles/run.invoker"
   member = "allUsers"
 }
+
+resource "google_cloud_run_domain_mapping" "custom_domain" {
+  count = (var.custom_domain != null && var.custom_domain != "") ? 1 : 0
+
+  name     = var.custom_domain
+  location = var.region
+
+  metadata {
+    namespace = var.project_id
+  }
+
+  spec {
+    route_name = google_cloud_run_v2_service.api.name
+  }
+}

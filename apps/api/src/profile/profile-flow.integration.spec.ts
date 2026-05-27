@@ -1,7 +1,8 @@
 import { BadRequestException, ConflictException } from "@nestjs/common";
-import { FieldCategory } from "@prisma/client";
+import { CardType, FieldCategory, ProfileField } from "@prisma/client";
 import { ProfileDeletableGroupCategory } from "./dto/profile-deletable-group-category.enum";
 import { ProfileMeUpsertService } from "./profile-me.upsert.service";
+import type { GroupWithFields } from "./profile-me.flatten";
 import {
   identityOnlyOnboarding,
   onboardingWithEmptyShells,
@@ -61,6 +62,125 @@ describe("Profile flow (integration, mocked persistence)", () => {
       "Primary Personal",
     );
     expect(mocks.groups.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("onboarding automatically creates personal, work and business cards", async () => {
+    const { svc, mocks } = createSvc();
+
+    const mockIdentityField = {
+      id: "field-identity-1",
+    } as unknown as ProfileField;
+    const mockPersonalField = {
+      id: "field-personal-1",
+    } as unknown as ProfileField;
+    const mockSocialField = { id: "field-social-1" } as unknown as ProfileField;
+    const mockWorkField = { id: "field-work-1" } as unknown as ProfileField;
+    const mockBusinessField = {
+      id: "field-business-1",
+    } as unknown as ProfileField;
+
+    mocks.groups.push(
+      {
+        id: "g-id",
+        category: FieldCategory.IDENTITY,
+        name: "Identity",
+        fields: [mockIdentityField],
+      } as unknown as GroupWithFields,
+      {
+        id: "g-pers",
+        category: FieldCategory.PERSONAL,
+        name: "Personal Details",
+        fields: [mockPersonalField],
+      } as unknown as GroupWithFields,
+      {
+        id: "g-soc",
+        category: FieldCategory.SOCIAL,
+        name: "Social Profiles",
+        fields: [mockSocialField],
+      } as unknown as GroupWithFields,
+      {
+        id: "g-work",
+        category: FieldCategory.WORK,
+        name: "My Company",
+        fields: [mockWorkField],
+      } as unknown as GroupWithFields,
+      {
+        id: "g-biz",
+        category: FieldCategory.BUSINESS,
+        name: "My Business",
+        fields: [mockBusinessField],
+      } as unknown as GroupWithFields,
+    );
+
+    await svc.completeOnboarding(
+      mocks.userId,
+      onboardingWithPersonalAndWorkFull,
+    );
+
+    // Verify Personal card was created
+    expect(mocks.prisma.contactCard.create).toHaveBeenCalledWith({
+      data: {
+        userId: mocks.userId,
+        name: "Personal",
+        type: CardType.PERSONAL,
+      },
+    });
+
+    // Verify Personal card mappings were created (for Identity, Personal, Social fields)
+    expect(mocks.prisma.cardFieldMapping.createMany).toHaveBeenCalledWith({
+      data: expect.arrayContaining([
+        {
+          cardId: expect.any(String) as never,
+          fieldId: "field-identity-1",
+        },
+        {
+          cardId: expect.any(String) as never,
+          fieldId: "field-personal-1",
+        },
+        {
+          cardId: expect.any(String) as never,
+          fieldId: "field-social-1",
+        },
+      ]) as unknown,
+    });
+
+    // Verify Work card was created
+    expect(mocks.prisma.contactCard.create).toHaveBeenCalledWith({
+      data: {
+        userId: mocks.userId,
+        name: "My Company",
+        type: CardType.BUSINESS,
+      },
+    });
+
+    // Verify Work card mappings were created
+    expect(mocks.prisma.cardFieldMapping.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          cardId: expect.any(String) as never,
+          fieldId: "field-work-1",
+        },
+      ],
+    });
+
+    // Verify Business card was created
+    expect(mocks.prisma.contactCard.create).toHaveBeenCalledWith({
+      data: {
+        userId: mocks.userId,
+        name: "My Business",
+        type: CardType.BUSINESS,
+      },
+    });
+
+    // Verify Business card mappings were created
+    expect(mocks.prisma.cardFieldMapping.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          cardId: expect.any(String) as never,
+          fieldId: "field-business-1",
+        },
+      ],
+    });
   });
 
   it("rejects repeat onboarding when already completed", async () => {

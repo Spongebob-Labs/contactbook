@@ -5,6 +5,7 @@ resource "google_storage_bucket" "profile_photos" {
   project  = var.project_id
   location = var.region
 
+  force_destroy               = true
   uniform_bucket_level_access = true
   public_access_prevention    = "inherited"
 
@@ -13,6 +14,31 @@ resource "google_storage_bucket" "profile_photos" {
     method          = ["GET", "HEAD"]
     response_header = ["Content-Type", "Content-Length"]
     max_age_seconds = 3600
+  }
+
+  dynamic "lifecycle_rule" {
+    for_each = var.enable_photo_lifecycle_rules ? [1] : []
+    content {
+      condition {
+        age = 7
+      }
+      action {
+        type          = "SetStorageClass"
+        storage_class = "NEARLINE"
+      }
+    }
+  }
+
+  dynamic "lifecycle_rule" {
+    for_each = var.enable_photo_lifecycle_rules ? [1] : []
+    content {
+      condition {
+        age = 30
+      }
+      action {
+        type = "Delete"
+      }
+    }
   }
 }
 

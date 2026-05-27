@@ -19,14 +19,18 @@ describe("ConnectionController (HTTP)", () => {
   beforeEach(async () => {
     connections = {
       createRequest: jest.fn().mockResolvedValue({
-        id: "conn-1",
-        status: "PENDING",
-        requesterId: TEST_USER_ID,
-        receiverId: "other-user",
-        sharedCardId: validConnectionRequest.sharedCardId,
-        hasSharedBack: false,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        type: "connection",
+        connection: {
+          id: "conn-1",
+          status: "PENDING",
+          requesterId: TEST_USER_ID,
+          receiverId: "other-user",
+          requesterSharedCardId: null,
+          receiverSharedCardId: null,
+          hasSharedBack: false,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
       }),
     };
 
@@ -48,7 +52,7 @@ describe("ConnectionController (HTTP)", () => {
   });
 
   it("POST /connections/requests accepts valid payload", async () => {
-    await request(app.getHttpServer() as never)
+    const res = await request(app.getHttpServer() as never)
       .post("/api/v1/connections/requests")
       .send(validConnectionRequest)
       .expect(HttpStatus.CREATED);
@@ -56,6 +60,7 @@ describe("ConnectionController (HTTP)", () => {
       TEST_USER_ID,
       validConnectionRequest,
     );
+    expect(res.body.type).toBe("connection");
   });
 
   it("POST /connections/requests rejects invalid recipientPhone", async () => {

@@ -41,6 +41,76 @@ export class TwilioService {
     return this.client !== null;
   }
 
+  /** True when `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `TWILIO_VERIFY_SERVICE_SID` are set. */
+  isVerifyConfigured(): boolean {
+    const serviceSid = this.config.get<string>("TWILIO_VERIFY_SERVICE_SID");
+    return this.client !== null && !!serviceSid?.trim();
+  }
+
+  async sendVerificationOtp(toE164: string): Promise<void> {
+    const serviceSid = this.config.get<string>("TWILIO_VERIFY_SERVICE_SID");
+    if (!this.client || !serviceSid) {
+      this.logger.log(`[dry-run] Twilio Verify OTP send to ${toE164}`);
+      return;
+    }
+    try {
+      const payload: { to: string; channel: string; locale?: string } = {
+        to: toE164,
+        channel: "whatsapp",
+      };
+      const locale = this.config.get<string>("TWILIO_VERIFY_LOCALE");
+      if (locale?.trim()) {
+        payload.locale = locale.trim();
+      }
+      await this.client.verify.v2
+        .services(serviceSid)
+        .verifications.create(payload);
+    } catch (err: unknown) {
+      this.logger.warn(
+        "Twilio Verify OTP send failed",
+        err instanceof Error ? err.stack : err,
+      );
+      const errMsg = err instanceof Error ? err.message : String(err);
+      if (
+        errMsg.toLowerCase().includes("whatsapp template") ||
+        errMsg.toLowerCase().includes("template was not found")
+      ) {
+        throw new BadRequestException(
+          "An approved WhatsApp template was not found for this language/country in your Twilio Verify service. " +
+            "Please check your Twilio Console -> Verify -> Services -> [Your Service] -> WhatsApp and ensure you have an approved template for this locale, or override it by setting TWILIO_VERIFY_LOCALE in your .env.",
+        );
+      }
+      throw new BadRequestException(
+        "ContactBook sends login codes only over WhatsApp. We could not deliver a WhatsApp message to this number — WhatsApp is required.",
+      );
+    }
+  }
+
+  async verifyVerificationOtp(toE164: string, code: string): Promise<boolean> {
+    const serviceSid = this.config.get<string>("TWILIO_VERIFY_SERVICE_SID");
+    if (!this.client || !serviceSid) {
+      this.logger.warn(
+        `[dry-run] Twilio Verify OTP verify bypass for ${toE164}`,
+      );
+      return true;
+    }
+    try {
+      const check = await this.client.verify.v2
+        .services(serviceSid)
+        .verificationChecks.create({
+          to: toE164,
+          code,
+        });
+      return check.status === "approved";
+    } catch (err: unknown) {
+      this.logger.warn(
+        "Twilio Verify check failed",
+        err instanceof Error ? err.stack : err,
+      );
+      return false;
+    }
+  }
+
   validateWebhookSignature(
     signature: string | undefined,
     url: string,
@@ -122,6 +192,51 @@ export class TwilioService {
     await this.sendWhatsApp(
       toE164,
       `ContactBook: ${requesterDisplayName} wants to connect. Reply ACCEPT-${connectionId} or DECLINE-${connectionId}. (Or use quick-reply buttons if your client shows them.)`,
+    );
+  }
+
+  /**
+   * Card picker prompt. Uses Content API when `TWILIO_WA_CARD_PICK_CONTENT_SID` is set;
+   * otherwise sends plain text with numbered options.
+   */
+  async sendCardSelectionPrompt(
+    toE164: string,
+    body: string,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _options: { id: string; name: string; index: number }[],
+  ): Promise<void> {
+    const contentSid = this.config
+      .get<string>("TWILIO_WA_CARD_PICK_CONTENT_SID")
+      ?.trim();
+    if (this.client && this.whatsappFrom && contentSid) {
+      try {
+        await this.client.messages.create({
+          from: this.whatsappFrom,
+          to: toWhatsAppChannelAddress(toE164),
+          contentSid,
+          contentVariables: JSON.stringify({ body }),
+        });
+        return;
+      } catch (err: unknown) {
+        this.logger.warn(
+          "WhatsApp card pick Content failed; falling back to text.",
+          err instanceof Error ? err.stack : err,
+        );
+      }
+    }
+    await this.sendWhatsApp(toE164, body);
+  }
+
+  async sendConnectionSignupInvite(
+    toE164: string,
+    requesterDisplayName: string,
+  ): Promise<void> {
+    const webApp = this.config
+      .get<string>("WEB_APP_URL", "https://contactbook.app")
+      .replace(/\/$/, "");
+    await this.sendWhatsApp(
+      toE164,
+      `ContactBook: ${requesterDisplayName} wants to connect with you. Sign up to accept: ${webApp}`,
     );
   }
 }

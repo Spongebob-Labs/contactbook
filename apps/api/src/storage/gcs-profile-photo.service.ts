@@ -3,8 +3,6 @@ import { ConfigService } from "@nestjs/config";
 import { Storage } from "@google-cloud/storage";
 import { randomUUID } from "node:crypto";
 
-const PROFILE_KEY_PREFIX = "profiles/";
-
 const MIME_TO_EXT: Record<string, string> = {
   "image/jpeg": "jpg",
   "image/png": "png",
@@ -44,7 +42,8 @@ export class GcsProfilePhotoService {
       return null;
     }
     const key = url.slice(this.publicBaseUrl.length + 1);
-    if (!key.startsWith(PROFILE_KEY_PREFIX)) {
+    const parts = key.split("/");
+    if (parts.length !== 2 || !parts[0] || !parts[1]) {
       return null;
     }
     return key;
@@ -70,7 +69,7 @@ export class GcsProfilePhotoService {
     if (!ext) {
       throw new Error(`Unsupported mime type: ${mimeType}`);
     }
-    const objectKey = `${PROFILE_KEY_PREFIX}${userId}/${randomUUID()}.${ext}`;
+    const objectKey = `${userId}/${randomUUID()}.${ext}`;
     const bucket = this.storage.bucket(this.bucketName);
     const file = bucket.file(objectKey);
     await file.save(buffer, {

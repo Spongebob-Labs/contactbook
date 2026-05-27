@@ -188,10 +188,14 @@ export class ProfileMeWorkUpsertDto extends ProfileMeGroupRowBaseUpsertDto {
   @MaxLength(200)
   companyName?: string | null;
 
-  @ApiPropertyOptional({ nullable: true })
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      "HTTPS URL under GCS_PUBLIC_BASE_URL. Set via POST /profile/me/photo; use null to clear.",
+  })
   @IsOptional()
   @IsString()
-  @MaxLength(20_000)
+  @IsProfilePhotoUrl()
   companyLogo?: string | null;
 
   @ApiPropertyOptional({ nullable: true })
@@ -250,10 +254,14 @@ export class ProfileMeBusinessUpsertDto extends ProfileMeGroupRowBaseUpsertDto {
   @MaxLength(200)
   businessName?: string | null;
 
-  @ApiPropertyOptional({ nullable: true })
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      "HTTPS URL under GCS_PUBLIC_BASE_URL. Set via POST /profile/me/photo; use null to clear.",
+  })
   @IsOptional()
   @IsString()
-  @MaxLength(20_000)
+  @IsProfilePhotoUrl()
   businessLogo?: string | null;
 
   @ApiPropertyOptional({ nullable: true })

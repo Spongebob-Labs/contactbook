@@ -61,3 +61,8 @@ variable "profile_photos_bucket_name" {
 variable "profile_photos_cors_origins" {
   type = list(string)
 }
+
+variable "custom_domain" {
+  type    = string
+  default = null
+}

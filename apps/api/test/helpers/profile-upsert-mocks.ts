@@ -28,6 +28,12 @@ export type ProfileUpsertMocks = {
       findFirst: jest.Mock;
       findUniqueOrThrow: jest.Mock;
     };
+    contactCard: {
+      create: jest.Mock;
+    };
+    cardFieldMapping: {
+      createMany: jest.Mock;
+    };
     $transaction: jest.Mock;
   };
   persistence: {
@@ -101,7 +107,7 @@ export function createProfileUpsertMocks(
     },
     fieldGroup: {
       count: jest.fn().mockResolvedValue(0),
-      findMany: jest.fn(),
+      findMany: jest.fn().mockImplementation(() => Promise.resolve(groups)),
       create: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
@@ -113,6 +119,14 @@ export function createProfileUpsertMocks(
       delete: jest.fn(),
       findFirst: jest.fn(),
       findUniqueOrThrow: jest.fn(),
+    },
+    contactCard: {
+      create: jest.fn().mockImplementation((args: any) =>
+        Promise.resolve({ id: `card-${Math.random().toString(36).substring(2, 9)}`, ...args.data })
+      ),
+    },
+    cardFieldMapping: {
+      createMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     $transaction: jest.fn(),
   };

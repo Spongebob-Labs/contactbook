@@ -4,7 +4,7 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
-    "dev": "PORT=8001 nest start --watch",
+    "dev": "env -u GOOGLE_APPLICATION_CREDENTIALS -u GOOGLE_IMPERSONATE_SERVICE_ACCOUNT PORT=8001 nest start --watch",
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",

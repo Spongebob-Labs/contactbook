@@ -1,5 +1,5 @@
 project_id = "project-c74d38dd-7e12-4d3f-bbf"
-region     = "europe-west10"
+region     = "europe-west1"
 
 create_terraform_state_bucket = false
 terraform_state_bucket        = ""

@@ -19,3 +19,8 @@ output "profile_photos_public_base_url" {
     "https://storage.googleapis.com/${google_storage_bucket.profile_photos[0].name}"
   ) : null
 }
+
+output "custom_domain_dns_records" {
+  description = "The DNS resource records generated for the custom domain mapping. Add these to Namecheap."
+  value       = (var.custom_domain != null && var.custom_domain != "") ? google_cloud_run_domain_mapping.custom_domain[0].status[0].resource_records : []
+}

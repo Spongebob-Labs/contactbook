@@ -2,7 +2,7 @@
 # Runtime secrets: API_ENV_PROD_B64 (apps/api/.env), not here.
 
 project_id = "project-c74d38dd-7e12-4d3f-bbf"
-region     = "europe-west10"
+region     = "europe-west1"
 
 cloud_run_service_name = "contactbook-api"
 allow_unauthenticated  = true
@@ -26,3 +26,5 @@ profile_photos_cors_origins = [
   "http://localhost:5173",
   "http://127.0.0.1:5173",
 ]
+
+custom_domain = "api.getcontactbook.com"

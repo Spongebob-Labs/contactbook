@@ -180,28 +180,6 @@ describe("ProfileController (HTTP)", () => {
     );
   });
 
-  it("POST /profile/me/photo forwards multipart file to upload service", async () => {
-    const png = Buffer.from(
-      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
-      "base64",
-    );
-    await request(app.getHttpServer() as never)
-      .post("/api/v1/profile/me/photo")
-      .attach("file", png, { filename: "photo.png", contentType: "image/png" })
-      .expect(HttpStatus.OK);
-    expect(profilePhoto.upload).toHaveBeenCalledWith(
-      TEST_USER_ID,
-      expect.objectContaining({ mimetype: "image/png" }),
-    );
-  });
-
-  it("DELETE /profile/me/photo calls remove service", async () => {
-    await request(app.getHttpServer() as never)
-      .delete("/api/v1/profile/me/photo")
-      .expect(HttpStatus.OK);
-    expect(profilePhoto.remove).toHaveBeenCalledWith(TEST_USER_ID);
-  });
-
   it("DELETE /profile/me/groups rejects invalid groupId", async () => {
     await request(app.getHttpServer() as never)
       .delete("/api/v1/profile/me/groups")

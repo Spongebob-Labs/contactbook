@@ -63,6 +63,7 @@ enum ContactSource {
   CSV
   VCARD
   CALDAV
+  CONTACTBOOK
 }
 
 enum OAuthProvider {
@@ -74,6 +75,26 @@ enum OAuthProvider {
 enum WhatsappFlowState {
   IDLE
   AWAITING_CONNECTION_ACCEPT
+  AWAITING_RECIPIENT_CARD_SELECTION
+  AWAITING_REQUESTER_CARD_SELECTION
+}
+
+enum ConnectionInviteRecipientKind {
+  CONTACT
+  EXTERNAL
+}
+
+enum WebhookDlqStatus {
+  PENDING
+  RETRYING
+  SUCCEEDED
+  FAILED
+}
+
+enum ConnectionInviteStatus {
+  PENDING
+  DECLINED
+  CONVERTED
 }
 
 // ==========================================
@@ -97,6 +118,7 @@ model User {
 
   initiatedConnections Connection[] @relation("Requester")
   receivedConnections  Connection[] @relation("Receiver")
+  connectionInvites    ConnectionInvite[]
 
   contacts           Contact[]
   contactMergeGroups ContactMergeGroup[]
@@ -177,7 +199,8 @@ model ContactCard {
   type   CardType @default(CUSTOM)
 
   fieldMappings CardFieldMapping[]
-  connections   Connection[]
+  requesterSharedConnections Connection[] @relation("RequesterSharedCard")
+  receiverSharedConnections  Connection[] @relation("ReceiverSharedCard")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -197,15 +220,17 @@ model CardFieldMapping {
 }
 
 model Connection {
-  id           String           @id @default(uuid())
-  status       ConnectionStatus @default(PENDING)
-  requesterId  String
-  requester    User             @relation("Requester", fields: [requesterId], references: [id], onDelete: Cascade)
-  receiverId   String
-  receiver     User             @relation("Receiver", fields: [receiverId], references: [id], onDelete: Cascade)
-  sharedCardId String?
-  sharedCard   ContactCard?     @relation(fields: [sharedCardId], references: [id], onDelete: SetNull)
-  hasSharedBack Boolean         @default(false)
+  id                    String           @id @default(uuid())
+  status                ConnectionStatus @default(PENDING)
+  requesterId           String
+  requester             User             @relation("Requester", fields: [requesterId], references: [id], onDelete: Cascade)
+  receiverId            String
+  receiver              User             @relation("Receiver", fields: [receiverId], references: [id], onDelete: Cascade)
+  requesterSharedCardId String?          @map("requester_shared_card_id")
+  requesterSharedCard   ContactCard?     @relation("RequesterSharedCard", fields: [requesterSharedCardId], references: [id], onDelete: SetNull)
+  receiverSharedCardId  String?          @map("receiver_shared_card_id")
+  receiverSharedCard    ContactCard?     @relation("ReceiverSharedCard", fields: [receiverSharedCardId], references: [id], onDelete: SetNull)
+  hasSharedBack         Boolean          @default(false)
 
   tags Tag[]
 
@@ -218,6 +243,24 @@ model Connection {
   @@index([requesterId, status])
   @@index([receiverId, status])
   @@map("connections")
+}
+
+model ConnectionInvite {
+  id                   String                      @id @default(uuid())
+  requesterId          String
+  requester            User                        @relation(fields: [requesterId], references: [id], onDelete: Cascade)
+  recipientKind        ConnectionInviteRecipientKind
+  recipientContactId   String?
+  recipientCountryCode String                      @db.VarChar(8)
+  recipientPhone       String
+  status               ConnectionInviteStatus      @default(PENDING)
+  expiresAt            DateTime
+  createdAt            DateTime                    @default(now())
+  updatedAt            DateTime                    @updatedAt
+
+  @@index([requesterId, recipientCountryCode, recipientPhone])
+  @@index([requesterId, recipientContactId])
+  @@map("connection_invites")
 }
 
 model AddressDetail {
@@ -503,4 +546,32 @@ model WhatsappSession {
 
   @@index([phoneE164, state])
   @@map("whatsapp_sessions")
+}
+
+/**
+ * Stores inbound Twilio webhook payloads that failed on the primary endpoint
+ * and were captured by the fallback. A cron job retries them with exponential
+ * backoff until they succeed or exhaust all attempts.
+ */
+model WebhookDeadLetter {
+  id         String           @id @default(uuid())
+  /// Identifies the webhook source, e.g. "twilio_whatsapp". Extensible for future sources.
+  source     String           @default("twilio_whatsapp")
+  /// Full form-urlencoded body parsed into key-value pairs.
+  payload    Json
+  /// Captured HTTP headers required for processing (e.g. x-twilio-signature).
+  headers    Json
+  /// The exact URL Twilio targeted — needed to re-validate the signature on retry.
+  webhookUrl String
+  status     WebhookDlqStatus @default(PENDING)
+  attempts   Int              @default(0)
+  lastError  String?
+  /// When null the record is ready to retry immediately.
+  nextRetryAt DateTime?
+  resolvedAt  DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([status, nextRetryAt])
+  @@map("webhook_dead_letters")
 }
