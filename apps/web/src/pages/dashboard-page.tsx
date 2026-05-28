@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowRight,
@@ -22,6 +22,7 @@ import { SampleDataNotice } from "@/components/sample-data-notice";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useAuth } from "@/context/auth-context";
 import { apiFetch } from "@/lib/api";
 import { getCardDisplayDetails } from "@/lib/card-display";
 import { cardTypeStyles } from "@/lib/card-styles";
@@ -44,8 +45,13 @@ import { cn } from "@/lib/utils";
 
 type OnboardingStep = "profile" | "import" | "card";
 type DashboardMode = "classic" | "story";
+type DashboardNudgeId = "add-card" | "review-profile";
 
 const DASHBOARD_MODE_STORAGE_KEY = "contactbook:dashboard-mode";
+const DASHBOARD_NUDGE_STORAGE_SUFFIXES: Record<DashboardNudgeId, string> = {
+  "add-card": "add-card-dismissed",
+  "review-profile": "review-profile-dismissed",
+};
 
 const cardTypeLabels: Record<ContactCardType, string> = {
   BUSINESS: "Business",
@@ -69,6 +75,26 @@ function getStoredDashboardMode(): DashboardMode {
   return window.localStorage.getItem(DASHBOARD_MODE_STORAGE_KEY) === "story"
     ? "story"
     : "classic";
+}
+
+function getDashboardNudgeStorageKey(userKey: string, id: DashboardNudgeId) {
+  return `contactbook:nudge:${encodeURIComponent(userKey)}:${DASHBOARD_NUDGE_STORAGE_SUFFIXES[id]}`;
+}
+
+function getStoredDashboardNudges(userKey: string): Record<DashboardNudgeId, boolean> {
+  if (typeof window === "undefined") {
+    return { "add-card": false, "review-profile": false };
+  }
+
+  return {
+    "add-card":
+      window.localStorage.getItem(getDashboardNudgeStorageKey(userKey, "add-card")) ===
+      "true",
+    "review-profile":
+      window.localStorage.getItem(
+        getDashboardNudgeStorageKey(userKey, "review-profile"),
+      ) === "true",
+  };
 }
 
 function getSafeReturnPath(value: string | null) {
@@ -222,6 +248,7 @@ function getStarterCardRequests(
 export default function DashboardPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { profileIdentity, userId } = useAuth();
   const [cards, setCards] = useState<ContactCard[]>([]);
   const [profile, setProfile] = useState<ProfileMeResponse | null>(null);
   const [importSummary, setImportSummary] = useState<ContactImportSummary | null>(null);
@@ -229,10 +256,20 @@ export default function DashboardPage() {
   const [dashboardMode, setDashboardMode] = useState<DashboardMode>(
     getStoredDashboardMode,
   );
+  const [dismissedNudges, setDismissedNudges] = useState<
+    Record<DashboardNudgeId, boolean>
+  >(() => getStoredDashboardNudges("anonymous"));
+  const addCardNudgeRef = useRef<HTMLAnchorElement>(null);
+  const reviewProfileNudgeRef = useRef<HTMLAnchorElement>(null);
   const onboardingStep = getOnboardingStep(searchParams.get("onboarding"));
   const returnTo = getSafeReturnPath(searchParams.get("returnTo"));
   const isSetupFlow = searchParams.get("flow") === "setup";
   const profileCompletion = getProfileCompletion(profile);
+  const nudgeUserKey =
+    userId ??
+    profile?.identity.primaryEmail ??
+    profileIdentity?.primaryEmail ??
+    "anonymous";
   const googleSummary = getGoogleImportSummary(importSummary);
   const hasGoogleImport = Boolean(
     googleSummary?.hasSyncToken ||
@@ -267,10 +304,45 @@ export default function DashboardPage() {
       detail: `${profileCompletion.completed}/${profileCompletion.total} sections complete`,
       to: "/profile",
       action: "Review profile",
-      tone: "profile",
+      tone: profileCompletion.percent === 100 ? "profileComplete" : "profile",
       progress: profileCompletion.percent,
     },
   ];
+  const dashboardNudges: DashboardNudge[] = [
+    {
+      id: "add-card",
+      icon: IdCard,
+      targetRef: addCardNudgeRef,
+      title: "Add another card",
+      detail:
+        "Create a separate card for another context, role, or way you share your details.",
+      action: "Add card",
+    },
+    {
+      id: "review-profile",
+      icon: UserRound,
+      targetRef: reviewProfileNudgeRef,
+      title:
+        profileCompletion.percent === 100
+          ? "Review your profile details"
+          : "Complete your profile details",
+      detail:
+        profileCompletion.percent === 100
+          ? "Check saved fields and edit anything that should stay current across your cards."
+          : "Add the missing details so every card can stay accurate.",
+      action: profileCompletion.percent === 100 ? "Review profile" : "Update profile",
+    },
+  ];
+  const activeNudge =
+    onboardingStep === null
+      ? dashboardNudges.find((nudge) => {
+          if (dismissedNudges[nudge.id]) {
+            return false;
+          }
+
+          return nudge.id === "add-card" || dashboardMode === "classic";
+        }) ?? null
+      : null;
   const guidanceItems = [
     {
       icon: UserRound,
@@ -457,6 +529,18 @@ export default function DashboardPage() {
     ],
   );
 
+  const dismissDashboardNudge = useCallback((id: DashboardNudgeId) => {
+    window.localStorage.setItem(
+      getDashboardNudgeStorageKey(nudgeUserKey, id),
+      "true",
+    );
+    setDismissedNudges((current) => ({ ...current, [id]: true }));
+  }, [nudgeUserKey]);
+
+  useEffect(() => {
+    setDismissedNudges(getStoredDashboardNudges(nudgeUserKey));
+  }, [nudgeUserKey]);
+
   useEffect(() => {
     let isMounted = true;
     void Promise.all([
@@ -506,7 +590,19 @@ export default function DashboardPage() {
       ) : (
         <section className="grid gap-4 md:grid-cols-3">
           {stats.map((stat) => (
-            <DashboardStatCard key={stat.label} stat={stat} />
+            <DashboardStatCard
+              key={stat.label}
+              isTargetHighlighted={
+                stat.label === "Profile" && activeNudge?.id === "review-profile"
+              }
+              onTargetClick={
+                stat.label === "Profile"
+                  ? () => dismissDashboardNudge("review-profile")
+                  : undefined
+              }
+              stat={stat}
+              targetRef={stat.label === "Profile" ? reviewProfileNudgeRef : undefined}
+            />
           ))}
         </section>
       )}
@@ -525,8 +621,19 @@ export default function DashboardPage() {
               <ArrowRight className="h-4 w-4" aria-hidden="true" />
             </Link>
             <Link
+              ref={addCardNudgeRef}
               to="/dashboard?onboarding=card&returnTo=/dashboard"
-              className={cn(buttonVariants(), "shrink-0 rounded-full")}
+              className={cn(
+                buttonVariants(),
+                "shrink-0 rounded-full",
+                activeNudge?.id === "add-card" &&
+                  "relative z-[60] outline outline-2 outline-dashed outline-primary outline-offset-4 ring-4 ring-primary/10",
+              )}
+              onClick={() => {
+                if (activeNudge?.id === "add-card") {
+                  dismissDashboardNudge("add-card");
+                }
+              }}
             >
               <Plus className="h-4 w-4" aria-hidden="true" />
               Add card
@@ -645,6 +752,12 @@ export default function DashboardPage() {
           onSkip={() => setOnboardingStep(null)}
         />
       )}
+      {activeNudge && (
+        <DashboardNudgeOverlay
+          nudge={activeNudge}
+          onDismiss={dismissDashboardNudge}
+        />
+      )}
     </AppShell>
   );
 }
@@ -702,6 +815,23 @@ type DashboardStat = {
   value: string;
 };
 
+type DashboardNudge = {
+  action: string;
+  detail: string;
+  icon: typeof IdCard;
+  id: DashboardNudgeId;
+  targetRef: RefObject<HTMLElement | null>;
+  title: string;
+};
+
+type SpotlightTargetRect = {
+  bottom: number;
+  height: number;
+  left: number;
+  top: number;
+  width: number;
+};
+
 const statToneStyles: Record<
   string,
   {
@@ -721,9 +851,23 @@ const statToneStyles: Record<
     accentClassName: "bg-accent",
     iconClassName: "bg-accent text-accent-foreground",
   },
+  profileComplete: {
+    accentClassName: "bg-primary",
+    iconClassName: "bg-primary text-primary-foreground",
+  },
 };
 
-function DashboardStatCard({ stat }: { stat: DashboardStat }) {
+function DashboardStatCard({
+  isTargetHighlighted = false,
+  onTargetClick,
+  stat,
+  targetRef,
+}: {
+  isTargetHighlighted?: boolean;
+  onTargetClick?: () => void;
+  stat: DashboardStat;
+  targetRef?: RefObject<HTMLAnchorElement | null>;
+}) {
   const style = statToneStyles[stat.tone];
 
   return (
@@ -761,8 +905,14 @@ function DashboardStatCard({ stat }: { stat: DashboardStat }) {
             {stat.detail}
           </p>
           <Link
+            ref={targetRef}
             to={stat.to}
-            className="inline-flex shrink-0 items-center gap-2 text-sm font-semibold text-primary transition-colors hover:text-primary/80"
+            className={cn(
+              "inline-flex shrink-0 items-center gap-2 rounded-full px-2 py-1 text-sm font-semibold text-primary transition-colors hover:text-primary/80",
+              isTargetHighlighted &&
+                "relative z-[60] bg-background outline outline-2 outline-dashed outline-primary outline-offset-4 ring-4 ring-primary/10",
+            )}
+            onClick={onTargetClick}
           >
             {stat.action}
             <ArrowRight className="h-4 w-4" aria-hidden="true" />
@@ -770,6 +920,117 @@ function DashboardStatCard({ stat }: { stat: DashboardStat }) {
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function DashboardNudgeOverlay({
+  nudge,
+  onDismiss,
+}: {
+  nudge: DashboardNudge;
+  onDismiss: (id: DashboardNudgeId) => void;
+}) {
+  const Icon = nudge.icon;
+  const [targetRect, setTargetRect] = useState<SpotlightTargetRect | null>(null);
+
+  useEffect(() => {
+    const measureTarget = () => {
+      const target = nudge.targetRef.current;
+      if (!target) {
+        setTargetRect(null);
+        return;
+      }
+
+      const rect = target.getBoundingClientRect();
+      setTargetRect({
+        bottom: rect.bottom,
+        height: rect.height,
+        left: rect.left,
+        top: rect.top,
+        width: rect.width,
+      });
+    };
+
+    measureTarget();
+    window.addEventListener("resize", measureTarget);
+    window.addEventListener("scroll", measureTarget, true);
+    return () => {
+      window.removeEventListener("resize", measureTarget);
+      window.removeEventListener("scroll", measureTarget, true);
+    };
+  }, [nudge.targetRef]);
+
+  const viewportWidth = typeof window === "undefined" ? 1024 : window.innerWidth;
+  const calloutWidth = Math.min(360, Math.max(280, viewportWidth - 32));
+  const targetCenter = targetRect
+    ? targetRect.left + targetRect.width / 2
+    : viewportWidth / 2;
+  const calloutLeft = Math.min(
+    Math.max(16, targetCenter - calloutWidth / 2),
+    Math.max(16, viewportWidth - calloutWidth - 16),
+  );
+  const calloutTop = targetRect ? targetRect.bottom + 28 : 140;
+  const arrowLeft = Math.min(
+    Math.max(24, targetCenter - calloutLeft),
+    calloutWidth - 24,
+  );
+
+  return (
+    <div className="fixed inset-0 z-50">
+      <button
+        type="button"
+        aria-label="Dismiss dashboard nudge"
+        className="absolute inset-0 bg-background/75 backdrop-blur-[2px]"
+        onClick={() => onDismiss(nudge.id)}
+      />
+      {targetRect && (
+        <div
+          className="pointer-events-none fixed z-[65] rounded-full border-2 border-dashed border-primary/80"
+          style={{
+            height: targetRect.height + 18,
+            left: targetRect.left - 9,
+            top: targetRect.top - 9,
+            width: targetRect.width + 18,
+          }}
+        />
+      )}
+      <div
+        className="pointer-events-none fixed z-[70] w-full overflow-hidden rounded-[24px] border border-border bg-card p-4 shadow-[0_24px_80px_rgba(20,52,48,0.18)]"
+        style={{
+          left: calloutLeft,
+          top: calloutTop,
+          width: calloutWidth,
+        }}
+      >
+        <div
+          className="absolute -top-3 h-6 w-6 rotate-45 border-l border-t border-border bg-card"
+          style={{ left: arrowLeft - 12 }}
+        />
+        <div className="pointer-events-none absolute -right-10 -top-14 h-40 w-40 rounded-full border border-primary/10" />
+        <div className="pointer-events-none absolute right-12 top-8 h-2 w-2 rounded-full bg-primary/35" />
+        <div className="pointer-events-none absolute right-24 top-16 h-px w-24 rotate-[-22deg] bg-primary/15" />
+
+        <div className="relative flex items-start gap-4">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.35)]">
+            <Icon className="h-5 w-5" aria-hidden="true" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <Badge className="rounded-full" variant="secondary">
+              Look here
+            </Badge>
+            <h2 className="mt-3 text-xl font-semibold tracking-normal text-foreground">
+              {nudge.title}
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              {nudge.detail}
+            </p>
+            <p className="mt-3 text-xs font-medium text-primary">
+              Click the highlighted {nudge.action} button to continue.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 

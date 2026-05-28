@@ -1,5 +1,19 @@
 # Decision Context
 
+## 2026-05-28 - Dashboard CTA Spotlight Nudges
+
+- Decision: Replace dashboard nudge modal cards with user-scoped spotlight coachmarks that dim the dashboard, highlight the existing Add card or top Profile stat Review profile CTA, and dismiss when the user clicks outside the highlighted CTA.
+- Reason: The nudge should teach users where the native dashboard action lives instead of introducing a separate modal action surface.
+- Notes: Dismissal is scoped to the signed-in user/profile identity in localStorage. Backend code and browser testing remain untouched.
+- Follow-up: The profile review nudge only appears in the Classic dashboard mode because its target is the top Profile stat card CTA.
+- Follow-up: The spotlight callout uses a fully opaque card surface so content behind the overlay does not visually bleed through the nudge.
+
+## 2026-05-28 - Dashboard Post-Onboarding Nudges
+
+- Decision: Add one-at-a-time dismissible dashboard coachmark nudges for adding another card and reviewing profile details, with the dashboard muted behind the visible nudge and background click dismissal persisted in localStorage.
+- Reason: After onboarding, users land on a populated dashboard but still need clear next actions. Overlay nudges focus attention without permanently taking space in the dashboard layout.
+- Notes: The profile nudge uses review/edit language when the profile is already complete, and the 100% profile stat should use green/primary styling. Frontend-only change; backend code and browser testing remain untouched.
+
 ## 2026-05-28 - Profile Record Card Differentiation
 
 - Decision: Differentiate Profile record cards from shareable ContactBook cards by removing the vertical ribbon and giant watermark initials, replacing them with a subtle fine-line background pattern and a compact top accent rail.
