@@ -1,5 +1,11 @@
 # Decision Context
 
+## 2026-05-28 - Profile Record Card Differentiation
+
+- Decision: Differentiate Profile record cards from shareable ContactBook cards by removing the vertical ribbon and giant watermark initials, replacing them with a subtle fine-line background pattern and a compact top accent rail.
+- Reason: Profile records should feel like premium siblings to Dashboard/Cards surfaces, but not look exactly like shareable card previews.
+- Notes: The Profile page keeps the same tabs, logo/photo media marks, and two-column detail lists. Cards page remains untouched. Backend code and browser testing remain untouched.
+
 ## 2026-05-27 - Profile Record List Details
 
 - Decision: Render Profile record card details as a lightweight two-column list instead of separate boxed mini-cards for each field.

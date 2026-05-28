@@ -480,31 +480,39 @@ function ProfileRecordCard({
 }) {
   const style = tone === "personal" ? cardTypeStyles.PERSONAL : cardTypeStyles.BUSINESS;
   const initials = initialsFromText(fallbackText);
+  const eyebrow =
+    tone === "personal"
+      ? "Profile record"
+      : tone === "work"
+        ? "Work record"
+        : "Business record";
 
   return (
     <div className="group rounded-lg bg-background shadow-[0_18px_48px_rgba(20,52,48,0.08)] transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_64px_rgba(20,52,48,0.12)]">
       <div
         className={cn(
-          "relative flex min-h-[20rem] flex-col overflow-hidden rounded-md border border-border/80 p-5 pl-6",
+          "relative flex min-h-[20rem] flex-col overflow-hidden rounded-md border border-border/80 p-5",
           style.faceClassName,
         )}
       >
-        <div className={cn("absolute inset-y-0 left-0 w-1.5", style.foilClassName)} />
-        <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-primary/35 to-transparent" />
+        <div className={cn("absolute inset-x-0 top-0 h-1", style.foilClassName)} />
         <div
-          className={cn(
-            "pointer-events-none absolute -right-4 top-2 text-[8rem] font-semibold leading-none tracking-normal",
-            style.watermarkClassName,
-          )}
-        >
-          {initials}
-        </div>
-        <div className="pointer-events-none absolute bottom-0 right-0 h-24 w-24 rounded-tl-full border-l border-t border-primary/10 bg-background/30" />
+          className="pointer-events-none absolute inset-0 opacity-[0.42] transition-opacity duration-200 group-hover:opacity-[0.58]"
+          style={{
+            backgroundImage:
+              "linear-gradient(135deg, hsl(var(--primary) / 0.09) 1px, transparent 1px), linear-gradient(45deg, hsl(var(--primary) / 0.045) 1px, transparent 1px)",
+            backgroundPosition: "0 0, 12px 12px",
+            backgroundSize: "24px 24px",
+          }}
+        />
+        <div className="pointer-events-none absolute right-0 top-0 h-24 w-40 rounded-bl-full bg-background/40" />
+        <div className="pointer-events-none absolute right-8 top-8 h-px w-28 rotate-[-18deg] bg-primary/20" />
+        <div className="pointer-events-none absolute right-20 top-14 h-px w-20 rotate-[-18deg] bg-primary/10" />
 
         <div className="relative flex items-start justify-between gap-5">
           <div className="min-w-0">
             <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-primary">
-              ContactBook
+              {eyebrow}
             </p>
             <p className="mt-5 truncate text-2xl font-semibold tracking-normal text-foreground">
               {title}
