@@ -22,7 +22,6 @@ import { SampleDataNotice } from "@/components/sample-data-notice";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { useAuth } from "@/context/auth-context";
 import { apiFetch } from "@/lib/api";
 import { getCardDisplayDetails } from "@/lib/card-display";
 import { cardTypeStyles } from "@/lib/card-styles";
@@ -48,10 +47,7 @@ type DashboardMode = "classic" | "story";
 type DashboardNudgeId = "add-card" | "review-profile";
 
 const DASHBOARD_MODE_STORAGE_KEY = "contactbook:dashboard-mode";
-const DASHBOARD_NUDGE_STORAGE_SUFFIXES: Record<DashboardNudgeId, string> = {
-  "add-card": "add-card-dismissed",
-  "review-profile": "review-profile-dismissed",
-};
+const DASHBOARD_NUDGE_IDS: DashboardNudgeId[] = ["add-card", "review-profile"];
 
 const cardTypeLabels: Record<ContactCardType, string> = {
   BUSINESS: "Business",
@@ -77,24 +73,12 @@ function getStoredDashboardMode(): DashboardMode {
     : "classic";
 }
 
-function getDashboardNudgeStorageKey(userKey: string, id: DashboardNudgeId) {
-  return `contactbook:nudge:${encodeURIComponent(userKey)}:${DASHBOARD_NUDGE_STORAGE_SUFFIXES[id]}`;
+function getInitialDashboardNudgeState(): Record<DashboardNudgeId, boolean> {
+  return { "add-card": false, "review-profile": false };
 }
 
-function getStoredDashboardNudges(userKey: string): Record<DashboardNudgeId, boolean> {
-  if (typeof window === "undefined") {
-    return { "add-card": false, "review-profile": false };
-  }
-
-  return {
-    "add-card":
-      window.localStorage.getItem(getDashboardNudgeStorageKey(userKey, "add-card")) ===
-      "true",
-    "review-profile":
-      window.localStorage.getItem(
-        getDashboardNudgeStorageKey(userKey, "review-profile"),
-      ) === "true",
-  };
+function isDashboardNudgeEligible(id: DashboardNudgeId, dashboardMode: DashboardMode) {
+  return id === "add-card" || dashboardMode === "classic";
 }
 
 function getSafeReturnPath(value: string | null) {
@@ -248,7 +232,6 @@ function getStarterCardRequests(
 export default function DashboardPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { profileIdentity, userId } = useAuth();
   const [cards, setCards] = useState<ContactCard[]>([]);
   const [profile, setProfile] = useState<ProfileMeResponse | null>(null);
   const [importSummary, setImportSummary] = useState<ContactImportSummary | null>(null);
@@ -258,18 +241,17 @@ export default function DashboardPage() {
   );
   const [dismissedNudges, setDismissedNudges] = useState<
     Record<DashboardNudgeId, boolean>
-  >(() => getStoredDashboardNudges("anonymous"));
+  >(getInitialDashboardNudgeState);
+  const [isPostOnboardingNudgeSession, setIsPostOnboardingNudgeSession] =
+    useState(false);
+  const hasConsumedPostOnboardingRoute = useRef(false);
   const addCardNudgeRef = useRef<HTMLAnchorElement>(null);
   const reviewProfileNudgeRef = useRef<HTMLAnchorElement>(null);
   const onboardingStep = getOnboardingStep(searchParams.get("onboarding"));
   const returnTo = getSafeReturnPath(searchParams.get("returnTo"));
   const isSetupFlow = searchParams.get("flow") === "setup";
   const profileCompletion = getProfileCompletion(profile);
-  const nudgeUserKey =
-    userId ??
-    profile?.identity.primaryEmail ??
-    profileIdentity?.primaryEmail ??
-    "anonymous";
+  const isPostOnboardingLanding = isSetupFlow && onboardingStep === null;
   const googleSummary = getGoogleImportSummary(importSummary);
   const hasGoogleImport = Boolean(
     googleSummary?.hasSyncToken ||
@@ -334,13 +316,13 @@ export default function DashboardPage() {
     },
   ];
   const activeNudge =
-    onboardingStep === null
+    isPostOnboardingNudgeSession && onboardingStep === null
       ? dashboardNudges.find((nudge) => {
           if (dismissedNudges[nudge.id]) {
             return false;
           }
 
-          return nudge.id === "add-card" || dashboardMode === "classic";
+          return isDashboardNudgeEligible(nudge.id, dashboardMode);
         }) ?? null
       : null;
   const guidanceItems = [
@@ -529,17 +511,37 @@ export default function DashboardPage() {
     ],
   );
 
+  useEffect(() => {
+    if (!isPostOnboardingLanding || hasConsumedPostOnboardingRoute.current) {
+      return;
+    }
+
+    hasConsumedPostOnboardingRoute.current = true;
+    setDismissedNudges(getInitialDashboardNudgeState());
+    setIsPostOnboardingNudgeSession(true);
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.delete("flow");
+      return next;
+    }, { replace: true });
+  }, [isPostOnboardingLanding, setSearchParams]);
+
   const dismissDashboardNudge = useCallback((id: DashboardNudgeId) => {
-    window.localStorage.setItem(
-      getDashboardNudgeStorageKey(nudgeUserKey, id),
-      "true",
-    );
     setDismissedNudges((current) => ({ ...current, [id]: true }));
-  }, [nudgeUserKey]);
+  }, []);
 
   useEffect(() => {
-    setDismissedNudges(getStoredDashboardNudges(nudgeUserKey));
-  }, [nudgeUserKey]);
+    if (!isPostOnboardingNudgeSession) {
+      return;
+    }
+
+    const hasRemainingNudge = DASHBOARD_NUDGE_IDS.some(
+      (id) => !dismissedNudges[id] && isDashboardNudgeEligible(id, dashboardMode),
+    );
+    if (!hasRemainingNudge) {
+      setIsPostOnboardingNudgeSession(false);
+    }
+  }, [dashboardMode, dismissedNudges, isPostOnboardingNudgeSession]);
 
   useEffect(() => {
     let isMounted = true;

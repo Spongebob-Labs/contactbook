@@ -4,13 +4,14 @@
 
 - Decision: Replace dashboard nudge modal cards with user-scoped spotlight coachmarks that dim the dashboard, highlight the existing Add card or top Profile stat Review profile CTA, and dismiss when the user clicks outside the highlighted CTA.
 - Reason: The nudge should teach users where the native dashboard action lives instead of introducing a separate modal action surface.
-- Notes: Dismissal is scoped to the signed-in user/profile identity in localStorage. Backend code and browser testing remain untouched.
+- Notes: The post-onboarding `flow=setup` route is consumed with `replace: true`, and dismissal is kept only in the current React session. Backend code and browser testing remain untouched.
 - Follow-up: The profile review nudge only appears in the Classic dashboard mode because its target is the top Profile stat card CTA.
 - Follow-up: The spotlight callout uses a fully opaque card surface so content behind the overlay does not visually bleed through the nudge.
+- Follow-up: Nudge eligibility now comes from consuming the `/dashboard?flow=setup` route after onboarding instead of localStorage, so normal profile edits and later dashboard visits do not replay the nudges.
 
 ## 2026-05-28 - Dashboard Post-Onboarding Nudges
 
-- Decision: Add one-at-a-time dismissible dashboard coachmark nudges for adding another card and reviewing profile details, with the dashboard muted behind the visible nudge and background click dismissal persisted in localStorage.
+- Decision: Add one-at-a-time dismissible dashboard coachmark nudges for adding another card and reviewing profile details, with the dashboard muted behind the visible nudge and background click dismissal handled during the post-onboarding dashboard session.
 - Reason: After onboarding, users land on a populated dashboard but still need clear next actions. Overlay nudges focus attention without permanently taking space in the dashboard layout.
 - Notes: The profile nudge uses review/edit language when the profile is already complete, and the 100% profile stat should use green/primary styling. Frontend-only change; backend code and browser testing remain untouched.
 
