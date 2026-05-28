@@ -122,7 +122,10 @@ export function createProfileUpsertMocks(
     },
     contactCard: {
       create: jest.fn().mockImplementation((args: any) =>
-        Promise.resolve({ id: `card-${Math.random().toString(36).substring(2, 9)}`, ...args.data })
+        Promise.resolve({
+          id: `card-${Math.random().toString(36).substring(2, 9)}`,
+          ...args.data,
+        }),
       ),
     },
     cardFieldMapping: {
