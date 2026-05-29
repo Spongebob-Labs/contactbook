@@ -50,6 +50,7 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "swagger-ui-express": "^5.0.1",
+    "tsdav": "^2.2.2",
     "twilio": "^6.0.2",
     "vcf": "^2.1.2"
   },

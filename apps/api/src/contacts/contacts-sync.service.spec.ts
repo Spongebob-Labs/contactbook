@@ -5,7 +5,7 @@ import { ContactsSyncService } from "./contacts-sync.service";
 describe("ContactsSyncService", () => {
   const google = { sync: jest.fn(), import: jest.fn() };
   const icloud = { sync: jest.fn(), import: jest.fn() };
-  const svc = new ContactsSyncService(google as never, icloud);
+  const svc = new ContactsSyncService(google as never, icloud as never);
 
   beforeEach(() => {
     jest.clearAllMocks();
