@@ -197,8 +197,13 @@ export class OAuthTokenService {
       this.logger.error(
         `Failed to decrypt ${provider} OAuth tokens for user ${row.userId}: ${reason}`,
       );
+      const keyMismatch =
+        reason.includes("Unsupported state or unable to authenticate data") ||
+        reason.includes("Malformed encrypted OAuth token payload");
       throw new BadRequestException(
-        `Stored ${provider} credentials could not be read. Disconnect and reconnect the account.`,
+        keyMismatch
+          ? `Stored ${provider} credentials could not be decrypted. The server encryption key may not match the environment where this account was linked. Disconnect and reconnect ${provider}, or use the matching OAUTH_TOKEN_ENCRYPTION_KEY_BASE64.`
+          : `Stored ${provider} credentials could not be read. Disconnect and reconnect the account.`,
       );
     }
   }
