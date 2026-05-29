@@ -257,7 +257,7 @@ export class ConnectionService {
     });
   }
 
-  async assertWhatsAppOnlyCompletion(): Promise<never> {
+  assertWhatsAppOnlyCompletion(): never {
     throw new ConflictException(
       "Connection requests are completed via WhatsApp only. Use Accept/Decline and card selection in WhatsApp.",
     );

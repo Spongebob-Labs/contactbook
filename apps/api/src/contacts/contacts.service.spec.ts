@@ -104,7 +104,7 @@ describe("ContactsService.listPaginated", () => {
     });
     expect(findMany).toHaveBeenCalledWith({
       where: { userId: "user-1", deletedAt: null },
-      include: expect.any(Object),
+      include: expect.any(Object) as unknown,
       orderBy: [
         { displayName: "asc" },
         { lastName: "asc" },

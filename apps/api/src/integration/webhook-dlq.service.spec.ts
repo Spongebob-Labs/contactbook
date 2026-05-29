@@ -47,7 +47,7 @@ describe("WebhookDlqService", () => {
           source: "twilio_whatsapp",
           status: WebhookDlqStatus.PENDING,
           nextRetryAt: null,
-        }),
+        }) as unknown,
       });
     });
   });
@@ -87,7 +87,9 @@ describe("WebhookDlqService", () => {
       expect(prisma.webhookDeadLetter.update).toHaveBeenNthCalledWith(
         2,
         expect.objectContaining({
-          data: expect.objectContaining({ status: WebhookDlqStatus.SUCCEEDED }),
+          data: expect.objectContaining({
+            status: WebhookDlqStatus.SUCCEEDED,
+          }) as unknown,
         }),
       );
     });
@@ -102,7 +104,15 @@ describe("WebhookDlqService", () => {
       jest.setSystemTime(new Date("2026-01-01T00:00:00Z"));
       await svc.retryPending();
 
-      const secondCall = prisma.webhookDeadLetter.update.mock.calls[1][0];
+      const secondCall = (
+        prisma.webhookDeadLetter.update.mock.calls[1] as unknown[]
+      )[0] as {
+        data: {
+          status: WebhookDlqStatus;
+          attempts: number;
+          nextRetryAt: Date | null;
+        };
+      };
       expect(secondCall.data.status).toBe(WebhookDlqStatus.PENDING);
       expect(secondCall.data.attempts).toBe(1);
       // backoff: 2^(1-1) = 1 min
@@ -121,7 +131,15 @@ describe("WebhookDlqService", () => {
 
       await svc.retryPending();
 
-      const secondCall = prisma.webhookDeadLetter.update.mock.calls[1][0];
+      const secondCall = (
+        prisma.webhookDeadLetter.update.mock.calls[1] as unknown[]
+      )[0] as {
+        data: {
+          status: WebhookDlqStatus;
+          attempts: number;
+          nextRetryAt: Date | null;
+        };
+      };
       expect(secondCall.data.status).toBe(WebhookDlqStatus.FAILED);
       expect(secondCall.data.attempts).toBe(5);
       expect(secondCall.data.nextRetryAt).toBeNull();

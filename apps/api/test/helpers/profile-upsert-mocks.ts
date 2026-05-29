@@ -121,12 +121,14 @@ export function createProfileUpsertMocks(
       findUniqueOrThrow: jest.fn(),
     },
     contactCard: {
-      create: jest.fn().mockImplementation((args: any) =>
-        Promise.resolve({
-          id: `card-${Math.random().toString(36).substring(2, 9)}`,
-          ...args.data,
-        }),
-      ),
+      create: jest
+        .fn()
+        .mockImplementation((args: { data: Record<string, unknown> }) =>
+          Promise.resolve({
+            id: `card-${Math.random().toString(36).substring(2, 9)}`,
+            ...args.data,
+          }),
+        ),
     },
     cardFieldMapping: {
       createMany: jest.fn().mockResolvedValue({ count: 1 }),
@@ -156,7 +158,7 @@ export function createProfileUpsertMocks(
           fields: [],
         } as unknown as GroupWithFields;
         groups.push(created);
-        return created as GroupWithFields;
+        return created;
       },
     ),
     updateGroupName: jest.fn().mockResolvedValue(undefined),
