@@ -121,9 +121,14 @@ export function createProfileUpsertMocks(
       findUniqueOrThrow: jest.fn(),
     },
     contactCard: {
-      create: jest.fn().mockImplementation((args: any) =>
-        Promise.resolve({ id: `card-${Math.random().toString(36).substring(2, 9)}`, ...args.data })
-      ),
+      create: jest
+        .fn()
+        .mockImplementation((args: { data: Record<string, unknown> }) =>
+          Promise.resolve({
+            id: `card-${Math.random().toString(36).substring(2, 9)}`,
+            ...args.data,
+          }),
+        ),
     },
     cardFieldMapping: {
       createMany: jest.fn().mockResolvedValue({ count: 1 }),
@@ -142,14 +147,16 @@ export function createProfileUpsertMocks(
       ),
     createGroup: jest.fn(
       (uid: string, category: FieldCategory, name: string): GroupWithFields => {
-        const created: GroupWithFields = {
+        const createdAt = new Date();
+        const created = {
           id: `group-${groups.length + 1}`,
           userId: uid,
           category,
           name,
-          updatedAt: new Date(),
+          createdAt,
+          updatedAt: createdAt,
           fields: [],
-        } as GroupWithFields;
+        } as unknown as GroupWithFields;
         groups.push(created);
         return created;
       },
@@ -203,14 +210,16 @@ export function addWorkGroup(
   id = "work-1",
   name = "Acme",
 ): GroupWithFields {
-  const g: GroupWithFields = {
+  const createdAt = new Date();
+  const g = {
     id,
     userId: mocks.userId,
     category: FieldCategory.WORK,
     name,
-    updatedAt: new Date(),
+    createdAt,
+    updatedAt: createdAt,
     fields: [],
-  } as GroupWithFields;
+  } as unknown as GroupWithFields;
   mocks.groups.push(g);
   return g;
 }

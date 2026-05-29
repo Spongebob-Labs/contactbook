@@ -1,12 +1,6 @@
-import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { ApiPropertyOptional } from "@nestjs/swagger";
 import { Transform } from "class-transformer";
-import {
-  IsOptional,
-  IsString,
-  IsUUID,
-  Matches,
-  ValidateIf,
-} from "class-validator";
+import { IsString, IsUUID, Matches, ValidateIf } from "class-validator";
 import { normalizeDialCode } from "../../common/phone.util";
 
 export class CreateConnectionRequestDto {

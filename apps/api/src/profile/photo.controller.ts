@@ -40,7 +40,7 @@ export class PhotoController {
     summary: "Upload image",
     description:
       "Stores any image in GCS and returns the public HTTPS URL. " +
-      "Accepts image/jpeg, image/png, or image/webp up to 1 MB.",
+      "Accepts image/jpeg, image/png, or image/webp up to 20 MB.",
   })
   @ApiBody({
     schema: {

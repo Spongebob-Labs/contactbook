@@ -22,7 +22,7 @@ export class ContactsSyncService {
     userId: string,
     source: ContactSource,
   ): Promise<ContactSyncResponseDto> {
-    return this.runForSource(userId, source, "sync");
+    return this.runForSource(userId, source);
   }
 
   async import(
@@ -43,7 +43,6 @@ export class ContactsSyncService {
   private async runForSource(
     userId: string,
     source: ContactSource,
-    operation: "sync" | "import",
   ): Promise<ContactSyncResponseDto> {
     if (!SYNC_SOURCES.includes(source)) {
       throw new BadRequestException(
