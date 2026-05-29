@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  HttpException,
   Injectable,
   InternalServerErrorException,
   Logger,
@@ -53,6 +54,9 @@ export class GoogleContactsSyncProvider {
     try {
       return await this.runContactsSync(userId, false);
     } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
       if (this.isInvalidSyncTokenError(error)) {
         this.logger.warn(
           `Google People sync token invalid for user ${userId}; falling back to full import`,
@@ -280,10 +284,10 @@ export class GoogleContactsSyncProvider {
   }
 
   private mapSyncError(userId: string, error: unknown): Error {
-    if (error instanceof BadRequestException) {
+    const status = this.googleErrorStatus(error);
+    if (error instanceof HttpException) {
       return error;
     }
-    const status = this.googleErrorStatus(error);
     if (status === 401 || status === 403) {
       return new BadRequestException(
         "Google authorization expired or was revoked. Reconnect your Google account.",
