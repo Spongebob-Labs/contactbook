@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Get,
   Param,
@@ -28,6 +29,7 @@ import type { Express } from "express";
 import type { JwtUserPayload } from "../common/decorators/current-user.decorator";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
+import { OAuthTokenService } from "../oauth-tokens/oauth-token.service";
 import { MultipartBoundaryExceptionFilter } from "../common/filters/multipart-boundary.exception-filter";
 import { MulterUploadExceptionFilter } from "../common/filters/multer-upload.exception-filter";
 import { ContactsSyncService } from "./contacts-sync.service";
@@ -37,6 +39,7 @@ import { toContactImportResult } from "./contact-import-result.mapper";
 import { ContactListResponseDto } from "./dto/contact-list-response.dto";
 import { ContactDetailDto } from "./dto/contact-response.dto";
 import { ContactSyncResponseDto } from "./dto/contact-sync-response.dto";
+import { IcloudImportDto } from "./dto/icloud-import.dto";
 import { ListContactsQueryDto } from "./dto/list-contacts-query.dto";
 import { MAX_VCF_IMPORT_BYTES } from "./vcard-import.constants";
 import { VcardContactsImportService } from "./vcard-contacts-import.service";
@@ -50,13 +53,14 @@ export class ContactsController {
     private readonly contacts: ContactsService,
     private readonly contactsSync: ContactsSyncService,
     private readonly vcardImport: VcardContactsImportService,
+    private readonly oauthTokenService: OAuthTokenService,
   ) {}
 
   @Get("sync")
   @ApiOperation({
     summary: "Sync contacts from a provider",
     description:
-      "Runs incremental provider sync when a sync token exists (Google). On an expired token, falls back to the same full import as GET /contacts/import/google. iCloud is not implemented yet.",
+      "Runs incremental provider sync when a sync token exists (Google, iCloud). On an expired token, falls back to the same full import as the provider import endpoint.",
   })
   @ApiQuery({
     name: "source",
@@ -85,10 +89,18 @@ export class ContactsController {
   @ApiOperation({
     summary: "Import contacts from iCloud",
     description:
-      "Reserved for the iCloud connector. Returns 501 until iCloud import is implemented.",
+      "Accepts Apple credentials, secures them using AES-256-GCM at rest, discovers server shards, and executes a full contact import.",
   })
+  @ApiBody({ type: IcloudImportDto })
   @ApiOkResponse({ type: ContactImportResultDto })
-  async importIcloud(@CurrentUser() user: JwtUserPayload) {
+  async importIcloud(
+    @CurrentUser() user: JwtUserPayload,
+    @Body() body: IcloudImportDto,
+  ) {
+    await this.oauthTokenService.upsertForUser(user.sub, "icloud", {
+      accessToken: body.appleId,
+      refreshToken: body.appSpecificPassword,
+    });
     return this.contactsSync.import(user.sub, ContactSource.ICLOUD);
   }
 
