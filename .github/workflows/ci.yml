@@ -28,5 +28,5 @@ jobs:
     uses: ./.github/workflows/api-test.yml
     secrets: inherit
     with:
-      env_profile: pr
+      env_profile: ${{ github.base_ref == 'dev' && 'uat' || 'prod' }}
       fetch_depth: 1

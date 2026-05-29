@@ -5,7 +5,7 @@ import {
 } from "@nestjs/common";
 import { GcsProfilePhotoService } from "../storage/gcs-profile-photo.service";
 
-export const PROFILE_PHOTO_MAX_BYTES = 1_048_576;
+export const PROFILE_PHOTO_MAX_BYTES = 20_971_520;
 
 const ALLOWED_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
@@ -58,7 +58,7 @@ export class ProfilePhotoService {
       );
     }
     if (file.size > PROFILE_PHOTO_MAX_BYTES) {
-      throw new BadRequestException("file must be 1 MB or smaller");
+      throw new BadRequestException("file must be 20 MB or smaller");
     }
     if (!this.gcs.extensionForMime(file.mimetype)) {
       throw new BadRequestException("unsupported image type");

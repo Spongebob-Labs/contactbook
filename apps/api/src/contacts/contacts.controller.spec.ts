@@ -84,7 +84,7 @@ describe("ContactsController (HTTP)", () => {
       updated: 0,
       skipped: [],
     });
-    expect(res.body.completedAt).toBeDefined();
+    expect((res.body as Record<string, unknown>).completedAt).toBeDefined();
   });
 
   it("POST /contacts/import/icloud returns 501", async () => {
@@ -120,7 +120,7 @@ describe("ContactsController (HTTP)", () => {
       updated: 0,
       skipped: [],
     });
-    expect(res.body.completedAt).toBeDefined();
+    expect((res.body as Record<string, unknown>).completedAt).toBeDefined();
   });
 
   it("POST /contacts/import/vcf without file returns 400", async () => {

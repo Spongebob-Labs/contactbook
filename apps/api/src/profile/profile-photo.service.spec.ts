@@ -28,6 +28,33 @@ describe("ProfilePhotoService", () => {
     );
   });
 
+  it("rejects file larger than 20 MB", async () => {
+    const svc = createSvc();
+    const file = {
+      buffer: Buffer.from("x"),
+      mimetype: "image/jpeg",
+      size: 20_971_521, // 20 MB + 1 byte
+    } as Express.Multer.File;
+
+    await expect(svc.upload("user-1", file)).rejects.toThrow(
+      new BadRequestException("file must be 20 MB or smaller"),
+    );
+  });
+
+  it("accepts file exactly 20 MB", async () => {
+    const svc = createSvc();
+    const file = {
+      buffer: Buffer.from("x"),
+      mimetype: "image/jpeg",
+      size: 20_971_520, // exactly 20 MB
+    } as Express.Multer.File;
+
+    const result = await svc.upload("user-1", file);
+    expect(result.url).toBe(
+      "https://storage.googleapis.com/b/profiles/u/new.jpg",
+    );
+  });
+
   it("uploads and returns the public GCS URL without DB patching", async () => {
     const svc = createSvc();
     const file = {
