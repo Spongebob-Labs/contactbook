@@ -62,7 +62,10 @@ export function normalizePhoneForDedup(
     return digits;
   }
   const serviceCode = trimmed.replace(/\s+/g, "");
-  if (/^[*#\d]{3,}$/.test(serviceCode)) {
+  if (
+    (serviceCode.includes("*") || serviceCode.includes("#")) &&
+    /^[*#\d]{3,}$/.test(serviceCode)
+  ) {
     return `svc:${serviceCode.toLowerCase()}`;
   }
   const shortDigits = trimmed.replace(/\D/g, "");
