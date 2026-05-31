@@ -26,8 +26,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { apiFetch } from "@/lib/api";
-import { buildContactImportSummary } from "@/lib/contact-summary";
+import {
+  contactMatchesSource,
+  fetchAllContacts,
+  fetchImportSummary,
+  getGoogleLastSyncAt,
+} from "@/lib/contacts-api";
 import {
   formatContactDate,
   getCompany,
@@ -49,16 +53,10 @@ const sourceOptions: Array<{ value: SourceFilter; label: string }> = [
   { value: "ALL", label: "All sources" },
   { value: "GOOGLE", label: "Google" },
   { value: "ICLOUD", label: "iCloud" },
-  { value: "CSV", label: "CSV" },
   { value: "VCARD", label: "vCard" },
-  { value: "CALDAV", label: "CalDAV" },
 ];
 
 const pageSizeOptions = [10, 25, 50];
-
-function getGoogleSummary(summary: ContactImportSummary | null) {
-  return summary?.bySource.find((item) => item.source === "GOOGLE") ?? null;
-}
 
 function compareText(current: string, next: string) {
   return current.localeCompare(next, undefined, { sensitivity: "base" });
@@ -92,8 +90,10 @@ export default function ContactsPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const contactsData = await apiFetch<ContactDetail[]>("/v1/contacts");
-        const summaryData = buildContactImportSummary(contactsData);
+        const [contactsData, summaryData] = await Promise.all([
+          fetchAllContacts(),
+          fetchImportSummary(),
+        ]);
         if (isMounted) {
           setContacts(contactsData);
           setSummary(summaryData);
@@ -119,7 +119,9 @@ export default function ContactsPage() {
     const normalizedQuery = query.trim().toLowerCase();
     return contacts
       .filter((contact) =>
-        sourceFilter === "ALL" ? true : contact.source === sourceFilter,
+        sourceFilter === "ALL"
+          ? true
+          : contactMatchesSource(contact, sourceFilter),
       )
       .filter((contact) =>
         normalizedQuery ? getSearchText(contact).includes(normalizedQuery) : true,
@@ -152,7 +154,6 @@ export default function ContactsPage() {
   const pageStart =
     filteredAndSortedContacts.length === 0 ? 0 : (currentPage - 1) * pageSize + 1;
   const pageEnd = Math.min(currentPage * pageSize, filteredAndSortedContacts.length);
-  const googleSummary = getGoogleSummary(summary);
 
   useEffect(() => {
     setPage(1);
@@ -174,7 +175,7 @@ export default function ContactsPage() {
               Import contacts
             </Link>
             <p className="text-xs text-muted-foreground">
-              Last sync {formatContactDate(googleSummary?.lastSyncAt)}
+              Last sync {formatContactDate(getGoogleLastSyncAt(summary))}
             </p>
           </div>
         </div>

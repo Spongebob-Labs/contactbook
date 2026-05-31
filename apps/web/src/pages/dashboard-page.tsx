@@ -11,10 +11,12 @@ import {
 import { AppShell } from "@/components/app-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { apiFetch } from "@/lib/api";
-import { buildContactImportSummary } from "@/lib/contact-summary";
+import {
+  fetchImportSummary,
+  googleSummaryHasConnection,
+} from "@/lib/contacts-api";
 import type {
   ContactCard,
-  ContactDetail,
   ContactImportSummary,
   ProfileMeResponse,
 } from "@/lib/types";
@@ -53,10 +55,6 @@ function hasInitializedProfile(profile: ProfileMeResponse | null) {
   );
 }
 
-function getGoogleImportSummary(summary: ContactImportSummary | null) {
-  return summary?.bySource.find((item) => item.source === "GOOGLE") ?? null;
-}
-
 export default function DashboardPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -67,12 +65,7 @@ export default function DashboardPage() {
   const returnTo = getSafeReturnPath(searchParams.get("returnTo"));
   const isSetupFlow = searchParams.get("flow") === "setup";
   const hasProfileDetails = hasInitializedProfile(profile);
-  const googleSummary = getGoogleImportSummary(importSummary);
-  const hasGoogleImport = Boolean(
-    googleSummary?.hasSyncToken ||
-      googleSummary?.lastSyncAt ||
-      googleSummary?.activeCount,
-  );
+  const hasGoogleImport = googleSummaryHasConnection(importSummary);
   const hasCards = cards.length > 0;
   const isWorkspaceStarted = hasGoogleImport || hasCards;
   const stats = [
@@ -144,11 +137,10 @@ export default function DashboardPage() {
 
   const loadOverview = useCallback(async (shouldUpdate: () => boolean = () => true) => {
     try {
-      const [profileData, contactsData] = await Promise.all([
+      const [profileData, summaryData] = await Promise.all([
         apiFetch<ProfileMeResponse>("/v1/profile/me"),
-        apiFetch<ContactDetail[]>("/v1/contacts"),
+        fetchImportSummary(),
       ]);
-      const summaryData = buildContactImportSummary(contactsData);
       if (shouldUpdate()) {
         setProfile(profileData);
         setImportSummary(summaryData);
