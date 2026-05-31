@@ -30,7 +30,28 @@ const contactRow = {
   organizations: [],
   addresses: [],
   urls: [],
+  tags: [],
+  groups: [],
+  providerLinks: [],
 };
+
+const tagsService = { requireOwnedMany: jest.fn().mockResolvedValue([]) };
+const groupsService = { requireOwnedMany: jest.fn().mockResolvedValue([]) };
+const writeback = { writeBackContact: jest.fn().mockResolvedValue(undefined) };
+const providerLinks = {
+  findPrimaryContactIdsForMergeGroups: jest.fn().mockResolvedValue(new Map()),
+};
+
+function makeService(prisma: object) {
+  return new ContactsService(
+    prisma as never,
+    new ContactSerializer(),
+    tagsService as never,
+    groupsService as never,
+    writeback as never,
+    providerLinks as never,
+  );
+}
 
 describe("ContactsService.getImportSummary", () => {
   it("aggregates counts and integration state per source", async () => {
@@ -66,68 +87,84 @@ describe("ContactsService.getImportSummary", () => {
         ),
       },
     };
-    const svc = new ContactsService(prisma as never, new ContactSerializer());
+    const svc = makeService(prisma);
     const summary = await svc.getImportSummary("user-1");
 
     expect(summary.totalActive).toBeGreaterThan(0);
+    expect(summary.bySource).toHaveLength(4);
     const google = summary.bySource.find(
       (r) => r.source === ContactSource.GOOGLE,
     );
     expect(google).toMatchObject({
       activeCount: 3,
       deletedCount: 1,
-      hasSyncToken: true,
-      lastSyncStats: {
-        added: 0,
-        updated: 0,
-        deleted: 0,
-        duplicatesFound: 0,
+      lastSync: {
+        at: new Date("2026-05-18T00:00:00Z"),
+        hasSyncToken: true,
+        runStats: {
+          added: 0,
+          updated: 0,
+          deleted: 0,
+          duplicatesFound: 0,
+        },
       },
     });
   });
 });
 
 describe("ContactsService.listPaginated", () => {
-  it("returns paginated items with default page and limit", async () => {
-    const count = jest.fn().mockResolvedValue(30);
-    const findMany = jest.fn().mockResolvedValue([contactRow]);
-    const prisma = { contact: { count, findMany } };
-    const svc = new ContactsService(prisma as never, new ContactSerializer());
+  it("returns paginated primary contacts only", async () => {
+    const findMany = jest
+      .fn()
+      .mockResolvedValueOnce([
+        { id: "contact-1", mergeGroupId: "group-1" },
+        { id: "contact-2", mergeGroupId: "group-1" },
+      ])
+      .mockResolvedValueOnce([contactRow]);
+    const prisma = { contact: { findMany } };
+    providerLinks.findPrimaryContactIdsForMergeGroups.mockResolvedValue(
+      new Map([["group-1", "contact-1"]]),
+    );
+    const svc = makeService(prisma);
 
     const result = await svc.listPaginated(
       "user-1",
       new ListContactsQueryDto(),
     );
 
-    expect(count).toHaveBeenCalledWith({
-      where: { userId: "user-1", deletedAt: null },
-    });
-    expect(findMany).toHaveBeenCalledWith({
-      where: { userId: "user-1", deletedAt: null },
-      include: expect.any(Object) as unknown,
-      orderBy: [
-        { displayName: "asc" },
-        { lastName: "asc" },
-        { firstName: "asc" },
-      ],
-      skip: 0,
-      take: 25,
-    });
+    expect(findMany).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: { userId: "user-1", deletedAt: null },
+        select: { id: true, mergeGroupId: true },
+      }),
+    );
+    expect(findMany).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: {
+          userId: "user-1",
+          deletedAt: null,
+          id: { in: ["contact-1"] },
+        },
+        skip: 0,
+        take: 25,
+      }),
+    );
     expect(result).toMatchObject({
       page: 1,
       limit: 25,
-      total: 30,
-      totalPages: 2,
+      total: 1,
+      totalPages: 1,
     });
     expect(result.items).toHaveLength(1);
     expect(result.items[0]?.id).toBe("contact-1");
   });
 
-  it("applies source filter and search in where clause", async () => {
-    const count = jest.fn().mockResolvedValue(1);
+  it("applies source filter and search in member lookup", async () => {
     const findMany = jest.fn().mockResolvedValue([]);
-    const prisma = { contact: { count, findMany } };
-    const svc = new ContactsService(prisma as never, new ContactSerializer());
+    const prisma = { contact: { findMany } };
+    const svc = makeService(prisma);
     const query = new ListContactsQueryDto();
     query.source = ContactSource.GOOGLE;
     query.search = "ann";
@@ -136,7 +173,7 @@ describe("ContactsService.listPaginated", () => {
 
     await svc.listPaginated("user-1", query);
 
-    expect(count).toHaveBeenCalledWith({
+    expect(findMany).toHaveBeenCalledWith({
       where: {
         userId: "user-1",
         deletedAt: null,
@@ -147,24 +184,25 @@ describe("ContactsService.listPaginated", () => {
           { nickname: { contains: "ann", mode: "insensitive" } },
         ],
       },
+      select: { id: true, mergeGroupId: true },
     });
-    expect(findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ skip: 10, take: 10 }),
-    );
   });
 
   it("uses updatedAt desc order when requested", async () => {
-    const count = jest.fn().mockResolvedValue(0);
-    const findMany = jest.fn().mockResolvedValue([]);
-    const prisma = { contact: { count, findMany } };
-    const svc = new ContactsService(prisma as never, new ContactSerializer());
+    const findMany = jest
+      .fn()
+      .mockResolvedValueOnce([{ id: "contact-1", mergeGroupId: null }])
+      .mockResolvedValueOnce([]);
+    const prisma = { contact: { findMany } };
+    const svc = makeService(prisma);
     const query = new ListContactsQueryDto();
     query.sort = ContactListSort.UPDATED_AT;
     query.sortOrder = ContactListSortOrder.DESC;
 
     await svc.listPaginated("user-1", query);
 
-    expect(findMany).toHaveBeenCalledWith(
+    expect(findMany).toHaveBeenNthCalledWith(
+      2,
       expect.objectContaining({
         orderBy: [{ updatedAt: "desc" }],
       }),
@@ -174,11 +212,10 @@ describe("ContactsService.listPaginated", () => {
   it("returns empty page metadata when no contacts match", async () => {
     const prisma = {
       contact: {
-        count: jest.fn().mockResolvedValue(0),
         findMany: jest.fn().mockResolvedValue([]),
       },
     };
-    const svc = new ContactsService(prisma as never, new ContactSerializer());
+    const svc = makeService(prisma);
 
     const result = await svc.listPaginated(
       "user-1",

@@ -28,9 +28,13 @@ describe("VcardContactsImportService", () => {
       duplicatesFound: 0,
     }),
   };
+  const contactLabels = {
+    applyVcfCategories: jest.fn().mockResolvedValue(undefined),
+  };
   const svc = new VcardContactsImportService(
     prisma as never,
     contactUpsert as never,
+    contactLabels as never,
   );
 
   beforeEach(() => {

@@ -5,6 +5,7 @@ import {
   type FieldGroup,
   type Prisma,
 } from "@prisma/client";
+import { encryptFieldValue } from "../crypto/field-encryption.util";
 import { PrismaService } from "../prisma/prisma.service";
 import { SyncService } from "../sync/sync.service";
 import type { FieldSpec } from "./profile-me.field-spec";
@@ -37,6 +38,23 @@ const SINGLETON_TYPES = new Set<FieldType>([
 ]);
 
 type Tx = Prisma.TransactionClient;
+
+function encryptIfFinancial(
+  type: FieldType,
+  value: string | null,
+): string | null {
+  if (value == null || value === "") {
+    return value;
+  }
+  if (!FINANCIAL_TYPES.includes(type)) {
+    return value;
+  }
+  return encryptFieldValue(value);
+}
+
+function encryptFinancialString(value: string): string {
+  return encryptFieldValue(value);
+}
 
 @Injectable()
 export class ProfilePersistenceService {
@@ -272,7 +290,7 @@ export class ProfilePersistenceService {
             type: spec.type,
             label: spec.label ?? null,
             isSensitive: true,
-            value: spec.value ?? null,
+            value: encryptIfFinancial(spec.type, spec.value ?? null),
           },
         });
         await tx.bankAccountDetail.create({
@@ -280,7 +298,7 @@ export class ProfilePersistenceService {
             fieldId: f.id,
             bankName: b.bankName,
             accountHolder: b.accountHolder,
-            accountNumber: b.accountNumber,
+            accountNumber: encryptFinancialString(b.accountNumber),
             iban: b.iban ?? null,
             swiftBic: b.swiftBic ?? null,
             routingNumber: b.routingNumber ?? null,
@@ -301,14 +319,14 @@ export class ProfilePersistenceService {
             type: spec.type,
             label: spec.label ?? null,
             isSensitive: true,
-            value: spec.value ?? null,
+            value: encryptIfFinancial(spec.type, spec.value ?? null),
           },
         });
         await tx.digitalWalletDetail.create({
           data: {
             fieldId: f.id,
             platform: d.platform,
-            handleOrLink: d.handleOrLink,
+            handleOrLink: encryptFinancialString(d.handleOrLink),
           },
         });
         return f.id;
@@ -324,11 +342,15 @@ export class ProfilePersistenceService {
             type: spec.type,
             label: spec.label ?? null,
             isSensitive: true,
-            value: spec.value ?? null,
+            value: encryptIfFinancial(spec.type, spec.value ?? null),
           },
         });
         await tx.cryptoWalletDetail.create({
-          data: { fieldId: f.id, network: c.network, address: c.address },
+          data: {
+            fieldId: f.id,
+            network: c.network,
+            address: encryptFinancialString(c.address),
+          },
         });
         return f.id;
       });
@@ -340,7 +362,7 @@ export class ProfilePersistenceService {
         type: spec.type,
         label: spec.label ?? null,
         isSensitive,
-        value: spec.value ?? null,
+        value: encryptIfFinancial(spec.type, spec.value ?? null),
       },
     });
     return f.id;
@@ -361,7 +383,9 @@ export class ProfilePersistenceService {
         data: {
           ...(spec.label !== undefined ? { label: spec.label } : {}),
           ...(isSensitive !== undefined ? { isSensitive } : {}),
-          ...(spec.value !== undefined ? { value: spec.value } : {}),
+          ...(spec.value !== undefined
+            ? { value: encryptIfFinancial(existingType, spec.value) }
+            : {}),
         },
       });
 
@@ -395,7 +419,7 @@ export class ProfilePersistenceService {
             fieldId,
             bankName: b.bankName,
             accountHolder: b.accountHolder,
-            accountNumber: b.accountNumber,
+            accountNumber: encryptFinancialString(b.accountNumber),
             iban: b.iban ?? null,
             swiftBic: b.swiftBic ?? null,
             routingNumber: b.routingNumber ?? null,
@@ -405,7 +429,7 @@ export class ProfilePersistenceService {
           update: {
             bankName: b.bankName,
             accountHolder: b.accountHolder,
-            accountNumber: b.accountNumber,
+            accountNumber: encryptFinancialString(b.accountNumber),
             iban: b.iban ?? null,
             swiftBic: b.swiftBic ?? null,
             routingNumber: b.routingNumber ?? null,
@@ -422,9 +446,12 @@ export class ProfilePersistenceService {
           create: {
             fieldId,
             platform: d.platform,
-            handleOrLink: d.handleOrLink,
+            handleOrLink: encryptFinancialString(d.handleOrLink),
           },
-          update: { platform: d.platform, handleOrLink: d.handleOrLink },
+          update: {
+            platform: d.platform,
+            handleOrLink: encryptFinancialString(d.handleOrLink),
+          },
         });
       }
 
@@ -432,8 +459,15 @@ export class ProfilePersistenceService {
         const c = spec.cryptoWallet;
         await tx.cryptoWalletDetail.upsert({
           where: { fieldId },
-          create: { fieldId, network: c.network, address: c.address },
-          update: { network: c.network, address: c.address },
+          create: {
+            fieldId,
+            network: c.network,
+            address: encryptFinancialString(c.address),
+          },
+          update: {
+            network: c.network,
+            address: encryptFinancialString(c.address),
+          },
         });
       }
     });

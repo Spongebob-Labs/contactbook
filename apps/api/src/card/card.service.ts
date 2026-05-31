@@ -59,6 +59,7 @@ export class CardService {
       data: {
         name: dto.name,
         type: dto.type,
+        isSensitive: dto.isSensitive,
       },
     });
   }

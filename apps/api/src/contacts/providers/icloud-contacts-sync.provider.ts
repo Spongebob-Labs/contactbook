@@ -50,6 +50,46 @@ export class IcloudContactsSyncProvider {
     private readonly contactUpsert: ContactUpsertService,
   ) {}
 
+  /** Probes CardDAV (fetch address books) before sync/import. */
+  async assertCredentialsValid(userId: string): Promise<void> {
+    const creds = await this.oauthTokenService.requireForUser(
+      userId,
+      ICLOUD_PROVIDER,
+    );
+    const appleId = creds.accessToken;
+    const appPassword = creds.refreshToken;
+    if (!appleId || !appPassword) {
+      throw new BadRequestException(
+        "iCloud credentials are incomplete. Re-enter your Apple ID and app-specific password and try again.",
+      );
+    }
+    try {
+      await this.connect(userId, creds);
+    } catch (error) {
+      throw this.mapCredentialError(userId, error);
+    }
+  }
+
+  async connectForUser(userId: string): Promise<{
+    client: Awaited<ReturnType<typeof createDAVClient>>;
+    primaryBook: DAVAddressBook;
+    serverBase: string;
+  }> {
+    const creds = await this.oauthTokenService.requireForUser(
+      userId,
+      ICLOUD_PROVIDER,
+    );
+    const appleId = creds.accessToken;
+    const appPassword = creds.refreshToken;
+    if (!appleId || !appPassword) {
+      throw new Error("iCloud credentials are incomplete");
+    }
+    const { client, primaryBook } = await this.connect(userId, creds);
+    const bookUrl = new URL(primaryBook.url);
+    const serverBase = `${bookUrl.protocol}//${bookUrl.host}`;
+    return { client, primaryBook, serverBase };
+  }
+
   async import(userId: string): Promise<ContactImportRun> {
     const creds = await this.oauthTokenService.requireForUser(
       userId,
@@ -503,6 +543,31 @@ export class IcloudContactsSyncProvider {
   private isAuthError(error: unknown): boolean {
     const status = this.davErrorStatus(error);
     return status === 401 || status === 403;
+  }
+
+  private mapCredentialError(
+    userId: string,
+    error: unknown,
+  ): BadRequestException {
+    if (error instanceof BadRequestException) {
+      const message = error.message.toLowerCase();
+      if (
+        message.includes("authorization") ||
+        message.includes("credentials") ||
+        message.includes("password")
+      ) {
+        return new BadRequestException(
+          "iCloud credentials are invalid. Re-enter your Apple ID and app-specific password and try again.",
+        );
+      }
+      return error;
+    }
+    if (this.isAuthError(error)) {
+      return new BadRequestException(
+        "iCloud credentials are invalid. Re-enter your Apple ID and app-specific password and try again.",
+      );
+    }
+    return this.mapImportError(userId, error);
   }
 
   private mapImportError(userId: string, error: unknown): BadRequestException {

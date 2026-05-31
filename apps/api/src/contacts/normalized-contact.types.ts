@@ -52,5 +52,7 @@ export type NormalizedContact = {
   organizations: NormalizedOrganization[];
   addresses: NormalizedAddress[];
   urls: NormalizedUrl[];
+  /** vCard CATEGORIES or provider group labels — ContactBook-only after import. */
+  categories?: string[];
   deleted?: boolean;
 };

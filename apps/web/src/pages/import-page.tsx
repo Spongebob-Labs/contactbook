@@ -9,7 +9,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { apiFetch } from "@/lib/api";
-import { buildContactImportSummary } from "@/lib/contact-summary";
+import {
+  fetchAllContacts,
+  fetchImportSummary,
+  getGoogleLastSyncAt,
+  googleSummaryHasConnection,
+} from "@/lib/contacts-api";
 import { startGoogleImportConnection } from "@/lib/google-import";
 import {
   GOOGLE_CONNECTED_KEY,
@@ -38,17 +43,8 @@ function formatDate(value: string | null) {
   }).format(new Date(value));
 }
 
-function hasGoogleConnectionEvidence(
-  summary: ContactImportSummary,
-  contacts: ContactImport[],
-) {
-  const googleSummary = summary.bySource.find((item) => item.source === "GOOGLE");
-  return Boolean(
-    googleSummary?.hasSyncToken ||
-      googleSummary?.lastSyncAt ||
-      googleSummary?.activeCount ||
-      contacts.length > 0,
-  );
+function hasGoogleConnectionEvidence(summary: ContactImportSummary) {
+  return googleSummaryHasConnection(summary);
 }
 
 export default function ImportPage() {
@@ -66,11 +62,13 @@ export default function ImportPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const contactsData = await apiFetch<ContactImport[]>("/v1/contacts?source=GOOGLE");
-      const summaryData = buildContactImportSummary(contactsData);
+      const [contactsData, summaryData] = await Promise.all([
+        fetchAllContacts({ source: "GOOGLE" }),
+        fetchImportSummary(),
+      ]);
       setImports(contactsData);
       setSummary(summaryData);
-      setHasConnectedGoogle(hasGoogleConnectionEvidence(summaryData, contactsData));
+      setHasConnectedGoogle(hasGoogleConnectionEvidence(summaryData));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load imports.");
     } finally {
@@ -237,7 +235,7 @@ export default function ImportPage() {
             <div className="flex items-center justify-between rounded-md border border-border p-3">
               <span className="text-sm text-muted-foreground">Last sync</span>
               <span className="text-sm font-medium">
-                {formatDate(googleSummary?.lastSyncAt ?? null)}
+                {formatDate(getGoogleLastSyncAt(summary))}
               </span>
             </div>
           </CardContent>
