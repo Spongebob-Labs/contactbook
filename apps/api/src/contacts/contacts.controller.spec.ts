@@ -10,6 +10,7 @@ import { ContactUpsertService } from "./contact-upsert.service";
 import { ContactsController } from "./contacts.controller";
 import { ContactsService } from "./contacts.service";
 import { ContactsSyncService } from "./contacts-sync.service";
+import { ContactLabelsService } from "./contact-labels.service";
 import { VcardContactsImportService } from "./vcard-contacts-import.service";
 import { OAuthTokenService } from "../oauth-tokens/oauth-token.service";
 
@@ -36,6 +37,9 @@ describe("ContactsController (HTTP)", () => {
       duplicatesFound: 0,
     }),
   };
+  const contactLabels = {
+    applyVcfCategories: jest.fn().mockResolvedValue(undefined),
+  };
 
   beforeEach(async () => {
     contactsSync = {
@@ -60,6 +64,7 @@ describe("ContactsController (HTTP)", () => {
         { provide: OAuthTokenService, useValue: oauthTokenService },
         { provide: PrismaService, useValue: prisma },
         { provide: ContactUpsertService, useValue: contactUpsert },
+        { provide: ContactLabelsService, useValue: contactLabels },
       ],
     })
       .overrideGuard(JwtAuthGuard)

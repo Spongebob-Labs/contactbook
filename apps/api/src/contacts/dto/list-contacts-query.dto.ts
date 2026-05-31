@@ -1,15 +1,18 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
 import { ContactSource } from "@prisma/client";
-import { Type } from "class-transformer";
+import { Transform, Type } from "class-transformer";
 import {
+  IsArray,
   IsEnum,
   IsInt,
   IsOptional,
   IsString,
+  IsUUID,
   Max,
   MaxLength,
   Min,
 } from "class-validator";
+import { parseUuidList } from "../../common/parse-uuid-list";
 
 export enum ContactListSort {
   NAME = "name",
@@ -40,7 +43,7 @@ export class ListContactsQueryDto {
 
   @ApiPropertyOptional({
     description:
-      "Case-insensitive match on first name, last name, and nickname. Tag search is not supported yet.",
+      "Case-insensitive match on first name, last name, and nickname.",
     maxLength: 200,
   })
   @IsOptional()
@@ -52,6 +55,32 @@ export class ListContactsQueryDto {
   @IsOptional()
   @IsEnum(ContactSource)
   source?: ContactSource;
+
+  @ApiPropertyOptional({
+    description:
+      "Comma-separated tag UUIDs. Contact must have all listed tags (AND).",
+    type: String,
+    example:
+      "8cd8e73b-2557-493d-af5a-bdf8186a4345,11111111-1111-4111-8111-111111111111",
+  })
+  @IsOptional()
+  @Transform(({ value }) => parseUuidList(value, "tagIds"))
+  @IsArray()
+  @IsUUID("4", { each: true })
+  tagIds?: string[];
+
+  @ApiPropertyOptional({
+    description:
+      "Comma-separated group UUIDs. Contact must belong to all listed groups (AND).",
+    type: String,
+    example:
+      "8cd8e73b-2557-493d-af5a-bdf8186a4345,11111111-1111-4111-8111-111111111111",
+  })
+  @IsOptional()
+  @Transform(({ value }) => parseUuidList(value, "groupIds"))
+  @IsArray()
+  @IsUUID("4", { each: true })
+  groupIds?: string[];
 
   @ApiPropertyOptional({ enum: ContactListSort, default: ContactListSort.NAME })
   @IsOptional()

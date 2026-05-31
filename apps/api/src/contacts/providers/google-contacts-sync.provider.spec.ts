@@ -50,6 +50,10 @@ describe("GoogleContactsSyncProvider", () => {
     upsertForUser: jest.fn(),
   };
 
+  const contactLabels = {
+    syncGoogleContactGroups: jest.fn().mockResolvedValue(undefined),
+  };
+
   beforeEach(() => {
     jest.clearAllMocks();
     listMock = jest.fn().mockResolvedValue({
@@ -91,6 +95,7 @@ describe("GoogleContactsSyncProvider", () => {
       config as never,
       oauthTokenService as never,
       contactUpsert as never,
+      contactLabels as never,
     );
 
     const result = await provider.import(userId);
@@ -127,6 +132,7 @@ describe("GoogleContactsSyncProvider", () => {
       config as never,
       oauthTokenService as never,
       contactUpsert as never,
+      contactLabels as never,
     );
 
     await provider.import(userId);
@@ -151,6 +157,7 @@ describe("GoogleContactsSyncProvider", () => {
       config as never,
       oauthTokenService as never,
       contactUpsert as never,
+      contactLabels as never,
     );
 
     await provider.import(userId);
@@ -181,6 +188,7 @@ describe("GoogleContactsSyncProvider", () => {
       config as never,
       oauthTokenService as never,
       contactUpsert as never,
+      contactLabels as never,
     );
 
     const result = await provider.sync(userId);

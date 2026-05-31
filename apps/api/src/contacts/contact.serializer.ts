@@ -3,9 +3,12 @@ import type {
   Contact,
   ContactAddress,
   ContactEmail,
+  ContactGroup,
   ContactOrganization,
   ContactPhone,
+  ContactProviderLink,
   ContactUrl,
+  Tag,
 } from "@prisma/client";
 import type {
   ContactDetailDto,
@@ -18,6 +21,9 @@ export type ContactWithRelations = Contact & {
   organizations: ContactOrganization[];
   addresses: ContactAddress[];
   urls: ContactUrl[];
+  tags: Tag[];
+  groups: ContactGroup[];
+  providerLinks?: ContactProviderLink[];
 };
 
 @Injectable()
@@ -50,6 +56,8 @@ export class ContactSerializer {
             isPrimary: primaryEmail.isPrimary,
           }
         : null,
+      tags: row.tags.map((t) => ({ id: t.id, name: t.name })),
+      groups: row.groups.map((g) => ({ id: g.id, name: g.name })),
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };
@@ -90,6 +98,14 @@ export class ContactSerializer {
       urls: row.urls.map((u) => ({
         value: u.value,
         label: u.label,
+      })),
+      providerLinks: (row.providerLinks ?? []).map((link) => ({
+        source: link.source,
+        externalId: link.externalId,
+        sourceRevision: link.sourceRevision,
+        isPrimary: link.isPrimary,
+        firstLinkedAt: link.firstLinkedAt,
+        lastUpdatedAt: link.lastUpdatedAt,
       })),
       deletedAt: row.deletedAt,
     };

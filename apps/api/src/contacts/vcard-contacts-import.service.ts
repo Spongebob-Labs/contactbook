@@ -3,6 +3,7 @@ import { ContactSource } from "@prisma/client";
 import type { Express } from "express";
 import { emptyContactSyncStats } from "./contact-sync-stats";
 import type { ContactImportRun } from "./contact-import-result.mapper";
+import { ContactLabelsService } from "./contact-labels.service";
 import { ContactUpsertService } from "./contact-upsert.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { parseVcfImport } from "./vcard-contact.adapter";
@@ -14,6 +15,7 @@ export class VcardContactsImportService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly contactUpsert: ContactUpsertService,
+    private readonly contactLabels: ContactLabelsService,
   ) {}
 
   async importFromFile(
@@ -36,6 +38,16 @@ export class VcardContactsImportService {
             batchSize: VCF_IMPORT_BATCH_SIZE,
           })
         : emptyContactSyncStats();
+
+    await this.contactLabels.applyVcfCategories(
+      userId,
+      contacts
+        .filter((c) => (c.categories?.length ?? 0) > 0 && c.externalId)
+        .map((c) => ({
+          externalId: c.externalId,
+          categories: c.categories ?? [],
+        })),
+    );
 
     const completedAt = new Date();
 

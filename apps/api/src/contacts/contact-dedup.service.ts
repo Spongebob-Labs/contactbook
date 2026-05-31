@@ -8,6 +8,7 @@ import {
   loadDedupIndex,
   normalizeEmail,
   normalizePhone,
+  normalizePhoneForDedup,
   resolveMergeGroupFromIndex,
   type DedupIndex,
   type DedupKey,
@@ -18,6 +19,7 @@ export {
   buildContactDedupKeys as buildDedupKeys,
   normalizeEmail,
   normalizePhone,
+  normalizePhoneForDedup,
   type DedupIndex,
   type DedupKey,
   type MergeGroupResolution,
@@ -34,8 +36,9 @@ export class ContactDedupService {
   resolveMergeGroupFromIndex(
     index: DedupIndex,
     contact: NormalizedContact,
+    defaultRegion?: string,
   ): MergeGroupResolution {
-    return resolveMergeGroupFromIndex(index, contact);
+    return resolveMergeGroupFromIndex(index, contact, defaultRegion);
   }
 
   flushDedupIndexPending(
@@ -46,17 +49,21 @@ export class ContactDedupService {
     return flushDedupIndexPending(userId, index, tx);
   }
 
-  buildDedupKeys(contact: NormalizedContact): DedupKey[] {
-    return buildContactDedupKeys(contact);
+  buildDedupKeys(
+    contact: NormalizedContact,
+    defaultRegion?: string,
+  ): DedupKey[] {
+    return buildContactDedupKeys(contact, defaultRegion);
   }
 
   async resolveMergeGroup(
     userId: string,
     contact: NormalizedContact,
     tx?: Prisma.TransactionClient,
+    defaultRegion?: string,
   ): Promise<MergeGroupResolution> {
     const db = tx ?? this.prisma;
-    const keys = buildContactDedupKeys(contact);
+    const keys = buildContactDedupKeys(contact, defaultRegion);
     if (keys.length === 0) {
       const group = await db.contactMergeGroup.create({
         data: { userId },
@@ -111,8 +118,9 @@ export class ContactDedupService {
     mergeGroupId: string,
     contact: NormalizedContact,
     tx: Prisma.TransactionClient,
+    defaultRegion?: string,
   ): Promise<void> {
-    const keys = buildContactDedupKeys(contact);
+    const keys = buildContactDedupKeys(contact, defaultRegion);
     const nextSet = new Set(keys.map((k) => `${k.kind}:${k.value}`));
     const owned = await tx.contactDedupKey.findMany({
       where: { mergeGroupId, userId },

@@ -16,10 +16,30 @@ export function buildContactsListWhere(
 ): Prisma.ContactWhereInput {
   const search = normalizeSearch(query.search);
 
+  const tagFilter =
+    query.tagIds && query.tagIds.length > 0
+      ? {
+          AND: query.tagIds.map((tagId) => ({
+            tags: { some: { id: tagId } },
+          })),
+        }
+      : {};
+
+  const groupFilter =
+    query.groupIds && query.groupIds.length > 0
+      ? {
+          AND: query.groupIds.map((groupId) => ({
+            groups: { some: { id: groupId } },
+          })),
+        }
+      : {};
+
   return {
     userId,
     deletedAt: null,
     ...(query.source ? { source: query.source } : {}),
+    ...tagFilter,
+    ...groupFilter,
     ...(search
       ? {
           OR: [

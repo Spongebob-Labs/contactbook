@@ -64,7 +64,12 @@ export class TwilioWebhookController {
     const from = params.From ?? "";
     const inboundText =
       (params.ButtonText && params.ButtonText.trim()) || (params.Body ?? "");
-    await this.processor.handleInboundMessage(from, inboundText);
+    const latitude = params.Latitude ? Number(params.Latitude) : undefined;
+    const longitude = params.Longitude ? Number(params.Longitude) : undefined;
+    await this.processor.handleInboundMessage(from, inboundText, {
+      latitude: Number.isFinite(latitude) ? latitude : undefined,
+      longitude: Number.isFinite(longitude) ? longitude : undefined,
+    });
     return "";
   }
 

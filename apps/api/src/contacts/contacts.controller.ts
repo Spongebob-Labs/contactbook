@@ -6,6 +6,8 @@ import {
   ParseEnumPipe,
   ParseUUIDPipe,
   Post,
+  Patch,
+  Put,
   Query,
   Req,
   UploadedFile,
@@ -36,11 +38,15 @@ import { ContactsSyncService } from "./contacts-sync.service";
 import { ContactsService } from "./contacts.service";
 import { ContactImportResultDto } from "./dto/contact-import-result.dto";
 import { toContactImportResult } from "./contact-import-result.mapper";
+import { ContactImportSummaryDto } from "./dto/contact-import-summary.dto";
 import { ContactListResponseDto } from "./dto/contact-list-response.dto";
 import { ContactDetailDto } from "./dto/contact-response.dto";
 import { ContactSyncResponseDto } from "./dto/contact-sync-response.dto";
+import { SetContactGroupsDto } from "../groups/dto/group.dto";
+import { SetContactTagsDto } from "../tags/dto/tag.dto";
 import { IcloudImportDto } from "./dto/icloud-import.dto";
 import { ListContactsQueryDto } from "./dto/list-contacts-query.dto";
+import { UpdateContactDto } from "./dto/update-contact.dto";
 import { MAX_VCF_IMPORT_BYTES } from "./vcard-import.constants";
 import { VcardContactsImportService } from "./vcard-contacts-import.service";
 
@@ -142,6 +148,13 @@ export class ContactsController {
     return toContactImportResult(run);
   }
 
+  @Get("import/summary")
+  @ApiOperation({ summary: "Import counts and last sync metadata by source" })
+  @ApiOkResponse({ type: ContactImportSummaryDto })
+  importSummary(@CurrentUser() user: JwtUserPayload) {
+    return this.contacts.getImportSummary(user.sub);
+  }
+
   @Get()
   @ApiOperation({
     summary: "List contacts",
@@ -158,6 +171,16 @@ export class ContactsController {
   })
   @ApiQuery({ name: "source", enum: ContactSource, required: false })
   @ApiQuery({
+    name: "tagIds",
+    required: false,
+    description: "Comma-separated tag UUIDs (AND filter)",
+  })
+  @ApiQuery({
+    name: "groupIds",
+    required: false,
+    description: "Comma-separated group UUIDs (AND filter)",
+  })
+  @ApiQuery({
     name: "sort",
     required: false,
     enum: ["name", "updatedAt", "source"],
@@ -173,6 +196,43 @@ export class ContactsController {
     @Query() query: ListContactsQueryDto,
   ) {
     return this.contacts.listPaginated(user.sub, query);
+  }
+
+  @Patch(":id")
+  @ApiOperation({
+    summary: "Update a contact",
+    description:
+      "Updates ContactBook-managed fields and triggers provider write-back for Google/iCloud contacts when write scope is available.",
+  })
+  @ApiOkResponse({ type: ContactDetailDto })
+  update(
+    @CurrentUser() user: JwtUserPayload,
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() dto: UpdateContactDto,
+  ) {
+    return this.contacts.updateContact(user.sub, id, dto);
+  }
+
+  @Put(":id/tags")
+  @ApiOperation({ summary: "Replace tags on a contact" })
+  @ApiOkResponse({ type: ContactDetailDto })
+  setTags(
+    @CurrentUser() user: JwtUserPayload,
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() dto: SetContactTagsDto,
+  ) {
+    return this.contacts.setContactTags(user.sub, id, dto.tagIds);
+  }
+
+  @Put(":id/groups")
+  @ApiOperation({ summary: "Replace groups on a contact" })
+  @ApiOkResponse({ type: ContactDetailDto })
+  setGroups(
+    @CurrentUser() user: JwtUserPayload,
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() dto: SetContactGroupsDto,
+  ) {
+    return this.contacts.setContactGroups(user.sub, id, dto.groupIds);
   }
 
   @Get(":id")
