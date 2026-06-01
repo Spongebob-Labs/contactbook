@@ -6,6 +6,7 @@ import {
   Post,
   Put,
   UseGuards,
+  UseFilters,
 } from "@nestjs/common";
 import {
   ApiBearerAuth,
@@ -17,6 +18,7 @@ import type { JwtUserPayload } from "../common/decorators/current-user.decorator
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { TravelService } from "./travel.service";
+import { ApiExceptionFilter } from "../common/filters/api-exception.filter";
 
 class UpdateTravelSettingsDto {
   homeCity?: string | null;
@@ -35,6 +37,7 @@ class DispatchTravelNotificationDto {
 @ApiTags("Travel")
 @ApiBearerAuth("access-token")
 @UseGuards(JwtAuthGuard)
+@UseFilters(ApiExceptionFilter)
 @Controller({ path: "travel", version: "1" })
 export class TravelController {
   constructor(private readonly travel: TravelService) {}

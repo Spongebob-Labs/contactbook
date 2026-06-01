@@ -8,6 +8,7 @@ import {
   Patch,
   Post,
   UseGuards,
+  UseFilters,
 } from "@nestjs/common";
 import {
   ApiBearerAuth,
@@ -21,6 +22,7 @@ import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { CreateTagDto, TagResponseDto, UpdateTagDto } from "./dto/tag.dto";
 import { TagsService } from "./tags.service";
+import { ApiExceptionFilter } from "../common/filters/api-exception.filter";
 
 function toTagDto(tag: { id: string; name: string }): TagResponseDto {
   return { id: tag.id, name: tag.name };
@@ -29,6 +31,7 @@ function toTagDto(tag: { id: string; name: string }): TagResponseDto {
 @ApiTags("Contacts / Tags")
 @ApiBearerAuth("access-token")
 @UseGuards(JwtAuthGuard)
+@UseFilters(ApiExceptionFilter)
 @Controller({ path: "contacts/tags", version: "1" })
 export class TagsController {
   constructor(private readonly tags: TagsService) {}

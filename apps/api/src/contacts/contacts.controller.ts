@@ -49,10 +49,12 @@ import { ListContactsQueryDto } from "./dto/list-contacts-query.dto";
 import { UpdateContactDto } from "./dto/update-contact.dto";
 import { MAX_VCF_IMPORT_BYTES } from "./vcard-import.constants";
 import { VcardContactsImportService } from "./vcard-contacts-import.service";
+import { ApiExceptionFilter } from "../common/filters/api-exception.filter";
 
 @ApiTags("Contacts")
 @ApiBearerAuth("access-token")
 @UseGuards(JwtAuthGuard)
+@UseFilters(ApiExceptionFilter)
 @Controller({ path: "contacts", version: "1" })
 export class ContactsController {
   constructor(
