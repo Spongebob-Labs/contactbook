@@ -8,6 +8,7 @@ import {
   Patch,
   Post,
   UseGuards,
+  UseFilters,
 } from "@nestjs/common";
 import {
   ApiBearerAuth,
@@ -30,10 +31,12 @@ import {
 import { ProfileMeSerializerService } from "./profile-me.serializer";
 import { ProfileMeUpsertService } from "./profile-me.upsert.service";
 import type { ProfileMeResponse } from "./profile-me.types";
+import { ApiExceptionFilter } from "../common/filters/api-exception.filter";
 
 @ApiTags("Profile")
 @ApiBearerAuth("access-token")
 @UseGuards(JwtAuthGuard)
+@UseFilters(ApiExceptionFilter)
 @Controller({ path: "profile", version: "1" })
 export class ProfileController {
   constructor(

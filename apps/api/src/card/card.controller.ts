@@ -8,6 +8,7 @@ import {
   Patch,
   Post,
   UseGuards,
+  UseFilters,
 } from "@nestjs/common";
 import {
   ApiBearerAuth,
@@ -23,10 +24,12 @@ import { CardService } from "./card.service";
 import { AddCardFieldMappingDto } from "./dto/add-card-field-mapping.dto";
 import { CreateContactCardDto } from "./dto/create-contact-card.dto";
 import { UpdateContactCardDto } from "./dto/update-contact-card.dto";
+import { ApiExceptionFilter } from "../common/filters/api-exception.filter";
 
 @ApiTags("Cards")
 @ApiBearerAuth("access-token")
 @UseGuards(JwtAuthGuard)
+@UseFilters(ApiExceptionFilter)
 @Controller({ path: "cards", version: "1" })
 export class CardController {
   constructor(private readonly cards: CardService) {}

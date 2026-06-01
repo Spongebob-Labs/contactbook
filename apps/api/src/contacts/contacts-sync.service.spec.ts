@@ -9,7 +9,7 @@ describe("ContactsSyncService", () => {
   const svc = new ContactsSyncService(
     google as never,
     icloud as never,
-    credentials as never,
+    credentials,
   );
 
   beforeEach(() => {

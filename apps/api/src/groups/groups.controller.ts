@@ -8,6 +8,7 @@ import {
   Patch,
   Post,
   UseGuards,
+  UseFilters,
 } from "@nestjs/common";
 import {
   ApiBearerAuth,
@@ -25,6 +26,7 @@ import {
   UpdateContactGroupDto,
 } from "./dto/group.dto";
 import { GroupsService } from "./groups.service";
+import { ApiExceptionFilter } from "../common/filters/api-exception.filter";
 
 function toGroupDto(group: {
   id: string;
@@ -43,6 +45,7 @@ function toGroupDto(group: {
 @ApiTags("Contacts / Groups")
 @ApiBearerAuth("access-token")
 @UseGuards(JwtAuthGuard)
+@UseFilters(ApiExceptionFilter)
 @Controller({ path: "contacts/groups", version: "1" })
 export class GroupsController {
   constructor(private readonly groups: GroupsService) {}

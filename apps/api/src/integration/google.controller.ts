@@ -1,4 +1,11 @@
-import { Body, Controller, Delete, Post, UseGuards } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Delete,
+  Post,
+  UseGuards,
+  UseFilters,
+} from "@nestjs/common";
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
@@ -11,8 +18,10 @@ import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { GoogleService } from "./google.service";
 import { LinkGoogleProviderDto } from "./dto/link-google-provider.dto";
+import { ApiExceptionFilter } from "../common/filters/api-exception.filter";
 
 @ApiTags("Integrations / Google")
+@UseFilters(ApiExceptionFilter)
 @Controller({ path: "integrations/google", version: "1" })
 export class GoogleController {
   constructor(private readonly google: GoogleService) {}

@@ -7,6 +7,7 @@ import {
   Post,
   Req,
   Res,
+  UseFilters,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import {
@@ -32,8 +33,10 @@ import {
   resolveSessionCookieRuntime,
   setSessionCookies,
 } from "./session-cookie.util";
+import { ApiExceptionFilter } from "../common/filters/api-exception.filter";
 
 @ApiTags("Auth")
+@UseFilters(ApiExceptionFilter)
 @Controller({ path: "auth", version: "1" })
 export class AuthController {
   constructor(

@@ -95,7 +95,7 @@ describe("GoogleContactsSyncProvider", () => {
       config as never,
       oauthTokenService as never,
       contactUpsert as never,
-      contactLabels as never,
+      contactLabels,
     );
 
     const result = await provider.import(userId);
@@ -132,7 +132,7 @@ describe("GoogleContactsSyncProvider", () => {
       config as never,
       oauthTokenService as never,
       contactUpsert as never,
-      contactLabels as never,
+      contactLabels,
     );
 
     await provider.import(userId);
@@ -157,7 +157,7 @@ describe("GoogleContactsSyncProvider", () => {
       config as never,
       oauthTokenService as never,
       contactUpsert as never,
-      contactLabels as never,
+      contactLabels,
     );
 
     await provider.import(userId);
@@ -188,7 +188,7 @@ describe("GoogleContactsSyncProvider", () => {
       config as never,
       oauthTokenService as never,
       contactUpsert as never,
-      contactLabels as never,
+      contactLabels,
     );
 
     const result = await provider.sync(userId);
