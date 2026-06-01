@@ -49,10 +49,8 @@ export class TravelCronService {
     });
     for (const event of pending) {
       const where = `${event.city}, ${event.country}`.trim();
-      await this.twilio.sendWhatsApp(
-        e164FromStoredUser(user),
-        `Upcoming travel: ${where} (${event.startDate.toISOString().slice(0, 10)})`,
-      );
+      const travelerMessage = `Upcoming travel: ${where} (${event.startDate.toISOString().slice(0, 10)}). Reply NOTIFY to alert your travel contacts.`;
+      await this.twilio.sendWhatsApp(e164FromStoredUser(user), travelerMessage);
       await this.prisma.travelEvent.update({
         where: { id: event.id },
         data: { whatsappSentAt: new Date() },

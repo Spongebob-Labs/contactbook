@@ -1,8 +1,4 @@
-import {
-  HttpStatus,
-  INestApplication,
-  NotImplementedException,
-} from "@nestjs/common";
+import { HttpStatus, INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
@@ -14,7 +10,9 @@ import { ContactUpsertService } from "./contact-upsert.service";
 import { ContactsController } from "./contacts.controller";
 import { ContactsService } from "./contacts.service";
 import { ContactsSyncService } from "./contacts-sync.service";
+import { ContactLabelsService } from "./contact-labels.service";
 import { VcardContactsImportService } from "./vcard-contacts-import.service";
+import { OAuthTokenService } from "../oauth-tokens/oauth-token.service";
 
 const importResult = {
   completedAt: new Date("2026-05-22T12:00:00.000Z"),
@@ -27,6 +25,7 @@ describe("ContactsController (HTTP)", () => {
   let app: INestApplication;
   let contactsSync: { import: jest.Mock; sync: jest.Mock };
   let contacts: { listPaginated: jest.Mock; get: jest.Mock };
+  let oauthTokenService: { upsertForUser: jest.Mock };
   const prisma = {
     integrationState: { upsert: jest.fn().mockResolvedValue({}) },
   };
@@ -38,6 +37,9 @@ describe("ContactsController (HTTP)", () => {
       duplicatesFound: 0,
     }),
   };
+  const contactLabels = {
+    applyVcfCategories: jest.fn().mockResolvedValue(undefined),
+  };
 
   beforeEach(async () => {
     contactsSync = {
@@ -48,6 +50,9 @@ describe("ContactsController (HTTP)", () => {
       listPaginated: jest.fn(),
       get: jest.fn(),
     };
+    oauthTokenService = {
+      upsertForUser: jest.fn().mockResolvedValue({}),
+    };
     jest.clearAllMocks();
 
     const moduleRef = await Test.createTestingModule({
@@ -56,8 +61,10 @@ describe("ContactsController (HTTP)", () => {
         { provide: ContactsService, useValue: contacts },
         { provide: ContactsSyncService, useValue: contactsSync },
         VcardContactsImportService,
+        { provide: OAuthTokenService, useValue: oauthTokenService },
         { provide: PrismaService, useValue: prisma },
         { provide: ContactUpsertService, useValue: contactUpsert },
+        { provide: ContactLabelsService, useValue: contactLabels },
       ],
     })
       .overrideGuard(JwtAuthGuard)
@@ -87,13 +94,39 @@ describe("ContactsController (HTTP)", () => {
     expect((res.body as Record<string, unknown>).completedAt).toBeDefined();
   });
 
-  it("POST /contacts/import/icloud returns 501", async () => {
-    contactsSync.import.mockRejectedValue(
-      new NotImplementedException("iCloud not ready"),
+  it("POST /contacts/import/icloud stores credentials and imports contacts", async () => {
+    const res = await request(app.getHttpServer() as never)
+      .post("/api/v1/contacts/import/icloud")
+      .send({
+        appleId: "user@icloud.com",
+        appSpecificPassword: "abcd-efgh-ijkl-mnop",
+      })
+      .expect(HttpStatus.CREATED);
+
+    expect(oauthTokenService.upsertForUser).toHaveBeenCalledWith(
+      TEST_USER_ID,
+      "icloud",
+      {
+        accessToken: "user@icloud.com",
+        refreshToken: "abcd-efgh-ijkl-mnop",
+      },
     );
+    expect(contactsSync.import).toHaveBeenCalledWith(TEST_USER_ID, "ICLOUD");
+    expect(res.body).toMatchObject({
+      created: 1,
+      updated: 0,
+      skipped: [],
+    });
+  });
+
+  it("POST /contacts/import/icloud rejects invalid payload", async () => {
     await request(app.getHttpServer() as never)
       .post("/api/v1/contacts/import/icloud")
-      .expect(HttpStatus.NOT_IMPLEMENTED);
+      .send({ appleId: "not-an-email" })
+      .expect(HttpStatus.BAD_REQUEST);
+
+    expect(oauthTokenService.upsertForUser).not.toHaveBeenCalled();
+    expect(contactsSync.import).not.toHaveBeenCalled();
   });
 
   it("POST /contacts/import/vcf accepts multipart file", async () => {

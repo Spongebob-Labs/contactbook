@@ -1,5 +1,11 @@
 import { randomUUID } from "node:crypto";
 import type { ContactSource, Prisma } from "@prisma/client";
+import parsePhoneNumberFromString, {
+  type CountryCode,
+  getCountries,
+  getCountryCallingCode,
+} from "libphonenumber-js/max";
+import { normalizeDialCode } from "../common/phone.util";
 import type { PrismaService } from "../prisma/prisma.service";
 import type { NormalizedContact } from "./normalized-contact.types";
 
@@ -15,12 +21,64 @@ export function normalizeEmail(value: string): string | null {
   return t.length > 0 && t.includes("@") ? t : null;
 }
 
+export function defaultCountryFromDialCode(
+  dialCode: string | undefined,
+): CountryCode | undefined {
+  if (!dialCode?.trim()) {
+    return undefined;
+  }
+  const wanted = normalizeDialCode(dialCode).replace("+", "");
+  for (const country of getCountries()) {
+    if (getCountryCallingCode(country) === wanted) {
+      return country;
+    }
+  }
+  return undefined;
+}
+
 export function normalizePhone(value: string): string | null {
   const digits = value.replace(/\D/g, "");
   return digits.length >= 7 ? digits : null;
 }
 
-export function buildDedupKeys(contact: NormalizedContact): DedupKey[] {
+export function normalizePhoneForDedup(
+  value: string,
+  defaultRegion?: string,
+): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const defaultCountry = defaultCountryFromDialCode(defaultRegion);
+  const parsed = parsePhoneNumberFromString(
+    trimmed,
+    defaultCountry ?? undefined,
+  );
+  if (parsed?.isValid()) {
+    return parsed.number.replace("+", "");
+  }
+  const digits = normalizePhone(trimmed);
+  if (digits) {
+    return digits;
+  }
+  const serviceCode = trimmed.replace(/\s+/g, "");
+  if (
+    (serviceCode.includes("*") || serviceCode.includes("#")) &&
+    /^[*#\d]{3,}$/.test(serviceCode)
+  ) {
+    return `svc:${serviceCode.toLowerCase()}`;
+  }
+  const shortDigits = trimmed.replace(/\D/g, "");
+  if (shortDigits.length >= 4) {
+    return `short:${shortDigits}`;
+  }
+  return null;
+}
+
+export function buildDedupKeys(
+  contact: NormalizedContact,
+  defaultRegion?: string,
+): DedupKey[] {
   const keys = new Map<string, DedupKey>();
   for (const email of contact.emails) {
     const value = normalizeEmail(email.value);
@@ -29,7 +87,7 @@ export function buildDedupKeys(contact: NormalizedContact): DedupKey[] {
     }
   }
   for (const phone of contact.phones) {
-    const value = normalizePhone(phone.value);
+    const value = normalizePhoneForDedup(phone.value, defaultRegion);
     if (value) {
       keys.set(`phone:${value}`, { kind: "phone", value });
     }
@@ -106,9 +164,10 @@ export async function loadDedupIndex(
 export function resolveMergeGroupFromIndex(
   index: DedupIndex,
   contact: NormalizedContact,
+  defaultRegion?: string,
 ): MergeGroupResolution {
   const identity = contactIdentity(contact.source, contact.externalId);
-  const keys = buildDedupKeys(contact);
+  const keys = buildDedupKeys(contact, defaultRegion);
 
   let mergeGroupId: string | undefined;
   for (const key of keys) {

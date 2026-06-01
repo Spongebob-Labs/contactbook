@@ -68,6 +68,44 @@ export class ContactUrlDto {
   label?: string | null;
 }
 
+export class ContactTagDto {
+  @ApiProperty()
+  id!: string;
+
+  @ApiProperty()
+  name!: string;
+}
+
+export class ContactGroupDto {
+  @ApiProperty()
+  id!: string;
+
+  @ApiProperty()
+  name!: string;
+}
+
+export class ContactProviderLinkDto {
+  @ApiProperty({ enum: ContactSource })
+  source!: ContactSource;
+
+  @ApiProperty()
+  externalId!: string;
+
+  @ApiPropertyOptional()
+  sourceRevision?: string | null;
+
+  @ApiProperty({
+    description: "True when this link matches the contact row primary source.",
+  })
+  isPrimary!: boolean;
+
+  @ApiProperty()
+  firstLinkedAt!: Date;
+
+  @ApiProperty()
+  lastUpdatedAt!: Date;
+}
+
 export class ContactSummaryDto {
   @ApiProperty()
   id!: string;
@@ -98,6 +136,12 @@ export class ContactSummaryDto {
 
   @ApiPropertyOptional({ type: ContactEmailDto })
   primaryEmail?: ContactEmailDto | null;
+
+  @ApiProperty({ type: [ContactTagDto] })
+  tags!: ContactTagDto[];
+
+  @ApiProperty({ type: [ContactGroupDto] })
+  groups!: ContactGroupDto[];
 
   @ApiProperty()
   createdAt!: Date;
@@ -133,6 +177,13 @@ export class ContactDetailDto extends ContactSummaryDto {
 
   @ApiProperty({ type: [ContactUrlDto] })
   urls!: ContactUrlDto[];
+
+  @ApiProperty({
+    type: [ContactProviderLinkDto],
+    description:
+      "All provider keys (source + externalId) that sourced or updated this contact.",
+  })
+  providerLinks!: ContactProviderLinkDto[];
 
   @ApiPropertyOptional()
   deletedAt?: Date | null;

@@ -21,7 +21,6 @@ describe("WhatsappWebhookService", () => {
     beginRequesterCardSelection: jest.fn(),
     sendCompletionMessages: jest.fn(),
   };
-
   const svc = new WhatsappWebhookService(
     prisma as never,
     twilio as never,

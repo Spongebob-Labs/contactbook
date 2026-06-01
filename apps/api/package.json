@@ -16,6 +16,8 @@
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
     "prisma:push": "prisma db push",
+    "collapse-contacts": "ts-node --transpile-only scripts/collapse-duplicate-contacts.ts",
+    "encrypt-financial-fields": "ts-node --transpile-only scripts/encrypt-financial-profile-fields.ts",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
@@ -50,6 +52,7 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "swagger-ui-express": "^5.0.1",
+    "tsdav": "^2.2.2",
     "twilio": "^6.0.2",
     "vcf": "^2.1.2"
   },

@@ -5,7 +5,12 @@ import { ContactsSyncService } from "./contacts-sync.service";
 describe("ContactsSyncService", () => {
   const google = { sync: jest.fn(), import: jest.fn() };
   const icloud = { sync: jest.fn(), import: jest.fn() };
-  const svc = new ContactsSyncService(google as never, icloud);
+  const credentials = { assertValid: jest.fn().mockResolvedValue(undefined) };
+  const svc = new ContactsSyncService(
+    google as never,
+    icloud as never,
+    credentials,
+  );
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -14,6 +19,10 @@ describe("ContactsSyncService", () => {
   it("dispatches GOOGLE sync to google provider", async () => {
     google.sync.mockResolvedValue({ source: ContactSource.GOOGLE });
     await svc.sync("user-1", ContactSource.GOOGLE);
+    expect(credentials.assertValid).toHaveBeenCalledWith(
+      "user-1",
+      ContactSource.GOOGLE,
+    );
     expect(google.sync).toHaveBeenCalledWith("user-1");
     expect(google.import).not.toHaveBeenCalled();
   });
@@ -25,20 +34,24 @@ describe("ContactsSyncService", () => {
       completedAt: new Date(),
     });
     const result = await svc.import("user-1", ContactSource.GOOGLE);
+    expect(credentials.assertValid).toHaveBeenCalledWith(
+      "user-1",
+      ContactSource.GOOGLE,
+    );
     expect(google.import).toHaveBeenCalledWith("user-1");
     expect(google.sync).not.toHaveBeenCalled();
     expect(result).toMatchObject({ created: 1, updated: 0, skipped: [] });
   });
 
-  it("rejects CSV sync", async () => {
-    await expect(svc.sync("user-1", ContactSource.CSV)).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
+  it("rejects VCARD sync", async () => {
+    await expect(
+      svc.sync("user-1", ContactSource.VCARD),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it("rejects CSV import", async () => {
+  it("rejects VCARD import", async () => {
     await expect(
-      svc.import("user-1", ContactSource.CSV),
+      svc.import("user-1", ContactSource.VCARD),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 

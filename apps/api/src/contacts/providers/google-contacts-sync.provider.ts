@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  HttpException,
   Injectable,
   InternalServerErrorException,
   Logger,
@@ -10,6 +11,7 @@ import { google, people_v1 } from "googleapis";
 import { OAuthTokenService } from "../../oauth-tokens/oauth-token.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { syncStatsProcessedCount } from "../contact-sync-stats";
+import { ContactLabelsService } from "../contact-labels.service";
 import { ContactUpsertService } from "../contact-upsert.service";
 import { tryGooglePersonForImport } from "../google-contact.adapter";
 import type { ContactImportRun } from "../contact-import-result.mapper";
@@ -29,7 +31,22 @@ export class GoogleContactsSyncProvider {
     private readonly config: ConfigService,
     private readonly oauthTokenService: OAuthTokenService,
     private readonly contactUpsert: ContactUpsertService,
+    private readonly contactLabels: ContactLabelsService,
   ) {}
+
+  /** Lightweight People API probe before sync/import. */
+  async assertCredentialsValid(userId: string): Promise<void> {
+    try {
+      const people = await this.getAuthorizedPeopleClient(userId);
+      await people.people.connections.list({
+        resourceName: "people/me",
+        pageSize: 1,
+        personFields: "names",
+      });
+    } catch (error) {
+      throw this.mapCredentialError(userId, error);
+    }
+  }
 
   /** Always runs a full import; never sends a stored sync token to Google. */
   async import(userId: string): Promise<ContactImportRun> {
@@ -53,6 +70,9 @@ export class GoogleContactsSyncProvider {
     try {
       return await this.runContactsSync(userId, false);
     } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
       if (this.isInvalidSyncTokenError(error)) {
         this.logger.warn(
           `Google People sync token invalid for user ${userId}; falling back to full import`,
@@ -100,7 +120,7 @@ export class GoogleContactsSyncProvider {
         pageSize: 100,
         pageToken,
         personFields:
-          "names,emailAddresses,phoneNumbers,organizations,metadata",
+          "names,emailAddresses,phoneNumbers,organizations,metadata,memberships",
         requestSyncToken: true,
         syncToken: activeSyncToken ?? undefined,
       });
@@ -130,6 +150,8 @@ export class GoogleContactsSyncProvider {
       userId,
       contactsToUpsert,
     );
+
+    await this.contactLabels.syncGoogleContactGroups(userId, connections);
 
     const updated = await this.prisma.integrationState.update({
       where: {
@@ -279,11 +301,29 @@ export class GoogleContactsSyncProvider {
     return this.googleErrorStatus(error) === 410;
   }
 
-  private mapSyncError(userId: string, error: unknown): Error {
-    if (error instanceof BadRequestException) {
+  private mapCredentialError(userId: string, error: unknown): Error {
+    if (error instanceof HttpException) {
       return error;
     }
     const status = this.googleErrorStatus(error);
+    const message = error instanceof Error ? error.message : String(error);
+    if (
+      status === 401 ||
+      status === 403 ||
+      message.toLowerCase().includes("invalid_grant")
+    ) {
+      return new BadRequestException(
+        "Google credentials are invalid or expired. Reconnect Google in settings and try again.",
+      );
+    }
+    return this.mapSyncError(userId, error);
+  }
+
+  private mapSyncError(userId: string, error: unknown): Error {
+    const status = this.googleErrorStatus(error);
+    if (error instanceof HttpException) {
+      return error;
+    }
     if (status === 401 || status === 403) {
       return new BadRequestException(
         "Google authorization expired or was revoked. Reconnect your Google account.",

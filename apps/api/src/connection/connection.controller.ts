@@ -1,4 +1,11 @@
-import { Body, Controller, Get, Post, UseGuards } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  Post,
+  UseGuards,
+  UseFilters,
+} from "@nestjs/common";
 import {
   ApiBearerAuth,
   ApiConflictResponse,
@@ -16,6 +23,7 @@ import {
   ConnectionInviteResponseDto,
   ConnectionResponseDto,
 } from "./dto/create-connection-response.dto";
+import { ApiExceptionFilter } from "../common/filters/api-exception.filter";
 
 function toConnectionDto(
   connection: Awaited<ReturnType<ConnectionService["listForUser"]>>[number],
@@ -37,6 +45,7 @@ function toConnectionDto(
 @ApiTags("Connections")
 @ApiBearerAuth("access-token")
 @UseGuards(JwtAuthGuard)
+@UseFilters(ApiExceptionFilter)
 @Controller({ path: "connections", version: "1" })
 export class ConnectionController {
   constructor(private readonly connections: ConnectionService) {}

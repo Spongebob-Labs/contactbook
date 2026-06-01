@@ -4,7 +4,7 @@ import {
   Logger,
   NotFoundException,
 } from "@nestjs/common";
-import { OAuthAccount, OAuthProvider } from "@prisma/client";
+import { OAuthAccount, OAuthProvider, Prisma } from "@prisma/client";
 
 import { PrismaService } from "../prisma/prisma.service";
 import { decryptOAuthTokenStored, encryptOAuthToken } from "./crypto.util";
@@ -14,6 +14,8 @@ export type OAuthTokenUpsertInput = {
   accessToken?: string | null;
   accessTokenExpiresAt?: Date | null;
   scope?: string | null;
+  providerAccountId?: string | null;
+  providerState?: Prisma.InputJsonValue | null;
 };
 
 export type OAuthAccessTokenUpdate = {
@@ -29,6 +31,8 @@ export type DecryptedOAuthCredential = {
   refreshToken: string;
   accessToken: string | null;
   accessTokenExpiresAt: Date | null;
+  providerAccountId: string | null;
+  providerState: Prisma.JsonValue | null;
 };
 
 const PROVIDER_TO_ENUM: Record<string, OAuthProvider> = {
@@ -44,6 +48,18 @@ function toOAuthProvider(provider: string): OAuthProvider {
     throw new Error(`Unsupported OAuth provider: ${provider}`);
   }
   return mapped;
+}
+
+function toProviderStateInput(
+  value: Prisma.InputJsonValue | null | undefined,
+): Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null) {
+    return Prisma.DbNull;
+  }
+  return value;
 }
 
 @Injectable()
@@ -71,7 +87,13 @@ export class OAuthTokenService {
         refreshToken: refreshTokenCiphertext,
         accessToken: accessTokenCiphertext,
         expiresAt: input.accessTokenExpiresAt ?? null,
-        scopes: input.scope ?? "",
+        ...(input.scope !== undefined && { scopes: input.scope ?? "" }),
+        ...(input.providerAccountId !== undefined && {
+          providerAccountId: input.providerAccountId,
+        }),
+        ...(input.providerState !== undefined && {
+          providerState: toProviderStateInput(input.providerState),
+        }),
       },
       create: {
         userId,
@@ -80,6 +102,8 @@ export class OAuthTokenService {
         accessToken: accessTokenCiphertext,
         expiresAt: input.accessTokenExpiresAt ?? null,
         scopes: input.scope ?? "",
+        providerAccountId: input.providerAccountId ?? null,
+        providerState: toProviderStateInput(input.providerState),
       },
     });
   }
@@ -165,14 +189,21 @@ export class OAuthTokenService {
           ? decryptOAuthTokenStored(row.accessToken)
           : null,
         accessTokenExpiresAt: row.expiresAt,
+        providerAccountId: row.providerAccountId,
+        providerState: row.providerState,
       };
     } catch (error) {
       const reason = error instanceof Error ? error.message : "unknown error";
       this.logger.error(
         `Failed to decrypt ${provider} OAuth tokens for user ${row.userId}: ${reason}`,
       );
+      const keyMismatch =
+        reason.includes("Unsupported state or unable to authenticate data") ||
+        reason.includes("Malformed encrypted OAuth token payload");
       throw new BadRequestException(
-        `Stored ${provider} credentials could not be read. Disconnect and reconnect the account.`,
+        keyMismatch
+          ? `Stored ${provider} credentials could not be decrypted. The server encryption key may not match the environment where this account was linked. Disconnect and reconnect ${provider}, or use the matching OAUTH_TOKEN_ENCRYPTION_KEY_BASE64.`
+          : `Stored ${provider} credentials could not be read. Disconnect and reconnect the account.`,
       );
     }
   }

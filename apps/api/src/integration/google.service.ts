@@ -8,6 +8,7 @@ const GOOGLE_PROVIDER = "google";
 
 const GOOGLE_SCOPES = [
   "https://www.googleapis.com/auth/contacts.readonly",
+  "https://www.googleapis.com/auth/contacts",
   "https://www.googleapis.com/auth/calendar.readonly",
 ];
 

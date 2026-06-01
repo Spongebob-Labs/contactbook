@@ -3,6 +3,12 @@ import type { ContactSource, Prisma } from "@prisma/client";
 import type { DedupIndex } from "./contact-dedup-index";
 import { ContactDedupService } from "./contact-dedup.service";
 import {
+  contactRowToNormalized,
+  mergeNormalizedContactFields,
+  mergeScalarFields,
+} from "./contact-merge.util";
+import { ContactProviderLinkService } from "./contact-provider-link.service";
+import {
   emptyContactSyncStats,
   importSyncOutcome,
   incrementSyncStat,
@@ -23,15 +29,27 @@ import type {
 const CONTACT_UPSERT_TRANSACTION_TIMEOUT_MS = 60_000;
 const CONTACT_UPSERT_TRANSACTION_MAX_WAIT_MS = 10_000;
 
+const contactChildrenInclude = {
+  phones: { orderBy: { sortOrder: "asc" as const } },
+  emails: { orderBy: { sortOrder: "asc" as const } },
+  organizations: { orderBy: { sortOrder: "asc" as const } },
+  addresses: { orderBy: { sortOrder: "asc" as const } },
+  urls: { orderBy: { sortOrder: "asc" as const } },
+};
+
 export type UpsertBatchOptions = {
   batchSize?: number;
+  /** User dial prefix (e.g. +91) for phone dedup normalization. */
+  defaultRegion?: string;
 };
 
 type PlannedContactRow = {
   contact: NormalizedContact;
   mergeGroupId: string;
   duplicateFound: boolean;
-  existingId?: string;
+  targetContactId?: string;
+  isNewContact: boolean;
+  crossSourceMerge: boolean;
 };
 
 @Injectable()
@@ -39,64 +57,30 @@ export class ContactUpsertService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly dedup: ContactDedupService,
+    private readonly providerLinks: ContactProviderLinkService,
   ) {}
 
   async upsert(
     userId: string,
     contact: NormalizedContact,
+    options?: Pick<UpsertBatchOptions, "defaultRegion">,
   ): Promise<ContactUpsertResult | ContactSoftDeleteResult | null> {
     if (contact.deleted) {
       return this.softDelete(userId, contact.source, contact.externalId);
     }
 
+    const defaultRegion =
+      options?.defaultRegion ?? (await this.getUserDefaultRegion(userId));
+
     return this.prisma.$transaction(
       async (tx) => {
-        const existing = await tx.contact.findUnique({
-          where: {
-            userId_source_externalId: {
-              userId,
-              source: contact.source,
-              externalId: contact.externalId,
-            },
-          },
-        });
-
-        const { mergeGroupId, duplicateFound } =
-          await this.dedup.resolveMergeGroup(userId, contact, tx);
-
-        const row = await tx.contact.upsert({
-          where: {
-            userId_source_externalId: {
-              userId,
-              source: contact.source,
-              externalId: contact.externalId,
-            },
-          },
-          create: {
-            ...this.contactScalarFields(contact),
-            mergeGroupId,
-            userId,
-          },
-          update: {
-            ...this.contactScalarFields(contact),
-            mergeGroupId,
-            deletedAt: null,
-          },
-        });
-
-        await this.dedup.refreshKeysForContact(
+        const outcome = await this.applyUpsertInTransaction(
           userId,
-          row.id,
-          mergeGroupId,
           contact,
+          defaultRegion,
           tx,
         );
-        await this.replaceChildren(tx, row.id, contact);
-
-        const hasActiveExisting =
-          existing != null && existing.deletedAt == null;
-        const outcome = importSyncOutcome(hasActiveExisting, duplicateFound);
-        return { contact: row, outcome, duplicateFound };
+        return outcome;
       },
       {
         timeout: CONTACT_UPSERT_TRANSACTION_TIMEOUT_MS,
@@ -110,10 +94,17 @@ export class ContactUpsertService {
     source: ContactSource,
     externalId: string,
   ): Promise<ContactSoftDeleteResult> {
-    await this.prisma.contact.updateMany({
-      where: { userId, source, externalId },
-      data: { deletedAt: new Date() },
-    });
+    const deleted = await this.providerLinks.softDeleteByProviderKey(
+      userId,
+      source,
+      externalId,
+    );
+    if (!deleted) {
+      await this.prisma.contact.updateMany({
+        where: { userId, source, externalId },
+        data: { deletedAt: new Date() },
+      });
+    }
     return { outcome: "deleted", duplicateFound: false };
   }
 
@@ -138,6 +129,8 @@ export class ContactUpsertService {
       return stats;
     }
 
+    const defaultRegion =
+      options?.defaultRegion ?? (await this.getUserDefaultRegion(userId));
     const batchSize = options?.batchSize ?? VCF_IMPORT_BATCH_SIZE;
     const index = await this.dedup.loadDedupIndex(userId);
 
@@ -145,7 +138,14 @@ export class ContactUpsertService {
       const chunk = contacts.slice(offset, offset + batchSize);
       await this.prisma.$transaction(
         async (tx) => {
-          await this.upsertBatchChunk(userId, chunk, index, stats, tx);
+          await this.upsertBatchChunk(
+            userId,
+            chunk,
+            index,
+            stats,
+            defaultRegion,
+            tx,
+          );
         },
         {
           timeout: CONTACT_BATCH_TRANSACTION_TIMEOUT_MS,
@@ -157,11 +157,190 @@ export class ContactUpsertService {
     return stats;
   }
 
+  private async getUserDefaultRegion(
+    userId: string,
+  ): Promise<string | undefined> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { countryCode: true },
+    });
+    return user?.countryCode ?? undefined;
+  }
+
+  private async applyUpsertInTransaction(
+    userId: string,
+    contact: NormalizedContact,
+    defaultRegion: string | undefined,
+    tx: Prisma.TransactionClient,
+  ): Promise<ContactUpsertResult> {
+    const resolvedId = await this.providerLinks.resolveContactId(
+      userId,
+      contact.source,
+      contact.externalId,
+      tx,
+    );
+
+    const { mergeGroupId, duplicateFound } = await this.dedup.resolveMergeGroup(
+      userId,
+      contact,
+      tx,
+      defaultRegion,
+    );
+
+    if (resolvedId) {
+      return this.updateExistingContact(
+        userId,
+        resolvedId,
+        contact,
+        mergeGroupId,
+        duplicateFound,
+        false,
+        defaultRegion,
+        tx,
+      );
+    }
+
+    if (duplicateFound) {
+      const primaryId =
+        await this.providerLinks.findPrimaryContactIdInMergeGroup(
+          userId,
+          mergeGroupId,
+          tx,
+        );
+      if (primaryId) {
+        return this.updateExistingContact(
+          userId,
+          primaryId,
+          contact,
+          mergeGroupId,
+          true,
+          true,
+          defaultRegion,
+          tx,
+        );
+      }
+    }
+
+    const row = await tx.contact.create({
+      data: {
+        ...this.contactScalarFields(contact),
+        mergeGroupId,
+        userId,
+      },
+    });
+
+    await this.providerLinks.upsertLink(userId, row.id, contact, true, tx);
+    await this.dedup.refreshKeysForContact(
+      userId,
+      row.id,
+      mergeGroupId,
+      contact,
+      tx,
+      defaultRegion,
+    );
+    await this.replaceChildren(tx, row.id, contact);
+
+    return { contact: row, outcome: "added", duplicateFound };
+  }
+
+  private async updateExistingContact(
+    userId: string,
+    contactId: string,
+    contact: NormalizedContact,
+    mergeGroupId: string,
+    duplicateFound: boolean,
+    crossSourceMerge: boolean,
+    defaultRegion: string | undefined,
+    tx: Prisma.TransactionClient,
+  ): Promise<ContactUpsertResult> {
+    const existingRow = await tx.contact.findUniqueOrThrow({
+      where: { id: contactId },
+      include: contactChildrenInclude,
+    });
+    const hadActiveExisting = existingRow.deletedAt == null;
+    const sameProviderKey =
+      existingRow.source === contact.source &&
+      existingRow.externalId === contact.externalId;
+    const shouldUnionMerge =
+      crossSourceMerge || (duplicateFound && !sameProviderKey);
+
+    const mergedContact = shouldUnionMerge
+      ? mergeNormalizedContactFields(
+          contactRowToNormalized(existingRow),
+          contact,
+          defaultRegion,
+        )
+      : contact;
+
+    const row = await tx.contact.update({
+      where: { id: contactId },
+      data: {
+        ...(shouldUnionMerge
+          ? mergeScalarFields(existingRow, contact)
+          : this.contactDataFields(contact)),
+        mergeGroupId,
+        deletedAt: null,
+      },
+    });
+
+    const isPrimaryLink = !crossSourceMerge && sameProviderKey;
+
+    await this.providerLinks.upsertLink(
+      userId,
+      contactId,
+      contact,
+      isPrimaryLink,
+      tx,
+    );
+
+    await this.dedup.refreshKeysForContact(
+      userId,
+      contactId,
+      mergeGroupId,
+      mergedContact,
+      tx,
+      defaultRegion,
+    );
+    await this.replaceChildren(tx, contactId, mergedContact);
+
+    if (shouldUnionMerge) {
+      await this.softDeleteSiblings(userId, contactId, mergeGroupId, tx);
+    }
+
+    const outcome = importSyncOutcome(
+      hadActiveExisting || crossSourceMerge,
+      duplicateFound || crossSourceMerge,
+    );
+    return {
+      contact: row,
+      outcome,
+      duplicateFound: duplicateFound || crossSourceMerge,
+    };
+  }
+
+  private async softDeleteSiblings(
+    userId: string,
+    primaryId: string,
+    mergeGroupId: string,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
+    await tx.contact.updateMany({
+      where: {
+        userId,
+        mergeGroupId,
+        id: { not: primaryId },
+        deletedAt: null,
+      },
+      data: { deletedAt: new Date() },
+    });
+  }
+
   private async upsertBatchChunk(
     userId: string,
     chunk: NormalizedContact[],
     index: DedupIndex,
     stats: ContactSyncStats,
+    defaultRegion: string | undefined,
     tx: Prisma.TransactionClient,
   ): Promise<void> {
     const active: NormalizedContact[] = [];
@@ -174,22 +353,24 @@ export class ContactUpsertService {
       }
     }
 
-    if (toDelete.length > 0) {
-      await Promise.all(
-        toDelete.map((contact) =>
-          tx.contact.updateMany({
-            where: {
-              userId,
-              source: contact.source,
-              externalId: contact.externalId,
-            },
-            data: { deletedAt: new Date() },
-          }),
-        ),
+    for (const contact of toDelete) {
+      const deleted = await this.providerLinks.softDeleteByProviderKey(
+        userId,
+        contact.source,
+        contact.externalId,
+        tx,
       );
-      toDelete.forEach(() => {
-        incrementSyncStat(stats, "deleted");
-      });
+      if (!deleted) {
+        await tx.contact.updateMany({
+          where: {
+            userId,
+            source: contact.source,
+            externalId: contact.externalId,
+          },
+          data: { deletedAt: new Date() },
+        });
+      }
+      incrementSyncStat(stats, "deleted");
     }
 
     if (active.length === 0) {
@@ -198,181 +379,156 @@ export class ContactUpsertService {
 
     const source = active[0].source;
     const externalIds = active.map((c) => c.externalId);
-    const existingRows = await tx.contact.findMany({
-      where: { userId, source, externalId: { in: externalIds } },
-      select: { id: true, externalId: true, deletedAt: true },
-    });
-    const existingByExternalId = new Map(
-      existingRows.map((row) => [row.externalId, row]),
-    );
 
-    const planned: PlannedContactRow[] = active.map((contact) => {
-      const { mergeGroupId, duplicateFound } =
-        this.dedup.resolveMergeGroupFromIndex(index, contact);
-      const existing = existingByExternalId.get(contact.externalId);
-      const existingId = existing?.id;
-      const hasActiveExisting = existing != null && existing.deletedAt == null;
-      incrementSyncStat(
-        stats,
-        importSyncOutcome(hasActiveExisting, duplicateFound),
-        duplicateFound,
-      );
-      return { contact, mergeGroupId, duplicateFound, existingId };
-    });
+    const [existingRows, linkRows] = await Promise.all([
+      tx.contact.findMany({
+        where: { userId, source, externalId: { in: externalIds } },
+        select: { id: true, externalId: true, deletedAt: true },
+      }),
+      tx.contactProviderLink.findMany({
+        where: { userId, source, externalId: { in: externalIds } },
+        select: {
+          externalId: true,
+          contactId: true,
+          contact: { select: { deletedAt: true } },
+        },
+      }),
+    ]);
 
-    await this.dedup.flushDedupIndexPending(userId, index, tx);
-
-    const toCreate = planned.filter((row) => !row.existingId);
-    const toUpdate = planned.filter((row) => row.existingId);
-
-    const created =
-      toCreate.length > 0
-        ? await tx.contact.createManyAndReturn({
-            data: toCreate.map((row) => ({
-              ...this.contactScalarFields(row.contact),
-              mergeGroupId: row.mergeGroupId,
-              userId,
-            })),
-          })
-        : [];
-
-    if (toUpdate.length > 0) {
-      await Promise.all(
-        toUpdate.map((row) =>
-          tx.contact.update({
-            where: { id: row.existingId! },
-            data: {
-              ...this.contactScalarFields(row.contact),
-              mergeGroupId: row.mergeGroupId,
-              deletedAt: null,
-            },
-          }),
-        ),
-      );
+    const resolvedByExternalId = new Map<string, string>();
+    for (const row of existingRows) {
+      if (row.deletedAt == null) {
+        resolvedByExternalId.set(row.externalId, row.id);
+      }
     }
-
-    const contactIds = [
-      ...created.map((row) => row.id),
-      ...toUpdate.map((row) => row.existingId!),
-    ];
-
-    const contactById = new Map<string, NormalizedContact>();
-    for (const row of planned) {
-      const id =
-        row.existingId ??
-        created.find((c) => c.externalId === row.contact.externalId)?.id;
-      if (id) {
-        contactById.set(id, row.contact);
+    for (const link of linkRows) {
+      if (
+        link.contact.deletedAt == null &&
+        !resolvedByExternalId.has(link.externalId)
+      ) {
+        resolvedByExternalId.set(link.externalId, link.contactId);
       }
     }
 
-    await this.replaceChildrenBulk(tx, contactIds, contactById);
+    const planned: PlannedContactRow[] = [];
+    const mergeGroupIds: string[] = [];
+
+    for (const contact of active) {
+      const resolvedId = resolvedByExternalId.get(contact.externalId);
+      const { mergeGroupId, duplicateFound } =
+        this.dedup.resolveMergeGroupFromIndex(index, contact, defaultRegion);
+
+      if (resolvedId) {
+        planned.push({
+          contact,
+          mergeGroupId,
+          duplicateFound,
+          targetContactId: resolvedId,
+          isNewContact: false,
+          crossSourceMerge: false,
+        });
+        continue;
+      }
+
+      if (duplicateFound) {
+        mergeGroupIds.push(mergeGroupId);
+        planned.push({
+          contact,
+          mergeGroupId,
+          duplicateFound: true,
+          isNewContact: false,
+          crossSourceMerge: true,
+        });
+        continue;
+      }
+
+      planned.push({
+        contact,
+        mergeGroupId,
+        duplicateFound: false,
+        isNewContact: true,
+        crossSourceMerge: false,
+      });
+    }
+
+    const primaryByMergeGroup =
+      await this.providerLinks.findPrimaryContactIdsForMergeGroups(
+        userId,
+        mergeGroupIds,
+        tx,
+      );
+
+    for (const row of planned) {
+      if (row.crossSourceMerge && !row.targetContactId) {
+        row.targetContactId =
+          primaryByMergeGroup.get(row.mergeGroupId) ?? undefined;
+      }
+    }
+
+    await this.dedup.flushDedupIndexPending(userId, index, tx);
+
+    const pendingPrimaryByMergeGroup = new Map<string, string>();
+
+    for (const row of planned) {
+      if (row.isNewContact) {
+        const created = await tx.contact.create({
+          data: {
+            ...this.contactScalarFields(row.contact),
+            mergeGroupId: row.mergeGroupId,
+            userId,
+          },
+        });
+        pendingPrimaryByMergeGroup.set(row.mergeGroupId, created.id);
+        await this.providerLinks.upsertLink(
+          userId,
+          created.id,
+          row.contact,
+          true,
+          tx,
+        );
+        await this.dedup.refreshKeysForContact(
+          userId,
+          created.id,
+          row.mergeGroupId,
+          row.contact,
+          tx,
+          defaultRegion,
+        );
+        await this.replaceChildren(tx, created.id, row.contact);
+        incrementSyncStat(
+          stats,
+          importSyncOutcome(false, row.duplicateFound),
+          row.duplicateFound,
+        );
+        continue;
+      }
+
+      const targetId =
+        row.targetContactId ?? pendingPrimaryByMergeGroup.get(row.mergeGroupId);
+      if (!targetId) {
+        continue;
+      }
+
+      await this.updateExistingContact(
+        userId,
+        targetId,
+        row.contact,
+        row.mergeGroupId,
+        row.duplicateFound,
+        row.crossSourceMerge,
+        defaultRegion,
+        tx,
+      );
+      incrementSyncStat(
+        stats,
+        importSyncOutcome(true, row.duplicateFound || row.crossSourceMerge),
+        row.duplicateFound || row.crossSourceMerge,
+      );
+    }
   }
 
-  private async replaceChildrenBulk(
-    tx: Prisma.TransactionClient,
-    contactIds: string[],
-    contactById: Map<string, NormalizedContact>,
-  ): Promise<void> {
-    if (contactIds.length === 0) {
-      return;
-    }
-
-    await tx.contactPhone.deleteMany({
-      where: { contactId: { in: contactIds } },
-    });
-    await tx.contactEmail.deleteMany({
-      where: { contactId: { in: contactIds } },
-    });
-    await tx.contactOrganization.deleteMany({
-      where: { contactId: { in: contactIds } },
-    });
-    await tx.contactAddress.deleteMany({
-      where: { contactId: { in: contactIds } },
-    });
-    await tx.contactUrl.deleteMany({
-      where: { contactId: { in: contactIds } },
-    });
-
-    const phones: Prisma.ContactPhoneCreateManyInput[] = [];
-    const emails: Prisma.ContactEmailCreateManyInput[] = [];
-    const organizations: Prisma.ContactOrganizationCreateManyInput[] = [];
-    const addresses: Prisma.ContactAddressCreateManyInput[] = [];
-    const urls: Prisma.ContactUrlCreateManyInput[] = [];
-
-    for (const [contactId, contact] of contactById) {
-      contact.phones.forEach((p, sortOrder) => {
-        phones.push({
-          contactId,
-          value: p.value,
-          label: p.label ?? null,
-          isPrimary: p.isPrimary ?? false,
-          sortOrder,
-        });
-      });
-      contact.emails.forEach((e, sortOrder) => {
-        emails.push({
-          contactId,
-          value: e.value,
-          label: e.label ?? null,
-          isPrimary: e.isPrimary ?? false,
-          sortOrder,
-        });
-      });
-      contact.organizations.forEach((o, sortOrder) => {
-        organizations.push({
-          contactId,
-          companyName: o.companyName ?? null,
-          department: o.department ?? null,
-          title: o.title ?? null,
-          isPrimary: o.isPrimary ?? false,
-          sortOrder,
-        });
-      });
-      contact.addresses.forEach((a, sortOrder) => {
-        addresses.push({
-          contactId,
-          street: a.street ?? null,
-          city: a.city ?? null,
-          region: a.region ?? null,
-          postalCode: a.postalCode ?? null,
-          country: a.country ?? null,
-          label: a.label ?? null,
-          isPrimary: a.isPrimary ?? false,
-          sortOrder,
-        });
-      });
-      contact.urls.forEach((u, sortOrder) => {
-        urls.push({
-          contactId,
-          value: u.value,
-          label: u.label ?? null,
-          sortOrder,
-        });
-      });
-    }
-
-    if (phones.length > 0) {
-      await tx.contactPhone.createMany({ data: phones });
-    }
-    if (emails.length > 0) {
-      await tx.contactEmail.createMany({ data: emails });
-    }
-    if (organizations.length > 0) {
-      await tx.contactOrganization.createMany({ data: organizations });
-    }
-    if (addresses.length > 0) {
-      await tx.contactAddress.createMany({ data: addresses });
-    }
-    if (urls.length > 0) {
-      await tx.contactUrl.createMany({ data: urls });
-    }
-  }
-
-  private contactScalarFields(contact: NormalizedContact) {
+  private contactDataFields(contact: NormalizedContact) {
     return {
-      source: contact.source,
-      externalId: contact.externalId,
       sourceRevision: contact.sourceRevision ?? null,
       displayName: contact.displayName ?? null,
       firstName: contact.firstName ?? null,
@@ -382,6 +538,14 @@ export class ContactUpsertService {
       nameSuffix: contact.nameSuffix ?? null,
       nickname: contact.nickname ?? null,
       notes: contact.notes ?? null,
+    };
+  }
+
+  private contactScalarFields(contact: NormalizedContact) {
+    return {
+      source: contact.source,
+      externalId: contact.externalId,
+      ...this.contactDataFields(contact),
     };
   }
 

@@ -57,6 +57,8 @@ export function primaryPhoneFromUserSafe(user: UserIdentityRow): string {
   }
 }
 
+import { decryptFieldValueIfNeeded } from "../crypto/field-encryption.util";
+
 export function extensionPayload(
   field: FieldWithExtensions,
 ): Record<string, unknown> {
@@ -75,7 +77,8 @@ export function extensionPayload(
     return {
       bankName: b.bankName,
       accountHolder: b.accountHolder,
-      accountNumber: b.accountNumber,
+      accountNumber:
+        decryptFieldValueIfNeeded(b.accountNumber) ?? b.accountNumber,
       iban: b.iban,
       swiftBic: b.swiftBic,
       routingNumber: b.routingNumber,
@@ -85,11 +88,17 @@ export function extensionPayload(
   }
   if (field.digitalWallet) {
     const d = field.digitalWallet;
-    return { platform: d.platform, handleOrLink: d.handleOrLink };
+    return {
+      platform: d.platform,
+      handleOrLink: decryptFieldValueIfNeeded(d.handleOrLink) ?? d.handleOrLink,
+    };
   }
   if (field.cryptoWallet) {
     const c = field.cryptoWallet;
-    return { network: c.network, address: c.address };
+    return {
+      network: c.network,
+      address: decryptFieldValueIfNeeded(c.address) ?? c.address,
+    };
   }
   return {};
 }
