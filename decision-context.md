@@ -2,9 +2,9 @@
 
 ## 2026-06-02 - Contacts Source Filter Availability
 
-- Decision: Hide Contacts page source filter options whose source has zero contacts, using `/v1/contacts/import/summary` source counts and current page provider/source data as a fallback signal.
-- Reason: Empty source options create dead-end filters and make the Contacts toolbar noisier than needed. Keeping `All sources` visible preserves a stable reset path.
-- Notes: If a URL selects an empty source, the UI resets to `All sources`. Backend code and browser testing remain untouched.
+- Decision: Keep Contacts page source filter options static and limited to `All sources`, `Google`, and `vCard` until the backend provides Contacts-list source facets.
+- Reason: The current backend does not expose source counts scoped to the Contacts list query. Import summary is too broad, and current-page inference is too narrow after filtering. Google and VCF are the currently supported source filters.
+- Notes: Backend code and browser testing remain untouched. Replace this temporary static list with `GET /v1/contacts` source facets when available.
 
 ## 2026-06-02 - Contact Tags And Groups Frontend Integration
 

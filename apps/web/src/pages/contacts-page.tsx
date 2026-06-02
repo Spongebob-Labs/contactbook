@@ -37,7 +37,6 @@ import {
 import { apiFetch } from "@/lib/api";
 import {
   fetchContactGroups,
-  fetchImportSummary,
   fetchContactTags,
 } from "@/lib/contacts-api";
 import {
@@ -54,7 +53,6 @@ import { mockContactListResponse } from "@/lib/mock-data";
 import type {
   ContactDetail,
   ContactGroup,
-  ContactImportSummary,
   ContactLabel,
   ContactListResponse,
   ContactSource,
@@ -67,17 +65,13 @@ type SortDirection = "asc" | "desc";
 
 const contactSourceValues: ContactSource[] = [
   "GOOGLE",
-  "ICLOUD",
   "VCARD",
-  "CONTACTBOOK",
 ];
 
 const sourceOptions: Array<{ value: SourceFilter; label: string }> = [
   { value: "ALL", label: "All sources" },
   { value: "GOOGLE", label: "Google" },
-  { value: "ICLOUD", label: "iCloud" },
   { value: "VCARD", label: "vCard" },
-  { value: "CONTACTBOOK", label: "ContactBook" },
 ];
 
 const pageSizeOptions = [25, 50, 100];
@@ -232,7 +226,6 @@ export default function ContactsPage() {
   const [contacts, setContacts] = useState<ContactDetail[]>([]);
   const [tags, setTags] = useState<ContactLabel[]>([]);
   const [groups, setGroups] = useState<ContactGroup[]>([]);
-  const [importSummary, setImportSummary] = useState<ContactImportSummary | null>(null);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>(() =>
@@ -427,29 +420,6 @@ export default function ContactsPage() {
     pageCount: totalPages,
   });
 
-  const visibleSourceOptions = useMemo(
-    () => {
-      if (importSummary === null) {
-        return sourceOptions;
-      }
-
-      const visibleSources = new Set<ContactSource>();
-      importSummary?.bySource.forEach((sourceSummary) => {
-        if (sourceSummary.activeCount > 0) {
-          visibleSources.add(sourceSummary.source);
-        }
-      });
-
-      return sourceOptions.filter((option) => {
-        if (option.value === "ALL") {
-          return true;
-        }
-        return visibleSources.has(option.value);
-      });
-    },
-    [importSummary],
-  );
-
   useEffect(() => {
     setSourceFilter(readSourceFilter(searchParams.get("source")));
     setTagFilter(readSingleIdParam(searchParams.get("tagIds")));
@@ -461,22 +431,19 @@ export default function ContactsPage() {
     let isMounted = true;
     const loadFilterMetadata = async () => {
       try {
-        const [tagData, groupData, summaryData] = await Promise.all([
+        const [tagData, groupData] = await Promise.all([
           fetchContactTags(),
           fetchContactGroups(),
-          fetchImportSummary(),
         ]);
         if (isMounted) {
           setTags(tagData);
           setGroups(groupData);
-          setImportSummary(summaryData);
         }
       } catch (err) {
         logUiError("Could not load contact filter metadata", err);
         if (isMounted) {
           setTags([]);
           setGroups([]);
-          setImportSummary(null);
         }
       }
     };
@@ -486,19 +453,6 @@ export default function ContactsPage() {
       isMounted = false;
     };
   }, []);
-
-  useEffect(() => {
-    const hasSelectedSourceOption = visibleSourceOptions.some(
-      (option) => option.value === sourceFilter,
-    );
-    if (
-      importSummary !== null &&
-      sourceFilter !== "ALL" &&
-      !hasSelectedSourceOption
-    ) {
-      updateSourceFilter("ALL");
-    }
-  }, [importSummary, sourceFilter, visibleSourceOptions]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -643,7 +597,7 @@ export default function ContactsPage() {
               className="cursor-pointer rounded-full"
               aria-label="Filter contacts by source"
             >
-              {visibleSourceOptions.map((option) => (
+              {sourceOptions.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
