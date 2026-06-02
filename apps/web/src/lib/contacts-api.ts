@@ -60,10 +60,14 @@ export async function fetchContactSourceTotals(
         source,
         limit: "1",
       });
-      const response = await apiFetch<ContactListResponse>(
-        `/v1/contacts?${params.toString()}`,
-      );
-      return [source, response.total] as const;
+      try {
+        const response = await apiFetch<ContactListResponse>(
+          `/v1/contacts?${params.toString()}`,
+        );
+        return [source, response.total] as const;
+      } catch {
+        return [source, 0] as const;
+      }
     }),
   );
 

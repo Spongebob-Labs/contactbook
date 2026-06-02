@@ -431,12 +431,15 @@ export default function ContactsPage() {
   const visibleSourceOptions = useMemo(
     () =>
       sourceOptions.filter((option) => {
-        if (option.value === "ALL" || sourceTotals === null) {
+        if (option.value === "ALL") {
           return true;
+        }
+        if (sourceTotals === null) {
+          return option.value === sourceFilter;
         }
         return sourceTotals[option.value] > 0;
       }),
-    [sourceTotals],
+    [sourceFilter, sourceTotals],
   );
 
   useEffect(() => {
