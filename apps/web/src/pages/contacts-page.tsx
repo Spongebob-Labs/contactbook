@@ -35,7 +35,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { apiFetch } from "@/lib/api";
-import { fetchContactGroups, fetchContactTags } from "@/lib/contacts-api";
+import {
+  fetchContactGroups,
+  fetchContactSourceTotals,
+  fetchContactTags,
+} from "@/lib/contacts-api";
 import {
   formatContactDate,
   getCompany,
@@ -227,6 +231,9 @@ export default function ContactsPage() {
   const [contacts, setContacts] = useState<ContactDetail[]>([]);
   const [tags, setTags] = useState<ContactLabel[]>([]);
   const [groups, setGroups] = useState<ContactGroup[]>([]);
+  const [sourceTotals, setSourceTotals] = useState<Record<ContactSource, number> | null>(
+    null,
+  );
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>(() =>
@@ -421,6 +428,17 @@ export default function ContactsPage() {
     pageCount: totalPages,
   });
 
+  const visibleSourceOptions = useMemo(
+    () =>
+      sourceOptions.filter((option) => {
+        if (option.value === "ALL" || sourceTotals === null) {
+          return true;
+        }
+        return sourceTotals[option.value] > 0;
+      }),
+    [sourceTotals],
+  );
+
   useEffect(() => {
     setSourceFilter(readSourceFilter(searchParams.get("source")));
     setTagFilter(readSingleIdParam(searchParams.get("tagIds")));
@@ -430,30 +448,43 @@ export default function ContactsPage() {
 
   useEffect(() => {
     let isMounted = true;
-    const loadLabels = async () => {
+    const loadFilterMetadata = async () => {
       try {
-        const [tagData, groupData] = await Promise.all([
+        const [tagData, groupData, totalsData] = await Promise.all([
           fetchContactTags(),
           fetchContactGroups(),
+          fetchContactSourceTotals(contactSourceValues),
         ]);
         if (isMounted) {
           setTags(tagData);
           setGroups(groupData);
+          setSourceTotals(totalsData);
         }
       } catch (err) {
-        logUiError("Could not load contact labels", err);
+        logUiError("Could not load contact filter metadata", err);
         if (isMounted) {
           setTags([]);
           setGroups([]);
+          setSourceTotals(null);
         }
       }
     };
 
-    void loadLabels();
+    void loadFilterMetadata();
     return () => {
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (
+      sourceTotals !== null &&
+      sourceFilter !== "ALL" &&
+      sourceTotals[sourceFilter] === 0
+    ) {
+      updateSourceFilter("ALL");
+    }
+  }, [sourceFilter, sourceTotals]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -598,7 +629,7 @@ export default function ContactsPage() {
               className="cursor-pointer rounded-full"
               aria-label="Filter contacts by source"
             >
-              {sourceOptions.map((option) => (
+              {visibleSourceOptions.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>

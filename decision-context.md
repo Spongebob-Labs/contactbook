@@ -1,5 +1,11 @@
 # Decision Context
 
+## 2026-06-02 - Contacts Source Filter Availability
+
+- Decision: Hide Contacts page source filter options whose source has zero contacts, using lightweight per-source contact list total checks.
+- Reason: Empty source options create dead-end filters and make the Contacts toolbar noisier than needed. Keeping `All sources` visible preserves a stable reset path.
+- Notes: If a URL selects an empty source, the UI resets to `All sources`. Backend code and browser testing remain untouched.
+
 ## 2026-06-02 - Contact Tags And Groups Frontend Integration
 
 - Decision: Merge the latest `origin/main` backend contact-label contract into the UI branch and integrate tags/groups through server-side contact filters, contact list chips, sidebar group shortcuts, and contact detail assignment controls.

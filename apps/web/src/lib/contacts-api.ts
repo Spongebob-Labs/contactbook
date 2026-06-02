@@ -4,6 +4,7 @@ import type {
   ContactGroup,
   ContactImportSummary,
   ContactLabel,
+  ContactSource,
 } from "@/lib/types";
 
 export type ContactListResponse = {
@@ -48,6 +49,25 @@ export async function fetchContactTags(): Promise<ContactLabel[]> {
 
 export async function fetchContactGroups(): Promise<ContactGroup[]> {
   return apiFetch<ContactGroup[]>("/v1/contacts/groups");
+}
+
+export async function fetchContactSourceTotals(
+  sources: ContactSource[],
+): Promise<Record<ContactSource, number>> {
+  const entries = await Promise.all(
+    sources.map(async (source) => {
+      const params = new URLSearchParams({
+        source,
+        limit: "1",
+      });
+      const response = await apiFetch<ContactListResponse>(
+        `/v1/contacts?${params.toString()}`,
+      );
+      return [source, response.total] as const;
+    }),
+  );
+
+  return Object.fromEntries(entries) as Record<ContactSource, number>;
 }
 
 export async function setContactTags(
