@@ -8,6 +8,7 @@ import {
   UploadedFile,
   UseGuards,
   UseInterceptors,
+  UseFilters,
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import {
@@ -24,10 +25,12 @@ import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { DeletePhotoDto } from "./dto/delete-photo.dto";
 import { ProfilePhotoResponseDto } from "./dto/profile-photo-response.dto";
 import { ProfilePhotoService } from "./profile-photo.service";
+import { ApiExceptionFilter } from "../common/filters/api-exception.filter";
 
 @ApiTags("Photo")
 @ApiBearerAuth("access-token")
 @UseGuards(JwtAuthGuard)
+@UseFilters(ApiExceptionFilter)
 @Controller({ path: "photo", version: "1" })
 export class PhotoController {
   constructor(private readonly profilePhoto: ProfilePhotoService) {}
@@ -40,7 +43,7 @@ export class PhotoController {
     summary: "Upload image",
     description:
       "Stores any image in GCS and returns the public HTTPS URL. " +
-      "Accepts image/jpeg, image/png, or image/webp up to 1 MB.",
+      "Accepts image/jpeg, image/png, or image/webp up to 20 MB.",
   })
   @ApiBody({
     schema: {

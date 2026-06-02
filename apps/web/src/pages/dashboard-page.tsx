@@ -23,6 +23,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { apiFetch } from "@/lib/api";
+import {
+  fetchImportSummary,
+  googleSummaryHasConnection,
+} from "@/lib/contacts-api";
 import { getCardDisplayDetails } from "@/lib/card-display";
 import { cardTypeStyles } from "@/lib/card-styles";
 import { logUiError } from "@/lib/friendly-errors";
@@ -31,7 +35,6 @@ import type {
   ContactCard,
   ContactCardType,
   ContactImportSummary,
-  ContactListResponse,
   ProfileMeResponse,
 } from "@/lib/types";
 import { CardOnboardingModal } from "@/pages/card-onboarding-page";
@@ -157,10 +160,6 @@ function getProfileCompletion(profile: ProfileMeResponse | null) {
   };
 }
 
-function getGoogleImportSummary(summary: ContactImportSummary | null) {
-  return summary?.bySource.find((item) => item.source === "GOOGLE") ?? null;
-}
-
 function formatDate(value: string) {
   return new Intl.DateTimeFormat(undefined, {
     dateStyle: "medium",
@@ -252,12 +251,7 @@ export default function DashboardPage() {
   const isSetupFlow = searchParams.get("flow") === "setup";
   const profileCompletion = getProfileCompletion(profile);
   const isPostOnboardingLanding = isSetupFlow && onboardingStep === null;
-  const googleSummary = getGoogleImportSummary(importSummary);
-  const hasGoogleImport = Boolean(
-    googleSummary?.hasSyncToken ||
-      googleSummary?.lastSyncAt ||
-      googleSummary?.activeCount,
-  );
+  const hasGoogleImport = googleSummaryHasConnection(importSummary);
   const hasCards = cards.length > 0;
   const visibleCards = cards.slice(0, 4);
   const stats = [
@@ -421,28 +415,10 @@ export default function DashboardPage() {
 
   const loadOverview = useCallback(async (shouldUpdate: () => boolean = () => true) => {
     try {
-      const [profileData, contactsData, googleContactsData] = await Promise.all([
+      const [profileData, summaryData] = await Promise.all([
         apiFetch<ProfileMeResponse>("/v1/profile/me"),
-        apiFetch<ContactListResponse>("/v1/contacts?limit=1"),
-        apiFetch<ContactListResponse>(
-          "/v1/contacts?source=GOOGLE&limit=1&sort=updatedAt&sortOrder=desc",
-        ),
+        fetchImportSummary(),
       ]);
-      const summaryData: ContactImportSummary = {
-        totalActive: contactsData.total,
-        totalDeleted: 0,
-        bySource:
-          googleContactsData.total > 0
-            ? [
-                {
-                  source: "GOOGLE",
-                  activeCount: googleContactsData.total,
-                  deletedCount: 0,
-                  lastSyncAt: googleContactsData.items[0]?.updatedAt ?? null,
-                },
-              ]
-            : [],
-      };
       if (shouldUpdate()) {
         setProfile(profileData);
         setImportSummary(summaryData);

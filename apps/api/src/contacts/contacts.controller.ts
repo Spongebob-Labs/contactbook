@@ -1,10 +1,13 @@
 import {
+  Body,
   Controller,
   Get,
   Param,
   ParseEnumPipe,
   ParseUUIDPipe,
   Post,
+  Patch,
+  Put,
   Query,
   Req,
   UploadedFile,
@@ -28,35 +31,44 @@ import type { Express } from "express";
 import type { JwtUserPayload } from "../common/decorators/current-user.decorator";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
+import { OAuthTokenService } from "../oauth-tokens/oauth-token.service";
 import { MultipartBoundaryExceptionFilter } from "../common/filters/multipart-boundary.exception-filter";
 import { MulterUploadExceptionFilter } from "../common/filters/multer-upload.exception-filter";
 import { ContactsSyncService } from "./contacts-sync.service";
 import { ContactsService } from "./contacts.service";
 import { ContactImportResultDto } from "./dto/contact-import-result.dto";
 import { toContactImportResult } from "./contact-import-result.mapper";
+import { ContactImportSummaryDto } from "./dto/contact-import-summary.dto";
 import { ContactListResponseDto } from "./dto/contact-list-response.dto";
 import { ContactDetailDto } from "./dto/contact-response.dto";
 import { ContactSyncResponseDto } from "./dto/contact-sync-response.dto";
+import { SetContactGroupsDto } from "../groups/dto/group.dto";
+import { SetContactTagsDto } from "../tags/dto/tag.dto";
+import { IcloudImportDto } from "./dto/icloud-import.dto";
 import { ListContactsQueryDto } from "./dto/list-contacts-query.dto";
+import { UpdateContactDto } from "./dto/update-contact.dto";
 import { MAX_VCF_IMPORT_BYTES } from "./vcard-import.constants";
 import { VcardContactsImportService } from "./vcard-contacts-import.service";
+import { ApiExceptionFilter } from "../common/filters/api-exception.filter";
 
 @ApiTags("Contacts")
 @ApiBearerAuth("access-token")
 @UseGuards(JwtAuthGuard)
+@UseFilters(ApiExceptionFilter)
 @Controller({ path: "contacts", version: "1" })
 export class ContactsController {
   constructor(
     private readonly contacts: ContactsService,
     private readonly contactsSync: ContactsSyncService,
     private readonly vcardImport: VcardContactsImportService,
+    private readonly oauthTokenService: OAuthTokenService,
   ) {}
 
   @Get("sync")
   @ApiOperation({
     summary: "Sync contacts from a provider",
     description:
-      "Runs incremental provider sync when a sync token exists (Google). On an expired token, falls back to the same full import as GET /contacts/import/google. iCloud is not implemented yet.",
+      "Runs incremental provider sync when a sync token exists (Google, iCloud). On an expired token, falls back to the same full import as the provider import endpoint.",
   })
   @ApiQuery({
     name: "source",
@@ -85,10 +97,18 @@ export class ContactsController {
   @ApiOperation({
     summary: "Import contacts from iCloud",
     description:
-      "Reserved for the iCloud connector. Returns 501 until iCloud import is implemented.",
+      "Accepts Apple credentials, secures them using AES-256-GCM at rest, discovers server shards, and executes a full contact import.",
   })
+  @ApiBody({ type: IcloudImportDto })
   @ApiOkResponse({ type: ContactImportResultDto })
-  async importIcloud(@CurrentUser() user: JwtUserPayload) {
+  async importIcloud(
+    @CurrentUser() user: JwtUserPayload,
+    @Body() body: IcloudImportDto,
+  ) {
+    await this.oauthTokenService.upsertForUser(user.sub, "icloud", {
+      accessToken: body.appleId,
+      refreshToken: body.appSpecificPassword,
+    });
     return this.contactsSync.import(user.sub, ContactSource.ICLOUD);
   }
 
@@ -130,6 +150,13 @@ export class ContactsController {
     return toContactImportResult(run);
   }
 
+  @Get("import/summary")
+  @ApiOperation({ summary: "Import counts and last sync metadata by source" })
+  @ApiOkResponse({ type: ContactImportSummaryDto })
+  importSummary(@CurrentUser() user: JwtUserPayload) {
+    return this.contacts.getImportSummary(user.sub);
+  }
+
   @Get()
   @ApiOperation({
     summary: "List contacts",
@@ -146,6 +173,16 @@ export class ContactsController {
   })
   @ApiQuery({ name: "source", enum: ContactSource, required: false })
   @ApiQuery({
+    name: "tagIds",
+    required: false,
+    description: "Comma-separated tag UUIDs (AND filter)",
+  })
+  @ApiQuery({
+    name: "groupIds",
+    required: false,
+    description: "Comma-separated group UUIDs (AND filter)",
+  })
+  @ApiQuery({
     name: "sort",
     required: false,
     enum: ["name", "updatedAt", "source"],
@@ -161,6 +198,43 @@ export class ContactsController {
     @Query() query: ListContactsQueryDto,
   ) {
     return this.contacts.listPaginated(user.sub, query);
+  }
+
+  @Patch(":id")
+  @ApiOperation({
+    summary: "Update a contact",
+    description:
+      "Updates ContactBook-managed fields and triggers provider write-back for Google/iCloud contacts when write scope is available.",
+  })
+  @ApiOkResponse({ type: ContactDetailDto })
+  update(
+    @CurrentUser() user: JwtUserPayload,
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() dto: UpdateContactDto,
+  ) {
+    return this.contacts.updateContact(user.sub, id, dto);
+  }
+
+  @Put(":id/tags")
+  @ApiOperation({ summary: "Replace tags on a contact" })
+  @ApiOkResponse({ type: ContactDetailDto })
+  setTags(
+    @CurrentUser() user: JwtUserPayload,
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() dto: SetContactTagsDto,
+  ) {
+    return this.contacts.setContactTags(user.sub, id, dto.tagIds);
+  }
+
+  @Put(":id/groups")
+  @ApiOperation({ summary: "Replace groups on a contact" })
+  @ApiOkResponse({ type: ContactDetailDto })
+  setGroups(
+    @CurrentUser() user: JwtUserPayload,
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() dto: SetContactGroupsDto,
+  ) {
+    return this.contacts.setContactGroups(user.sub, id, dto.groupIds);
   }
 
   @Get(":id")

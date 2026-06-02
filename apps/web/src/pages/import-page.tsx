@@ -9,8 +9,13 @@ import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { apiFetch } from "@/lib/api";
 import { buildContactImportSummary } from "@/lib/contact-summary";
+import {
+  fetchAllContacts,
+  fetchImportSummary,
+  googleSummaryHasConnection,
+} from "@/lib/contacts-api";
+import { apiFetch } from "@/lib/api";
 import { friendlyErrorMessages, logUiError } from "@/lib/friendly-errors";
 import { startGoogleImportConnection } from "@/lib/google-import";
 import { mockContactsBySource } from "@/lib/mock-data";
@@ -27,7 +32,6 @@ import { cn } from "@/lib/utils";
 import type {
   ContactImport,
   ContactImportSummary,
-  ContactListResponse,
   GoogleSyncResponse,
 } from "@/lib/types";
 
@@ -48,11 +52,18 @@ function formatDate(value: string | null) {
   }).format(new Date(value));
 }
 
-function hasGoogleConnectionEvidence(
-  summary: ContactImportSummary,
-) {
-  const googleSummary = summary.bySource.find((item) => item.source === "GOOGLE");
-  return Boolean(googleSummary?.hasSyncToken);
+function hasGoogleConnectionEvidence(summary: ContactImportSummary) {
+  return googleSummaryHasConnection(summary);
+}
+
+function getLastImportActivity(summary: ContactImportSummary | null) {
+  return (
+    summary?.bySource
+      .map((item) => item.lastSync?.at ?? item.lastSyncAt ?? null)
+      .filter((value): value is string => Boolean(value))
+      .sort((first, second) => new Date(second).getTime() - new Date(first).getTime())[0] ??
+    null
+  );
 }
 
 export default function ImportPage() {
@@ -73,45 +84,13 @@ export default function ImportPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const [response, googleResponse, vcfResponse] = await Promise.all([
-        apiFetch<ContactListResponse>("/v1/contacts?limit=100&sort=updatedAt&sortOrder=desc"),
-        apiFetch<ContactListResponse>(
-          "/v1/contacts?source=GOOGLE&limit=1&sort=updatedAt&sortOrder=desc",
-        ),
-        apiFetch<ContactListResponse>(
-          "/v1/contacts?source=VCARD&limit=1&sort=updatedAt&sortOrder=desc",
-        ),
+      const [contactsData, summaryData] = await Promise.all([
+        fetchAllContacts({ sort: "updatedAt", sortOrder: "desc" }),
+        fetchImportSummary(),
       ]);
-      const contactsData = response.items;
-      const summaryData = buildContactImportSummary([
-        ...googleResponse.items,
-        ...vcfResponse.items,
-      ]);
-      const setSourceSummary = (
-        source: ContactImportSummary["bySource"][number]["source"],
-        sourceResponse: ContactListResponse,
-      ) => {
-        const existing = summaryData.bySource.find((item) => item.source === source);
-        if (existing) {
-          existing.activeCount = sourceResponse.total;
-          existing.lastSyncAt = sourceResponse.items[0]?.updatedAt ?? null;
-          return;
-        }
-        if (sourceResponse.total > 0) {
-          summaryData.bySource.push({
-            source,
-            activeCount: sourceResponse.total,
-            deletedCount: 0,
-            lastSyncAt: sourceResponse.items[0]?.updatedAt ?? null,
-          });
-        }
-      };
-      setSourceSummary("GOOGLE", googleResponse);
-      setSourceSummary("VCARD", vcfResponse);
-      summaryData.totalActive = response.total;
       setImports(contactsData);
       setSummary(summaryData);
-      setHasConnectedGoogle((current) => current || hasGoogleConnectionEvidence(summaryData));
+      setHasConnectedGoogle(hasGoogleConnectionEvidence(summaryData));
       setIsMockData(false);
     } catch (err) {
       logUiError("Could not load imports", err);
@@ -343,11 +322,7 @@ export default function ImportPage() {
             <div className="flex items-center justify-between rounded-full border border-border bg-background/60 p-3 px-4">
               <span className="text-sm text-muted-foreground">Last activity</span>
               <span className="text-sm font-medium">
-                {formatDate(
-                  [googleSummary?.lastSyncAt, vcfSummary?.lastSyncAt]
-                    .filter((value): value is string => Boolean(value))
-                    .sort((first, second) => new Date(second).getTime() - new Date(first).getTime())[0] ?? null,
-                )}
+                {formatDate(getLastImportActivity(summary))}
               </span>
             </div>
           </CardContent>

@@ -6,6 +6,7 @@ import {
   NotFoundException,
   Post,
   Req,
+  UseFilters,
 } from "@nestjs/common";
 import { ApiExcludeController, ApiOperation } from "@nestjs/swagger";
 import { ConfigService } from "@nestjs/config";
@@ -14,8 +15,10 @@ import type { Request } from "express";
 import { TwilioService } from "./twilio.service";
 import { WhatsappWebhookService } from "./whatsapp-webhook.service";
 import { WebhookDlqService } from "./webhook-dlq.service";
+import { ApiExceptionFilter } from "../common/filters/api-exception.filter";
 
 @ApiExcludeController()
+@UseFilters(ApiExceptionFilter)
 @Controller({ path: "webhooks/twilio", version: "1" })
 export class TwilioWebhookController {
   constructor(
@@ -64,7 +67,12 @@ export class TwilioWebhookController {
     const from = params.From ?? "";
     const inboundText =
       (params.ButtonText && params.ButtonText.trim()) || (params.Body ?? "");
-    await this.processor.handleInboundMessage(from, inboundText);
+    const latitude = params.Latitude ? Number(params.Latitude) : undefined;
+    const longitude = params.Longitude ? Number(params.Longitude) : undefined;
+    await this.processor.handleInboundMessage(from, inboundText, {
+      latitude: Number.isFinite(latitude) ? latitude : undefined,
+      longitude: Number.isFinite(longitude) ? longitude : undefined,
+    });
     return "";
   }
 

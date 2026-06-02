@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   type ColumnDef,
   flexRender,
@@ -15,6 +15,7 @@ import {
   ChevronRight,
   Download,
   Search,
+  Tags,
   UsersRound,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
@@ -34,6 +35,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { apiFetch } from "@/lib/api";
+import { fetchContactGroups, fetchContactTags } from "@/lib/contacts-api";
 import {
   formatContactDate,
   getCompany,
@@ -45,20 +47,32 @@ import {
 } from "@/lib/contact-display";
 import { friendlyErrorMessages, logUiError } from "@/lib/friendly-errors";
 import { mockContactListResponse } from "@/lib/mock-data";
-import type { ContactDetail, ContactListResponse, ContactSource } from "@/lib/types";
+import type {
+  ContactDetail,
+  ContactGroup,
+  ContactLabel,
+  ContactListResponse,
+  ContactSource,
+} from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-type SourceFilter = "ALL" | Exclude<ContactSource, "MANUAL">;
+type SourceFilter = "ALL" | ContactSource;
 type SortKey = "name" | "updatedAt" | "source";
 type SortDirection = "asc" | "desc";
+
+const contactSourceValues: ContactSource[] = [
+  "GOOGLE",
+  "ICLOUD",
+  "VCARD",
+  "CONTACTBOOK",
+];
 
 const sourceOptions: Array<{ value: SourceFilter; label: string }> = [
   { value: "ALL", label: "All sources" },
   { value: "GOOGLE", label: "Google" },
   { value: "ICLOUD", label: "iCloud" },
-  { value: "CSV", label: "CSV" },
   { value: "VCARD", label: "vCard" },
-  { value: "CALDAV", label: "CalDAV" },
+  { value: "CONTACTBOOK", label: "ContactBook" },
 ];
 
 const pageSizeOptions = [25, 50, 100];
@@ -66,10 +80,8 @@ const pageSizeOptions = [25, 50, 100];
 const sourceBadgeStyles: Record<ContactSource, string> = {
   GOOGLE: "bg-primary text-primary-foreground ring-primary/20",
   ICLOUD: "bg-secondary text-secondary-foreground ring-secondary-foreground/10",
-  CSV: "bg-success/12 text-success ring-success/20",
   VCARD: "bg-accent text-accent-foreground ring-accent-foreground/10",
-  CALDAV: "bg-warning/15 text-warning ring-warning/25",
-  MANUAL: "border border-border bg-background text-muted-foreground",
+  CONTACTBOOK: "bg-success/12 text-success ring-success/20",
 };
 
 const sortableTableColumns: Partial<Record<string, SortKey>> = {
@@ -86,20 +98,35 @@ function ContactAvatar({ contact }: { contact: ContactDetail }) {
   );
 }
 
+function readSourceFilter(value: string | null): SourceFilter {
+  if (contactSourceValues.includes(value as ContactSource)) {
+    return value as ContactSource;
+  }
+  return "ALL";
+}
+
+function readSingleIdParam(value: string | null) {
+  return value?.split(",").map((item) => item.trim()).filter(Boolean)[0] ?? "ALL";
+}
+
 function buildContactsPath({
+  groupFilter,
   page,
   pageSize,
   query,
   sortDirection,
   sortKey,
   sourceFilter,
+  tagFilter,
 }: {
+  groupFilter: string;
   page: number;
   pageSize: number;
   query: string;
   sortDirection: SortDirection;
   sortKey: SortKey;
   sourceFilter: SourceFilter;
+  tagFilter: string;
 }) {
   const params = new URLSearchParams({
     page: String(page),
@@ -113,6 +140,12 @@ function buildContactsPath({
   }
   if (sourceFilter !== "ALL") {
     params.set("source", sourceFilter);
+  }
+  if (tagFilter !== "ALL") {
+    params.set("tagIds", tagFilter);
+  }
+  if (groupFilter !== "ALL") {
+    params.set("groupIds", groupFilter);
   }
   return `/v1/contacts?${params.toString()}`;
 }
@@ -147,12 +180,64 @@ function getSortTooltipText(
     : "Showing Z to A. Click for A to Z.";
 }
 
+function renderContactLabels(contact: ContactDetail) {
+  const labels = [
+    ...contact.tags.map((tag) => ({ id: `tag-${tag.id}`, label: tag.name, tone: "tag" })),
+    ...contact.groups.map((group) => ({
+      id: `group-${group.id}`,
+      label: group.name,
+      tone: "group",
+    })),
+  ];
+  const visibleLabels = labels.slice(0, 3);
+  const hiddenCount = labels.length - visibleLabels.length;
+
+  if (labels.length === 0) {
+    return <span className="text-sm text-muted-foreground">Unassigned</span>;
+  }
+
+  return (
+    <div className="flex max-w-72 flex-wrap gap-1.5">
+      {visibleLabels.map((label) => (
+        <Badge
+          key={label.id}
+          variant="secondary"
+          className={cn(
+            "rounded-full",
+            label.tone === "tag"
+              ? "bg-primary/10 text-primary ring-primary/15"
+              : "bg-muted text-muted-foreground ring-border",
+          )}
+        >
+          {label.label}
+        </Badge>
+      ))}
+      {hiddenCount > 0 && (
+        <Badge variant="secondary" className="rounded-full">
+          +{hiddenCount}
+        </Badge>
+      )}
+    </div>
+  );
+}
+
 export default function ContactsPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [contacts, setContacts] = useState<ContactDetail[]>([]);
+  const [tags, setTags] = useState<ContactLabel[]>([]);
+  const [groups, setGroups] = useState<ContactGroup[]>([]);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [sourceFilter, setSourceFilter] = useState<SourceFilter>("ALL");
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>(() =>
+    readSourceFilter(searchParams.get("source")),
+  );
+  const [tagFilter, setTagFilter] = useState(() =>
+    readSingleIdParam(searchParams.get("tagIds")),
+  );
+  const [groupFilter, setGroupFilter] = useState(() =>
+    readSingleIdParam(searchParams.get("groupIds")),
+  );
   const [sortKey, setSortKey] = useState<SortKey>("name");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [page, setPage] = useState(1);
@@ -162,6 +247,40 @@ export default function ContactsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isMockData, setIsMockData] = useState(false);
+
+  const syncFilterUrl = (nextValues: {
+    groupFilter?: string;
+    sourceFilter?: SourceFilter;
+    tagFilter?: string;
+  }) => {
+    const next = new URLSearchParams(searchParams);
+    const nextSource = nextValues.sourceFilter;
+    const nextTag = nextValues.tagFilter;
+    const nextGroup = nextValues.groupFilter;
+
+    if (nextSource !== undefined) {
+      if (nextSource === "ALL") {
+        next.delete("source");
+      } else {
+        next.set("source", nextSource);
+      }
+    }
+    if (nextTag !== undefined) {
+      if (nextTag === "ALL") {
+        next.delete("tagIds");
+      } else {
+        next.set("tagIds", nextTag);
+      }
+    }
+    if (nextGroup !== undefined) {
+      if (nextGroup === "ALL") {
+        next.delete("groupIds");
+      } else {
+        next.set("groupIds", nextGroup);
+      }
+    }
+    setSearchParams(next, { replace: true });
+  };
 
   const updateSortColumn = (nextSortKey: SortKey) => {
     if (nextSortKey === sortKey) {
@@ -265,6 +384,11 @@ export default function ContactsPage() {
         ),
       },
       {
+        id: "labels",
+        header: "Tags & groups",
+        cell: ({ row }) => renderContactLabels(row.original),
+      },
+      {
         accessorKey: "source",
         header: () => renderSortableHeader("source", "Source"),
         cell: ({ row }) => (
@@ -298,6 +422,40 @@ export default function ContactsPage() {
   });
 
   useEffect(() => {
+    setSourceFilter(readSourceFilter(searchParams.get("source")));
+    setTagFilter(readSingleIdParam(searchParams.get("tagIds")));
+    setGroupFilter(readSingleIdParam(searchParams.get("groupIds")));
+    setPage(1);
+  }, [searchParams]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadLabels = async () => {
+      try {
+        const [tagData, groupData] = await Promise.all([
+          fetchContactTags(),
+          fetchContactGroups(),
+        ]);
+        if (isMounted) {
+          setTags(tagData);
+          setGroups(groupData);
+        }
+      } catch (err) {
+        logUiError("Could not load contact labels", err);
+        if (isMounted) {
+          setTags([]);
+          setGroups([]);
+        }
+      }
+    };
+
+    void loadLabels();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
     const timeout = window.setTimeout(() => {
       setDebouncedQuery(query);
     }, 300);
@@ -315,12 +473,14 @@ export default function ContactsPage() {
       try {
         const response = await apiFetch<unknown>(
           buildContactsPath({
+            groupFilter,
             page,
             pageSize,
             query: debouncedQuery,
             sortDirection,
             sortKey,
             sourceFilter,
+            tagFilter,
           }),
         );
         if (!isContactListResponse(response)) {
@@ -355,7 +515,16 @@ export default function ContactsPage() {
     return () => {
       isMounted = false;
     };
-  }, [debouncedQuery, page, pageSize, sortDirection, sortKey, sourceFilter]);
+  }, [
+    debouncedQuery,
+    groupFilter,
+    page,
+    pageSize,
+    sortDirection,
+    sortKey,
+    sourceFilter,
+    tagFilter,
+  ]);
 
   const currentPage = Math.min(page, totalPages);
   const pageStart = total === 0 ? 0 : (currentPage - 1) * pageSize + 1;
@@ -364,6 +533,19 @@ export default function ContactsPage() {
   const updateSourceFilter = (value: SourceFilter) => {
     setSourceFilter(value);
     setPage(1);
+    syncFilterUrl({ sourceFilter: value });
+  };
+
+  const updateTagFilter = (value: string) => {
+    setTagFilter(value);
+    setPage(1);
+    syncFilterUrl({ tagFilter: value });
+  };
+
+  const updateGroupFilter = (value: string) => {
+    setGroupFilter(value);
+    setPage(1);
+    syncFilterUrl({ groupFilter: value });
   };
 
   const updatePageSize = (value: number) => {
@@ -409,7 +591,7 @@ export default function ContactsPage() {
 
       <section className="space-y-4">
         <div className="flex justify-end">
-          <div className="grid w-full gap-2 sm:grid-cols-2 lg:w-auto lg:grid-cols-[180px_minmax(220px,280px)]">
+          <div className="grid w-full gap-2 sm:grid-cols-2 xl:w-auto xl:grid-cols-[180px_180px_180px_minmax(220px,280px)]">
             <Select
               value={sourceFilter}
               onChange={(event) => updateSourceFilter(event.target.value as SourceFilter)}
@@ -419,6 +601,32 @@ export default function ContactsPage() {
               {sourceOptions.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
+                </option>
+              ))}
+            </Select>
+            <Select
+              value={tagFilter}
+              onChange={(event) => updateTagFilter(event.target.value)}
+              className="cursor-pointer rounded-full"
+              aria-label="Filter contacts by tag"
+            >
+              <option value="ALL">All tags</option>
+              {tags.map((tag) => (
+                <option key={tag.id} value={tag.id}>
+                  {tag.name}
+                </option>
+              ))}
+            </Select>
+            <Select
+              value={groupFilter}
+              onChange={(event) => updateGroupFilter(event.target.value)}
+              className="cursor-pointer rounded-full"
+              aria-label="Filter contacts by group"
+            >
+              <option value="ALL">All groups</option>
+              {groups.map((group) => (
+                <option key={group.id} value={group.id}>
+                  {group.name}
                 </option>
               ))}
             </Select>
@@ -434,130 +642,130 @@ export default function ContactsPage() {
           </div>
         </div>
         <div className="overflow-hidden border-y border-border">
-            {isLoading && (
-              <div className="space-y-1 p-4">
-                {Array.from({ length: 8 }).map((_, index) => (
-                  <Skeleton key={index} className="h-14 w-full" />
-                ))}
-              </div>
-            )}
+          {isLoading && (
+            <div className="space-y-1 p-4">
+              {Array.from({ length: 8 }).map((_, index) => (
+                <Skeleton key={index} className="h-14 w-full" />
+              ))}
+            </div>
+          )}
 
-            {!isLoading && !error && contacts.length === 0 && (
-              <div className="flex min-h-80 flex-col items-center justify-center p-6 text-center">
-                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
-                  <UsersRound className="h-6 w-6" aria-hidden="true" />
-                </div>
-                <h2 className="font-semibold">No contacts found</h2>
-                <p className="mt-2 max-w-sm text-sm text-muted-foreground">
-                  Import contacts from the Import page, or adjust your search.
-                </p>
-                <Link
-                  to="/dashboard/import"
-                  className={cn(
-                    buttonVariants({ variant: "default" }),
-                    "mt-5 cursor-pointer rounded-full",
-                  )}
-                >
-                  <Download className="h-4 w-4" aria-hidden="true" />
-                  Import contacts
-                </Link>
+          {!isLoading && !error && contacts.length === 0 && (
+            <div className="flex min-h-80 flex-col items-center justify-center p-6 text-center">
+              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <Tags className="h-6 w-6" aria-hidden="true" />
               </div>
-            )}
+              <h2 className="font-semibold">No contacts found</h2>
+              <p className="mt-2 max-w-sm text-sm text-muted-foreground">
+                Import contacts, or adjust your search, tag, and group filters.
+              </p>
+              <Link
+                to="/dashboard/import"
+                className={cn(
+                  buttonVariants({ variant: "default" }),
+                  "mt-5 cursor-pointer rounded-full",
+                )}
+              >
+                <Download className="h-4 w-4" aria-hidden="true" />
+                Import contacts
+              </Link>
+            </div>
+          )}
 
-            {!isLoading && !error && contacts.length > 0 && (
-              <>
-                <Table>
-                  <TableHeader>
-                    {table.getHeaderGroups().map((headerGroup) => (
-                      <TableRow key={headerGroup.id}>
-                        {headerGroup.headers.map((header) => (
-                          <TableHead
-                            key={header.id}
-                            aria-sort={getHeaderAriaSort(header.column.id)}
-                          >
-                            {header.isPlaceholder
-                              ? null
-                              : flexRender(
-                                  header.column.columnDef.header,
-                                  header.getContext(),
-                                )}
-                          </TableHead>
-                        ))}
-                      </TableRow>
-                    ))}
-                  </TableHeader>
-                  <TableBody>
-                    {table.getRowModel().rows.map((row) => (
-                      <TableRow
-                        key={row.id}
-                        role="link"
-                        tabIndex={0}
-                        className="cursor-pointer"
-                        onClick={() => navigate(`/dashboard/contacts/${row.original.id}`)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter" || event.key === " ") {
-                            event.preventDefault();
-                            navigate(`/dashboard/contacts/${row.original.id}`);
-                          }
-                        }}
-                      >
-                        {row.getVisibleCells().map((cell) => (
-                          <TableCell key={cell.id}>
-                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                          </TableCell>
-                        ))}
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-                <div className="flex flex-col gap-3 border-t border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-sm text-muted-foreground">
-                    Showing {pageStart}-{pageEnd} of {total}
-                  </p>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Select
-                      value={String(pageSize)}
-                      onChange={(event) => updatePageSize(Number(event.target.value))}
-                      className="w-28 cursor-pointer rounded-full"
-                      aria-label="Rows per page"
-                    >
-                      {pageSizeOptions.map((value) => (
-                        <option key={value} value={value}>
-                          {value} / page
-                        </option>
+          {!isLoading && !error && contacts.length > 0 && (
+            <>
+              <Table>
+                <TableHeader>
+                  {table.getHeaderGroups().map((headerGroup) => (
+                    <TableRow key={headerGroup.id}>
+                      {headerGroup.headers.map((header) => (
+                        <TableHead
+                          key={header.id}
+                          aria-sort={getHeaderAriaSort(header.column.id)}
+                        >
+                          {header.isPlaceholder
+                            ? null
+                            : flexRender(
+                                header.column.columnDef.header,
+                                header.getContext(),
+                              )}
+                        </TableHead>
                       ))}
-                    </Select>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="cursor-pointer rounded-full disabled:cursor-not-allowed"
-                      onClick={() => setPage((current) => Math.max(1, current - 1))}
-                      disabled={currentPage === 1}
+                    </TableRow>
+                  ))}
+                </TableHeader>
+                <TableBody>
+                  {table.getRowModel().rows.map((row) => (
+                    <TableRow
+                      key={row.id}
+                      role="link"
+                      tabIndex={0}
+                      className="cursor-pointer"
+                      onClick={() => navigate(`/dashboard/contacts/${row.original.id}`)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          navigate(`/dashboard/contacts/${row.original.id}`);
+                        }
+                      }}
                     >
-                      <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-                      Previous
-                    </Button>
-                    <span className="text-sm text-muted-foreground">
-                      Page {currentPage} of {totalPages}
-                    </span>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="cursor-pointer rounded-full disabled:cursor-not-allowed"
-                      onClick={() =>
-                        setPage((current) => Math.min(totalPages, current + 1))
-                      }
-                      disabled={currentPage === totalPages}
-                    >
-                      Next
-                      <ChevronRight className="h-4 w-4" aria-hidden="true" />
-                    </Button>
-                  </div>
+                      {row.getVisibleCells().map((cell) => (
+                        <TableCell key={cell.id}>
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              <div className="flex flex-col gap-3 border-t border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-muted-foreground">
+                  Showing {pageStart}-{pageEnd} of {total}
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Select
+                    value={String(pageSize)}
+                    onChange={(event) => updatePageSize(Number(event.target.value))}
+                    className="w-28 cursor-pointer rounded-full"
+                    aria-label="Rows per page"
+                  >
+                    {pageSizeOptions.map((value) => (
+                      <option key={value} value={value}>
+                        {value} / page
+                      </option>
+                    ))}
+                  </Select>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="cursor-pointer rounded-full disabled:cursor-not-allowed"
+                    onClick={() => setPage((current) => Math.max(1, current - 1))}
+                    disabled={currentPage === 1}
+                  >
+                    <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+                    Previous
+                  </Button>
+                  <span className="text-sm text-muted-foreground">
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="cursor-pointer rounded-full disabled:cursor-not-allowed"
+                    onClick={() =>
+                      setPage((current) => Math.min(totalPages, current + 1))
+                    }
+                    disabled={currentPage === totalPages}
+                  >
+                    Next
+                    <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                  </Button>
                 </div>
-              </>
-            )}
+              </div>
+            </>
+          )}
         </div>
       </section>
     </AppShell>

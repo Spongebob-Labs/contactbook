@@ -13,6 +13,7 @@ import { ProfileModule } from "./profile/profile.module";
 import { StorageModule } from "./storage/storage.module";
 import { SyncModule } from "./sync/sync.module";
 import { TravelModule } from "./travel/travel.module";
+import { LoggerModule } from "./common/logger/logger.module";
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { TravelModule } from "./travel/travel.module";
     ConnectionModule,
     TravelModule,
     JobsModule,
+    LoggerModule,
   ],
 })
 export class AppModule {}

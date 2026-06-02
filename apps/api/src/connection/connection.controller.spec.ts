@@ -60,7 +60,7 @@ describe("ConnectionController (HTTP)", () => {
       TEST_USER_ID,
       validConnectionRequest,
     );
-    expect(res.body.type).toBe("connection");
+    expect((res.body as Record<string, unknown>).type).toBe("connection");
   });
 
   it("POST /connections/requests rejects invalid recipientPhone", async () => {

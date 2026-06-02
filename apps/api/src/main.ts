@@ -2,16 +2,20 @@ import { NestFactory } from "@nestjs/core";
 import { ValidationPipe, VersioningType } from "@nestjs/common";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import { AppModule } from "./app.module";
+import { GcpJsonLogger } from "./common/logger/gcp-json-logger.service";
 
 async function bootstrap(): Promise<void> {
+  const logger = new GcpJsonLogger();
   const app = await NestFactory.create(AppModule, {
     rawBody: true,
+    logger,
   });
 
   const allowedOrigins = (
     process.env.CORS_ORIGIN ??
     [
       "https://contactbookten.vercel.app",
+      "https://www.getcontactbook.com",
       "http://localhost:3000",
       "http://localhost:5173",
       "http://localhost:8000",
@@ -84,6 +88,7 @@ async function bootstrap(): Promise<void> {
 }
 
 bootstrap().catch((error: unknown) => {
-  console.error("Failed to bootstrap application", error);
+  const logger = new GcpJsonLogger();
+  logger.error("Failed to bootstrap application", error);
   process.exit(1);
 });

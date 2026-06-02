@@ -27,9 +27,20 @@ export class WhatsappWebhookService {
   async handleInboundMessage(
     fromRaw: string,
     inboundText: string,
+    options?: { latitude?: number; longitude?: number },
   ): Promise<void> {
     const from = fromRaw.replace(/^whatsapp:/, "");
     const text = (inboundText ?? "").trim();
+
+    if (
+      options?.latitude != null &&
+      options?.longitude != null &&
+      Number.isFinite(options.latitude) &&
+      Number.isFinite(options.longitude)
+    ) {
+      await this.handleLocationShare(from, options.latitude, options.longitude);
+      return;
+    }
 
     const user = await this.findUserFromInboundE164(from);
     if (user) {
@@ -187,6 +198,36 @@ export class WhatsappWebhookService {
         ? err.message
         : "Could not complete card share.";
     await this.twilio.sendWhatsApp(fromPhone, `ContactBook: ${message}`);
+  }
+
+  private async handleLocationShare(
+    fromPhone: string,
+    latitude: number,
+    longitude: number,
+  ): Promise<void> {
+    const user = await this.findUserFromInboundE164(fromPhone);
+    if (!user) {
+      return;
+    }
+    const profile = await this.prisma.userTravelProfile.findUnique({
+      where: { userId: user.id },
+    });
+    const away =
+      profile?.homeCity != null ? latitude !== 0 || longitude !== 0 : true;
+    await this.prisma.userTravelSession.create({
+      data: {
+        userId: user.id,
+        inTravel: away,
+        detectedCity: `${latitude.toFixed(2)},${longitude.toFixed(2)}`,
+        promptedAt: new Date(),
+      },
+    });
+    if (away) {
+      await this.twilio.sendWhatsApp(
+        fromPhone,
+        "ContactBook: It looks like you may be traveling. Reply NOTIFY to alert your travel contact list.",
+      );
+    }
   }
 
   private async findUserFromInboundE164(e164: string): Promise<User | null> {

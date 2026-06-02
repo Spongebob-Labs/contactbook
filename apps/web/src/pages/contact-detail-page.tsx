@@ -1,23 +1,32 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
   AlertCircle,
   ArrowLeft,
   Building2,
+  FolderKanban,
   Globe,
   Mail,
   MapPin,
   Phone,
+  Tags,
   type LucideIcon,
 } from "lucide-react";
+import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
 import { SampleDataNotice } from "@/components/sample-data-notice";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
+import {
+  fetchContactGroups,
+  fetchContactTags,
+  setContactGroups,
+  setContactTags,
+} from "@/lib/contacts-api";
 import {
   formatContactDate,
   getCompany,
@@ -30,7 +39,7 @@ import {
 } from "@/lib/contact-display";
 import { friendlyErrorMessages, logUiError } from "@/lib/friendly-errors";
 import { mockContactDetail } from "@/lib/mock-data";
-import type { ContactDetail } from "@/lib/types";
+import type { ContactDetail, ContactGroup, ContactLabel } from "@/lib/types";
 
 function ContactAvatar({ contact }: { contact: ContactDetail }) {
   return (
@@ -81,12 +90,45 @@ function ListSection({
   );
 }
 
+function labelIds(labels: ContactLabel[]) {
+  return labels.map((label) => label.id);
+}
+
+function sameIdSet(current: string[], next: string[]) {
+  if (current.length !== next.length) {
+    return false;
+  }
+  const currentSet = new Set(current);
+  return next.every((id) => currentSet.has(id));
+}
+
+function toggleId(ids: string[], id: string) {
+  return ids.includes(id)
+    ? ids.filter((currentId) => currentId !== id)
+    : [...ids, id];
+}
+
 export default function ContactDetailPage() {
   const { contactId } = useParams();
   const [contact, setContact] = useState<ContactDetail | null>(null);
+  const [availableTags, setAvailableTags] = useState<ContactLabel[]>([]);
+  const [availableGroups, setAvailableGroups] = useState<ContactGroup[]>([]);
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+  const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSavingAssignments, setIsSavingAssignments] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isMockData, setIsMockData] = useState(false);
+
+  const hasAssignmentChanges = useMemo(() => {
+    if (!contact) {
+      return false;
+    }
+    return (
+      !sameIdSet(labelIds(contact.tags), selectedTagIds) ||
+      !sameIdSet(labelIds(contact.groups), selectedGroupIds)
+    );
+  }, [contact, selectedGroupIds, selectedTagIds]);
 
   useEffect(() => {
     let isMounted = true;
@@ -101,15 +143,28 @@ export default function ContactDetailPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const data = await apiFetch<ContactDetail>(`/v1/contacts/${contactId}`);
+        const [data, tagData, groupData] = await Promise.all([
+          apiFetch<ContactDetail>(`/v1/contacts/${contactId}`),
+          fetchContactTags(),
+          fetchContactGroups(),
+        ]);
         if (isMounted) {
           setContact(data);
+          setAvailableTags(tagData);
+          setAvailableGroups(groupData);
+          setSelectedTagIds(labelIds(data.tags));
+          setSelectedGroupIds(labelIds(data.groups));
           setIsMockData(false);
         }
       } catch (err) {
         if (isMounted) {
           logUiError("Could not load contact", err);
-          setContact(mockContactDetail(contactId));
+          const mockContact = mockContactDetail(contactId);
+          setContact(mockContact);
+          setAvailableTags(mockContact.tags);
+          setAvailableGroups(mockContact.groups);
+          setSelectedTagIds(labelIds(mockContact.tags));
+          setSelectedGroupIds(labelIds(mockContact.groups));
           setIsMockData(true);
           setError(null);
         }
@@ -125,6 +180,32 @@ export default function ContactDetailPage() {
       isMounted = false;
     };
   }, [contactId]);
+
+  const saveAssignments = async () => {
+    if (!contact || !hasAssignmentChanges) {
+      return;
+    }
+
+    setIsSavingAssignments(true);
+    try {
+      let updatedContact = contact;
+      if (!sameIdSet(labelIds(contact.tags), selectedTagIds)) {
+        updatedContact = await setContactTags(contact.id, selectedTagIds);
+      }
+      if (!sameIdSet(labelIds(updatedContact.groups), selectedGroupIds)) {
+        updatedContact = await setContactGroups(contact.id, selectedGroupIds);
+      }
+      setContact(updatedContact);
+      setSelectedTagIds(labelIds(updatedContact.tags));
+      setSelectedGroupIds(labelIds(updatedContact.groups));
+      toast.success("Contact assignments updated.");
+    } catch (err) {
+      logUiError("Could not update contact assignments", err);
+      toast.error("We couldn't update this contact right now.");
+    } finally {
+      setIsSavingAssignments(false);
+    }
+  };
 
   return (
     <AppShell>
@@ -207,6 +288,92 @@ export default function ContactDetailPage() {
               value={getLocation(contact) || "No location"}
             />
           </section>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Tags & groups</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div className="rounded-[24px] border border-border bg-background/60 p-4">
+                  <div className="mb-3 flex items-center gap-2 text-sm font-medium">
+                    <Tags className="h-4 w-4 text-primary" aria-hidden="true" />
+                    Tags
+                  </div>
+                  {availableTags.length > 0 ? (
+                    <div className="grid gap-2">
+                      {availableTags.map((tag) => (
+                        <label
+                          key={tag.id}
+                          className="flex cursor-pointer items-center gap-3 rounded-full px-3 py-2 text-sm transition-colors hover:bg-muted"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedTagIds.includes(tag.id)}
+                            onChange={() =>
+                              setSelectedTagIds((current) => toggleId(current, tag.id))
+                            }
+                            className="h-4 w-4 accent-primary"
+                          />
+                          <span className="truncate">{tag.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No tags yet</p>
+                  )}
+                </div>
+
+                <div className="rounded-[24px] border border-border bg-background/60 p-4">
+                  <div className="mb-3 flex items-center gap-2 text-sm font-medium">
+                    <FolderKanban className="h-4 w-4 text-primary" aria-hidden="true" />
+                    Groups
+                  </div>
+                  {availableGroups.length > 0 ? (
+                    <div className="grid gap-2">
+                      {availableGroups.map((group) => (
+                        <label
+                          key={group.id}
+                          className="flex cursor-pointer items-center justify-between gap-3 rounded-full px-3 py-2 text-sm transition-colors hover:bg-muted"
+                        >
+                          <span className="flex min-w-0 items-center gap-3">
+                            <input
+                              type="checkbox"
+                              checked={selectedGroupIds.includes(group.id)}
+                              onChange={() =>
+                                setSelectedGroupIds((current) =>
+                                  toggleId(current, group.id),
+                                )
+                              }
+                              className="h-4 w-4 accent-primary"
+                            />
+                            <span className="truncate">{group.name}</span>
+                          </span>
+                          {group.source && (
+                            <Badge variant="secondary" className="rounded-full">
+                              {group.source.toLowerCase()}
+                            </Badge>
+                          )}
+                        </label>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No groups yet</p>
+                  )}
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  className="rounded-full"
+                  disabled={!hasAssignmentChanges || isSavingAssignments || isMockData}
+                  onClick={() => void saveAssignments()}
+                >
+                  {isSavingAssignments ? "Saving" : "Save assignments"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
 
           <section className="grid gap-4 xl:grid-cols-2">
             <ListSection title="Phones" empty="No phone numbers">

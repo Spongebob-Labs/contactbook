@@ -1,5 +1,12 @@
 # Decision Context
 
+## 2026-06-02 - Contact Tags And Groups Frontend Integration
+
+- Decision: Merge the latest `origin/main` backend contact-label contract into the UI branch and integrate tags/groups through server-side contact filters, contact list chips, sidebar group shortcuts, and contact detail assignment controls.
+- Reason: The backend now owns contact tag/group CRUD and `tagIds`/`groupIds` AND filters. Keeping the list server-paginated preserves the current Contacts page performance and matches the new query contract, while contact detail assignment avoids dense inline row editing.
+- Notes: Frontend source enums now follow the backend `GOOGLE`, `ICLOUD`, `VCARD`, and `CONTACTBOOK` values. Browser testing remains untouched.
+- Alternatives considered: Fetch-all client filtering from `origin/main` was skipped because the current branch already uses backend pagination/sorting and the new backend filters are designed for ID-based server filtering.
+
 ## 2026-06-02 - Legal Body Immediate Visibility
 
 - Decision: Remove reveal-animation gating from the post-hero body content on `/terms` and `/privacy` while keeping the hero reveal treatment.

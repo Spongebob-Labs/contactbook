@@ -9,10 +9,8 @@ export type VerifyCodeResponse =
 export type ContactSource =
   | "GOOGLE"
   | "ICLOUD"
-  | "CSV"
   | "VCARD"
-  | "CALDAV"
-  | "MANUAL";
+  | "CONTACTBOOK";
 
 export type ContactPhone = {
   value: string;
@@ -66,9 +64,40 @@ export type ContactImportSummary = {
     source: ContactSource;
     activeCount: number;
     deletedCount: number;
+    lastSync?: {
+      at?: string | null;
+      hasSyncToken?: boolean;
+      runStats?: {
+        added: number;
+        updated: number;
+        deleted: number;
+        duplicatesFound: number;
+      };
+    };
+    /** @deprecated use lastSync.at */
     lastSyncAt?: string | null;
+    /** @deprecated use lastSync.hasSyncToken */
     hasSyncToken?: boolean;
   }>;
+};
+
+export type ContactLabel = {
+  id: string;
+  name: string;
+};
+
+export type ContactGroup = ContactLabel & {
+  source?: ContactSource | null;
+  externalId?: string | null;
+};
+
+export type ContactProviderLink = {
+  source: ContactSource;
+  externalId: string;
+  sourceRevision?: string | null;
+  isPrimary: boolean;
+  firstLinkedAt: string;
+  lastUpdatedAt: string;
 };
 
 export type ContactImport = {
@@ -81,6 +110,9 @@ export type ContactImport = {
   lastName?: string | null;
   primaryPhone?: ContactPhone | null;
   primaryEmail?: ContactEmail | null;
+  tags: ContactLabel[];
+  groups: ContactGroup[];
+  providerLinks?: ContactProviderLink[];
   createdAt: string;
   updatedAt: string;
 };

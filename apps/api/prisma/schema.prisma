@@ -60,9 +60,7 @@ enum ConnectionStatus {
 enum ContactSource {
   GOOGLE
   ICLOUD
-  CSV
   VCARD
-  CALDAV
   CONTACTBOOK
 }
 
@@ -123,8 +121,12 @@ model User {
   contacts           Contact[]
   contactMergeGroups ContactMergeGroup[]
   integrations       IntegrationState[]
-  travelEvents  TravelEvent[]
-  tags          Tag[]
+  travelEvents       TravelEvent[]
+  tags               Tag[]
+  contactGroups      ContactGroup[]
+  travelProfile      UserTravelProfile?
+  travelSessions     UserTravelSession[]
+  travelNotifyContacts TravelNotificationContact[]
 
   oauthAccounts    OAuthAccount[]
   otpSessions      OtpSession[]
@@ -192,11 +194,12 @@ model ProfileField {
 }
 
 model ContactCard {
-  id     String   @id @default(uuid())
-  userId String
-  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name   String
-  type   CardType @default(CUSTOM)
+  id          String         @id @default(uuid())
+  userId      String
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  type        CardType       @default(CUSTOM)
+  isSensitive Boolean        @default(false)
 
   fieldMappings CardFieldMapping[]
   requesterSharedConnections Connection[] @relation("RequesterSharedCard")
@@ -231,8 +234,6 @@ model Connection {
   receiverSharedCardId  String?          @map("receiver_shared_card_id")
   receiverSharedCard    ContactCard?     @relation("ReceiverSharedCard", fields: [receiverSharedCardId], references: [id], onDelete: SetNull)
   hasSharedBack         Boolean          @default(false)
-
-  tags Tag[]
 
   whatsappSessions WhatsappSession[]
 
@@ -327,6 +328,8 @@ model IntegrationState {
   lastSyncUpdated    Int           @default(0)
   lastSyncDeleted    Int           @default(0)
   lastSyncDuplicates Int           @default(0)
+  lastWriteBackAt    DateTime?
+  lastWriteBackError String?
 
   @@unique([userId, source])
   @@map("integration_states")
@@ -383,12 +386,34 @@ model Contact {
   organizations ContactOrganization[]
   addresses     ContactAddress[]
   urls          ContactUrl[]
+  tags          Tag[]          @relation("ContactTags")
+  groups                 ContactGroup[]              @relation("ContactGroups")
+  travelNotifyForUsers   TravelNotificationContact[]
+  providerLinks          ContactProviderLink[]
 
   @@unique([userId, source, externalId])
   @@index([userId, source, deletedAt])
   @@index([userId, displayName])
   @@index([mergeGroupId])
   @@map("contacts")
+}
+
+model ContactProviderLink {
+  id             String        @id @default(uuid())
+  userId         String
+  contactId      String
+  contact        Contact       @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  source         ContactSource
+  externalId     String
+  sourceRevision String?
+  isPrimary      Boolean       @default(false)
+  firstLinkedAt  DateTime      @default(now())
+  lastUpdatedAt  DateTime      @updatedAt
+
+  @@unique([userId, source, externalId])
+  @@unique([contactId, source])
+  @@index([userId, source])
+  @@map("contact_provider_links")
 }
 
 model ContactPhone {
@@ -460,6 +485,41 @@ model ContactUrl {
   @@map("contact_urls")
 }
 
+model UserTravelProfile {
+  userId                String  @id
+  user                  User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  homeCity              String?
+  homeCountry           String?
+  calendarSyncEnabled   Boolean @default(true)
+
+  @@map("user_travel_profiles")
+}
+
+model TravelNotificationContact {
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contactId String
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@id([userId, contactId])
+  @@map("travel_notification_contacts")
+}
+
+model UserTravelSession {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  inTravel    Boolean   @default(false)
+  detectedCity    String?
+  detectedCountry String?
+  promptedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([userId, updatedAt])
+  @@map("user_travel_sessions")
+}
+
 model TravelEvent {
   id                      String   @id @default(uuid())
   userId                  String
@@ -484,15 +544,30 @@ model TravelEvent {
 }
 
 model Tag {
-  id          String       @id @default(uuid())
-  userId      String
-  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name        String
-  connections Connection[]
+  id       String    @id @default(uuid())
+  userId   String
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name     String
+  contacts Contact[] @relation("ContactTags")
 
   @@unique([userId, name])
   @@index([userId])
   @@map("tags")
+}
+
+model ContactGroup {
+  id         String         @id @default(uuid())
+  userId     String
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String
+  source     ContactSource?
+  externalId String?
+  contacts   Contact[]      @relation("ContactGroups")
+
+  @@unique([userId, name])
+  @@unique([userId, source, externalId])
+  @@index([userId])
+  @@map("contact_groups")
 }
 
 model OAuthAccount {

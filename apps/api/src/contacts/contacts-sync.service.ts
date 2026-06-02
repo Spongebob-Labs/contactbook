@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { ContactSource } from "@prisma/client";
+import { ContactSourceCredentialsService } from "./contact-source-credentials.service";
 import { toContactImportResult } from "./contact-import-result.mapper";
 import type { ContactImportResultDto } from "./dto/contact-import-result.dto";
 import type { ContactSyncResponseDto } from "./dto/contact-sync-response.dto";
@@ -16,13 +17,14 @@ export class ContactsSyncService {
   constructor(
     private readonly google: GoogleContactsSyncProvider,
     private readonly icloud: IcloudContactsSyncProvider,
+    private readonly credentials: ContactSourceCredentialsService,
   ) {}
 
   async sync(
     userId: string,
     source: ContactSource,
   ): Promise<ContactSyncResponseDto> {
-    return this.runForSource(userId, source, "sync");
+    return this.runForSource(userId, source);
   }
 
   async import(
@@ -34,6 +36,10 @@ export class ContactsSyncService {
         `Sync is not supported for source ${source}. Use GOOGLE or ICLOUD.`,
       );
     }
+    await this.credentials.assertValid(
+      userId,
+      source as typeof ContactSource.GOOGLE | typeof ContactSource.ICLOUD,
+    );
     if (source === ContactSource.GOOGLE) {
       return toContactImportResult(await this.google.import(userId));
     }
@@ -43,13 +49,16 @@ export class ContactsSyncService {
   private async runForSource(
     userId: string,
     source: ContactSource,
-    operation: "sync" | "import",
   ): Promise<ContactSyncResponseDto> {
     if (!SYNC_SOURCES.includes(source)) {
       throw new BadRequestException(
         `Sync is not supported for source ${source}. Use GOOGLE or ICLOUD.`,
       );
     }
+    await this.credentials.assertValid(
+      userId,
+      source as typeof ContactSource.GOOGLE | typeof ContactSource.ICLOUD,
+    );
     if (source === ContactSource.GOOGLE) {
       return this.google.sync(userId);
     }

@@ -1,6 +1,7 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
 import { CardType } from "@prisma/client";
 import {
+  IsBoolean,
   IsEnum,
   IsOptional,
   IsString,
@@ -20,4 +21,9 @@ export class UpdateContactCardDto {
   @IsOptional()
   @IsEnum(CardType)
   type?: CardType;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  isSensitive?: boolean;
 }

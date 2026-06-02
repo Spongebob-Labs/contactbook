@@ -152,6 +152,23 @@ function parseAddresses(card: VCard): NormalizedAddress[] {
   return addresses;
 }
 
+function parseCategories(card: VCard): string[] {
+  const names: string[] = [];
+  for (const prop of propertiesForField(card, "categories")) {
+    const raw = propertyValue(prop);
+    if (!raw) {
+      continue;
+    }
+    for (const part of raw.split(",")) {
+      const name = part.trim();
+      if (name.length > 0) {
+        names.push(name);
+      }
+    }
+  }
+  return names;
+}
+
 function parseUrls(card: VCard): NormalizedUrl[] {
   const urls: NormalizedUrl[] = [];
   for (const prop of propertiesForField(card, "url")) {
@@ -239,6 +256,7 @@ function buildContactFromCard(card: VCard): NormalizedContact {
     organizations: parseOrganizations(card),
     addresses: parseAddresses(card),
     urls: parseUrls(card),
+    categories: parseCategories(card),
     deleted: false,
   };
 

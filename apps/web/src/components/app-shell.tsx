@@ -1,7 +1,8 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import {
   CreditCard,
+  FolderKanban,
   Home,
   Import,
   LogOut,
@@ -14,6 +15,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useAuth } from "@/context/auth-context";
+import { fetchContactGroups } from "@/lib/contacts-api";
+import { logUiError } from "@/lib/friendly-errors";
+import type { ContactGroup } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const nav = [
@@ -62,8 +66,31 @@ function ProfileAvatar({
 export function AppShell({ children, headerActions }: AppShellProps) {
   const [open, setOpen] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [contactGroups, setContactGroups] = useState<ContactGroup[]>([]);
   const navigate = useNavigate();
   const { logout, profileIdentity, userId } = useAuth();
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadGroups = async () => {
+      try {
+        const groups = await fetchContactGroups();
+        if (isMounted) {
+          setContactGroups(groups);
+        }
+      } catch (error) {
+        logUiError("Could not load sidebar groups", error);
+        if (isMounted) {
+          setContactGroups([]);
+        }
+      }
+    };
+
+    void loadGroups();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleLogout = async () => {
     setProfileMenuOpen(false);
@@ -112,6 +139,27 @@ export function AppShell({ children, headerActions }: AppShellProps) {
             {item.label}
           </NavLink>
         ))}
+        <div className="mt-2 border-t border-border pt-3">
+          <div className="mb-2 flex items-center gap-2 px-4 text-xs font-medium uppercase text-muted-foreground">
+            <FolderKanban className="h-3.5 w-3.5" aria-hidden="true" />
+            Groups
+          </div>
+          <div className="grid gap-1">
+            {contactGroups.slice(0, 6).map((group) => (
+              <Link
+                key={group.id}
+                to={`/dashboard/contacts?groupIds=${encodeURIComponent(group.id)}`}
+                onClick={() => setOpen(false)}
+                className="flex h-9 min-w-0 items-center rounded-full px-4 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                <span className="truncate">{group.name}</span>
+              </Link>
+            ))}
+            {contactGroups.length === 0 && (
+              <p className="px-4 py-2 text-sm text-muted-foreground">No groups yet</p>
+            )}
+          </div>
+        </div>
       </nav>
     </aside>
   );
