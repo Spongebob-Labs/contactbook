@@ -1,5 +1,11 @@
 # Decision Context
 
+## 2026-06-02 - Contact Detail Inline Tag And Group Creation
+
+- Decision: Add inline create-and-assign controls inside the Contact Detail `Tags & groups` card for both tags and groups.
+- Reason: Users naturally decide to label or group a contact while viewing that contact. Creating the tag/group and immediately assigning it avoids a separate management flow and keeps the contact as the center of action.
+- Notes: New tags use `POST /v1/contacts/tags` followed by `PUT /v1/contacts/:id/tags`; new groups use `POST /v1/contacts/groups` followed by `PUT /v1/contacts/:id/groups`. Backend code and browser testing remain untouched.
+
 ## 2026-06-02 - Contacts Source Filter Availability
 
 - Decision: Keep Contacts page source filter options static and limited to `All sources`, `Google`, and `vCard` until the backend provides Contacts-list source facets.

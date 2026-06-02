@@ -9,6 +9,7 @@ import {
   Mail,
   MapPin,
   Phone,
+  Plus,
   Tags,
   type LucideIcon,
 } from "lucide-react";
@@ -19,9 +20,12 @@ import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
 import {
+  createContactGroup,
+  createContactTag,
   fetchContactGroups,
   fetchContactTags,
   setContactGroups,
@@ -108,6 +112,10 @@ function toggleId(ids: string[], id: string) {
     : [...ids, id];
 }
 
+function uniqueIds(ids: string[]) {
+  return Array.from(new Set(ids));
+}
+
 export default function ContactDetailPage() {
   const { contactId } = useParams();
   const [contact, setContact] = useState<ContactDetail | null>(null);
@@ -115,8 +123,12 @@ export default function ContactDetailPage() {
   const [availableGroups, setAvailableGroups] = useState<ContactGroup[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
+  const [newTagName, setNewTagName] = useState("");
+  const [newGroupName, setNewGroupName] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingAssignments, setIsSavingAssignments] = useState(false);
+  const [isCreatingTag, setIsCreatingTag] = useState(false);
+  const [isCreatingGroup, setIsCreatingGroup] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isMockData, setIsMockData] = useState(false);
 
@@ -204,6 +216,74 @@ export default function ContactDetailPage() {
       toast.error("We couldn't update this contact right now.");
     } finally {
       setIsSavingAssignments(false);
+    }
+  };
+
+  const createAndAssignTag = async () => {
+    if (!contact || isMockData) {
+      return;
+    }
+
+    const name = newTagName.trim();
+    if (!name) {
+      return;
+    }
+
+    setIsCreatingTag(true);
+    try {
+      const tag = await createContactTag(name);
+      const nextTagIds = uniqueIds([...selectedTagIds, tag.id]);
+      const updatedContact = await setContactTags(contact.id, nextTagIds);
+      setAvailableTags((current) =>
+        current.some((currentTag) => currentTag.id === tag.id)
+          ? current
+          : [...current, tag].sort((first, second) =>
+              first.name.localeCompare(second.name, undefined, { sensitivity: "base" }),
+            ),
+      );
+      setContact(updatedContact);
+      setSelectedTagIds(labelIds(updatedContact.tags));
+      setNewTagName("");
+      toast.success("Tag created and added to this contact.");
+    } catch (err) {
+      logUiError("Could not create contact tag", err);
+      toast.error("We couldn't create that tag right now.");
+    } finally {
+      setIsCreatingTag(false);
+    }
+  };
+
+  const createAndAssignGroup = async () => {
+    if (!contact || isMockData) {
+      return;
+    }
+
+    const name = newGroupName.trim();
+    if (!name) {
+      return;
+    }
+
+    setIsCreatingGroup(true);
+    try {
+      const group = await createContactGroup(name);
+      const nextGroupIds = uniqueIds([...selectedGroupIds, group.id]);
+      const updatedContact = await setContactGroups(contact.id, nextGroupIds);
+      setAvailableGroups((current) =>
+        current.some((currentGroup) => currentGroup.id === group.id)
+          ? current
+          : [...current, group].sort((first, second) =>
+              first.name.localeCompare(second.name, undefined, { sensitivity: "base" }),
+            ),
+      );
+      setContact(updatedContact);
+      setSelectedGroupIds(labelIds(updatedContact.groups));
+      setNewGroupName("");
+      toast.success("Group created with this contact.");
+    } catch (err) {
+      logUiError("Could not create contact group", err);
+      toast.error("We couldn't create that group right now.");
+    } finally {
+      setIsCreatingGroup(false);
     }
   };
 
@@ -322,6 +402,33 @@ export default function ContactDetailPage() {
                   ) : (
                     <p className="text-sm text-muted-foreground">No tags yet</p>
                   )}
+                  <div className="mt-4 rounded-[20px] border border-dashed border-border bg-card/70 p-3">
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <Input
+                        value={newTagName}
+                        onChange={(event) => setNewTagName(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            void createAndAssignTag();
+                          }
+                        }}
+                        placeholder="Add new tag"
+                        className="rounded-full"
+                        disabled={isCreatingTag || isMockData}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="rounded-full"
+                        disabled={!newTagName.trim() || isCreatingTag || isMockData}
+                        onClick={() => void createAndAssignTag()}
+                      >
+                        <Plus className="h-4 w-4" aria-hidden="true" />
+                        {isCreatingTag ? "Adding" : "Add"}
+                      </Button>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="rounded-[24px] border border-border bg-background/60 p-4">
@@ -360,6 +467,33 @@ export default function ContactDetailPage() {
                   ) : (
                     <p className="text-sm text-muted-foreground">No groups yet</p>
                   )}
+                  <div className="mt-4 rounded-[20px] border border-dashed border-border bg-card/70 p-3">
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <Input
+                        value={newGroupName}
+                        onChange={(event) => setNewGroupName(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            void createAndAssignGroup();
+                          }
+                        }}
+                        placeholder="Add new group"
+                        className="rounded-full"
+                        disabled={isCreatingGroup || isMockData}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="rounded-full"
+                        disabled={!newGroupName.trim() || isCreatingGroup || isMockData}
+                        onClick={() => void createAndAssignGroup()}
+                      >
+                        <Plus className="h-4 w-4" aria-hidden="true" />
+                        {isCreatingGroup ? "Adding" : "Add"}
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               </div>
               <div className="flex justify-end">

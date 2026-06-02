@@ -50,6 +50,20 @@ export async function fetchContactGroups(): Promise<ContactGroup[]> {
   return apiFetch<ContactGroup[]>("/v1/contacts/groups");
 }
 
+export async function createContactTag(name: string): Promise<ContactLabel> {
+  return apiFetch<ContactLabel>("/v1/contacts/tags", {
+    method: "POST",
+    body: { name },
+  });
+}
+
+export async function createContactGroup(name: string): Promise<ContactGroup> {
+  return apiFetch<ContactGroup>("/v1/contacts/groups", {
+    method: "POST",
+    body: { name },
+  });
+}
+
 export async function setContactTags(
   contactId: string,
   tagIds: string[],
