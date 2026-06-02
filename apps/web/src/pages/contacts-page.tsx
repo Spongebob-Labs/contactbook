@@ -429,28 +429,25 @@ export default function ContactsPage() {
 
   const visibleSourceOptions = useMemo(
     () => {
+      if (importSummary === null) {
+        return sourceOptions;
+      }
+
       const visibleSources = new Set<ContactSource>();
       importSummary?.bySource.forEach((sourceSummary) => {
         if (sourceSummary.activeCount > 0) {
           visibleSources.add(sourceSummary.source);
         }
       });
-      contacts.forEach((contact) => {
-        visibleSources.add(contact.source);
-        contact.providerLinks?.forEach((link) => visibleSources.add(link.source));
-      });
 
       return sourceOptions.filter((option) => {
         if (option.value === "ALL") {
           return true;
         }
-        if (importSummary === null && visibleSources.size === 0) {
-          return option.value === sourceFilter;
-        }
         return visibleSources.has(option.value);
       });
     },
-    [contacts, importSummary, sourceFilter],
+    [importSummary],
   );
 
   useEffect(() => {
