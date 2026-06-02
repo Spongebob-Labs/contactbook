@@ -15,7 +15,9 @@ const ContactsPage = lazy(() => import("@/pages/contacts-page"));
 const DashboardPage = lazy(() => import("@/pages/dashboard-page"));
 const ImportPage = lazy(() => import("@/pages/import-page"));
 const LandingPage = lazy(() => import("@/pages/landing-page"));
+const PrivacyPage = lazy(() => import("@/pages/privacy-page"));
 const ProfilePage = lazy(() => import("@/pages/profile-page"));
+const TermsPage = lazy(() => import("@/pages/terms-page"));
 const ThemePreviewPage = lazy(() => import("@/pages/theme-preview-page"));
 
 function pageTitleForPath(pathname: string) {
@@ -27,6 +29,12 @@ function pageTitleForPath(pathname: string) {
   }
   if (pathname === "/contact") {
     return "Contact ContactBook | ContactBook";
+  }
+  if (pathname === "/privacy") {
+    return "Privacy Policy | ContactBook";
+  }
+  if (pathname === "/terms") {
+    return "Terms and Conditions | ContactBook";
   }
   if (pathname === "/auth") {
     return "Sign In | ContactBook";
@@ -80,15 +88,28 @@ function DocumentTitle() {
   return null;
 }
 
+function RouteScrollReset() {
+  const { pathname } = useLocation();
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [pathname]);
+
+  return null;
+}
+
 export default function App() {
   return (
     <AppErrorBoundary>
       <DocumentTitle />
+      <RouteScrollReset />
       <Suspense fallback={<PageLoader />}>
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/about" element={<AboutPage />} />
           <Route path="/contact" element={<ContactPage />} />
+          <Route path="/privacy" element={<PrivacyPage />} />
+          <Route path="/terms" element={<TermsPage />} />
           <Route path="/auth" element={<AuthPage />} />
           <Route path="/auth/callback" element={<AuthCallbackPage />} />
           <Route

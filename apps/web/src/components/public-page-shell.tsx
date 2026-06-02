@@ -15,6 +15,11 @@ const defaultNavItems: PublicNavItem[] = [
   { label: "Contact", href: "/contact" },
 ];
 
+const legalNavItems: PublicNavItem[] = [
+  { label: "Privacy Policy", href: "/privacy" },
+  { label: "Terms and Conditions", href: "/terms" },
+];
+
 function PublicNavLink({ item }: { item: PublicNavItem }) {
   if (item.href.startsWith("/")) {
     return (
@@ -96,6 +101,9 @@ export function PublicFooter({
 
           <nav className="flex flex-wrap gap-x-5 gap-y-2 text-sm font-medium text-public-muted">
             {navItems.map((item) => (
+              <PublicNavLink key={`${item.label}-${item.href}`} item={item} />
+            ))}
+            {legalNavItems.map((item) => (
               <PublicNavLink key={`${item.label}-${item.href}`} item={item} />
             ))}
           </nav>

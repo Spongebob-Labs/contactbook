@@ -1,5 +1,23 @@
 # Decision Context
 
+## 2026-06-02 - Legal Body Immediate Visibility
+
+- Decision: Remove reveal-animation gating from the post-hero body content on `/terms` and `/privacy` while keeping the hero reveal treatment.
+- Reason: The legal body content is essential reading content and must render immediately. Long policy pages were vulnerable to appearing blank below the hero when `public-reveal` content stayed transparent.
+- Notes: Styling, copy, routing, backend code, and browser testing remain unchanged.
+
+## 2026-06-02 - Route Scroll Reset
+
+- Decision: Add an app-level route scroll reset that moves the window to the top whenever the React Router pathname changes.
+- Reason: Public footer links to `/privacy` and `/terms` were preserving the footer scroll position from the previous page, making the destination page appear at the bottom. Path-based reset restores normal page-navigation behavior while leaving same-page hash anchor navigation untouched.
+- Notes: Frontend-only routing behavior update. Backend code and browser testing remain untouched.
+
+## 2026-06-01 - Public Privacy And Terms Pages
+
+- Decision: Add frontend-only public `/privacy` and `/terms` routes with generic interim legal content for ContactBook, and expose both links from the shared public footer across public pages.
+- Reason: The landing experience needs accessible Privacy Policy and Terms and Conditions pages before final company-specific legal review. Footer placement keeps legal links consistently available without crowding the public page headers.
+- Notes: Content uses ContactBook-specific product concepts from the attached deck, including controlled sharing, contact imports, profile details, essential auth cookies, and no current advertising tracking. The Terms governing law section remains generic pending confirmation. Backend code and browser testing remain untouched.
+
 ## 2026-05-28 - Dashboard CTA Spotlight Nudges
 
 - Decision: Replace dashboard nudge modal cards with user-scoped spotlight coachmarks that dim the dashboard, highlight the existing Add card or top Profile stat Review profile CTA, and dismiss when the user clicks outside the highlighted CTA.
