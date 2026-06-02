@@ -2,7 +2,7 @@
 
 ## 2026-06-02 - Contacts Source Filter Availability
 
-- Decision: Hide Contacts page source filter options whose source has zero contacts, using lightweight per-source contact list total checks.
+- Decision: Hide Contacts page source filter options whose source has zero contacts, using `/v1/contacts/import/summary` source counts and current page provider/source data as a fallback signal.
 - Reason: Empty source options create dead-end filters and make the Contacts toolbar noisier than needed. Keeping `All sources` visible preserves a stable reset path.
 - Notes: If a URL selects an empty source, the UI resets to `All sources`. Backend code and browser testing remain untouched.
 
