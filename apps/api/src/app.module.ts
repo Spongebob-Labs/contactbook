@@ -4,6 +4,8 @@ import { ScheduleModule } from "@nestjs/schedule";
 import { AuthModule } from "./auth/auth.module";
 import { CardModule } from "./card/card.module";
 import { ContactsModule } from "./contacts/contacts.module";
+import { GroupsModule } from "./groups/groups.module";
+import { TagsModule } from "./tags/tags.module";
 import { ConnectionModule } from "./connection/connection.module";
 import { HealthModule } from "./health/health.module";
 import { IntegrationModule } from "./integration/integration.module";
@@ -28,6 +30,8 @@ import { LoggerModule } from "./common/logger/logger.module";
     HealthModule,
     AuthModule,
     ProfileModule,
+    GroupsModule,
+    TagsModule,
     ContactsModule,
     CardModule,
     SyncModule,
