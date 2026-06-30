@@ -17,6 +17,7 @@ import {
 import { PrismaService } from "../prisma/prisma.service";
 import { PHONE_VERIFICATION_JWT_TYP } from "./auth.constants";
 import type { CompleteRegisterDto } from "./dto/complete-register.dto";
+import { LoginBroadcastService } from "./login-broadcast.service";
 import { OtpService } from "./otp.service";
 import { parseRelativeMs } from "./parse-relative-ms";
 
@@ -51,6 +52,7 @@ export class AuthService {
     private readonly jwt: JwtService,
     private readonly otp: OtpService,
     private readonly config: ConfigService,
+    private readonly loginBroadcast: LoginBroadcastService,
   ) {}
 
   /**
@@ -88,6 +90,7 @@ export class AuthService {
         throw new UnauthorizedException();
       }
       const tokens = await this.issueTokenPair(user.id);
+      await this.loginBroadcast.sendForUser(user.id);
       return {
         registered: true,
         isOnboarded: user.profileOnboardingCompletedAt != null,
