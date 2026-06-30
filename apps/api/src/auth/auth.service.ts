@@ -54,8 +54,7 @@ export class AuthService {
   ) {}
 
   /**
-   * Sends a WhatsApp OTP for any phone (registered or not). Twilio errors surface as
-   * 400 when WhatsApp cannot receive the message.
+   * Sends a WhatsApp OTP for any phone (registered or not).
    */
   async requestWhatsappCode(
     phoneRaw: string,

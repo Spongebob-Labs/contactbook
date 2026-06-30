@@ -38,7 +38,7 @@ export function assertDialAndNationalFormat(
   }
 }
 
-/** Concatenate country calling prefix and national digits into E.164 (Twilio / OTP). */
+/** Concatenate country calling prefix and national digits into E.164 (WhatsApp / OTP). */
 export function composeE164(
   countryCallingPrefix: string,
   nationalPhone: string,

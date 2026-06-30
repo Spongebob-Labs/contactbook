@@ -4,7 +4,7 @@
 |-----------|-------------|---------|
 | [`opentofu/`](opentofu/) | `c-club-466412` | **Legacy** — existing state; run `tofu destroy` when decommissioning |
 | [`envs/platform/`](envs/platform/) | `project-c74d38dd-7e12-4d3f-bbf` | **Shared** — GAR, APIs, GitHub WIF |
-| [`envs/prod/`](envs/prod/) | same | **Prod** — `contactbook-api`, `contactbook-profile-photos-c74d38dd` |
+| [`envs/prod/`](envs/prod/) | same | **Prod** — API, profile photos, and the stateful OpenWA VM |
 | [`envs/uat/`](envs/uat/) | same | **UAT** — `contactbook-api-uat`, `contactbook-profile-photos-uat-c74d38dd` |
 
 Each `envs/*` directory has its own `terraform.tfstate` (gitignored).
@@ -40,6 +40,11 @@ cd ../uat
 cp -n terraform.tfvars.example terraform.tfvars
 tofu init && tofu apply
 ```
+
+The production stack also provisions `contactbook-openwa` when
+`enable_openwa_vm = true`. After applying it, follow
+[`docs/openwa-gcp-deployment.md`](../docs/openwa-gcp-deployment.md) to create
+the DNS record and deploy the gateway.
 
 **Greenfield destroy + rebuild:** [`DESTROY-AND-REBUILD.md`](DESTROY-AND-REBUILD.md)  
 **State migration (keep existing resources):** [`MIGRATE.md`](MIGRATE.md)  

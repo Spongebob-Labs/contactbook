@@ -1,182 +1,166 @@
-import { UnauthorizedException } from "@nestjs/common";
-import { OtpService } from "./otp.service";
-import { PrismaService } from "../prisma/prisma.service";
-import { TwilioService } from "../integration/twilio.service";
+import {
+  ConflictException,
+  HttpException,
+  UnauthorizedException,
+} from "@nestjs/common";
 import * as bcrypt from "bcrypt";
-
-interface MockTx {
-  otpSession: { update: jest.Mock };
-  user: { update: jest.Mock };
-}
-
-const makePrisma = (mockTx: MockTx) => ({
-  otpSession: {
-    create: jest.fn(),
-    findFirst: jest.fn(),
-  },
-  $transaction: jest
-    .fn()
-    .mockImplementation((cb: (tx: MockTx) => Promise<unknown>) => cb(mockTx)),
-});
-
-const makeTwilio = () => ({
-  isVerifyConfigured: jest.fn(),
-  isClientConfigured: jest.fn(),
-  sendVerificationOtp: jest.fn(),
-  verifyVerificationOtp: jest.fn(),
-  sendWhatsApp: jest.fn(),
-});
+import { OtpService } from "./otp.service";
+import {
+  RECIPIENT_INITIATION_REQUIRED,
+  WhatsappProviderError,
+} from "../messaging/whatsapp-errors";
 
 describe("OtpService", () => {
-  let prisma: {
+  const tx = {
+    otpSession: { update: jest.fn() },
+    user: { update: jest.fn() },
+  };
+  const prisma = {
     otpSession: {
-      create: jest.Mock;
-      findFirst: jest.Mock;
-    };
-    $transaction: jest.Mock;
+      count: jest.fn(),
+      create: jest.fn(),
+      findFirst: jest.fn(),
+      update: jest.fn(),
+      delete: jest.fn(),
+    },
+    $transaction: jest.fn((callback: (client: typeof tx) => unknown) =>
+      callback(tx),
+    ),
   };
-  let mockTx: MockTx;
-  let twilio: {
-    isVerifyConfigured: jest.Mock;
-    isClientConfigured: jest.Mock;
-    sendVerificationOtp: jest.Mock;
-    verifyVerificationOtp: jest.Mock;
-    sendWhatsApp: jest.Mock;
-  };
-  let service: OtpService;
+  const messaging = { sendOtp: jest.fn() };
+  const config = { get: jest.fn(() => "919676240186") };
+  const service = new OtpService(
+    prisma as never,
+    messaging as never,
+    config as never,
+  );
 
   beforeEach(() => {
-    mockTx = {
-      otpSession: { update: jest.fn() },
-      user: { update: jest.fn() },
-    };
-    prisma = makePrisma(mockTx);
-    twilio = makeTwilio();
-    service = new OtpService(
-      prisma as unknown as PrismaService,
-      twilio as unknown as TwilioService,
+    jest.clearAllMocks();
+    prisma.otpSession.count.mockResolvedValue(0);
+    prisma.otpSession.create.mockResolvedValue({ id: "otp-1" });
+    prisma.otpSession.update.mockResolvedValue({});
+    prisma.otpSession.delete.mockResolvedValue({});
+    messaging.sendOtp.mockResolvedValue({
+      providerMessageId: "wa-1",
+      status: "sent",
+    });
+  });
+
+  it("stores only a bcrypt hash and sends a six-digit code through the provider", async () => {
+    await service.sendPhoneOtp("+12166772305", "user-1");
+
+    const createCall = prisma.otpSession.create.mock.calls[0] as unknown as [
+      { data: { codeHash: string } },
+    ];
+    const data = createCall[0].data;
+    expect(data.codeHash).not.toMatch(/^\d{6}$/);
+    expect(messaging.sendOtp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        toE164: "+12166772305",
+        code: expect.stringMatching(/^\d{6}$/) as unknown,
+        expiresInMinutes: 10,
+        correlationId: "otp-1",
+      }),
     );
   });
 
-  describe("sendPhoneOtp", () => {
-    it("should use Twilio Verify when it is configured", async () => {
-      twilio.isVerifyConfigured.mockReturnValue(true);
-      prisma.otpSession.create.mockResolvedValue({});
+  it("throttles a second request within one minute", async () => {
+    prisma.otpSession.count.mockResolvedValueOnce(1);
 
-      await service.sendPhoneOtp("+12166772305", "user-id-123");
-
-      expect(prisma.otpSession.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({
-          userId: "user-id-123",
-          phoneE164: "+12166772305",
-          codeHash: "twilio-verify",
-        }) as unknown,
-      });
-      expect(twilio.sendVerificationOtp).toHaveBeenCalledWith("+12166772305");
-      expect(twilio.sendWhatsApp).not.toHaveBeenCalled();
+    await expect(
+      service.sendPhoneOtp("+12166772305", null),
+    ).rejects.toMatchObject<Partial<HttpException>>({
+      status: 429,
     });
+    expect(messaging.sendOtp).not.toHaveBeenCalled();
+  });
 
-    it("should generate a local OTP when Twilio Verify is not configured", async () => {
-      twilio.isVerifyConfigured.mockReturnValue(false);
-      prisma.otpSession.create.mockResolvedValue({});
+  it("throttles after five requests in one hour", async () => {
+    prisma.otpSession.count.mockResolvedValueOnce(0).mockResolvedValueOnce(5);
 
-      await service.sendPhoneOtp("+12166772305", "user-id-123");
-
-      expect(prisma.otpSession.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({
-          userId: "user-id-123",
-          phoneE164: "+12166772305",
-          codeHash: expect.not.stringContaining("twilio-verify") as unknown,
-        }) as unknown,
-      });
-      expect(twilio.sendWhatsApp).toHaveBeenCalledWith(
-        "+12166772305",
-        expect.stringContaining(
-          "Your ContactBook verification code is",
-        ) as unknown,
-      );
-      expect(twilio.sendVerificationOtp).not.toHaveBeenCalled();
+    await expect(
+      service.sendPhoneOtp("+12166772305", null),
+    ).rejects.toMatchObject<Partial<HttpException>>({
+      status: 429,
     });
   });
 
-  describe("verifyPhoneOtp", () => {
-    const session = {
-      id: "session-id-123",
-      userId: "user-id-123",
-      phoneE164: "+12166772305",
-      codeHash: "hashed-code",
-    };
+  it("returns a structured initiation response when OpenWA reports 463", async () => {
+    messaging.sendOtp.mockRejectedValue(
+      new WhatsappProviderError(RECIPIENT_INITIATION_REQUIRED, "initiate", {
+        providerMessageId: "wa-463",
+        providerErrorCode: "463",
+      }),
+    );
 
-    it("should throw UnauthorizedException if no active session is found", async () => {
-      prisma.otpSession.findFirst.mockResolvedValue(null);
+    await expect(service.sendPhoneOtp("+12166772305", null)).rejects.toEqual(
+      expect.objectContaining<Partial<ConflictException>>({
+        response: expect.objectContaining({
+          code: RECIPIENT_INITIATION_REQUIRED,
+          senderPhone: "+919676240186",
+          initiationUrl: "https://wa.me/919676240186?text=START",
+        }) as unknown,
+      }),
+    );
+    expect(prisma.otpSession.delete).toHaveBeenCalledWith({
+      where: { id: "otp-1" },
+    });
+  });
 
-      await expect(
-        service.verifyPhoneOtp("+12166772305", "123456"),
-      ).rejects.toThrow(UnauthorizedException);
+  it("verifies the local hash, consumes the OTP, and activates an existing user", async () => {
+    const codeHash = await bcrypt.hash("123456", 4);
+    prisma.otpSession.findFirst.mockResolvedValue({
+      id: "otp-1",
+      userId: "user-1",
+      codeHash,
+      attemptCount: 0,
     });
 
-    it("should verify via Twilio Verify when configured", async () => {
-      prisma.otpSession.findFirst.mockResolvedValue(session);
-      twilio.isVerifyConfigured.mockReturnValue(true);
-      twilio.verifyVerificationOtp.mockResolvedValue(true);
+    await expect(
+      service.verifyPhoneOtp("+12166772305", "123456"),
+    ).resolves.toBe("user-1");
+    expect(tx.otpSession.update).toHaveBeenCalledWith({
+      where: { id: "otp-1" },
+      data: { consumedAt: expect.any(Date) as unknown },
+    });
+    expect(tx.user.update).toHaveBeenCalledWith({
+      where: { id: "user-1" },
+      data: { isActive: true },
+    });
+  });
 
-      const userId = await service.verifyPhoneOtp("+12166772305", "123456");
-
-      expect(twilio.verifyVerificationOtp).toHaveBeenCalledWith(
-        "+12166772305",
-        "123456",
-      );
-      expect(userId).toBe("user-id-123");
-      expect(mockTx.otpSession.update).toHaveBeenCalledWith({
-        where: { id: session.id },
-        data: { consumedAt: expect.any(Date) as unknown },
-      });
-      expect(mockTx.user.update).toHaveBeenCalledWith({
-        where: { id: "user-id-123" },
-        data: { isActive: true },
-      });
+  it("increments failed verification attempts", async () => {
+    prisma.otpSession.findFirst.mockResolvedValue({
+      id: "otp-1",
+      userId: null,
+      codeHash: await bcrypt.hash("123456", 4),
+      attemptCount: 2,
     });
 
-    it("should throw UnauthorizedException if Twilio Verify returns false", async () => {
-      prisma.otpSession.findFirst.mockResolvedValue(session);
-      twilio.isVerifyConfigured.mockReturnValue(true);
-      twilio.verifyVerificationOtp.mockResolvedValue(false);
+    await expect(
+      service.verifyPhoneOtp("+12166772305", "000000"),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(prisma.otpSession.update).toHaveBeenCalledWith({
+      where: { id: "otp-1" },
+      data: { attemptCount: 3 },
+    });
+  });
 
-      await expect(
-        service.verifyPhoneOtp("+12166772305", "123456"),
-      ).rejects.toThrow(UnauthorizedException);
+  it("consumes the OTP on the fifth failed verification", async () => {
+    prisma.otpSession.findFirst.mockResolvedValue({
+      id: "otp-1",
+      userId: null,
+      codeHash: await bcrypt.hash("123456", 4),
+      attemptCount: 4,
     });
 
-    it("should verify via local bcrypt when Twilio Verify is unset but Twilio is configured", async () => {
-      const code = "123456";
-      const codeHash = await bcrypt.hash(code, 10);
-      const customSession = { ...session, codeHash };
-
-      prisma.otpSession.findFirst.mockResolvedValue(customSession);
-      twilio.isVerifyConfigured.mockReturnValue(false);
-      twilio.isClientConfigured.mockReturnValue(true);
-
-      const userId = await service.verifyPhoneOtp("+12166772305", code);
-
-      expect(userId).toBe("user-id-123");
-      expect(mockTx.otpSession.update).toHaveBeenCalledWith({
-        where: { id: session.id },
-        data: { consumedAt: expect.any(Date) as unknown },
-      });
-    });
-
-    it("should bypass verification check when Twilio is entirely unset (dry-run)", async () => {
-      prisma.otpSession.findFirst.mockResolvedValue(session);
-      twilio.isVerifyConfigured.mockReturnValue(false);
-      twilio.isClientConfigured.mockReturnValue(false);
-
-      const userId = await service.verifyPhoneOtp("+12166772305", "wrong-code");
-
-      expect(userId).toBe("user-id-123");
-      expect(mockTx.otpSession.update).toHaveBeenCalledWith({
-        where: { id: session.id },
-        data: { consumedAt: expect.any(Date) as unknown },
-      });
+    await expect(
+      service.verifyPhoneOtp("+12166772305", "000000"),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(prisma.otpSession.update).toHaveBeenCalledWith({
+      where: { id: "otp-1" },
+      data: { attemptCount: 5, consumedAt: expect.any(Date) as unknown },
     });
   });
 });

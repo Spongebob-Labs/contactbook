@@ -2,7 +2,8 @@ import { Injectable, Logger } from "@nestjs/common";
 import { ConnectionStatus } from "@prisma/client";
 import { e164FromStoredUser } from "../common/phone.util";
 import { PrismaService } from "../prisma/prisma.service";
-import { TwilioService } from "../integration/twilio.service";
+import { WhatsappMessagingService } from "../messaging/whatsapp-messaging.service";
+import { WhatsappMessagePurpose } from "@prisma/client";
 
 @Injectable()
 export class SyncService {
@@ -10,7 +11,7 @@ export class SyncService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly twilio: TwilioService,
+    private readonly messaging: WhatsappMessagingService,
   ) {}
 
   /** Notify connections that reference this profile field via a mapped card. */
@@ -43,17 +44,21 @@ export class SyncService {
       try {
         if (c.requesterSharedCardId === contactCardId) {
           const who = `${c.requester.firstName} ${c.requester.lastName}`.trim();
-          await this.twilio.sendWhatsApp(
-            e164FromStoredUser(c.receiver),
-            `ContactBook: ${who || "Your connection"} updated a shared contact card.`,
-          );
+          await this.messaging.sendText({
+            toE164: e164FromStoredUser(c.receiver),
+            text: `ContactBook: ${who || "Your connection"} updated a shared contact card.`,
+            purpose: WhatsappMessagePurpose.CONNECTION_UPDATE,
+            correlationId: c.id,
+          });
         }
         if (c.receiverSharedCardId === contactCardId) {
           const who = `${c.receiver.firstName} ${c.receiver.lastName}`.trim();
-          await this.twilio.sendWhatsApp(
-            e164FromStoredUser(c.requester),
-            `ContactBook: ${who || "Your connection"} updated a shared contact card.`,
-          );
+          await this.messaging.sendText({
+            toE164: e164FromStoredUser(c.requester),
+            text: `ContactBook: ${who || "Your connection"} updated a shared contact card.`,
+            purpose: WhatsappMessagePurpose.CONNECTION_UPDATE,
+            correlationId: c.id,
+          });
         }
       } catch (err) {
         this.logger.warn(

@@ -8,7 +8,8 @@ import { PrismaService } from "../prisma/prisma.service";
 import { resolveCardIdFromInbound } from "../connection/connection-card-prompt.util";
 import { ConnectionShareService } from "../connection/connection-share.service";
 import type { WhatsappSessionCardMetadata } from "../connection/connection-flow.types";
-import { TwilioService } from "./twilio.service";
+import { WhatsappMessagePurpose } from "@prisma/client";
+import { WhatsappMessagingService } from "../messaging/whatsapp-messaging.service";
 
 @Injectable()
 export class WhatsappWebhookService {
@@ -16,7 +17,7 @@ export class WhatsappWebhookService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly twilio: TwilioService,
+    private readonly messaging: WhatsappMessagingService,
     private readonly connectionShare: ConnectionShareService,
   ) {}
 
@@ -98,7 +99,7 @@ export class WhatsappWebhookService {
     const options = metadata?.cardOptions ?? [];
     const cardId = resolveCardIdFromInbound(text, options);
     if (!cardId) {
-      await this.twilio.sendWhatsApp(
+      await this.sendWhatsApp(
         fromPhone,
         `ContactBook: Please reply with a number between 1 and ${options.length}, or the card name.`,
       );
@@ -146,7 +147,7 @@ export class WhatsappWebhookService {
       const cardName =
         options.find((o) => o.id === cardId)?.name ?? result.sharedCard.name;
 
-      await this.twilio.sendWhatsApp(
+      await this.sendWhatsApp(
         fromPhone,
         `ContactBook: You shared your ${cardName} card.`,
       );
@@ -182,7 +183,7 @@ export class WhatsappWebhookService {
       if (result.completed) {
         await this.connectionShare.sendCompletionMessages(connectionId);
       } else {
-        await this.twilio.sendWhatsApp(
+        await this.sendWhatsApp(
           fromPhone,
           "ContactBook: Your card was shared.",
         );
@@ -197,7 +198,7 @@ export class WhatsappWebhookService {
       err instanceof BadRequestException || err instanceof Error
         ? err.message
         : "Could not complete card share.";
-    await this.twilio.sendWhatsApp(fromPhone, `ContactBook: ${message}`);
+    await this.sendWhatsApp(fromPhone, `ContactBook: ${message}`);
   }
 
   private async handleLocationShare(
@@ -223,7 +224,7 @@ export class WhatsappWebhookService {
       },
     });
     if (away) {
-      await this.twilio.sendWhatsApp(
+      await this.sendWhatsApp(
         fromPhone,
         "ContactBook: It looks like you may be traveling. Reply NOTIFY to alert your travel contact list.",
       );
@@ -257,7 +258,7 @@ export class WhatsappWebhookService {
       orderBy: { createdAt: "desc" },
     });
     if (!session?.connectionId) {
-      await this.twilio.sendWhatsApp(
+      await this.sendWhatsApp(
         fromPhone,
         "ContactBook: no pending connection invite found. Use the message that contained Accept/Decline.",
       );
@@ -276,7 +277,7 @@ export class WhatsappWebhookService {
   ): Promise<void> {
     const user = await this.findUserFromInboundE164(fromPhone);
     if (!user) {
-      await this.twilio.sendWhatsApp(
+      await this.sendWhatsApp(
         fromPhone,
         "ContactBook: no pending request found for that code.",
       );
@@ -290,7 +291,7 @@ export class WhatsappWebhookService {
       },
     });
     if (!connection) {
-      await this.twilio.sendWhatsApp(
+      await this.sendWhatsApp(
         fromPhone,
         "ContactBook: no pending request found for that code.",
       );
@@ -301,7 +302,7 @@ export class WhatsappWebhookService {
       where: { userId: user.id },
     });
     if (cardCount === 0) {
-      await this.twilio.sendWhatsApp(
+      await this.sendWhatsApp(
         fromPhone,
         "ContactBook: Complete your profile and create a card in ContactBook before accepting connections.",
       );
@@ -324,7 +325,7 @@ export class WhatsappWebhookService {
   ): Promise<void> {
     const user = await this.findUserFromInboundE164(fromPhone);
     if (!user) {
-      await this.twilio.sendWhatsApp(
+      await this.sendWhatsApp(
         fromPhone,
         "ContactBook: no pending request found for that code.",
       );
@@ -339,7 +340,7 @@ export class WhatsappWebhookService {
       include: { requester: true },
     });
     if (!connection) {
-      await this.twilio.sendWhatsApp(
+      await this.sendWhatsApp(
         fromPhone,
         "ContactBook: no pending request found for that code.",
       );
@@ -353,14 +354,22 @@ export class WhatsappWebhookService {
       where: { connectionId },
       data: { state: WhatsappFlowState.IDLE },
     });
-    await this.twilio.sendWhatsApp(
+    await this.sendWhatsApp(
       fromPhone,
       "ContactBook: you declined the connection.",
     );
     const who = `${user.firstName} ${user.lastName}`.trim() || "Someone";
-    await this.twilio.sendWhatsApp(
+    await this.sendWhatsApp(
       e164FromStoredUser(connection.requester),
       `ContactBook: ${who} declined your connection request. No contact details were shared.`,
     );
+  }
+
+  private async sendWhatsApp(toE164: string, text: string): Promise<void> {
+    await this.messaging.sendText({
+      toE164,
+      text,
+      purpose: WhatsappMessagePurpose.CONVERSATION,
+    });
   }
 }

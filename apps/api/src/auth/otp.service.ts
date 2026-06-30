@@ -1,61 +1,72 @@
-import { Injectable, Logger, UnauthorizedException } from "@nestjs/common";
+import {
+  ConflictException,
+  HttpException,
+  HttpStatus,
+  Injectable,
+  UnauthorizedException,
+} from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import * as bcrypt from "bcrypt";
 import { randomInt } from "node:crypto";
 import { PrismaService } from "../prisma/prisma.service";
-import { TwilioService } from "../integration/twilio.service";
+import { WhatsappMessagingService } from "../messaging/whatsapp-messaging.service";
+import {
+  RECIPIENT_INITIATION_REQUIRED,
+  WhatsappProviderError,
+} from "../messaging/whatsapp-errors";
 
 const OTP_TTL_MS = 10 * 60 * 1000;
+const OTP_MAX_ATTEMPTS = 5;
+const OTP_REQUESTS_PER_HOUR = 5;
 
 @Injectable()
 export class OtpService {
-  private readonly logger = new Logger(OtpService.name);
-
   constructor(
     private readonly prisma: PrismaService,
-    private readonly twilio: TwilioService,
+    private readonly messaging: WhatsappMessagingService,
+    private readonly config: ConfigService,
   ) {}
 
-  /**
-   * Sends a WhatsApp OTP. `userId` is set when the phone already belongs to a user (login);
-   * otherwise null (registration path after OTP is verified separately).
-   */
   async sendPhoneOtp(phoneE164: string, userId: string | null): Promise<void> {
-    const expiresAt = new Date(Date.now() + OTP_TTL_MS);
-
-    if (this.twilio.isVerifyConfigured()) {
-      await this.prisma.otpSession.create({
-        data: {
-          userId,
-          phoneE164,
-          codeHash: "twilio-verify",
-          expiresAt,
-        },
-      });
-      await this.twilio.sendVerificationOtp(phoneE164);
-      return;
-    }
-
+    await this.assertRequestAllowed(phoneE164);
     const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
     const codeHash = await bcrypt.hash(code, 10);
-    await this.prisma.otpSession.create({
+    const session = await this.prisma.otpSession.create({
       data: {
         userId,
         phoneE164,
         codeHash,
-        expiresAt,
+        expiresAt: new Date(Date.now() + OTP_TTL_MS),
       },
     });
-    await this.twilio.sendWhatsApp(
-      phoneE164,
-      `Your ContactBook verification code is ${code}. It expires in 10 minutes.`,
-    );
+    try {
+      await this.messaging.sendOtp({
+        toE164: phoneE164,
+        code,
+        expiresInMinutes: OTP_TTL_MS / 60_000,
+        correlationId: session.id,
+      });
+    } catch (error) {
+      await this.prisma.otpSession.delete({ where: { id: session.id } });
+      if (
+        error instanceof WhatsappProviderError &&
+        error.code === RECIPIENT_INITIATION_REQUIRED
+      ) {
+        const senderPhone = normalizeSender(
+          this.config.get<string>("OPENWA_SENDER_PHONE") ?? "919676240186",
+        );
+        throw new ConflictException({
+          code: RECIPIENT_INITIATION_REQUIRED,
+          message:
+            "Message the ContactBook WhatsApp number with START, then request a new verification code.",
+          senderPhone,
+          initiationUrl: `https://wa.me/${senderPhone.slice(1)}?text=START`,
+        });
+      }
+      throw error;
+    }
   }
 
-  /**
-   * Validates the latest unconsumed OTP for this phone, consumes it, and activates the user
-   * when `userId` was present on the session. Returns that user id, or null when the session
-   * had no user (phone not registered at code request time).
-   */
   async verifyPhoneOtp(
     phoneE164: string,
     code: string,
@@ -68,24 +79,22 @@ export class OtpService {
       },
       orderBy: { createdAt: "desc" },
     });
-    if (!session) {
+    if (!session || session.attemptCount >= OTP_MAX_ATTEMPTS) {
       throw new UnauthorizedException("Invalid or expired code");
     }
-    if (this.twilio.isVerifyConfigured()) {
-      const ok = await this.twilio.verifyVerificationOtp(phoneE164, code);
-      if (!ok) {
-        throw new UnauthorizedException("Invalid or expired code");
-      }
-    } else if (this.twilio.isClientConfigured()) {
-      const ok = await bcrypt.compare(code, session.codeHash);
-      if (!ok) {
-        throw new UnauthorizedException("Invalid or expired code");
-      }
-    } else {
-      const tail = phoneE164.replace(/\D/g, "").slice(-4);
-      this.logger.warn(
-        `OTP verify bypass (Twilio unset): accepting code for …${tail}`,
-      );
+    const valid = await bcrypt.compare(code, session.codeHash);
+    if (!valid) {
+      const attemptCount = session.attemptCount + 1;
+      await this.prisma.otpSession.update({
+        where: { id: session.id },
+        data: {
+          attemptCount,
+          ...(attemptCount >= OTP_MAX_ATTEMPTS
+            ? { consumedAt: new Date() }
+            : {}),
+        },
+      });
+      throw new UnauthorizedException("Invalid or expired code");
     }
     const userId = session.userId;
     await this.prisma.$transaction(async (tx) => {
@@ -102,4 +111,31 @@ export class OtpService {
     });
     return userId;
   }
+
+  private async assertRequestAllowed(phoneE164: string): Promise<void> {
+    const now = Date.now();
+    const recent = await this.prisma.otpSession.count({
+      where: { phoneE164, createdAt: { gte: new Date(now - 60_000) } },
+    });
+    if (recent > 0) throw rateLimitException();
+    const hourly = await this.prisma.otpSession.count({
+      where: { phoneE164, createdAt: { gte: new Date(now - 60 * 60_000) } },
+    });
+    if (hourly >= OTP_REQUESTS_PER_HOUR) throw rateLimitException();
+  }
+}
+
+function rateLimitException(): HttpException {
+  return new HttpException(
+    {
+      statusCode: HttpStatus.TOO_MANY_REQUESTS,
+      message: "Too many verification code requests",
+    },
+    HttpStatus.TOO_MANY_REQUESTS,
+  );
+}
+
+function normalizeSender(value: string): string {
+  const digits = value.replace(/\D/g, "");
+  return `+${digits}`;
 }
