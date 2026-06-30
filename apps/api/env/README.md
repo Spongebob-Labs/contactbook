@@ -9,6 +9,8 @@ Store **one dotenv file per deployed environment**. CI/CD reads these via GitHub
 
 Templates (safe to commit): [`prod.env.example`](prod.env.example), [`uat.env.example`](uat.env.example).
 
+OpenWA is deployed separately from the API. Its base URL must be reachable from Cloud Run over HTTPS or a private network; `localhost` is valid only when both processes run on the same machine.
+
 ## Setup
 
 ```bash

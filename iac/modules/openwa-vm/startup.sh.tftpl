@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export DEBIAN_FRONTEND=noninteractive
+apt-get update
+apt-get install -y docker.io docker-compose-v2 ca-certificates curl python3
+systemctl stop docker.service docker.socket || true
+
+DATA_DEVICE="/dev/disk/by-id/google-openwa-data"
+DATA_MOUNT="/var/lib/openwa"
+
+mkdir -p "${DATA_MOUNT}"
+if ! blkid "${DATA_DEVICE}" >/dev/null 2>&1; then
+  mkfs.ext4 -F "${DATA_DEVICE}"
+fi
+
+DATA_UUID="$(blkid -s UUID -o value "${DATA_DEVICE}")"
+if ! grep -q "UUID=${DATA_UUID}" /etc/fstab; then
+  echo "UUID=${DATA_UUID} ${DATA_MOUNT} ext4 defaults,nofail 0 2" >> /etc/fstab
+fi
+mount -a
+
+mkdir -p "${DATA_MOUNT}/app" "${DATA_MOUNT}/docker"
+chmod 750 "${DATA_MOUNT}" "${DATA_MOUNT}/app" "${DATA_MOUNT}/docker"
+
+cat >/etc/docker/daemon.json <<EOF
+{
+  "data-root": "${DATA_MOUNT}/docker",
+  "log-driver": "json-file",
+  "log-opts": {
+    "max-size": "20m",
+    "max-file": "5"
+  }
+}
+EOF
+systemctl enable --now docker
+
+cat >/etc/systemd/system/openwa-compose.service <<'UNIT'
+[Unit]
+Description=OpenWA Docker Compose stack
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/var/lib/openwa/app
+ExecStart=/usr/bin/docker compose -f docker-compose.yml -f docker-compose.gcp.yml --profile postgres --profile redis up -d --no-build --remove-orphans
+ExecStop=/usr/bin/docker compose -f docker-compose.yml -f docker-compose.gcp.yml --profile postgres --profile redis down
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+systemctl daemon-reload

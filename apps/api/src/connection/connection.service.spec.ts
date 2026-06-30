@@ -15,12 +15,12 @@ describe("ConnectionService", () => {
     connectionInvite: { findFirst: jest.fn() },
     whatsappSession: { updateMany: jest.fn(), create: jest.fn() },
   };
-  const twilio = { sendConnectionInvite: jest.fn() };
-  const invites = { createInvite: jest.fn() };
+  const messaging = { sendConnectionInvite: jest.fn() };
+  const invites = { createInvite: jest.fn(), resendInvite: jest.fn() };
 
   const svc = new ConnectionService(
     prisma as never,
-    twilio as never,
+    messaging as never,
     invites as never,
   );
 
@@ -38,6 +38,11 @@ describe("ConnectionService", () => {
     prisma.user.findUnique.mockResolvedValue(requester);
     prisma.contactCard.count.mockResolvedValue(1);
     prisma.contact.findMany.mockResolvedValue([]);
+    messaging.sendConnectionInvite.mockResolvedValue({
+      ledgerId: "ledger-1",
+      providerMessageId: "wa-1",
+      status: "sent",
+    });
   });
 
   it("rejects self-request", async () => {
@@ -79,7 +84,14 @@ describe("ConnectionService", () => {
     });
 
     expect(result.type).toBe("connection");
-    expect(twilio.sendConnectionInvite).toHaveBeenCalled();
+    expect(messaging.sendConnectionInvite).toHaveBeenCalledWith(
+      expect.objectContaining({
+        toE164: "+12025559999",
+        connectionId: "conn-1",
+        correlationId: "conn-1",
+      }),
+    );
+    expect(result).toMatchObject({ delivery: { providerMessageId: "wa-1" } });
   });
 
   it("returns invite for unknown recipient", async () => {
@@ -88,8 +100,12 @@ describe("ConnectionService", () => {
       .mockResolvedValueOnce(null);
     prisma.connectionInvite.findFirst.mockResolvedValue(null);
     invites.createInvite.mockResolvedValue({
-      id: "inv-1",
-      recipientKind: "EXTERNAL",
+      invite: { id: "inv-1", recipientKind: "EXTERNAL" },
+      delivery: {
+        ledgerId: "ledger-2",
+        providerMessageId: "wa-2",
+        status: "sent",
+      },
     });
 
     const result = await svc.createRequest("req-1", {
@@ -99,6 +115,34 @@ describe("ConnectionService", () => {
 
     expect(result.type).toBe("invite");
     expect(invites.createInvite).toHaveBeenCalled();
+    expect(result).toMatchObject({ delivery: { providerMessageId: "wa-2" } });
+  });
+
+  it("resends a pending registered connection owned by the requester", async () => {
+    prisma.connection.findFirst.mockResolvedValue({
+      id: "conn-1",
+      status: ConnectionStatus.PENDING,
+      requester: { firstName: "A", lastName: "B", email: "a@example.com" },
+      receiver: { countryCode: "+1", phone: "2025559999" },
+    });
+
+    await svc.resendRequest("req-1", "conn-1");
+
+    expect(messaging.sendConnectionInvite).toHaveBeenCalledWith(
+      expect.objectContaining({
+        connectionId: "conn-1",
+        toE164: "+12025559999",
+      }),
+    );
+  });
+
+  it("delegates pending signup invite resend with requester authorization", async () => {
+    prisma.connection.findFirst.mockResolvedValue(null);
+    invites.resendInvite.mockResolvedValue({ providerMessageId: "wa-3" });
+
+    await svc.resendRequest("req-1", "invite-1");
+
+    expect(invites.resendInvite).toHaveBeenCalledWith("req-1", "invite-1");
   });
 
   it("throws on duplicate pending connection", async () => {

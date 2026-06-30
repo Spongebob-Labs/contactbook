@@ -14,7 +14,7 @@ describe("WhatsappWebhookService", () => {
     },
     contactCard: { count: jest.fn() },
   };
-  const twilio = { sendWhatsApp: jest.fn() };
+  const messaging = { sendText: jest.fn() };
   const connectionShare = {
     beginRecipientCardSelection: jest.fn(),
     shareCard: jest.fn(),
@@ -23,7 +23,7 @@ describe("WhatsappWebhookService", () => {
   };
   const svc = new WhatsappWebhookService(
     prisma as never,
-    twilio as never,
+    messaging as never,
     connectionShare as never,
   );
 
@@ -78,7 +78,7 @@ describe("WhatsappWebhookService", () => {
       where: { id: CONN_ID },
       data: { status: ConnectionStatus.DECLINED },
     });
-    expect(twilio.sendWhatsApp).toHaveBeenCalledTimes(2);
+    expect(messaging.sendText).toHaveBeenCalledTimes(2);
   });
 
   it("routes card selection by active session", async () => {

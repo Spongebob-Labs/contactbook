@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import {
   ConnectionStatus,
+  WhatsappMessagePurpose,
   WhatsappFlowState,
   type Connection,
   type ContactCard,
@@ -18,7 +19,7 @@ import {
 import { ContactUpsertService } from "../contacts/contact-upsert.service";
 import { e164FromStoredUser } from "../common/phone.util";
 import { PrismaService } from "../prisma/prisma.service";
-import { TwilioService } from "../integration/twilio.service";
+import { WhatsappMessagingService } from "../messaging/whatsapp-messaging.service";
 import {
   buildCardOptions,
   formatCardSelectionMessage,
@@ -42,7 +43,7 @@ export class ConnectionShareService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly contactUpsert: ContactUpsertService,
-    private readonly twilio: TwilioService,
+    private readonly messaging: WhatsappMessagingService,
   ) {}
 
   async listCardsForUser(userId: string): Promise<ContactCard[]> {
@@ -207,11 +208,12 @@ export class ConnectionShareService {
       `Which card would you like to share with ${who}?`,
       options,
     );
-    await this.twilio.sendCardSelectionPrompt(
-      e164FromStoredUser(connection.receiver),
-      prompt,
-      options,
-    );
+    await this.messaging.sendText({
+      toE164: e164FromStoredUser(connection.receiver),
+      text: prompt,
+      purpose: WhatsappMessagePurpose.CARD_SELECTION,
+      correlationId: connectionId,
+    });
 
     return options;
   }
@@ -260,11 +262,12 @@ export class ConnectionShareService {
       `${who} accepted and shared their ${recipientCardName} card. Which card would you like to share back?`,
       options,
     );
-    await this.twilio.sendCardSelectionPrompt(
-      e164FromStoredUser(connection.requester),
-      prompt,
-      options,
-    );
+    await this.messaging.sendText({
+      toE164: e164FromStoredUser(connection.requester),
+      text: prompt,
+      purpose: WhatsappMessagePurpose.CARD_SELECTION,
+      correlationId: connectionId,
+    });
 
     return options;
   }
@@ -290,14 +293,18 @@ export class ConnectionShareService {
       `${connection.receiver.firstName} ${connection.receiver.lastName}`.trim() ||
       "Your connection";
 
-    await this.twilio.sendWhatsApp(
-      e164FromStoredUser(connection.requester),
-      `ContactBook: You are now connected with ${receiverName}. Both cards were shared.`,
-    );
-    await this.twilio.sendWhatsApp(
-      e164FromStoredUser(connection.receiver),
-      `ContactBook: You are now connected with ${requesterName}. Both cards were shared.`,
-    );
+    await this.messaging.sendText({
+      toE164: e164FromStoredUser(connection.requester),
+      text: `ContactBook: You are now connected with ${receiverName}. Both cards were shared.`,
+      purpose: WhatsappMessagePurpose.CONNECTION_UPDATE,
+      correlationId: connectionId,
+    });
+    await this.messaging.sendText({
+      toE164: e164FromStoredUser(connection.receiver),
+      text: `ContactBook: You are now connected with ${requesterName}. Both cards were shared.`,
+      purpose: WhatsappMessagePurpose.CONNECTION_UPDATE,
+      correlationId: connectionId,
+    });
   }
 
   private async clearConnectionSessions(connectionId: string): Promise<void> {

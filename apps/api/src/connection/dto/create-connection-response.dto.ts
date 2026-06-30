@@ -5,6 +5,17 @@ import {
   ConnectionStatus,
 } from "@prisma/client";
 
+export class WhatsappDeliveryResponseDto {
+  @ApiProperty()
+  ledgerId!: string;
+
+  @ApiProperty()
+  providerMessageId!: string;
+
+  @ApiProperty({ enum: ["pending", "sent", "delivered", "read", "failed"] })
+  status!: "pending" | "sent" | "delivered" | "read" | "failed";
+}
+
 export class ConnectionResponseDto {
   @ApiProperty({ enum: ["connection"] })
   type!: "connection";
@@ -35,6 +46,9 @@ export class ConnectionResponseDto {
 
   @ApiProperty()
   updatedAt!: Date;
+
+  @ApiProperty({ required: false, type: () => WhatsappDeliveryResponseDto })
+  delivery?: WhatsappDeliveryResponseDto;
 }
 
 export class ConnectionInviteResponseDto {
@@ -64,4 +78,7 @@ export class ConnectionInviteResponseDto {
 
   @ApiProperty()
   createdAt!: Date;
+
+  @ApiProperty({ required: false, type: () => WhatsappDeliveryResponseDto })
+  delivery?: WhatsappDeliveryResponseDto;
 }
