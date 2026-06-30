@@ -8,6 +8,7 @@ import { WhatsappModule } from "../messaging/whatsapp.module";
 import { AuthController } from "./auth.controller";
 import { AuthService } from "./auth.service";
 import { JwtStrategy } from "./jwt.strategy";
+import { LoginBroadcastService } from "./login-broadcast.service";
 import { OtpService } from "./otp.service";
 
 @Module({
@@ -29,7 +30,7 @@ import { OtpService } from "./otp.service";
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, OtpService],
+  providers: [AuthService, JwtStrategy, LoginBroadcastService, OtpService],
   exports: [AuthService, JwtModule, PassportModule],
 })
 export class AuthModule {}

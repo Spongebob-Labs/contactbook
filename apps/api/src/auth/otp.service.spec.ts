@@ -1,8 +1,4 @@
-import {
-  ConflictException,
-  HttpException,
-  UnauthorizedException,
-} from "@nestjs/common";
+import { ConflictException, UnauthorizedException } from "@nestjs/common";
 import * as bcrypt from "bcrypt";
 import { OtpService } from "./otp.service";
 import {
@@ -17,7 +13,6 @@ describe("OtpService", () => {
   };
   const prisma = {
     otpSession: {
-      count: jest.fn(),
       create: jest.fn(),
       findFirst: jest.fn(),
       update: jest.fn(),
@@ -37,7 +32,6 @@ describe("OtpService", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    prisma.otpSession.count.mockResolvedValue(0);
     prisma.otpSession.create.mockResolvedValue({ id: "otp-1" });
     prisma.otpSession.update.mockResolvedValue({});
     prisma.otpSession.delete.mockResolvedValue({});
@@ -65,25 +59,14 @@ describe("OtpService", () => {
     );
   });
 
-  it("throttles a second request within one minute", async () => {
-    prisma.otpSession.count.mockResolvedValueOnce(1);
-
+  it("allows repeated OTP requests while delivery is being debugged", async () => {
     await expect(
       service.sendPhoneOtp("+12166772305", null),
-    ).rejects.toMatchObject<Partial<HttpException>>({
-      status: 429,
-    });
-    expect(messaging.sendOtp).not.toHaveBeenCalled();
-  });
-
-  it("throttles after five requests in one hour", async () => {
-    prisma.otpSession.count.mockResolvedValueOnce(0).mockResolvedValueOnce(5);
-
+    ).resolves.toBeUndefined();
     await expect(
       service.sendPhoneOtp("+12166772305", null),
-    ).rejects.toMatchObject<Partial<HttpException>>({
-      status: 429,
-    });
+    ).resolves.toBeUndefined();
+    expect(messaging.sendOtp).toHaveBeenCalledTimes(2);
   });
 
   it("returns a structured initiation response when OpenWA reports 463", async () => {
