@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
-import { TwilioService } from "../integration/twilio.service";
+import { WhatsappMessagingService } from "../messaging/whatsapp-messaging.service";
+import { WhatsappMessagePurpose } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 
 export type TravelSettingsDto = {
@@ -12,7 +13,7 @@ export type TravelSettingsDto = {
 export class TravelService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly twilio: TwilioService,
+    private readonly messaging: WhatsappMessagingService,
   ) {}
 
   async getSettings(userId: string): Promise<TravelSettingsDto> {
@@ -112,7 +113,12 @@ export class TravelService {
       if (!phone?.value) {
         continue;
       }
-      await this.twilio.sendWhatsApp(phone.value, message);
+      await this.messaging.sendText({
+        toE164: phone.value,
+        text: message,
+        purpose: WhatsappMessagePurpose.TRAVEL_NOTIFICATION,
+        correlationId: userId,
+      });
       sent += 1;
     }
     return { sent };

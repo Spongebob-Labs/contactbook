@@ -3,6 +3,10 @@ import { Cron } from "@nestjs/schedule";
 import { WebhookDlqStatus } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { WhatsappWebhookService } from "./whatsapp-webhook.service";
+import type { WhatsappInboundEvent } from "../messaging/whatsapp-provider";
+import { WhatsappMessagingService } from "../messaging/whatsapp-messaging.service";
+
+type OpenWaDlqPayload = WhatsappInboundEvent & { ledgerId: string };
 
 /** Maximum number of delivery attempts before a record is permanently marked FAILED. */
 const MAX_ATTEMPTS = 5;
@@ -22,29 +26,27 @@ export class WebhookDlqService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly webhookService: WhatsappWebhookService,
+    private readonly messaging: WhatsappMessagingService,
   ) {}
 
-  /**
-   * Persists a failed inbound webhook payload to the dead-letter queue.
-   * Called by the fallback endpoint immediately after Twilio fires it.
-   */
-  async enqueue(
-    payload: Record<string, string>,
+  async enqueueOpenWa(
+    event: WhatsappInboundEvent,
+    ledgerId: string,
     headers: Record<string, string>,
     webhookUrl: string,
   ): Promise<void> {
     await this.prisma.webhookDeadLetter.create({
       data: {
-        source: "twilio_whatsapp",
-        payload,
+        source: "openwa_whatsapp",
+        payload: { ...event, ledgerId },
         headers,
         webhookUrl,
         status: WebhookDlqStatus.PENDING,
-        nextRetryAt: null, // ready to retry immediately
+        nextRetryAt: null,
       },
     });
     this.logger.warn(
-      `Webhook enqueued to DLQ. URL=${webhookUrl} From=${payload["From"] ?? "unknown"}`,
+      `OpenWA webhook enqueued to DLQ. Message=${event.providerMessageId}`,
     );
   }
 
@@ -76,13 +78,13 @@ export class WebhookDlqService {
       });
 
       try {
-        const payload = record.payload as Record<string, string>;
-        const from = payload["From"] ?? "";
-        const inboundText =
-          (payload["ButtonText"] && payload["ButtonText"].trim()) ||
-          (payload["Body"] ?? "");
-
-        await this.webhookService.handleInboundMessage(from, inboundText);
+        const event = record.payload as unknown as OpenWaDlqPayload;
+        await this.webhookService.handleInboundMessage(
+          event.fromE164,
+          event.text,
+          event.location,
+        );
+        await this.messaging.markInboundProcessed(event.ledgerId);
 
         await this.prisma.webhookDeadLetter.update({
           where: { id: record.id },
@@ -110,7 +112,7 @@ export class WebhookDlqService {
           });
           this.logger.error(
             `DLQ record ${record.id} permanently FAILED after ${newAttempts} attempts. ` +
-              `From=${(record.payload as Record<string, string>)["From"] ?? "unknown"} ` +
+              `Message=${(record.payload as unknown as WhatsappInboundEvent).providerMessageId ?? "unknown"} ` +
               `Error=${errorMessage}`,
           );
         } else {

@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Param,
   Post,
   UseGuards,
   UseFilters,
@@ -27,6 +28,7 @@ import { ApiExceptionFilter } from "../common/filters/api-exception.filter";
 
 function toConnectionDto(
   connection: Awaited<ReturnType<ConnectionService["listForUser"]>>[number],
+  delivery?: ConnectionResponseDto["delivery"],
 ): ConnectionResponseDto {
   return {
     type: "connection",
@@ -39,6 +41,7 @@ function toConnectionDto(
     hasSharedBack: connection.hasSharedBack,
     createdAt: connection.createdAt,
     updatedAt: connection.updatedAt,
+    ...(delivery ? { delivery } : {}),
   };
 }
 
@@ -55,7 +58,7 @@ export class ConnectionController {
   @ApiOkResponse({ type: [ConnectionResponseDto] })
   async list(@CurrentUser() user: JwtUserPayload) {
     const rows = await this.connections.listForUser(user.sub);
-    return rows.map(toConnectionDto);
+    return rows.map((row) => toConnectionDto(row));
   }
 
   @Post("requests")
@@ -77,7 +80,7 @@ export class ConnectionController {
   ): Promise<ConnectionResponseDto | ConnectionInviteResponseDto> {
     const result = await this.connections.createRequest(user.sub, dto);
     if (result.type === "connection") {
-      return toConnectionDto(result.connection);
+      return toConnectionDto(result.connection, result.delivery);
     }
     return {
       type: "invite",
@@ -89,7 +92,16 @@ export class ConnectionController {
       status: result.invite.status,
       expiresAt: result.invite.expiresAt,
       createdAt: result.invite.createdAt,
+      delivery: result.delivery,
     };
+  }
+
+  @Post("requests/:id/resend")
+  @ApiOperation({
+    summary: "Resend a pending connection request through WhatsApp",
+  })
+  async resend(@CurrentUser() user: JwtUserPayload, @Param("id") id: string) {
+    return this.connections.resendRequest(user.sub, id);
   }
 
   @Post(":id/accept")

@@ -1,10 +1,10 @@
 import { Module } from "@nestjs/common";
 import { PrismaModule } from "../prisma/prisma.module";
-import { TwilioNestModule } from "../integration/twilio.module";
+import { WhatsappModule } from "../messaging/whatsapp.module";
 import { SyncService } from "./sync.service";
 
 @Module({
-  imports: [PrismaModule, TwilioNestModule],
+  imports: [PrismaModule, WhatsappModule],
   providers: [SyncService],
   exports: [SyncService],
 })
