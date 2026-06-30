@@ -1,7 +1,5 @@
 import {
   ConflictException,
-  HttpException,
-  HttpStatus,
   Injectable,
   UnauthorizedException,
 } from "@nestjs/common";
@@ -17,7 +15,6 @@ import {
 
 const OTP_TTL_MS = 10 * 60 * 1000;
 const OTP_MAX_ATTEMPTS = 5;
-const OTP_REQUESTS_PER_HOUR = 5;
 
 @Injectable()
 export class OtpService {
@@ -28,7 +25,6 @@ export class OtpService {
   ) {}
 
   async sendPhoneOtp(phoneE164: string, userId: string | null): Promise<void> {
-    await this.assertRequestAllowed(phoneE164);
     const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
     const codeHash = await bcrypt.hash(code, 10);
     const session = await this.prisma.otpSession.create({
@@ -112,27 +108,6 @@ export class OtpService {
     return userId;
   }
 
-  private async assertRequestAllowed(phoneE164: string): Promise<void> {
-    const now = Date.now();
-    const recent = await this.prisma.otpSession.count({
-      where: { phoneE164, createdAt: { gte: new Date(now - 60_000) } },
-    });
-    if (recent > 0) throw rateLimitException();
-    const hourly = await this.prisma.otpSession.count({
-      where: { phoneE164, createdAt: { gte: new Date(now - 60 * 60_000) } },
-    });
-    if (hourly >= OTP_REQUESTS_PER_HOUR) throw rateLimitException();
-  }
-}
-
-function rateLimitException(): HttpException {
-  return new HttpException(
-    {
-      statusCode: HttpStatus.TOO_MANY_REQUESTS,
-      message: "Too many verification code requests",
-    },
-    HttpStatus.TOO_MANY_REQUESTS,
-  );
 }
 
 function normalizeSender(value: string): string {
