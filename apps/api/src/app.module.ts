@@ -15,6 +15,7 @@ import { ProfileModule } from "./profile/profile.module";
 import { StorageModule } from "./storage/storage.module";
 import { SyncModule } from "./sync/sync.module";
 import { TravelModule } from "./travel/travel.module";
+import { WhatsappCloudModule } from "./whatsapp-cloud/whatsapp-cloud.module";
 import { LoggerModule } from "./common/logger/logger.module";
 
 @Module({
@@ -39,6 +40,7 @@ import { LoggerModule } from "./common/logger/logger.module";
     ConnectionModule,
     TravelModule,
     JobsModule,
+    WhatsappCloudModule,
     LoggerModule,
   ],
 })
