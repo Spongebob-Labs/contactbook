@@ -21,11 +21,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
-import { SampleDataNotice } from "@/components/sample-data-notice";
 import { Alert } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
 import { getCardDisplayDetails } from "@/lib/card-display";
@@ -420,21 +417,27 @@ export default function CardDetailPage() {
 
   return (
     <AppShell>
-      <section className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
+      <section className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-3">
           <Link
             to="/dashboard/cards"
-            className={cn(buttonVariants({ variant: "ghost" }), "-ml-3 mb-2 rounded-full")}
+            className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "-ml-2")}
           >
             <ArrowLeft className="h-4 w-4" aria-hidden="true" />
             Cards
           </Link>
+          {isMockData && (
+            <span className="rounded border border-accent-border bg-accent-subtle px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-primary">
+              Sample data
+            </span>
+          )}
         </div>
         {card && (
           <Button
             type="button"
             variant="outline"
-            className="self-start rounded-full"
+            size="sm"
+            className="self-start"
             onClick={() => {
               void shareCard(card);
             }}
@@ -447,7 +450,7 @@ export default function CardDetailPage() {
 
       {isLoading && (
         <section>
-          <Skeleton className="h-80 w-full" />
+          <Skeleton className="h-80 w-full rounded-[14px]" />
         </section>
       )}
 
@@ -462,8 +465,6 @@ export default function CardDetailPage() {
           </div>
         </Alert>
       )}
-
-      {isMockData && <SampleDataNotice />}
 
       {!isLoading && !error && card && (
         <section>
@@ -487,99 +488,91 @@ function CardDetailPreview({
   const sections = cardDetailSections(card, profile);
 
   return (
-    <Card className="relative overflow-hidden rounded-xl border-[0.5px] border-accent-border border-t-2 border-t-primary bg-card">
-      <CardContent className="p-0">
-        <div
-          className={cn(
-            "relative min-h-[34rem] overflow-hidden p-6 md:p-8",
-            style.faceClassName,
-          )}
-        >
-          <div className="relative flex min-w-0 flex-col">
-            <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
-              <div className="flex min-w-0 flex-col gap-5 sm:flex-row sm:items-center">
-                <div
-                  className={cn(
-                    "flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-full text-3xl font-semibold",
-                    media && isRenderableImage(media)
-                      ? "bg-card"
-                      : style.initialsClassName,
-                  )}
-                >
-                  {media && isRenderableImage(media) ? (
-                    <img
-                      src={media}
-                      alt=""
-                      className="h-full w-full object-cover"
-                      referrerPolicy="no-referrer"
-                    />
-                  ) : (
-                    details.initials
-                  )}
-                </div>
-                <div className="min-w-0">
-                  <p className="label-section text-primary">ContactBook</p>
-                  <h2 className="title-display mt-4 max-w-5xl break-words md:text-5xl">
-                    {details.name}
-                  </h2>
-                  <p className="body mt-3 truncate text-base">
-                    {details.role}
-                  </p>
-                </div>
-              </div>
-              <div className="flex shrink-0 flex-wrap items-center gap-2">
-                <Badge variant="secondary" className={cn("w-fit shrink-0", style.badgeClassName)}>
-                  {cardTypeLabels[card.type]}
-                </Badge>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    void shareCard(card);
-                  }}
-                >
-                  <Share2 className="h-4 w-4" aria-hidden="true" />
-                  Share card
-                </Button>
-              </div>
+    <div className="overflow-hidden rounded-[14px] border border-accent-border border-t-2 border-t-primary bg-card">
+      <div className="relative flex min-w-0 flex-col p-6 md:p-8">
+        <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
+          <div className="flex min-w-0 flex-col gap-5 sm:flex-row sm:items-center">
+            <div
+              className={cn(
+                "flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full text-2xl font-semibold sm:h-24 sm:w-24 sm:text-3xl",
+                media && isRenderableImage(media)
+                  ? "bg-muted/60"
+                  : style.initialsClassName,
+              )}
+            >
+              {media && isRenderableImage(media) ? (
+                <img
+                  src={media}
+                  alt=""
+                  className="h-full w-full object-cover"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                details.initials
+              )}
             </div>
-
-            <div className="mt-10 grid gap-3 md:grid-cols-3">
-              <MetadataChip
-                icon={CalendarDays}
-                label="Created"
-                value={formatDate(card.createdAt)}
-              />
-              <MetadataChip
-                icon={CalendarDays}
-                label="Updated"
-                value={formatDate(card.updatedAt)}
-              />
-              <MetadataChip
-                icon={Share2}
-                label="Share type"
-                value={cardTypeLabels[card.type]}
-              />
-            </div>
-
-            <div className="mt-8 space-y-4">
-              {sections.map((section) => (
-                <CardDetailSection key={section.title} section={section} />
-              ))}
+            <div className="min-w-0">
+              <p className="label-section text-primary">ContactBook</p>
+              <h2 className="title-display mt-2 max-w-5xl break-words">
+                {details.name}
+              </h2>
+              {details.role && (
+                <p className="mt-2 truncate text-[13px] text-muted-foreground">
+                  {details.role}
+                </p>
+              )}
             </div>
           </div>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <span className={cn("w-fit shrink-0", style.badgeClassName)}>
+              {cardTypeLabels[card.type]}
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                void shareCard(card);
+              }}
+            >
+              <Share2 className="h-4 w-4" aria-hidden="true" />
+              Share card
+            </Button>
+          </div>
         </div>
-      </CardContent>
-    </Card>
+
+        <div className="mt-8 grid gap-2 md:grid-cols-3">
+          <MetadataChip
+            icon={CalendarDays}
+            label="Created"
+            value={formatDate(card.createdAt)}
+          />
+          <MetadataChip
+            icon={CalendarDays}
+            label="Updated"
+            value={formatDate(card.updatedAt)}
+          />
+          <MetadataChip
+            icon={Share2}
+            label="Share type"
+            value={cardTypeLabels[card.type]}
+          />
+        </div>
+
+        <div className="mt-8 space-y-4">
+          {sections.map((section) => (
+            <CardDetailSection key={section.title} section={section} />
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
 
 function CardDetailSection({ section }: { section: DetailSection }) {
   return (
-    <section className="rounded-[28px] border border-border/80 bg-background/70 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.45)]">
-      <h3 className="text-xs font-semibold uppercase tracking-[0.22em] text-primary">
-        {section.title}
-      </h3>
+    <section className="rounded-[14px] border border-border bg-muted/40 p-5">
+      <h3 className="label-section text-primary">{section.title}</h3>
       <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {section.items.map((item) => (
           <DetailTile
@@ -604,13 +597,17 @@ function DetailTile({
   value: string;
 }) {
   return (
-    <div className="flex min-w-0 gap-3 rounded-[24px] border border-border bg-card p-4 pr-5">
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-        <Icon className="h-4 w-4" aria-hidden="true" />
+    <div className="flex min-w-0 gap-3 rounded-[10px] border border-border bg-card p-3.5">
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-subtle text-primary">
+        <Icon className="h-3.5 w-3.5" aria-hidden="true" />
       </span>
       <div className="min-w-0">
-        <p className="text-xs font-medium uppercase text-muted-foreground">{label}</p>
-        <p className="mt-1 break-words text-sm font-medium">{value}</p>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+          {label}
+        </p>
+        <p className="mt-1 break-words text-[13px] font-medium text-foreground">
+          {value}
+        </p>
       </div>
     </div>
   );
@@ -626,13 +623,17 @@ function MetadataChip({
   value: string;
 }) {
   return (
-    <div className="flex min-w-0 items-start gap-3 rounded-full border border-border/80 bg-background/70 p-3 pr-5">
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-        <Icon className="h-4 w-4" aria-hidden="true" />
+    <div className="flex min-w-0 items-start gap-3 rounded-[10px] border border-border bg-muted/40 p-3">
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-subtle text-primary">
+        <Icon className="h-3.5 w-3.5" aria-hidden="true" />
       </span>
       <div className="min-w-0">
-        <p className="text-xs font-medium uppercase text-muted-foreground">{label}</p>
-        <p className="mt-1 truncate text-sm font-medium">{value}</p>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+          {label}
+        </p>
+        <p className="mt-1 truncate text-[13px] font-medium text-foreground">
+          {value}
+        </p>
       </div>
     </div>
   );

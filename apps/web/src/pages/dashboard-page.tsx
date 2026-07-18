@@ -24,6 +24,10 @@ import { apiFetch } from "@/lib/api";
 import { fetchImportSummary } from "@/lib/contacts-api";
 import { getCardDisplayDetails } from "@/lib/card-display";
 import { cardTypeStyles } from "@/lib/card-styles";
+import {
+  getMissingProfileSections,
+  getProfileCompletion,
+} from "@/lib/profile-completion";
 import { logUiError } from "@/lib/friendly-errors";
 import { mockCards, mockContactListResponse, mockContactsBySource, mockProfile } from "@/lib/mock-data";
 import type {
@@ -70,24 +74,6 @@ function getTimeOfDayGreeting() {
   return "evening";
 }
 
-function getMissingProfileSections(profile: ProfileMeResponse | null) {
-  const missing: string[] = [];
-  const hasIdentity = Boolean(
-    hasText(profile?.identity.firstName) ||
-      hasText(profile?.identity.lastName) ||
-      hasText(profile?.identity.primaryEmail) ||
-      hasText(profile?.identity.primaryPhone),
-  );
-  if (!hasIdentity) missing.push("Identity details");
-  if (!hasInitializedProfile(profile)) missing.push("Profile records");
-  if (!hasAddress(profile)) missing.push("Postal address");
-  if (!(profile && (profile.work.length > 0 || profile.business.length > 0))) {
-    missing.push("Work or business");
-  }
-  if (!hasSocialLink(profile)) missing.push("Social links");
-  return missing;
-}
-
 function isDashboardNudgeEligible(id: DashboardNudgeId) {
   return id === "add-card" || id === "review-profile";
 }
@@ -97,75 +83,6 @@ function getSafeReturnPath(value: string | null) {
     return null;
   }
   return value;
-}
-
-function hasInitializedProfile(profile: ProfileMeResponse | null) {
-  if (!profile) {
-    return false;
-  }
-  return Boolean(
-    profile.personal.groupId ||
-      profile.work.length > 0 ||
-      profile.business.length > 0 ||
-      profile.socials.length > 0,
-  );
-}
-
-function hasText(value: string | null | undefined) {
-  return Boolean(value?.trim());
-}
-
-function hasAddress(profile: ProfileMeResponse | null) {
-  const address = profile?.personal.postalAddress;
-  if (!address) {
-    return false;
-  }
-  return [
-    address.street,
-    address.city,
-    address.state,
-    address.pincode,
-    address.country,
-  ].some(hasText);
-}
-
-function hasSocialLink(profile: ProfileMeResponse | null) {
-  return Boolean(
-    profile?.socials.some((item) =>
-      [
-        item.facebook,
-        item.website,
-        item.linkedin,
-        item.blog,
-        item.twitter,
-        item.whatsApp,
-        item.custom?.instagram,
-      ].some(hasText),
-    ),
-  );
-}
-
-function getProfileCompletion(profile: ProfileMeResponse | null) {
-  const items = [
-    Boolean(
-      hasText(profile?.identity.firstName) ||
-        hasText(profile?.identity.lastName) ||
-        hasText(profile?.identity.primaryEmail) ||
-        hasText(profile?.identity.primaryPhone),
-    ),
-    hasInitializedProfile(profile),
-    hasAddress(profile),
-    Boolean(profile && (profile.work.length > 0 || profile.business.length > 0)),
-    hasSocialLink(profile),
-  ];
-  const completed = items.filter(Boolean).length;
-  const total = items.length;
-
-  return {
-    completed,
-    total,
-    percent: Math.round((completed / total) * 100),
-  };
 }
 
 function formatDate(value: string) {
@@ -525,7 +442,7 @@ export default function DashboardPage() {
             animationTo={{ opacity: 1, transform: "translateY(0)" }}
             tag="h1"
           />
-          <p className="mt-1 flex flex-wrap items-center gap-2 text-[13px] text-[#6B7280]">
+          <p className="mt-1 flex flex-wrap items-center gap-2 text-[13px] text-muted-foreground">
             <span>
               {cards.length} cards · {connectionCount} connections
             </span>
@@ -557,30 +474,30 @@ export default function DashboardPage() {
       </section>
 
       {/* Slim stat strip */}
-      <section className="mb-8 flex flex-wrap items-center gap-6 border-b border-white/[0.06] pb-6">
+      <section className="mb-8 flex flex-wrap items-center gap-6 border-b border-border pb-6">
         <div>
           <span className="font-display text-[22px] font-bold tracking-[-0.04em] text-foreground">
             <CountUp from={0} to={connectionCount} duration={1.2} />
           </span>
-          <span className="ml-2 text-[11px] uppercase tracking-[0.08em] text-[#6B7280]">
+          <span className="ml-2 text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
             connections
           </span>
         </div>
-        <div className="hidden h-5 w-px bg-white/[0.08] sm:block" aria-hidden="true" />
+        <div className="hidden h-5 w-px bg-border sm:block" aria-hidden="true" />
         <div>
           <span className="font-display text-[22px] font-bold tracking-[-0.04em] text-foreground">
             <CountUp from={0} to={cards.length} duration={1} />
           </span>
-          <span className="ml-2 text-[11px] uppercase tracking-[0.08em] text-[#6B7280]">
+          <span className="ml-2 text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
             cards
           </span>
         </div>
-        <div className="hidden h-5 w-px bg-white/[0.08] sm:block" aria-hidden="true" />
+        <div className="hidden h-5 w-px bg-border sm:block" aria-hidden="true" />
         <div className="flex max-w-[220px] flex-1 items-center gap-2">
-          <span className="text-[11px] uppercase tracking-[0.08em] text-[#6B7280]">
+          <span className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
             Profile
           </span>
-          <div className="h-[2px] max-w-[120px] flex-1 rounded-full bg-white/[0.07]">
+          <div className="h-[2px] max-w-[120px] flex-1 rounded-full bg-muted">
             <div
               className="h-[2px] rounded-full bg-primary transition-all duration-1000"
               style={{ width: `${profileCompletion.percent}%` }}
@@ -596,7 +513,7 @@ export default function DashboardPage() {
           <span className="label-section">Your cards</span>
           <Link
             to="/dashboard/cards"
-            className="flex items-center gap-1 text-[12px] text-primary transition-colors hover:text-[#D4C4A8]"
+            className="flex items-center gap-1 text-[12px] text-primary transition-colors hover:text-primary"
           >
             View all
             <ArrowRight className="h-3 w-3" aria-hidden="true" />
@@ -643,12 +560,12 @@ export default function DashboardPage() {
 
       {/* Bottom row */}
       <section className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-[14px] border border-white/[0.07] bg-card p-5 app-fade-up">
+        <div className="rounded-[14px] border border-border bg-card p-5 app-fade-up">
           <p className="text-[13px] font-semibold text-foreground">Profile completion</p>
-          <p className="mt-1 text-[11px] text-white/35">
+          <p className="mt-1 text-[11px] text-muted-foreground">
             {profileCompletion.completed} of {profileCompletion.total} sections done
           </p>
-          <div className="mb-4 mt-4 h-[3px] rounded-full bg-white/[0.07]">
+          <div className="mb-4 mt-4 h-[3px] rounded-full bg-muted">
             <div
               className="h-[3px] rounded-full bg-primary transition-all duration-1000"
               style={{ width: `${profileCompletion.percent}%` }}
@@ -661,7 +578,7 @@ export default function DashboardPage() {
             ).map((field) => (
               <div
                 key={field}
-                className="flex items-center gap-2 text-[11px] text-white/35"
+                className="flex items-center gap-2 text-[11px] text-muted-foreground"
               >
                 <div
                   className={cn(
@@ -693,9 +610,9 @@ export default function DashboardPage() {
           </Link>
         </div>
 
-        <div className="rounded-[14px] border border-white/[0.07] bg-card p-5 app-fade-up">
+        <div className="rounded-[14px] border border-border bg-card p-5 app-fade-up">
           <p className="text-[13px] font-semibold text-foreground">Quick share</p>
-          <p className="mt-1 text-[11px] text-white/35">
+          <p className="mt-1 text-[11px] text-muted-foreground">
             Share your active card instantly
           </p>
 
@@ -711,7 +628,7 @@ export default function DashboardPage() {
                       "rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.06em] transition-colors",
                       activeShareCardIndex === index
                         ? "bg-accent-subtle text-primary"
-                        : "bg-white/[0.05] text-white/30 hover:text-white/50",
+                        : "bg-muted text-muted-foreground hover:text-foreground",
                     )}
                   >
                     {cardTypeLabels[card.type]}
@@ -720,8 +637,8 @@ export default function DashboardPage() {
               </div>
 
               <div className="flex items-center gap-4">
-                <div className="flex h-[72px] w-[72px] shrink-0 items-center justify-center rounded-[10px] border border-white/[0.08] bg-white/[0.04]">
-                  <QrCode className="h-8 w-8 text-white/20" aria-hidden="true" />
+                <div className="flex h-[72px] w-[72px] shrink-0 items-center justify-center rounded-[10px] border border-border bg-muted/60">
+                  <QrCode className="h-8 w-8 text-muted-foreground/60" aria-hidden="true" />
                 </div>
                 <div className="flex flex-1 flex-col gap-2">
                   <button
@@ -756,7 +673,7 @@ export default function DashboardPage() {
               </div>
             </>
           ) : (
-            <p className="mt-4 text-[11px] text-white/35">
+            <p className="mt-4 text-[11px] text-muted-foreground">
               Create a card to enable quick sharing.
             </p>
           )}
@@ -954,7 +871,7 @@ function DashboardSpotlightCard({
   return (
     <SpotlightCard
       className={cn(
-        "group cursor-pointer rounded-[14px] border border-white/[0.07] bg-card p-5 transition-all duration-300 hover:border-white/[0.12] app-fade-up",
+        "group cursor-pointer rounded-[14px] border border-border bg-card p-5 transition-all duration-300 hover:border-border-strong app-fade-up",
         featured && "border-t-2 border-t-primary border-accent-border",
       )}
       spotlightColor={
@@ -968,12 +885,12 @@ function DashboardSpotlightCard({
               "rounded px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.12em]",
               featured
                 ? "bg-accent-subtle text-primary"
-                : "bg-white/[0.06] text-white/30",
+                : "bg-muted text-muted-foreground",
             )}
           >
             {cardTypeLabels[card.type]}
           </span>
-          <span className="text-[9px] text-white/20">
+          <span className="text-[9px] text-muted-foreground/60">
             {formatDate(card.updatedAt)}
           </span>
         </div>
@@ -994,11 +911,11 @@ function DashboardSpotlightCard({
             {details.name}
           </p>
           {details.role && (
-            <p className="mt-0.5 text-[11px] text-white/35">{details.role}</p>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">{details.role}</p>
           )}
         </div>
 
-        <div className="mb-3 h-px bg-white/[0.06]" />
+        <div className="mb-3 h-px bg-muted" />
 
         <div className="grid grid-cols-2 gap-y-2">
           {fields.map((field) => (
@@ -1007,13 +924,13 @@ function DashboardSpotlightCard({
                 className="h-2.5 w-2.5 shrink-0 text-primary opacity-60"
                 aria-hidden="true"
               />
-              <span className="truncate text-[10px] text-white/30">{field.value}</span>
+              <span className="truncate text-[10px] text-muted-foreground">{field.value}</span>
             </div>
           ))}
         </div>
       </Link>
 
-      <div className="mt-4 flex items-center justify-center gap-2 border-t border-white/[0.05] pt-3 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+      <div className="mt-4 flex items-center justify-center gap-2 border-t border-border pt-3 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
         <button
           type="button"
           onClick={(event) => {

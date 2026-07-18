@@ -16,16 +16,16 @@ import {
   Download,
   Search,
   Tags,
-  UsersRound,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
-import { SampleDataNotice } from "@/components/sample-data-notice";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
+import CountUp from "@/components/ui/CountUp";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import SplitText from "@/components/ui/SplitText";
 import {
   Table,
   TableBody,
@@ -68,8 +68,8 @@ const contactSourceValues: ContactSource[] = [
   "VCARD",
 ];
 
-const sourceOptions: Array<{ value: SourceFilter; label: string }> = [
-  { value: "ALL", label: "All sources" },
+const sourcePills: Array<{ value: SourceFilter; label: string }> = [
+  { value: "ALL", label: "All" },
   { value: "GOOGLE", label: "Google" },
   { value: "VCARD", label: "vCard" },
 ];
@@ -77,10 +77,10 @@ const sourceOptions: Array<{ value: SourceFilter; label: string }> = [
 const pageSizeOptions = [25, 50, 100];
 
 const sourceBadgeStyles: Record<ContactSource, string> = {
-  GOOGLE: "bg-primary text-primary-foreground ring-primary/20",
-  ICLOUD: "bg-secondary text-secondary-foreground ring-secondary-foreground/10",
-  VCARD: "bg-accent text-accent-foreground ring-accent-foreground/10",
-  CONTACTBOOK: "bg-success/12 text-success ring-success/20",
+  GOOGLE: "border border-accent-border bg-accent-subtle text-primary",
+  ICLOUD: "border border-border bg-muted/60 text-muted-foreground",
+  VCARD: "border border-accent-border/60 bg-accent-subtle/60 text-primary/90",
+  CONTACTBOOK: "border border-success/20 bg-success/10 text-success",
 };
 
 const sortableTableColumns: Partial<Record<string, SortKey>> = {
@@ -91,7 +91,7 @@ const sortableTableColumns: Partial<Record<string, SortKey>> = {
 
 function ContactAvatar({ contact }: { contact: ContactDetail }) {
   return (
-    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-secondary text-sm font-semibold text-secondary-foreground">
+    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-subtle text-sm font-semibold text-primary">
       {getInitials(contact)}
     </div>
   );
@@ -202,10 +202,10 @@ function renderContactLabels(contact: ContactDetail) {
           key={label.id}
           variant="secondary"
           className={cn(
-            "rounded-full",
+            "rounded-full border",
             label.tone === "tag"
-              ? "bg-primary/10 text-primary ring-primary/15"
-              : "bg-muted text-muted-foreground ring-border",
+              ? "border-accent-border bg-accent-subtle text-primary"
+              : "border-border bg-muted/60 text-muted-foreground",
           )}
         >
           {label.label}
@@ -559,23 +559,35 @@ export default function ContactsPage() {
 
   return (
     <AppShell>
-      <section className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      <section className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-normal">Contacts</h1>
+          <SplitText text="Contacts" className="title-display" delay={70} tag="h1" />
+          <p className="mt-1 flex flex-wrap items-center gap-2 text-[13px] text-muted-foreground">
+            <span>
+              <CountUp
+                from={0}
+                to={total}
+                duration={1}
+                className="font-semibold text-foreground"
+              />
+              {" "}
+              contacts
+            </span>
+            {isMockData && (
+              <span className="rounded border border-accent-border bg-accent-subtle px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-primary">
+                Sample data
+              </span>
+            )}
+          </p>
         </div>
-        <div className="flex w-full flex-col gap-3 lg:max-w-2xl lg:items-end">
-          <Link
-            to="/dashboard/import"
-            className={cn(buttonVariants({ variant: "default" }), "cursor-pointer rounded-xl")}
-          >
-            <Download className="h-4 w-4" aria-hidden="true" />
-            Import contacts
-          </Link>
-        </div>
+        <Link to="/dashboard/import" className={cn(buttonVariants(), "shrink-0")}>
+          <Download className="h-3.5 w-3.5" aria-hidden="true" />
+          Import contacts
+        </Link>
       </section>
 
       {error && (
-        <Alert className="flex items-start gap-3">
+        <Alert className="mb-4 flex items-start gap-3">
           <AlertCircle className="mt-0.5 h-4 w-4 text-destructive" aria-hidden="true" />
           <div>
             <p className="font-medium">Could not load contacts</p>
@@ -586,23 +598,26 @@ export default function ContactsPage() {
         </Alert>
       )}
 
-      {isMockData && <SampleDataNotice />}
-
       <section className="space-y-4">
-        <div className="flex justify-end">
-          <div className="grid w-full gap-2 sm:grid-cols-2 xl:w-auto xl:grid-cols-[180px_180px_180px_minmax(220px,280px)]">
-            <Select
-              value={sourceFilter}
-              onChange={(event) => updateSourceFilter(event.target.value as SourceFilter)}
-              className="cursor-pointer rounded-xl"
-              aria-label="Filter contacts by source"
-            >
-              {sourceOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </Select>
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by source">
+            {sourcePills.map((pill) => (
+              <button
+                key={pill.value}
+                type="button"
+                onClick={() => updateSourceFilter(pill.value)}
+                className={cn(
+                  "rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.06em] transition-colors",
+                  sourceFilter === pill.value
+                    ? "bg-accent-subtle text-primary"
+                    : "bg-muted text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {pill.label}
+              </button>
+            ))}
+          </div>
+          <div className="grid w-full gap-2 sm:grid-cols-2 lg:w-auto lg:grid-cols-[160px_160px_minmax(200px,260px)]">
             <Select
               value={tagFilter}
               onChange={(event) => updateTagFilter(event.target.value)}
@@ -629,7 +644,7 @@ export default function ContactsPage() {
                 </option>
               ))}
             </Select>
-            <div className="relative">
+            <div className="relative sm:col-span-2 lg:col-span-1">
               <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 value={query}
@@ -640,7 +655,8 @@ export default function ContactsPage() {
             </div>
           </div>
         </div>
-        <div className="overflow-hidden border-y border-border">
+
+        <div className="overflow-hidden rounded-[14px] border border-border bg-card">
           {isLoading && (
             <div className="space-y-1 p-4">
               {Array.from({ length: 8 }).map((_, index) => (
@@ -650,22 +666,19 @@ export default function ContactsPage() {
           )}
 
           {!isLoading && !error && contacts.length === 0 && (
-            <div className="flex min-h-80 flex-col items-center justify-center p-6 text-center">
-              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
-                <Tags className="h-6 w-6" aria-hidden="true" />
+            <div className="flex min-h-56 flex-col items-center justify-center border border-dashed border-transparent px-6 py-12 text-center">
+              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-accent-subtle text-primary">
+                <Tags className="h-5 w-5" aria-hidden="true" />
               </div>
-              <h2 className="font-semibold">No contacts found</h2>
-              <p className="mt-2 max-w-sm text-sm text-muted-foreground">
+              <h2 className="title-section">No contacts found</h2>
+              <p className="mt-2 max-w-sm text-[13px] text-muted-foreground">
                 Import contacts, or adjust your search, tag, and group filters.
               </p>
               <Link
                 to="/dashboard/import"
-                className={cn(
-                  buttonVariants({ variant: "default" }),
-                  "mt-5 cursor-pointer rounded-xl",
-                )}
+                className={cn(buttonVariants(), "mt-5")}
               >
-                <Download className="h-4 w-4" aria-hidden="true" />
+                <Download className="h-3.5 w-3.5" aria-hidden="true" />
                 Import contacts
               </Link>
             </div>
@@ -718,7 +731,7 @@ export default function ContactsPage() {
                 </TableBody>
               </Table>
               <div className="flex flex-col gap-3 border-t border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-sm text-muted-foreground">
+                <p className="text-[11px] text-muted-foreground">
                   Showing {pageStart}-{pageEnd} of {total}
                 </p>
                 <div className="flex flex-wrap items-center gap-2">
@@ -745,7 +758,7 @@ export default function ContactsPage() {
                     <ChevronLeft className="h-4 w-4" aria-hidden="true" />
                     Previous
                   </Button>
-                  <span className="text-sm text-muted-foreground">
+                  <span className="text-[11px] text-muted-foreground">
                     Page {currentPage} of {totalPages}
                   </span>
                   <Button

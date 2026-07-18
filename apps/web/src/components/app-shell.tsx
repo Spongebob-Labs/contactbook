@@ -1,7 +1,6 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import {
-  ChevronLeft,
   ChevronRight,
   CreditCard,
   FolderKanban,
@@ -9,6 +8,8 @@ import {
   Import,
   LogOut,
   Menu,
+  PanelLeft,
+  PanelLeftClose,
   UserCircle,
   UserRound,
   UsersRound,
@@ -24,8 +25,10 @@ import { cn } from "@/lib/utils";
 
 const SIDEBAR_COLLAPSED_KEY = "contactbook:sidebar-collapsed";
 
-const SIDEBAR_W_EXPANDED = "15rem";   // 240px
-const SIDEBAR_W_COLLAPSED = "4.5rem"; // 72px
+/** Floating inset from viewport edges */
+const SIDEBAR_INSET = "0.75rem";
+const SIDEBAR_W_EXPANDED = "15rem";
+const SIDEBAR_W_COLLAPSED = "4.25rem";
 
 const nav = [
   { to: "/dashboard", label: "Dashboard", icon: Home },
@@ -126,122 +129,174 @@ export function AppShell({ children, headerActions }: AppShellProps) {
     });
   };
 
-  const sidebarContent = (isMobile = false) => (
-    <nav
-      className={cn(
-        "flex h-full flex-col bg-sidebar px-2 py-4",
-        collapsed && !isMobile && "items-center",
-      )}
-    >
-      {/* Logo */}
-      <Link
-        to="/dashboard"
-        className={cn(
-          "mb-4 flex h-11 items-center gap-3 rounded-xl px-3 font-display text-sm font-semibold tracking-tight text-foreground transition-colors hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-          collapsed && !isMobile && "justify-center px-0",
-        )}
-        title="ContactBook"
-      >
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-accent-subtle text-primary">
-          <img src="/app-logo.svg" alt="" className="h-5 w-5" aria-hidden="true" />
-        </span>
-        <span className={cn("truncate", collapsed && !isMobile && "hidden")}>
-          ContactBook
-        </span>
-      </Link>
+  const sidebarWidth = collapsed ? SIDEBAR_W_COLLAPSED : SIDEBAR_W_EXPANDED;
+  const mainPaddingLeft = `calc(${SIDEBAR_INSET} + ${sidebarWidth} + ${SIDEBAR_INSET})`;
+  const shellPadStyle = {
+    ["--shell-pad" as string]: mainPaddingLeft,
+  } as CSSProperties;
 
-      {/* Primary nav */}
-      <div className="flex flex-1 flex-col gap-0.5">
-        {nav.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            end={item.to === "/dashboard"}
-            title={item.label}
+  const sidebarContent = (isMobile = false) => {
+    const rail = collapsed && !isMobile;
+
+    return (
+      <div className={cn("flex h-full flex-col", rail && "items-center")}>
+        <div
+          className={cn(
+            "relative mb-3 flex shrink-0 items-center",
+            rail ? "w-full flex-col gap-2 px-0 pt-1" : "justify-between gap-2 px-1",
+          )}
+        >
+          <Link
+            to="/dashboard"
+            className={cn(
+              "flex min-w-0 items-center gap-2.5 rounded-xl font-display text-sm font-semibold tracking-tight text-foreground transition-colors hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              rail ? "justify-center p-1.5" : "px-2 py-1.5",
+            )}
+            title="ContactBook"
             onClick={() => setOpen(false)}
-            className={({ isActive }) =>
-              cn(
-                "group relative flex h-10 items-center gap-3 rounded-none px-3 text-sm font-medium transition-all duration-150",
-                collapsed && !isMobile && "justify-center px-0",
-                isActive
-                  ? "bg-[rgba(200,184,154,0.08)] text-foreground"
-                  : "text-text-muted hover:bg-bg-hover hover:text-foreground",
-              )
-            }
           >
-            {({ isActive }) => (
-              <>
-                {isActive && (
-                  <span
-                    className="absolute inset-y-0 right-0 w-0.5 bg-primary"
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-[10px]">
+              <img
+                src="/app-logo.svg"
+                alt=""
+                className="h-full w-full"
+                aria-hidden="true"
+              />
+            </span>
+            <span className={cn("truncate", rail && "hidden")}>ContactBook</span>
+          </Link>
+
+          {!isMobile && !rail && (
+            <button
+              type="button"
+              aria-label="Collapse sidebar"
+              onClick={toggleCollapsed}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-bg-hover hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <PanelLeftClose className="h-4 w-4" aria-hidden="true" />
+            </button>
+          )}
+
+          {isMobile && (
+            <button
+              type="button"
+              aria-label="Close navigation"
+              onClick={() => setOpen(false)}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-bg-hover hover:text-foreground"
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
+            </button>
+          )}
+        </div>
+
+        <nav
+          className={cn(
+            "flex flex-1 flex-col gap-1 overflow-y-auto",
+            rail ? "w-full items-center px-1.5" : "px-1.5",
+          )}
+          aria-label="Primary"
+        >
+          {nav.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.to === "/dashboard"}
+              title={item.label}
+              onClick={() => setOpen(false)}
+              className={({ isActive }) =>
+                cn(
+                  "group relative flex items-center gap-3 text-sm font-medium transition-all duration-150",
+                  rail
+                    ? "h-10 w-10 justify-center rounded-xl"
+                    : "h-10 rounded-xl px-3",
+                  isActive
+                    ? "bg-accent-subtle text-foreground"
+                    : "text-muted-foreground hover:bg-bg-hover hover:text-foreground",
+                )
+              }
+            >
+              {({ isActive }) => (
+                <>
+                  {isActive && (
+                    <span
+                      className={cn(
+                        "absolute right-0 w-0.5 rounded-full bg-primary",
+                        rail ? "inset-y-2" : "inset-y-2.5",
+                      )}
+                      aria-hidden="true"
+                    />
+                  )}
+                  <item.icon
+                    className={cn(
+                      "h-4 w-4 shrink-0",
+                      isActive ? "text-primary" : "text-current",
+                    )}
                     aria-hidden="true"
                   />
-                )}
-                <item.icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-                <span className={cn(collapsed && !isMobile && "hidden")}>{item.label}</span>
-              </>
-            )}
-          </NavLink>
-        ))}
-
-        {/* Groups section */}
-        {(!collapsed || isMobile) && (
-          <div className="mt-4 border-t border-border pt-4">
-            <div className="label-section mb-1.5 flex items-center gap-2 px-3">
-              <FolderKanban className="h-3 w-3" aria-hidden="true" />
-              Groups
-            </div>
-            <div className="grid gap-0.5">
-              {contactGroups.slice(0, 6).map((group) => (
-                <Link
-                  key={group.id}
-                  to={`/dashboard/contacts?groupIds=${encodeURIComponent(group.id)}`}
-                  onClick={() => setOpen(false)}
-                  className="flex h-9 min-w-0 items-center rounded-none px-3 text-sm text-text-muted transition-colors hover:bg-bg-hover hover:text-foreground"
-                >
-                  <span className="truncate">{group.name}</span>
-                </Link>
-              ))}
-              {contactGroups.length === 0 && (
-                <p className="px-3 py-1.5 text-xs text-text-muted">No groups yet</p>
+                  <span className={cn(rail && "hidden")}>{item.label}</span>
+                </>
               )}
+            </NavLink>
+          ))}
+
+          {(!rail || isMobile) && (
+            <div className="mt-5 px-1">
+              <div className="mb-2 flex items-center gap-2 px-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/70">
+                <FolderKanban className="h-3 w-3" aria-hidden="true" />
+                Groups
+              </div>
+              <div className="grid gap-0.5">
+                {contactGroups.slice(0, 6).map((group) => (
+                  <Link
+                    key={group.id}
+                    to={`/dashboard/contacts?groupIds=${encodeURIComponent(group.id)}`}
+                    onClick={() => setOpen(false)}
+                    className="flex h-9 min-w-0 items-center rounded-xl px-3 text-sm text-muted-foreground transition-colors hover:bg-bg-hover hover:text-foreground"
+                  >
+                    <span className="truncate">{group.name}</span>
+                  </Link>
+                ))}
+                {contactGroups.length === 0 && (
+                  <p className="px-3 py-1.5 text-xs text-muted-foreground/70">No groups yet</p>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </nav>
       </div>
-    </nav>
-  );
+    );
+  };
 
   return (
     <div className="app-ambient-bg min-h-screen">
-      {/* Desktop floating sidebar */}
-      <div
-        className={cn(
-          "fixed inset-y-0 left-0 z-30 hidden border-r border-border bg-sidebar transition-[width] duration-300 ease-out lg:block",
-          collapsed ? "w-[4.5rem]" : "w-60",
-        )}
-      >
-        {sidebarContent()}
-      </div>
-
-      {/* Floating collapse toggle — hovers at the right edge of sidebar */}
-      <button
-        type="button"
-        aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+      <aside
         style={{
-          left: `calc(${collapsed ? SIDEBAR_W_COLLAPSED : SIDEBAR_W_EXPANDED} - 0.75rem)`,
+          top: SIDEBAR_INSET,
+          bottom: SIDEBAR_INSET,
+          left: SIDEBAR_INSET,
+          width: sidebarWidth,
         }}
-        className="fixed top-[1.375rem] z-40 hidden h-6 w-6 items-center justify-center rounded-full border border-border-strong bg-card transition-[left] duration-300 ease-out lg:flex"
-        onClick={toggleCollapsed}
-      >
-        {collapsed ? (
-          <ChevronRight className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
-        ) : (
-          <ChevronLeft className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
+        className={cn(
+          "fixed z-30 hidden overflow-visible rounded-[20px] bg-sidebar/95 backdrop-blur-xl transition-[width] duration-300 ease-out lg:block",
+          "shadow-[0_12px_40px_rgba(0,0,0,0.45),0_0_0_1px_rgba(255,255,255,0.04)]",
         )}
-      </button>
+        aria-label="App navigation"
+      >
+        <div className="h-full overflow-hidden rounded-[20px] px-2 py-3">
+          {sidebarContent()}
+        </div>
+        {collapsed && (
+          <button
+            type="button"
+            aria-label="Expand sidebar"
+            onClick={toggleCollapsed}
+            className="absolute -right-3 top-5 z-10 flex h-6 w-6 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-[0_4px_16px_rgba(0,0,0,0.25)] transition-colors hover:border-accent-border hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <ChevronRight className="h-3 w-3" aria-hidden="true" />
+          </button>
+        )}
+      </aside>
 
-      {/* Mobile sidebar overlay */}
       {open && (
         <div className="fixed inset-0 z-40 lg:hidden">
           <button
@@ -250,21 +305,17 @@ export function AppShell({ children, headerActions }: AppShellProps) {
             className="absolute inset-0 bg-background/60 backdrop-blur-sm"
             onClick={() => setOpen(false)}
           />
-          <div className="absolute inset-y-0 left-0 w-64 max-w-[86vw] border-r border-border bg-sidebar app-fade-up">
+          <div className="absolute bottom-3 left-3 top-3 w-64 max-w-[86vw] overflow-hidden rounded-[20px] bg-sidebar/95 p-2 shadow-[0_12px_40px_rgba(0,0,0,0.45),0_0_0_1px_rgba(255,255,255,0.04)] backdrop-blur-xl app-fade-up">
             {sidebarContent(true)}
           </div>
         </div>
       )}
 
-      {/* Main content */}
       <div
-        className={cn(
-          "transition-[padding] duration-300 ease-out",
-          collapsed ? "lg:pl-[4.5rem]" : "lg:pl-60",
-        )}
+        style={shellPadStyle}
+        className="transition-[padding] duration-300 ease-out lg:pl-[var(--shell-pad)]"
       >
-        {/* Header */}
-        <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-border/40 bg-background/80 px-4 backdrop-blur-xl md:px-6">
+        <header className="sticky top-0 z-20 flex h-14 items-center justify-between bg-background/70 px-4 backdrop-blur-xl md:px-6">
           <div className="flex items-center gap-3">
             <Button
               type="button"
@@ -276,7 +327,17 @@ export function AppShell({ children, headerActions }: AppShellProps) {
             >
               {open ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
             </Button>
-            <span className="hidden text-sm font-medium text-foreground sm:block">Workspace</span>
+            <button
+              type="button"
+              className="hidden h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-bg-hover hover:text-primary lg:flex"
+              aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+              onClick={toggleCollapsed}
+            >
+              <PanelLeft className="h-4 w-4" aria-hidden="true" />
+            </button>
+            <span className="hidden text-sm font-medium text-foreground sm:block">
+              Workspace
+            </span>
           </div>
 
           <div className="flex items-center gap-1.5">
@@ -311,7 +372,7 @@ export function AppShell({ children, headerActions }: AppShellProps) {
                     className="fixed inset-0 z-40 cursor-default"
                     onClick={() => setProfileMenuOpen(false)}
                   />
-                  <div className="absolute right-0 top-11 z-50 w-72 rounded-2xl border border-border/50 bg-card/95 p-3 shadow-float backdrop-blur-xl app-fade-up">
+                  <div className="absolute right-0 top-11 z-50 w-72 rounded-2xl border border-border/50 bg-card/95 p-3 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur-xl app-fade-up">
                     <div className="mb-3 flex items-center gap-3 rounded-xl bg-muted/50 px-3 py-2.5">
                       <ProfileAvatar
                         className="h-9 w-9"

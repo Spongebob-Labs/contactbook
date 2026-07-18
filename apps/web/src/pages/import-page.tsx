@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { AlertCircle, ArrowRight, RefreshCw } from "lucide-react";
+import { AlertCircle, ArrowRight, RefreshCw, Users } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
 import { ContactImportOptions } from "@/components/contact-import-options";
-import { SampleDataNotice } from "@/components/sample-data-notice";
 import { Alert } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import CountUp from "@/components/ui/CountUp";
+import SplitText from "@/components/ui/SplitText";
+import SpotlightCard from "@/components/ui/SpotlightCard";
 import { buildContactImportSummary } from "@/lib/contact-summary";
 import {
   fetchAllContacts,
@@ -240,37 +240,48 @@ export default function ImportPage() {
 
   const googleSummary = summary?.bySource.find((item) => item.source === "GOOGLE");
   const vcfSummary = summary?.bySource.find((item) => item.source === "VCARD");
+  const totalContacts = summary?.totalActive ?? imports.length;
+  const googleCount = googleSummary?.activeCount ?? 0;
+  const vcfCount = vcfSummary?.activeCount ?? 0;
+  const lastActivity = formatDate(getLastImportActivity(summary));
+  const googleLastSync = formatDate(
+    googleSummary?.lastSync?.at ?? googleSummary?.lastSyncAt ?? null,
+  );
 
   return (
     <AppShell>
-      {isMockData && <SampleDataNotice />}
-
-      {/* Page header */}
-      <section className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between app-fade-up">
+      <section className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-            Contacts
+          <SplitText text="Import" className="title-display" delay={70} tag="h1" />
+          <p className="mt-1 flex flex-wrap items-center gap-2 text-[13px] text-muted-foreground">
+            <span>
+              {hasConnectedGoogle
+                ? "Sync Google or upload a VCF to add contacts."
+                : "Connect a source to bring contacts into ContactBook."}
+            </span>
+            {isMockData && (
+              <span className="rounded border border-accent-border bg-accent-subtle px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-primary">
+                Sample data
+              </span>
+            )}
           </p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight">Import</h1>
-          <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-            {hasConnectedGoogle
-              ? "Sync your Google account or upload a VCF file to add contacts."
-              : "Connect a source to bring your existing contacts into ContactBook."}
-          </p>
+          {hasConnectedGoogle && (
+            <p className="mt-2 text-[11px] text-primary">
+              Google connected · Last sync {googleLastSync}
+            </p>
+          )}
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {hasConnectedGoogle && (
+          {hasConnectedGoogle ? (
             <Button
               type="button"
-              variant="outline"
               onClick={() => void syncGoogle()}
               disabled={isSyncing}
             >
-              <RefreshCw className="h-4 w-4" aria-hidden="true" />
+              <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
               {isSyncing ? "Syncing…" : "Sync now"}
             </Button>
-          )}
-          {!hasConnectedGoogle && (
+          ) : (
             <Button
               type="button"
               onClick={() => void connectGoogle()}
@@ -282,28 +293,40 @@ export default function ImportPage() {
         </div>
       </section>
 
-      {/* Import stats strip */}
-      <section className="grid grid-cols-2 gap-3 sm:grid-cols-4 app-fade-up">
-        {[
-          { label: "Total contacts", value: summary?.totalActive ?? imports.length },
-          { label: "Google contacts", value: googleSummary?.activeCount ?? 0 },
-          { label: "VCF contacts", value: vcfSummary?.activeCount ?? 0 },
-          { label: "Last activity", value: formatDate(getLastImportActivity(summary)) },
-        ].map((item) => (
-          <div
-            key={item.label}
-            className="flex flex-col gap-1 rounded-2xl border border-border/60 bg-card/60 px-4 py-3 backdrop-blur-sm"
-          >
-            <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              {item.label}
-            </span>
-            <span className="text-lg font-semibold tracking-tight">{item.value}</span>
-          </div>
-        ))}
+      <section className="mb-8 flex flex-wrap items-center gap-6 border-b border-border pb-6">
+        <div>
+          <span className="font-display text-[22px] font-bold tracking-[-0.04em] text-foreground">
+            <CountUp from={0} to={totalContacts} duration={1.2} />
+          </span>
+          <span className="ml-2 text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
+            total
+          </span>
+        </div>
+        <div className="hidden h-5 w-px bg-border sm:block" aria-hidden="true" />
+        <div>
+          <span className="font-display text-[22px] font-bold tracking-[-0.04em] text-foreground">
+            <CountUp from={0} to={googleCount} duration={1} />
+          </span>
+          <span className="ml-2 text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
+            google
+          </span>
+        </div>
+        <div className="hidden h-5 w-px bg-border sm:block" aria-hidden="true" />
+        <div>
+          <span className="font-display text-[22px] font-bold tracking-[-0.04em] text-foreground">
+            <CountUp from={0} to={vcfCount} duration={1} />
+          </span>
+          <span className="ml-2 text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
+            vcf
+          </span>
+        </div>
+        <div className="ml-auto text-[11px] text-muted-foreground">
+          Last activity · {lastActivity}
+        </div>
       </section>
 
       {vcfError && (
-        <Alert className="flex items-start gap-3 app-fade-up">
+        <Alert className="mb-4 flex items-start gap-3">
           <AlertCircle className="mt-0.5 h-4 w-4 text-destructive" aria-hidden="true" />
           <div>
             <p className="font-medium">VCF import failed</p>
@@ -312,48 +335,60 @@ export default function ImportPage() {
         </Alert>
       )}
 
-      {/* Import options */}
-      <section className="grid gap-4 lg:grid-cols-3 app-fade-up">
+      <section
+        className={cn(
+          "grid gap-4",
+          hasConnectedGoogle ? "lg:grid-cols-2" : "lg:grid-cols-1",
+        )}
+      >
         <ContactImportOptions
           hideGoogle={hasConnectedGoogle}
           onConnectGoogle={connectGoogle}
           isConnectingGoogle={isConnectingGoogle}
           onUploadVcf={uploadVcf}
           isUploadingVcf={isUploadingVcf}
-          className={hasConnectedGoogle ? "lg:contents" : "lg:col-span-3"}
         />
 
         {hasConnectedGoogle && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Contacts directory</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {error && (
-                <Alert className="flex items-start gap-3">
-                  <AlertCircle className="mt-0.5 h-4 w-4 text-destructive" />
-                  <div>
-                    <p className="font-medium">Could not load import status</p>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {friendlyErrorMessages.load}
-                    </p>
-                  </div>
-                </Alert>
-              )}
-              <p className="text-sm text-muted-foreground">
-                {isLoading
-                  ? "Loading…"
-                  : `${summary?.totalActive ?? imports.length} contacts ready to review.`}
-              </p>
+          <SpotlightCard
+            className="rounded-[14px] border border-border bg-card"
+            spotlightColor="rgba(200,184,154,0.06)"
+          >
+            <div className="flex h-full min-h-52 flex-col p-5">
+              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-accent-subtle text-primary">
+                <Users className="h-5 w-5" aria-hidden="true" />
+              </div>
+              <div className="mt-5 flex-1">
+                <h2 className="text-lg font-semibold tracking-normal">
+                  Contacts directory
+                </h2>
+                {error ? (
+                  <Alert className="mt-3 flex items-start gap-3">
+                    <AlertCircle className="mt-0.5 h-4 w-4 text-destructive" />
+                    <div>
+                      <p className="font-medium">Could not load import status</p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {friendlyErrorMessages.load}
+                      </p>
+                    </div>
+                  </Alert>
+                ) : (
+                  <p className="mt-2 text-[13px] text-muted-foreground">
+                    {isLoading
+                      ? "Loading…"
+                      : `${totalContacts} contacts ready to review.`}
+                  </p>
+                )}
+              </div>
               <Link
                 to="/dashboard/contacts"
-                className={cn(buttonVariants({ variant: "default" }), "w-full justify-center")}
+                className={cn(buttonVariants(), "mt-5 w-full justify-center")}
               >
                 View contacts
-                <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
               </Link>
-            </CardContent>
-          </Card>
+            </div>
+          </SpotlightCard>
         )}
       </section>
     </AppShell>

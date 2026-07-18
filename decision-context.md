@@ -1,5 +1,43 @@
 # Decision Context
 
+## 2026-07-19 - Light Mode Text Contrast Pass
+
+- Decision: Replace hardcoded dark-only utilities (`text-white/*`, `bg-white/*`, `border-white/*`, `text-[#6B7280]`) on Dashboard, Profile, Cards, Card Detail, Contacts, Import, and shared import options with semantic tokens (`text-muted-foreground`, `bg-muted`, `border-border`, `border-border-strong`, `bg-bg-hover`).
+- Reason: Warm Brass hub UI looked correct in dark mode but tertiary labels/chips/dividers camouflaged or vanished in light mode.
+- Notes: UI-only class swaps; no layout or API changes. CSS `.title-display` / `.label-section` already used tokens.
+- Files: `dashboard-page.tsx`, `profile-page.tsx`, `cards-page.tsx`, `card-detail-page.tsx`, `contacts-page.tsx`, `import-page.tsx`, `contact-import-options.tsx`, `decision-context.md`.
+
+## 2026-07-19 - Floating App Sidebar
+
+- Decision: Rebuild the desktop sidebar as a floating rounded rail (inset from viewport, soft shadow, no hard edge border). Collapse uses an in-header `PanelLeftClose` when expanded and a circular edge chevron when collapsed (plus Workspace header `PanelLeft` control). Keep ContactBook nav, groups, and mobile drawer content unchanged.
+- Reason: Edge-docked sidebar with a glitchy seam toggle felt unfinished next to Warm Brass pages; user references wanted a professional floating panel / icon-rail aesthetic.
+- Notes: UI-only in `app-shell.tsx`. Content padding tracks sidebar width + inset via `--shell-pad`. Soft ring via shadow, not `border-r`.
+- Files: `app-shell.tsx`, `decision-context.md`.
+- Alternatives considered: Docked rail with only a seam toggle — rejected (looked glitchy). Changing nav labels/routes — out of scope.
+
+## 2026-07-18 - Contacts + Import Warm Brass Revamp
+
+- Decision: Align Contacts list and Import hub with the Warm Brass + React Bits language from Dashboard/Profile/Cards. Demote sample data to an inline chip; use SplitText headers, CountUp metrics, source pill chips, rounded table surface, and SpotlightCard import panels. Demote iCloud to a footer note in shared `ContactImportOptions`.
+- Reason: Contacts and Import still used the older flat SaaS shell (full sample banner, plain titles, 4-up stat tiles) while sibling pages already shipped the brass hub pattern.
+- Notes:
+  - UI-only: no route/API/schema changes. Contact detail page left as a follow-up.
+  - Reused existing SplitText, CountUp, SpotlightCard — no new dependencies.
+  - Source filter on Contacts is pill chips; tag/group/search remain Selects. Table stays a data table (not a gallery).
+  - Shared `ContactImportOptions` visual upgrade also applies to onboarding (intentional).
+- Files: `contacts-page.tsx`, `import-page.tsx`, `contact-import-options.tsx`, `SpotlightCard.tsx` (h-full inner), `decision-context.md`.
+- Alternatives considered: Turning Contacts into Spotlight row cards — rejected (list density). New React Bits deps — skipped (reuse existing).
+
+## 2026-07-18 - Profile + Cards Identity Hub Revamp
+
+- Decision: Rebuild Profile as an identity hub (hero + completeness + grouped tab sections) and Cards as a Spotlight gallery (type filters, always-visible Open/Share, no hover-flip). Light brass pass on Card Detail.
+- Reason: Profile felt like a settings dump and Cards felt like a muted flip grid; both needed to match the shipped dashboard Warm Brass language for client delivery.
+- Notes:
+  - UI-only: no route/API/schema changes. Edit/create still use onboarding query params; Open stays `/dashboard/cards/:cardId`.
+  - Shared `getProfileCompletion` / `getMissingProfileSections` extracted to `lib/profile-completion.ts` for Dashboard + Profile.
+  - Sample data demoted to inline chips. Card Detail: no watermark/foil/teal shadows; brass chips and section surfaces.
+- Files: `profile-page.tsx`, `cards-page.tsx`, `card-detail-page.tsx`, `lib/profile-completion.ts`, `dashboard-page.tsx` (import helper), `decision-context.md`.
+- Alternatives considered: Keeping flip on Cards — rejected (touch-hostile, hid actions). New profile field editors — out of scope.
+
 ## 2026-07-18 - Dashboard Personal Hub Revamp
 
 - Decision: Rebuild the dashboard as a personal sharing hub: greeting header, slim inline CountUp stats, SpotlightCard card grid, profile completion + Quick Share bottom row. Remove large stat boxes, full-width sample banner, Helpful tips, and Classic/Story mode switch.
