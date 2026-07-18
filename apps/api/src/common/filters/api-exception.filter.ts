@@ -10,6 +10,7 @@ import {
 import { Request, Response } from "express";
 import {
   RECIPIENT_INITIATION_REQUIRED,
+  WHATSAPP_GATEWAY_SESSION_NOT_READY,
   WhatsappProviderError,
 } from "../../messaging/whatsapp-errors";
 
@@ -47,7 +48,9 @@ export class ApiExceptionFilter implements ExceptionFilter {
         : exception instanceof WhatsappProviderError
           ? exception.code === RECIPIENT_INITIATION_REQUIRED
             ? HttpStatus.CONFLICT
-            : HttpStatus.BAD_GATEWAY
+            : exception.code === WHATSAPP_GATEWAY_SESSION_NOT_READY
+              ? HttpStatus.SERVICE_UNAVAILABLE
+              : HttpStatus.BAD_GATEWAY
           : HttpStatus.INTERNAL_SERVER_ERROR;
 
     const message =

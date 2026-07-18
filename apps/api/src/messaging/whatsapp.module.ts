@@ -6,6 +6,7 @@ import { WhatsappMessagingService } from "./whatsapp-messaging.service";
 import { WHATSAPP_PROVIDER } from "./whatsapp-provider";
 import type { WhatsappProvider } from "./whatsapp-provider";
 import {
+  WHATSAPP_GATEWAY_SESSION_NOT_READY,
   WHATSAPP_DELIVERY_FAILED,
   WhatsappProviderError,
 } from "./whatsapp-errors";
@@ -63,7 +64,7 @@ class UnavailableTestProvider implements WhatsappProvider {
 
 function unavailableError(): WhatsappProviderError {
   return new WhatsappProviderError(
-    WHATSAPP_DELIVERY_FAILED,
+    WHATSAPP_GATEWAY_SESSION_NOT_READY,
     "WhatsApp provider is unavailable in this test.",
   );
 }
