@@ -22,23 +22,53 @@ cp uat.env.example uat.env
 
 For **local development**, keep using [`../.env`](../.env) and optional [`../.env.local`](../.env.local) (see [`../.env.example`](../.env.example)).
 
-## Encode for GitHub Actions
+## Runtime env → Google Secret Manager (per-var)
 
-From repo root (after `prod.env` / `uat.env` are filled in):
+Cloud Run **runtime** env is served from Secret Manager, one secret per variable —
+`cb-api-<env>-<KEY>` — referenced by `cd.yml` via `--set-secrets`. The list of vars
+to materialize lives in the committed, values-free key files
+[`prod.keys`](prod.keys) / [`uat.keys`](uat.keys). This means you change one variable
+without touching the rest, and you can always read the current value back.
+
+Seed or update all secrets from a filled-in env file (needs `gcloud` + Secret Manager
+admin on the project; grants `secretAccessor` to the Cloud Run runtime SA):
 
 ```bash
-# Prod → Settings → Secrets → API_ENV_PROD_B64
-base64 < apps/api/env/prod.env | tr -d '\n' | pbcopy
-
-# UAT → API_ENV_UAT_B64
-base64 < apps/api/env/uat.env | tr -d '\n' | pbcopy
+python3 scripts/sync-secrets-to-gcp.py apps/api/env/prod.env prod \
+  --project "$GCP_PROJECT_ID" --service-account "$CLOUD_RUN_RUNTIME_SA"
+python3 scripts/sync-secrets-to-gcp.py apps/api/env/uat.env uat \
+  --project "$GCP_PROJECT_ID" --service-account "$CLOUD_RUN_RUNTIME_SA"
 ```
 
-Or from repo root:
+It only adds a new secret version when a value actually changed, and rewrites the
+`.keys` file. Commit the updated `.keys` file. The next `apps/api/**` push redeploys
+and picks up `:latest`.
+
+**Add one variable** (the common case):
 
 ```bash
-./scripts/encode-env-for-gh.sh apps/api/env/prod.env
-./scripts/encode-env-for-gh.sh apps/api/env/uat.env
+printf 'the-value' | gcloud secrets create cb-api-prod-NEW_VAR \
+  --project="$GCP_PROJECT_ID" --replication-policy=automatic \
+  --labels=app=contactbook,env=prod --data-file=-
+gcloud secrets add-iam-policy-binding cb-api-prod-NEW_VAR \
+  --project="$GCP_PROJECT_ID" --member="serviceAccount:$CLOUD_RUN_RUNTIME_SA" \
+  --role=roles/secretmanager.secretAccessor --condition=None
+echo NEW_VAR >> apps/api/env/prod.keys   # commit this
+```
+
+**Rotate a value:** `printf 'new' | gcloud secrets versions add cb-api-prod-JWT_SECRET --data-file=-`
+**Read current value:** `gcloud secrets versions access latest --secret=cb-api-prod-JWT_SECRET`
+
+## Build/test env — still the base64 blob
+
+The Docker build (`prisma generate`) and `api-test.yml` still decode
+`API_ENV_PROD_B64` / `API_ENV_UAT_B64` into `apps/api/.env`. These rarely change and
+don't include runtime integration config (Twilio, etc.). Update them only when a
+build/test-time var changes:
+
+```bash
+./scripts/encode-env-for-gh.sh apps/api/env/prod.env   # → API_ENV_PROD_B64
+./scripts/encode-env-for-gh.sh apps/api/env/uat.env    # → API_ENV_UAT_B64
 ```
 
 ## Infra outputs
