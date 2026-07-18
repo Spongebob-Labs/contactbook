@@ -22,42 +22,33 @@ cp uat.env.example uat.env
 
 For **local development**, keep using [`../.env`](../.env) and optional [`../.env.local`](../.env.local) (see [`../.env.example`](../.env.example)).
 
-## Runtime env → Google Secret Manager (per-var)
+## Runtime env: base64 blob + Secret Manager (hybrid)
 
-Cloud Run **runtime** env is served from Secret Manager, one secret per variable —
-`cb-api-<env>-<KEY>` — referenced by `cd.yml` via `--set-secrets`. The list of vars
-to materialize lives in the committed, values-free key files
-[`prod.keys`](prod.keys) / [`uat.keys`](uat.keys). This means you change one variable
-without touching the rest, and you can always read the current value back.
+On deploy, `cd.yml` sets Cloud Run env from **two** sources:
 
-Seed or update all secrets from a filled-in env file (needs `gcloud` + Secret Manager
-admin on the project; grants `secretAccessor` to the Cloud Run runtime SA):
+1. **Literals** — the base64 blob (`API_ENV_*_B64`), decoded and applied via
+   `--env-vars-file`, **minus** any key listed in the env's `*.secret-keys` file.
+2. **Secret refs** — every name in [`prod.secret-keys`](prod.secret-keys) /
+   [`uat.secret-keys`](uat.secret-keys) is injected via `--set-secrets` as
+   `cb-api-<env>-<NAME>:latest` from Google Secret Manager.
 
-```bash
-python3 scripts/sync-secrets-to-gcp.py apps/api/env/prod.env prod \
-  --project "$GCP_PROJECT_ID" --service-account "$CLOUD_RUN_RUNTIME_SA"
-python3 scripts/sync-secrets-to-gcp.py apps/api/env/uat.env uat \
-  --project "$GCP_PROJECT_ID" --service-account "$CLOUD_RUN_RUNTIME_SA"
-```
+A var is **either** a literal or a secret ref, never both — that's why secret-managed
+keys are excluded from the blob side. `prod.secret-keys` currently holds the Twilio
+vars; `uat.secret-keys` is empty (UAT takes everything from its blob).
 
-It only adds a new secret version when a value actually changed, and rewrites the
-`.keys` file. Commit the updated `.keys` file. The next `apps/api/**` push redeploys
-and picks up `:latest`.
+### Move a var to Secret Manager (console, no CLI)
 
-**Add one variable** (the common case):
+1. **Secret Manager → Create secret**: name `cb-api-<env>-<VARNAME>` (e.g.
+   `cb-api-prod-TWILIO_OTP_CONTENT_SID`), paste the value, create.
+2. **IAM**: grant the Cloud Run **runtime** service account
+   `Secret Manager Secret Accessor` on it (Secret Manager → the secret →
+   Permissions → Grant access). Granting once at the project level covers all.
+3. Add the `VARNAME` to `apps/api/env/<env>.secret-keys` and commit.
+4. Next `apps/api/**` deploy picks it up. **Create the secret before the deploy** or
+   it fails.
 
-```bash
-printf 'the-value' | gcloud secrets create cb-api-prod-NEW_VAR \
-  --project="$GCP_PROJECT_ID" --replication-policy=automatic \
-  --labels=app=contactbook,env=prod --data-file=-
-gcloud secrets add-iam-policy-binding cb-api-prod-NEW_VAR \
-  --project="$GCP_PROJECT_ID" --member="serviceAccount:$CLOUD_RUN_RUNTIME_SA" \
-  --role=roles/secretmanager.secretAccessor --condition=None
-echo NEW_VAR >> apps/api/env/prod.keys   # commit this
-```
-
-**Rotate a value:** `printf 'new' | gcloud secrets versions add cb-api-prod-JWT_SECRET --data-file=-`
-**Read current value:** `gcloud secrets versions access latest --secret=cb-api-prod-JWT_SECRET`
+**Rotate:** Secret Manager → secret → **+ New version** → redeploy (uses `:latest`).
+**Read current value:** Secret Manager → secret → version → **View secret value**.
 
 ## Build/test env — still the base64 blob
 

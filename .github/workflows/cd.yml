@@ -72,6 +72,8 @@ jobs:
           PROJECT: ${{ vars.GCP_PROJECT_ID }}
           SERVICE: ${{ vars.CLOUD_RUN_SERVICE_UAT }}
           RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
+          API_ENV_UAT_B64: ${{ secrets.API_ENV_UAT_B64 }}
+          API_ENV_B64: ${{ secrets.API_ENV_B64 }}
         run: |
           set -euo pipefail
           if [ -z "$REGION" ] || [ -z "$PROJECT" ]; then
@@ -83,17 +85,26 @@ jobs:
           BASE_VERSION=${LATEST_TAG#v}
           VERSION_TAG="${BASE_VERSION}.${RUN_NUMBER}-uat"
           IMAGE="${REGION}-docker.pkg.dev/${PROJECT}/contactbook/api:${VERSION_TAG}"
-          KEYS_FILE="apps/api/env/uat.keys"
-          test -s "$KEYS_FILE" || { echo "Missing $KEYS_FILE"; exit 1; }
-          SET_SECRETS=$(grep -vE '^[[:space:]]*(#|$)' "$KEYS_FILE" \
-            | sed 's#.*#&=cb-api-uat-&:latest#' | paste -sd, -)
-          gcloud run services update "${SERVICE_NAME}" \
-            --project="${PROJECT}" \
-            --region="${REGION}" \
-            --image="${IMAGE}" \
-            --clear-env-vars \
-            --set-secrets="${SET_SECRETS}" \
-            --quiet
+
+          # Literal env from the base64 blob, minus keys sourced from Secret Manager.
+          SECRET_KEYS="apps/api/env/uat.secret-keys"
+          if [ -n "${API_ENV_UAT_B64:-}" ]; then
+            printf '%s' "$API_ENV_UAT_B64" | base64 -d > apps/api/.env
+          else
+            printf '%s' "$API_ENV_B64" | base64 -d > apps/api/.env
+          fi
+          test -s apps/api/.env || { echo "API_ENV_UAT_B64 / API_ENV_B64 missing or invalid."; exit 1; }
+          python3 scripts/dotenv-to-gcloud-env-json.py apps/api/.env "${RUNNER_TEMP}/cloudrun-env.json" \
+            --exclude-file "$SECRET_KEYS"
+
+          # Secret-backed env: cb-api-uat-<KEY>:latest for each name in the secret-keys file.
+          SET_SECRETS=$(grep -vhE '^[[:space:]]*(#|$)' "$SECRET_KEYS" 2>/dev/null \
+            | sed 's#.*#&=cb-api-uat-&:latest#' | paste -sd, - || true)
+
+          ARGS=(--project="${PROJECT}" --region="${REGION}" --image="${IMAGE}"
+                --env-vars-file="${RUNNER_TEMP}/cloudrun-env.json" --quiet)
+          if [ -n "$SET_SECRETS" ]; then ARGS+=(--set-secrets="$SET_SECRETS"); fi
+          gcloud run services update "${SERVICE_NAME}" "${ARGS[@]}"
 
       - name: Set deployed output
         id: set_deployed
@@ -158,6 +169,7 @@ jobs:
           PROJECT: ${{ vars.GCP_PROJECT_ID }}
           SERVICE: ${{ vars.CLOUD_RUN_SERVICE_PROD }}
           RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
+          API_ENV_PROD_B64: ${{ secrets.API_ENV_PROD_B64 }}
         run: |
           set -euo pipefail
           if [ -z "$REGION" ] || [ -z "$PROJECT" ]; then
@@ -169,17 +181,22 @@ jobs:
           BASE_VERSION=${LATEST_TAG#v}
           VERSION_TAG="${BASE_VERSION}.${RUN_NUMBER}"
           IMAGE="${REGION}-docker.pkg.dev/${PROJECT}/contactbook/api:${VERSION_TAG}"
-          KEYS_FILE="apps/api/env/prod.keys"
-          test -s "$KEYS_FILE" || { echo "Missing $KEYS_FILE"; exit 1; }
-          SET_SECRETS=$(grep -vE '^[[:space:]]*(#|$)' "$KEYS_FILE" \
-            | sed 's#.*#&=cb-api-prod-&:latest#' | paste -sd, -)
-          gcloud run services update "${SERVICE_NAME}" \
-            --project="${PROJECT}" \
-            --region="${REGION}" \
-            --image="${IMAGE}" \
-            --clear-env-vars \
-            --set-secrets="${SET_SECRETS}" \
-            --quiet
+
+          # Literal env from the base64 blob, minus keys sourced from Secret Manager.
+          SECRET_KEYS="apps/api/env/prod.secret-keys"
+          printf '%s' "$API_ENV_PROD_B64" | base64 -d > apps/api/.env
+          test -s apps/api/.env || { echo "API_ENV_PROD_B64 missing or invalid."; exit 1; }
+          python3 scripts/dotenv-to-gcloud-env-json.py apps/api/.env "${RUNNER_TEMP}/cloudrun-env.json" \
+            --exclude-file "$SECRET_KEYS"
+
+          # Secret-backed env: cb-api-prod-<KEY>:latest for each name in the secret-keys file.
+          SET_SECRETS=$(grep -vhE '^[[:space:]]*(#|$)' "$SECRET_KEYS" 2>/dev/null \
+            | sed 's#.*#&=cb-api-prod-&:latest#' | paste -sd, - || true)
+
+          ARGS=(--project="${PROJECT}" --region="${REGION}" --image="${IMAGE}"
+                --env-vars-file="${RUNNER_TEMP}/cloudrun-env.json" --quiet)
+          if [ -n "$SET_SECRETS" ]; then ARGS+=(--set-secrets="$SET_SECRETS"); fi
+          gcloud run services update "${SERVICE_NAME}" "${ARGS[@]}"
 
       - name: Set deployed output
         id: set_deployed
