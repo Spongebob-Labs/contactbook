@@ -3,30 +3,25 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowRight,
   Building2,
-  CheckCircle2,
   Globe2,
   IdCard,
-  Import,
+  Link2,
   Mail,
   MapPin,
   Phone,
   Plus,
+  QrCode,
   Share2,
-  ShieldCheck,
   UserRound,
-  UsersRound,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
-import { SampleDataNotice } from "@/components/sample-data-notice";
-import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import CountUp from "@/components/ui/CountUp";
+import SplitText from "@/components/ui/SplitText";
+import SpotlightCard from "@/components/ui/SpotlightCard";
 import { apiFetch } from "@/lib/api";
-import {
-  fetchImportSummary,
-  googleSummaryHasConnection,
-} from "@/lib/contacts-api";
+import { fetchImportSummary } from "@/lib/contacts-api";
 import { getCardDisplayDetails } from "@/lib/card-display";
 import { cardTypeStyles } from "@/lib/card-styles";
 import { logUiError } from "@/lib/friendly-errors";
@@ -46,10 +41,8 @@ import {
 import { cn } from "@/lib/utils";
 
 type OnboardingStep = "profile" | "import" | "card";
-type DashboardMode = "classic" | "story";
 type DashboardNudgeId = "add-card" | "review-profile";
 
-const DASHBOARD_MODE_STORAGE_KEY = "contactbook:dashboard-mode";
 const DASHBOARD_NUDGE_IDS: DashboardNudgeId[] = ["add-card", "review-profile"];
 
 const cardTypeLabels: Record<ContactCardType, string> = {
@@ -66,22 +59,37 @@ function getOnboardingStep(value: string | null): OnboardingStep | null {
   return null;
 }
 
-function getStoredDashboardMode(): DashboardMode {
-  if (typeof window === "undefined") {
-    return "classic";
-  }
-
-  return window.localStorage.getItem(DASHBOARD_MODE_STORAGE_KEY) === "story"
-    ? "story"
-    : "classic";
-}
-
 function getInitialDashboardNudgeState(): Record<DashboardNudgeId, boolean> {
   return { "add-card": false, "review-profile": false };
 }
 
-function isDashboardNudgeEligible(id: DashboardNudgeId, dashboardMode: DashboardMode) {
-  return id === "add-card" || dashboardMode === "classic";
+function getTimeOfDayGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return "morning";
+  if (hour < 17) return "afternoon";
+  return "evening";
+}
+
+function getMissingProfileSections(profile: ProfileMeResponse | null) {
+  const missing: string[] = [];
+  const hasIdentity = Boolean(
+    hasText(profile?.identity.firstName) ||
+      hasText(profile?.identity.lastName) ||
+      hasText(profile?.identity.primaryEmail) ||
+      hasText(profile?.identity.primaryPhone),
+  );
+  if (!hasIdentity) missing.push("Identity details");
+  if (!hasInitializedProfile(profile)) missing.push("Profile records");
+  if (!hasAddress(profile)) missing.push("Postal address");
+  if (!(profile && (profile.work.length > 0 || profile.business.length > 0))) {
+    missing.push("Work or business");
+  }
+  if (!hasSocialLink(profile)) missing.push("Social links");
+  return missing;
+}
+
+function isDashboardNudgeEligible(id: DashboardNudgeId) {
+  return id === "add-card" || id === "review-profile";
 }
 
 function getSafeReturnPath(value: string | null) {
@@ -196,6 +204,17 @@ async function shareCard(card: ContactCard) {
   }
 }
 
+async function copyCardLink(card: ContactCard) {
+  const url = `${window.location.origin}${getCardDetailPath(card.id)}`;
+  try {
+    await navigator.clipboard.writeText(url);
+    toast.success("Card link copied.");
+  } catch (error) {
+    logUiError("Could not copy card link", error);
+    toast.error("We couldn't copy this link right now.");
+  }
+}
+
 type StarterCardRequest = {
   name: string;
   type: ContactCardType;
@@ -235,9 +254,7 @@ export default function DashboardPage() {
   const [profile, setProfile] = useState<ProfileMeResponse | null>(null);
   const [importSummary, setImportSummary] = useState<ContactImportSummary | null>(null);
   const [isMockData, setIsMockData] = useState(false);
-  const [dashboardMode, setDashboardMode] = useState<DashboardMode>(
-    getStoredDashboardMode,
-  );
+  const [activeShareCardIndex, setActiveShareCardIndex] = useState(0);
   const [dismissedNudges, setDismissedNudges] = useState<
     Record<DashboardNudgeId, boolean>
   >(getInitialDashboardNudgeState);
@@ -250,40 +267,17 @@ export default function DashboardPage() {
   const returnTo = getSafeReturnPath(searchParams.get("returnTo"));
   const isSetupFlow = searchParams.get("flow") === "setup";
   const profileCompletion = getProfileCompletion(profile);
+  const missingProfileSections = getMissingProfileSections(profile);
   const isPostOnboardingLanding = isSetupFlow && onboardingStep === null;
-  const hasGoogleImport = googleSummaryHasConnection(importSummary);
-  const hasCards = cards.length > 0;
   const visibleCards = cards.slice(0, 4);
-  const stats = [
-    {
-      icon: UsersRound,
-      label: "Connections",
-      value: String(importSummary?.totalActive ?? 0),
-      detail: hasGoogleImport ? "Google contacts connected" : "No contacts connected",
-      to: "/dashboard/contacts",
-      action: "View contacts",
-      tone: "network",
-    },
-    {
-      icon: IdCard,
-      label: "Cards",
-      value: String(cards.length),
-      detail: hasCards ? "Personal sharing cards" : "No cards yet",
-      to: "/dashboard/cards",
-      action: "View cards",
-      tone: "cards",
-    },
-    {
-      icon: CheckCircle2,
-      label: "Profile",
-      value: `${profileCompletion.percent}%`,
-      detail: `${profileCompletion.completed}/${profileCompletion.total} sections complete`,
-      to: "/profile",
-      action: "Review profile",
-      tone: profileCompletion.percent === 100 ? "profileComplete" : "profile",
-      progress: profileCompletion.percent,
-    },
-  ];
+  const connectionCount = importSummary?.totalActive ?? 0;
+  const firstName =
+    profile?.identity.firstName?.trim() ||
+    profile?.identity.primaryEmail?.split("@")[0] ||
+    "there";
+  const timeOfDay = getTimeOfDayGreeting();
+  const shareCards = visibleCards.length > 0 ? visibleCards : cards.slice(0, 2);
+  const activeShareCard = shareCards[activeShareCardIndex] ?? shareCards[0] ?? null;
   const dashboardNudges: DashboardNudge[] = [
     {
       id: "add-card",
@@ -316,33 +310,9 @@ export default function DashboardPage() {
             return false;
           }
 
-          return isDashboardNudgeEligible(nudge.id, dashboardMode);
+          return isDashboardNudgeEligible(nudge.id);
         }) ?? null
       : null;
-  const guidanceItems = [
-    {
-      icon: UserRound,
-      title: "Keep your personal card current",
-      detail:
-        profileCompletion.percent === 100
-          ? "Your core profile details are ready."
-          : "Add the details friends and family should have.",
-    },
-    {
-      icon: Import,
-      title: "Bring your contacts together",
-      detail: hasGoogleImport
-        ? "Your connection list is ready to review."
-        : "Connect contacts when you are ready.",
-    },
-    {
-      icon: ShieldCheck,
-      title: "Share the right card",
-      detail: hasCards
-        ? "Open a card to review what you share."
-        : "Create personal and work cards first.",
-    },
-  ];
 
   const setOnboardingStep = useCallback(
     (step: OnboardingStep | null) => {
@@ -512,12 +482,18 @@ export default function DashboardPage() {
     }
 
     const hasRemainingNudge = DASHBOARD_NUDGE_IDS.some(
-      (id) => !dismissedNudges[id] && isDashboardNudgeEligible(id, dashboardMode),
+      (id) => !dismissedNudges[id] && isDashboardNudgeEligible(id),
     );
     if (!hasRemainingNudge) {
       setIsPostOnboardingNudgeSession(false);
     }
-  }, [dashboardMode, dismissedNudges, isPostOnboardingNudgeSession]);
+  }, [dismissedNudges, isPostOnboardingNudgeSession]);
+
+  useEffect(() => {
+    if (activeShareCardIndex >= shareCards.length) {
+      setActiveShareCardIndex(0);
+    }
+  }, [activeShareCardIndex, shareCards.length]);
 
   useEffect(() => {
     let isMounted = true;
@@ -536,165 +512,255 @@ export default function DashboardPage() {
     }
   }, [isSetupFlow, onboardingStep, setOnboardingStep]);
 
-  const toggleDashboardMode = () => {
-    setDashboardMode((current) => {
-      const nextMode = current === "story" ? "classic" : "story";
-      window.localStorage.setItem(DASHBOARD_MODE_STORAGE_KEY, nextMode);
-      return nextMode;
-    });
-  };
-
-  const isStoryDashboard = dashboardMode === "story";
-
   return (
-    <AppShell
-      headerActions={
-        <DashboardModeSwitch
-          mode={dashboardMode}
-          onChange={toggleDashboardMode}
-        />
-      }
-    >
-      {isMockData && <SampleDataNotice />}
+    <AppShell>
+      {/* Header */}
+      <section className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <SplitText
+            text={`Good ${timeOfDay}, ${firstName}`}
+            className="title-display"
+            delay={80}
+            animationFrom={{ opacity: 0, transform: "translateY(8px)" }}
+            animationTo={{ opacity: 1, transform: "translateY(0)" }}
+            tag="h1"
+          />
+          <p className="mt-1 flex flex-wrap items-center gap-2 text-[13px] text-[#6B7280]">
+            <span>
+              {cards.length} cards · {connectionCount} connections
+            </span>
+            {isMockData && (
+              <span className="rounded border border-accent-border bg-accent-subtle px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-primary">
+                Sample data
+              </span>
+            )}
+          </p>
+        </div>
+        <Link
+          ref={addCardNudgeRef}
+          to="/dashboard?onboarding=card&returnTo=/dashboard"
+          className={cn(
+            buttonVariants(),
+            "shrink-0",
+            activeNudge?.id === "add-card" &&
+              "relative z-[60] outline outline-2 outline-dashed outline-primary outline-offset-4",
+          )}
+          onClick={() => {
+            if (activeNudge?.id === "add-card") {
+              dismissDashboardNudge("add-card");
+            }
+          }}
+        >
+          <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+          New card
+        </Link>
+      </section>
 
-      {isStoryDashboard ? (
-        <DashboardOverviewPanel
-          cardsCount={cards.length}
-          connectionsCount={importSummary?.totalActive ?? 0}
-          hasCards={hasCards}
-          hasGoogleImport={hasGoogleImport}
-          profileCompletion={profileCompletion}
-        />
-      ) : (
-        <section className="grid gap-4 md:grid-cols-3">
-          {stats.map((stat) => (
-            <DashboardStatCard
-              key={stat.label}
-              isTargetHighlighted={
-                stat.label === "Profile" && activeNudge?.id === "review-profile"
-              }
-              onTargetClick={
-                stat.label === "Profile"
-                  ? () => dismissDashboardNudge("review-profile")
-                  : undefined
-              }
-              stat={stat}
-              targetRef={stat.label === "Profile" ? reviewProfileNudgeRef : undefined}
+      {/* Slim stat strip */}
+      <section className="mb-8 flex flex-wrap items-center gap-6 border-b border-white/[0.06] pb-6">
+        <div>
+          <span className="font-display text-[22px] font-bold tracking-[-0.04em] text-foreground">
+            <CountUp from={0} to={connectionCount} duration={1.2} />
+          </span>
+          <span className="ml-2 text-[11px] uppercase tracking-[0.08em] text-[#6B7280]">
+            connections
+          </span>
+        </div>
+        <div className="hidden h-5 w-px bg-white/[0.08] sm:block" aria-hidden="true" />
+        <div>
+          <span className="font-display text-[22px] font-bold tracking-[-0.04em] text-foreground">
+            <CountUp from={0} to={cards.length} duration={1} />
+          </span>
+          <span className="ml-2 text-[11px] uppercase tracking-[0.08em] text-[#6B7280]">
+            cards
+          </span>
+        </div>
+        <div className="hidden h-5 w-px bg-white/[0.08] sm:block" aria-hidden="true" />
+        <div className="flex max-w-[220px] flex-1 items-center gap-2">
+          <span className="text-[11px] uppercase tracking-[0.08em] text-[#6B7280]">
+            Profile
+          </span>
+          <div className="h-[2px] max-w-[120px] flex-1 rounded-full bg-white/[0.07]">
+            <div
+              className="h-[2px] rounded-full bg-primary transition-all duration-1000"
+              style={{ width: `${profileCompletion.percent}%` }}
             />
-          ))}
-        </section>
-      )}
+          </div>
+          <span className="text-[11px] text-primary">{profileCompletion.percent}%</span>
+        </div>
+      </section>
 
-      <section className="space-y-5">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <h2 className="text-2xl font-semibold tracking-normal">Your cards</h2>
-          </div>
-          <div className="flex gap-2">
-            <Link
-              to="/dashboard/cards"
-              className={cn(buttonVariants({ variant: "outline" }), "shrink-0 rounded-full")}
-            >
-              View all
-              <ArrowRight className="h-4 w-4" aria-hidden="true" />
-            </Link>
-            <Link
-              ref={addCardNudgeRef}
-              to="/dashboard?onboarding=card&returnTo=/dashboard"
-              className={cn(
-                buttonVariants(),
-                "shrink-0 rounded-full",
-                activeNudge?.id === "add-card" &&
-                  "relative z-[60] outline outline-2 outline-dashed outline-primary outline-offset-4 ring-4 ring-primary/10",
-              )}
-              onClick={() => {
-                if (activeNudge?.id === "add-card") {
-                  dismissDashboardNudge("add-card");
-                }
-              }}
-            >
-              <Plus className="h-4 w-4" aria-hidden="true" />
-              Add card
-            </Link>
-          </div>
+      {/* Your cards */}
+      <section className="mb-8">
+        <div className="mb-4 flex items-center justify-between">
+          <span className="label-section">Your cards</span>
+          <Link
+            to="/dashboard/cards"
+            className="flex items-center gap-1 text-[12px] text-primary transition-colors hover:text-[#D4C4A8]"
+          >
+            View all
+            <ArrowRight className="h-3 w-3" aria-hidden="true" />
+          </Link>
         </div>
 
         {visibleCards.length > 0 ? (
           <div className="grid gap-4 md:grid-cols-2">
-            {visibleCards.map((card) => (
-              <DashboardContactCard key={card.id} card={card} profile={profile} />
+            {visibleCards.map((card, index) => (
+              <div
+                key={card.id}
+                className="app-fade-up"
+                style={{ animationDelay: `${index * 0.15}s` }}
+              >
+                <DashboardSpotlightCard
+                  card={card}
+                  featured={index === 0}
+                  index={index}
+                  profile={profile}
+                />
+              </div>
             ))}
           </div>
         ) : (
-          <div className="rounded-[28px] border border-dashed border-border p-5">
+          <div className="rounded-[14px] border border-dashed border-border bg-card p-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p className="text-sm font-semibold">No cards yet</p>
-                <p className="mt-1 text-sm text-muted-foreground">
+                <p className="text-sm font-semibold text-foreground">No cards yet</p>
+                <p className="mt-1 text-[13px] text-muted-foreground">
                   Create a personal or work card when you are ready.
                 </p>
               </div>
               <Link
                 to="/dashboard?onboarding=card&returnTo=/dashboard"
-                className={cn(buttonVariants(), "shrink-0 rounded-full")}
+                className={cn(buttonVariants(), "shrink-0")}
               >
-                <Plus className="h-4 w-4" aria-hidden="true" />
-                Add card
+                <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                New card
               </Link>
             </div>
           </div>
         )}
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]">
-        <Card>
-          <CardHeader>
-            <CardTitle>Profile completion</CardTitle>
-            <CardDescription>
-              {profileCompletion.completed} of {profileCompletion.total} sections complete
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="h-2 rounded-full bg-muted">
+      {/* Bottom row */}
+      <section className="grid gap-4 lg:grid-cols-2">
+        <div className="rounded-[14px] border border-white/[0.07] bg-card p-5 app-fade-up">
+          <p className="text-[13px] font-semibold text-foreground">Profile completion</p>
+          <p className="mt-1 text-[11px] text-white/35">
+            {profileCompletion.completed} of {profileCompletion.total} sections done
+          </p>
+          <div className="mb-4 mt-4 h-[3px] rounded-full bg-white/[0.07]">
+            <div
+              className="h-[3px] rounded-full bg-primary transition-all duration-1000"
+              style={{ width: `${profileCompletion.percent}%` }}
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            {(missingProfileSections.length > 0
+              ? missingProfileSections
+              : ["All core sections complete"]
+            ).map((field) => (
               <div
-                className="h-full rounded-full bg-primary"
-                style={{ width: `${profileCompletion.percent}%` }}
-              />
-            </div>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm text-muted-foreground">
-                Complete the details you want available across your contact cards.
-              </p>
-              <Link
-                to="/profile"
-                className={cn(buttonVariants({ variant: "outline" }), "shrink-0 rounded-full")}
+                key={field}
+                className="flex items-center gap-2 text-[11px] text-white/35"
               >
-                Review profile
-                <ArrowRight className="h-4 w-4" aria-hidden="true" />
-              </Link>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Helpful tips</CardTitle>
-            <CardDescription>Small checks for cleaner sharing</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {guidanceItems.map((item) => (
-              <div key={item.title} className="flex gap-3 rounded-full border border-border p-3 pr-4">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-                  <item.icon className="h-4 w-4" aria-hidden="true" />
-                </span>
-                <div>
-                  <p className="text-sm font-medium">{item.title}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">{item.detail}</p>
-                </div>
+                <div
+                  className={cn(
+                    "h-1 w-1 rounded-full",
+                    missingProfileSections.length > 0
+                      ? "bg-primary opacity-50"
+                      : "bg-primary",
+                  )}
+                />
+                {field}
               </div>
             ))}
-          </CardContent>
-        </Card>
+          </div>
+          <Link
+            ref={reviewProfileNudgeRef}
+            to="/profile"
+            className={cn(
+              "mt-4 flex w-full items-center justify-center rounded-[7px] border border-accent-border py-2 text-[11px] font-semibold text-primary transition-colors hover:bg-accent-subtle",
+              activeNudge?.id === "review-profile" &&
+                "relative z-[60] outline outline-2 outline-dashed outline-primary outline-offset-4",
+            )}
+            onClick={() => {
+              if (activeNudge?.id === "review-profile") {
+                dismissDashboardNudge("review-profile");
+              }
+            }}
+          >
+            {profileCompletion.percent === 100 ? "Review profile →" : "Complete profile →"}
+          </Link>
+        </div>
+
+        <div className="rounded-[14px] border border-white/[0.07] bg-card p-5 app-fade-up">
+          <p className="text-[13px] font-semibold text-foreground">Quick share</p>
+          <p className="mt-1 text-[11px] text-white/35">
+            Share your active card instantly
+          </p>
+
+          {shareCards.length > 0 ? (
+            <>
+              <div className="mb-4 mt-4 flex flex-wrap gap-2">
+                {shareCards.map((card, index) => (
+                  <button
+                    key={card.id}
+                    type="button"
+                    onClick={() => setActiveShareCardIndex(index)}
+                    className={cn(
+                      "rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.06em] transition-colors",
+                      activeShareCardIndex === index
+                        ? "bg-accent-subtle text-primary"
+                        : "bg-white/[0.05] text-white/30 hover:text-white/50",
+                    )}
+                  >
+                    {cardTypeLabels[card.type]}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex items-center gap-4">
+                <div className="flex h-[72px] w-[72px] shrink-0 items-center justify-center rounded-[10px] border border-white/[0.08] bg-white/[0.04]">
+                  <QrCode className="h-8 w-8 text-white/20" aria-hidden="true" />
+                </div>
+                <div className="flex flex-1 flex-col gap-2">
+                  <button
+                    type="button"
+                    disabled={!activeShareCard}
+                    onClick={() => {
+                      if (activeShareCard) void shareCard(activeShareCard);
+                    }}
+                    className={cn(
+                      buttonVariants({ size: "sm" }),
+                      "w-full justify-center",
+                    )}
+                  >
+                    <Share2 className="h-3 w-3" aria-hidden="true" />
+                    Share now
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!activeShareCard}
+                    onClick={() => {
+                      if (activeShareCard) void copyCardLink(activeShareCard);
+                    }}
+                    className={cn(
+                      buttonVariants({ variant: "outline", size: "sm" }),
+                      "w-full justify-center",
+                    )}
+                  >
+                    <Link2 className="h-3 w-3" aria-hidden="true" />
+                    Copy link
+                  </button>
+                </div>
+              </div>
+            </>
+          ) : (
+            <p className="mt-4 text-[11px] text-white/35">
+              Create a card to enable quick sharing.
+            </p>
+          )}
+        </div>
       </section>
 
       {onboardingStep === "profile" && (
@@ -740,58 +806,6 @@ export default function DashboardPage() {
   );
 }
 
-function DashboardModeSwitch({
-  mode,
-  onChange,
-}: {
-  mode: DashboardMode;
-  onChange: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={
-        mode === "story"
-          ? "Switch to classic dashboard"
-          : "Switch to story dashboard"
-      }
-      className="hidden h-10 items-center rounded-full border border-border bg-background p-0.5 text-xs font-semibold shadow-sm transition-colors hover:bg-muted sm:inline-flex"
-      onClick={onChange}
-    >
-      <span
-        className={cn(
-          "rounded-full px-3.5 py-2 transition-colors",
-          mode === "classic"
-            ? "bg-primary text-primary-foreground"
-            : "text-muted-foreground",
-        )}
-      >
-        Classic
-      </span>
-      <span
-        className={cn(
-          "rounded-full px-3.5 py-2 transition-colors",
-          mode === "story"
-            ? "bg-primary text-primary-foreground"
-            : "text-muted-foreground",
-        )}
-      >
-        Story
-      </span>
-    </button>
-  );
-}
-
-type DashboardStat = {
-  action: string;
-  detail: string;
-  icon: typeof UsersRound;
-  label: string;
-  progress?: number;
-  to: string;
-  tone: string;
-  value: string;
-};
 
 type DashboardNudge = {
   action: string;
@@ -809,97 +823,6 @@ type SpotlightTargetRect = {
   top: number;
   width: number;
 };
-
-const statToneStyles: Record<
-  string,
-  {
-    accentClassName: string;
-    iconClassName: string;
-  }
-> = {
-  network: {
-    accentClassName: "bg-primary",
-    iconClassName: "bg-primary text-primary-foreground",
-  },
-  cards: {
-    accentClassName: "bg-primary",
-    iconClassName: "bg-secondary text-secondary-foreground",
-  },
-  profile: {
-    accentClassName: "bg-accent",
-    iconClassName: "bg-accent text-accent-foreground",
-  },
-  profileComplete: {
-    accentClassName: "bg-primary",
-    iconClassName: "bg-primary text-primary-foreground",
-  },
-};
-
-function DashboardStatCard({
-  isTargetHighlighted = false,
-  onTargetClick,
-  stat,
-  targetRef,
-}: {
-  isTargetHighlighted?: boolean;
-  onTargetClick?: () => void;
-  stat: DashboardStat;
-  targetRef?: RefObject<HTMLAnchorElement | null>;
-}) {
-  const style = statToneStyles[stat.tone];
-
-  return (
-    <Card className="group relative overflow-hidden border-border/80 bg-[linear-gradient(135deg,hsl(var(--card))_0%,hsl(var(--muted))_100%)] shadow-[0_12px_32px_rgba(20,52,48,0.07)] transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_44px_rgba(20,52,48,0.11)]">
-      <div className={cn("absolute inset-x-0 top-0 h-1", style.accentClassName)} />
-      <CardContent className="relative flex min-h-40 flex-col p-5">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-sm font-medium text-muted-foreground">{stat.label}</p>
-            <p className="mt-3 text-4xl font-semibold tracking-normal text-foreground">
-              {stat.value}
-            </p>
-          </div>
-          <div
-            className={cn(
-              "flex h-11 w-11 shrink-0 items-center justify-center rounded-full shadow-[inset_0_1px_0_rgba(255,255,255,0.35)]",
-              style.iconClassName,
-            )}
-          >
-            <stat.icon className="h-5 w-5" aria-hidden="true" />
-          </div>
-        </div>
-
-        {typeof stat.progress === "number" && (
-          <div className="mt-4 h-2 rounded-full bg-background">
-            <div
-              className="h-full rounded-full bg-primary"
-              style={{ width: `${stat.progress}%` }}
-            />
-          </div>
-        )}
-
-        <div className="mt-auto flex items-end justify-between gap-4 pt-5">
-          <p className="max-w-[12rem] text-sm leading-5 text-muted-foreground">
-            {stat.detail}
-          </p>
-          <Link
-            ref={targetRef}
-            to={stat.to}
-            className={cn(
-              "inline-flex shrink-0 items-center gap-2 rounded-full px-2 py-1 text-sm font-semibold text-primary transition-colors hover:text-primary/80",
-              isTargetHighlighted &&
-                "relative z-[60] bg-background outline outline-2 outline-dashed outline-primary outline-offset-4 ring-4 ring-primary/10",
-            )}
-            onClick={onTargetClick}
-          >
-            {stat.action}
-            <ArrowRight className="h-4 w-4" aria-hidden="true" />
-          </Link>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
 
 function DashboardNudgeOverlay({
   nudge,
@@ -958,7 +881,7 @@ function DashboardNudgeOverlay({
       <button
         type="button"
         aria-label="Dismiss dashboard nudge"
-        className="absolute inset-0 bg-background/75 backdrop-blur-[2px]"
+        className="absolute inset-0 bg-background/60 backdrop-blur-md"
         onClick={() => onDismiss(nudge.id)}
       />
       {targetRect && (
@@ -973,7 +896,7 @@ function DashboardNudgeOverlay({
         />
       )}
       <div
-        className="pointer-events-none fixed z-[70] w-full overflow-hidden rounded-[24px] border border-border bg-card p-4 shadow-[0_24px_80px_rgba(20,52,48,0.18)]"
+        className="pointer-events-none fixed z-[70] w-full overflow-hidden rounded-2xl border border-border bg-card p-4 app-fade-up"
         style={{
           left: calloutLeft,
           top: calloutTop,
@@ -984,19 +907,15 @@ function DashboardNudgeOverlay({
           className="absolute -top-3 h-6 w-6 rotate-45 border-l border-t border-border bg-card"
           style={{ left: arrowLeft - 12 }}
         />
-        <div className="pointer-events-none absolute -right-10 -top-14 h-40 w-40 rounded-full border border-primary/10" />
-        <div className="pointer-events-none absolute right-12 top-8 h-2 w-2 rounded-full bg-primary/35" />
-        <div className="pointer-events-none absolute right-24 top-16 h-px w-24 rotate-[-22deg] bg-primary/15" />
-
         <div className="relative flex items-start gap-4">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.35)]">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-accent-subtle text-primary">
             <Icon className="h-5 w-5" aria-hidden="true" />
           </div>
           <div className="min-w-0 flex-1">
-            <Badge className="rounded-full" variant="secondary">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-primary">
               Look here
-            </Badge>
-            <h2 className="mt-3 text-xl font-semibold tracking-normal text-foreground">
+            </p>
+            <h2 className="mt-2 text-xl font-semibold tracking-tight text-foreground">
               {nudge.title}
             </h2>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
@@ -1012,259 +931,102 @@ function DashboardNudgeOverlay({
   );
 }
 
-function DashboardOverviewPanel({
-  cardsCount,
-  connectionsCount,
-  hasCards,
-  hasGoogleImport,
-  profileCompletion,
-}: {
-  cardsCount: number;
-  connectionsCount: number;
-  hasCards: boolean;
-  hasGoogleImport: boolean;
-  profileCompletion: { completed: number; percent: number; total: number };
-}) {
-  return (
-    <section className="relative overflow-hidden rounded-[28px] border border-border bg-[linear-gradient(135deg,hsl(var(--card))_0%,hsl(var(--muted))_72%,hsl(var(--secondary))_100%)] p-5 shadow-[0_16px_44px_rgba(20,52,48,0.08)]">
-      <div className="pointer-events-none absolute -right-10 -top-14 h-44 w-44 rounded-full border border-primary/10" />
-      <div className="pointer-events-none absolute right-16 top-8 h-2 w-2 rounded-full bg-primary/35" />
-      <div className="pointer-events-none absolute right-32 top-20 h-2 w-2 rounded-full bg-primary/20" />
-      <div className="pointer-events-none absolute right-24 top-10 h-px w-24 rotate-[-22deg] bg-primary/15" />
-
-      <div className="relative grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.9fr)_minmax(260px,0.55fr)] xl:items-center">
-        <div>
-          <Badge variant="secondary">Overview</Badge>
-          <h1 className="mt-4 text-3xl font-semibold tracking-normal text-foreground">
-            Your ContactBook
-          </h1>
-          <p className="mt-3 max-w-xl text-sm leading-6 text-muted-foreground">
-            {connectionsCount} connections, {cardsCount} cards, and{" "}
-            {profileCompletion.percent}% of your profile ready for cleaner sharing.
-          </p>
-          <div className="mt-5 flex flex-wrap gap-2">
-            <Link
-              to="/dashboard/contacts"
-              className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
-            >
-              View contacts
-              <ArrowRight className="h-4 w-4" aria-hidden="true" />
-            </Link>
-            <Link
-              to="/dashboard/cards"
-              className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
-            >
-              View cards
-              <ArrowRight className="h-4 w-4" aria-hidden="true" />
-            </Link>
-            <Link
-              to="/profile"
-              className={cn(buttonVariants({ variant: "default", size: "sm" }))}
-            >
-              Review profile
-              <ArrowRight className="h-4 w-4" aria-hidden="true" />
-            </Link>
-          </div>
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
-          <OverviewMetric
-            detail={hasGoogleImport ? "Google connected" : "Ready to connect"}
-            icon={UsersRound}
-            label="Connections"
-            value={String(connectionsCount)}
-          />
-          <OverviewMetric
-            detail={hasCards ? "Sharing cards ready" : "Create your first card"}
-            icon={IdCard}
-            label="Cards"
-            value={String(cardsCount)}
-          />
-          <OverviewMetric
-            detail={`${profileCompletion.completed}/${profileCompletion.total} sections complete`}
-            icon={CheckCircle2}
-            label="Profile"
-            value={`${profileCompletion.percent}%`}
-          />
-        </div>
-
-        <div className="rounded-[24px] border border-border/80 bg-background/70 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.45)]">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Profile readiness</p>
-              <p className="mt-2 text-3xl font-semibold tracking-normal">
-                {profileCompletion.percent}%
-              </p>
-            </div>
-            <div className="relative flex h-20 w-20 shrink-0 items-center justify-center rounded-full bg-muted">
-              <div
-                className="absolute inset-0 rounded-full"
-                style={{
-                  background: `conic-gradient(hsl(var(--primary)) ${profileCompletion.percent}%, hsl(var(--border)) 0)`,
-                }}
-              />
-              <div className="relative flex h-14 w-14 items-center justify-center rounded-full bg-background text-sm font-semibold">
-                {profileCompletion.completed}/{profileCompletion.total}
-              </div>
-            </div>
-          </div>
-          <div className="mt-4 h-2 rounded-full bg-border/70">
-            <div
-              className="h-full rounded-full bg-primary"
-              style={{ width: `${profileCompletion.percent}%` }}
-            />
-          </div>
-          <p className="mt-3 text-sm leading-5 text-muted-foreground">
-            Complete the details you want available across your contact cards.
-          </p>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function OverviewMetric({
-  detail,
-  icon: Icon,
-  label,
-  value,
-}: {
-  detail: string;
-  icon: typeof UsersRound;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="flex items-center gap-3 rounded-full border border-border/80 bg-background/70 p-3 pr-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.45)]">
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
-        <Icon className="h-5 w-5" aria-hidden="true" />
-      </div>
-      <div className="min-w-0">
-        <div className="flex items-baseline gap-2">
-          <p className="text-2xl font-semibold tracking-normal">{value}</p>
-          <p className="truncate text-sm font-medium text-muted-foreground">{label}</p>
-        </div>
-        <p className="mt-0.5 truncate text-xs text-muted-foreground">{detail}</p>
-      </div>
-    </div>
-  );
-}
-
-function DashboardContactCard({
+function DashboardSpotlightCard({
   card,
+  featured,
   profile,
 }: {
   card: ContactCard;
+  featured: boolean;
+  index: number;
   profile: ProfileMeResponse | null;
 }) {
   const details = getCardDisplayDetails(card, profile);
   const style = cardTypeStyles[card.type];
+  const fields = [
+    { icon: Building2, label: "Company", value: details.company },
+    { icon: Phone, label: "Phone", value: details.phone },
+    { icon: Mail, label: "Email", value: details.email },
+    { icon: MapPin, label: "Location", value: details.location },
+    { icon: Globe2, label: "Online", value: details.social },
+  ].filter((field) => Boolean(field.value));
 
   return (
-    <div className="group rounded-lg bg-background shadow-[0_18px_48px_rgba(20,52,48,0.08)] transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_64px_rgba(20,52,48,0.12)]">
-      <div
-        className={cn(
-          "relative flex min-h-[17.5rem] flex-col overflow-hidden rounded-md border border-border/80 p-5 pl-6",
-          style.faceClassName,
-        )}
-      >
-        <div className={cn("absolute inset-y-0 left-0 w-1.5", style.foilClassName)} />
-        <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-primary/35 to-transparent" />
-        <div
-          className={cn(
-            "pointer-events-none absolute -right-4 top-2 text-[8rem] font-semibold leading-none tracking-normal",
-            style.watermarkClassName,
-          )}
-        >
-          {details.initials}
+    <SpotlightCard
+      className={cn(
+        "group cursor-pointer rounded-[14px] border border-white/[0.07] bg-card p-5 transition-all duration-300 hover:border-white/[0.12] app-fade-up",
+        featured && "border-t-2 border-t-primary border-accent-border",
+      )}
+      spotlightColor={
+        featured ? "rgba(200,184,154,0.08)" : "rgba(255,255,255,0.03)"
+      }
+    >
+      <Link to={getCardDetailPath(card.id)} className="block outline-none">
+        <div className="mb-4 flex items-center justify-between">
+          <span
+            className={cn(
+              "rounded px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.12em]",
+              featured
+                ? "bg-accent-subtle text-primary"
+                : "bg-white/[0.06] text-white/30",
+            )}
+          >
+            {cardTypeLabels[card.type]}
+          </span>
+          <span className="text-[9px] text-white/20">
+            {formatDate(card.updatedAt)}
+          </span>
         </div>
-        <div className="pointer-events-none absolute bottom-0 right-0 h-24 w-24 rounded-tl-full border-l border-t border-primary/10 bg-background/30" />
 
-        <div className="relative flex items-start justify-between gap-5">
-          <div className="min-w-0">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-primary">
-              ContactBook
-            </p>
-            <p className="mt-5 truncate text-2xl font-semibold tracking-normal text-foreground">
-              {details.name}
-            </p>
-            <p className="mt-2 truncate text-sm font-medium text-muted-foreground">
-              {details.role}
-            </p>
-          </div>
-          <div className="shrink-0 text-right">
-            <div
-              className={cn(
-                "flex h-12 w-12 items-center justify-center rounded-full text-sm font-semibold shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_10px_22px_rgba(20,52,48,0.13)]",
-                style.initialsClassName,
-              )}
-            >
-              {details.initials}
-            </div>
-            <Badge variant="secondary" className={cn("mt-3", style.badgeClassName)}>
-              {cardTypeLabels[card.type]}
-            </Badge>
+        <div className="mb-3 flex justify-center">
+          <div
+            className={cn(
+              "flex h-12 w-12 items-center justify-center rounded-full text-[14px] font-bold",
+              featured ? style.initialsClassName : style.initialsMutedClassName,
+            )}
+          >
+            {details.initials}
           </div>
         </div>
 
-        <div className="relative mt-8 grid gap-x-5 gap-y-3 border-y border-border/70 py-4 text-sm sm:grid-cols-2">
-          <CardPreviewLine icon={Building2} label="Company" value={details.company} />
-          <CardPreviewLine icon={Phone} label="Phone" value={details.phone} />
-          <CardPreviewLine icon={Mail} label="Email" value={details.email} />
-          <CardPreviewLine icon={MapPin} label="Location" value={details.location} />
-          <CardPreviewLine icon={Globe2} label="Online" value={details.social} />
-        </div>
-
-        <div className="relative mt-auto flex items-center justify-between gap-3 pt-6">
-          <p className="truncate text-xs font-medium text-muted-foreground">
-            Updated {formatDate(card.updatedAt)}
+        <div className="mb-4 text-center">
+          <p className="text-[14px] font-semibold tracking-[-0.02em] text-foreground">
+            {details.name}
           </p>
-          <div className="flex shrink-0 items-center gap-2">
-            <Link
-              to={getCardDetailPath(card.id)}
-              className={cn(buttonVariants({ variant: "outline", size: "sm" }), "rounded-full")}
-            >
-              Open
-              <ArrowRight className="h-4 w-4" aria-hidden="true" />
-            </Link>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              className="rounded-full"
-              aria-label={`Share ${card.name}`}
-              title={`Share ${card.name}`}
-              onClick={() => {
-                void shareCard(card);
-              }}
-            >
-              <Share2 className="h-4 w-4" aria-hidden="true" />
-            </Button>
-          </div>
+          {details.role && (
+            <p className="mt-0.5 text-[11px] text-white/35">{details.role}</p>
+          )}
         </div>
-      </div>
-    </div>
-  );
-}
 
-function CardPreviewLine({
-  icon: Icon,
-  label,
-  value,
-}: {
-  icon: typeof Building2;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="flex min-w-0 gap-2">
-      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
-      <div className="min-w-0">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-          {label}
-        </p>
-        <p className="mt-0.5 truncate font-medium text-foreground/85">{value}</p>
+        <div className="mb-3 h-px bg-white/[0.06]" />
+
+        <div className="grid grid-cols-2 gap-y-2">
+          {fields.map((field) => (
+            <div key={field.label} className="flex min-w-0 items-center gap-1.5">
+              <field.icon
+                className="h-2.5 w-2.5 shrink-0 text-primary opacity-60"
+                aria-hidden="true"
+              />
+              <span className="truncate text-[10px] text-white/30">{field.value}</span>
+            </div>
+          ))}
+        </div>
+      </Link>
+
+      <div className="mt-4 flex items-center justify-center gap-2 border-t border-white/[0.05] pt-3 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+        <button
+          type="button"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            void shareCard(card);
+          }}
+          className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-primary"
+        >
+          <Share2 className="h-2.5 w-2.5" aria-hidden="true" />
+          Share card
+        </button>
       </div>
-    </div>
+    </SpotlightCard>
   );
 }

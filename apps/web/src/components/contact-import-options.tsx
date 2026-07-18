@@ -95,15 +95,15 @@ export function ContactImportOptions({
         const isVcfOption = option.key === "vcf";
         const isDisabled = option.disabled || (isVcfOption && !onUploadVcf);
         return (
-          <div
-            key={option.key}
-            className={cn(
-              "flex flex-col rounded-[28px] border border-border bg-card shadow-[0_12px_32px_rgba(20,52,48,0.05)]",
-              compact ? "min-h-52 p-4" : "min-h-64 p-5",
-              featuredGoogle && option.key === "google" && "lg:col-span-2 lg:min-h-44",
-              isDisabled && "bg-muted/30",
-            )}
-          >
+      <div
+          key={option.key}
+          className={cn(
+            "flex flex-col rounded-2xl border border-border/60 bg-card elevation-soft",
+            compact ? "min-h-48 p-4" : "min-h-56 p-5",
+            featuredGoogle && option.key === "google" && "lg:col-span-2",
+            isDisabled && "bg-muted/20",
+          )}
+        >
             <div className="flex items-start justify-between gap-3">
               <div
                 className={cn(
@@ -126,7 +126,7 @@ export function ContactImportOptions({
             {option.key === "google" ? (
               <Button
                 type="button"
-                className={cn("w-full rounded-full", compact ? "mt-4" : "mt-5")}
+                className={cn("w-full rounded-xl", compact ? "mt-4" : "mt-5")}
                 onClick={onConnectGoogle}
                 disabled={isConnectingGoogle}
               >
@@ -144,7 +144,7 @@ export function ContactImportOptions({
                 />
                 <Button
                   type="button"
-                  className={cn("w-full rounded-full", compact ? "mt-4" : "mt-5")}
+                  className={cn("w-full rounded-xl", compact ? "mt-4" : "mt-5")}
                   disabled={isUploadingVcf || !onUploadVcf}
                   onClick={() => vcfInputRef.current?.click()}
                 >
@@ -155,7 +155,7 @@ export function ContactImportOptions({
             ) : (
               <Button
                 type="button"
-                className={cn("w-full rounded-full", compact ? "mt-4" : "mt-5")}
+                className={cn("w-full rounded-xl", compact ? "mt-4" : "mt-5")}
                 variant="outline"
                 disabled
               >

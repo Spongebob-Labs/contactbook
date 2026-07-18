@@ -22,6 +22,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
 import { getCardDisplayDetails } from "@/lib/card-display";
+import type { CardDisplayDetails } from "@/lib/card-display";
 import { cardTypeStyles } from "@/lib/card-styles";
 import { friendlyErrorMessages, logUiError } from "@/lib/friendly-errors";
 import { mockCards, mockProfile } from "@/lib/mock-data";
@@ -127,15 +128,21 @@ export default function CardsPage() {
 
   return (
     <AppShell>
-      <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between app-fade-up">
         <div>
-          <h1 className="mt-3 text-3xl font-semibold tracking-normal">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            Sharing
+          </p>
+          <h1 className="mt-1 text-3xl font-semibold tracking-tight">
             ContactBook cards
           </h1>
+          <p className="mt-1 max-w-xl text-sm text-muted-foreground">
+            Your shareable identity packs — open one to refine what others see.
+          </p>
         </div>
         <Link
           to="/dashboard?onboarding=card&returnTo=/dashboard/cards"
-          className={cn(buttonVariants({ variant: "default" }), "rounded-full")}
+          className={cn(buttonVariants({ variant: "default" }))}
         >
           <Plus className="h-4 w-4" aria-hidden="true" />
           Create card
@@ -177,7 +184,7 @@ export default function CardsPage() {
             </p>
             <Link
               to="/dashboard?onboarding=card&returnTo=/dashboard/cards"
-              className={cn(buttonVariants({ variant: "default" }), "mt-5 rounded-full")}
+              className={cn(buttonVariants({ variant: "default" }), "mt-5")}
             >
               <Plus className="h-4 w-4" aria-hidden="true" />
               Create card
@@ -187,9 +194,14 @@ export default function CardsPage() {
       )}
 
       {!isLoading && !error && cards.length > 0 && (
-        <section className="grid gap-4 md:grid-cols-2">
-          {cards.map((card) => (
-            <CardsPageContactCard key={card.id} card={card} profile={profile} />
+        <section className="grid gap-5 md:grid-cols-2">
+          {cards.map((card, index) => (
+            <CardsPageContactCard
+              key={card.id}
+              card={card}
+              profile={profile}
+              featured={card.type === "PERSONAL" || index === 0}
+            />
           ))}
         </section>
       )}
@@ -197,98 +209,135 @@ export default function CardsPage() {
   );
 }
 
+function CardsPageCardBack({
+  cardId,
+  cardTypeLabel,
+  details,
+  style,
+  onShare,
+}: {
+  cardId: string;
+  cardTypeLabel: string;
+  details: CardDisplayDetails;
+  style: (typeof cardTypeStyles)[keyof typeof cardTypeStyles];
+  onShare: () => void;
+}) {
+  return (
+    <div className="card-face card-face-back flex flex-col overflow-hidden rounded-xl border-[0.5px] border-border bg-card">
+      <div className="flex flex-1 flex-col items-center justify-between gap-4 px-5 py-5">
+        <div className="flex w-full items-center justify-between gap-3">
+          <p className="label-section text-primary">ContactBook</p>
+          <Badge variant="secondary" className={style.badgeClassName}>
+            {cardTypeLabel}
+          </Badge>
+        </div>
+
+        <div className="flex min-w-0 flex-col items-center text-center">
+          <div
+            className={cn(
+              "flex h-16 w-16 items-center justify-center rounded-full text-lg font-bold",
+              style.initialsClassName,
+            )}
+          >
+            {details.initials}
+          </div>
+          <h3 className="title-section mt-3 max-w-full truncate">{details.name}</h3>
+          {details.role && (
+            <p className="body mt-1 max-w-full truncate">{details.role}</p>
+          )}
+        </div>
+
+        <div className="flex w-full flex-col gap-2">
+          <Link
+            to={getCardDetailPath(cardId)}
+            className={cn(buttonVariants({ size: "sm" }), "w-full justify-center")}
+          >
+            Open card
+            <ArrowRight className="h-4 w-4" aria-hidden="true" />
+          </Link>
+          <button
+            type="button"
+            onClick={onShare}
+            className={cn(
+              buttonVariants({ variant: "outline", size: "sm" }),
+              "w-full justify-center",
+            )}
+          >
+            <Share2 className="h-4 w-4" aria-hidden="true" />
+            Share card
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CardsPageContactCard({
   card,
   profile,
+  featured = false,
 }: {
   card: ContactCard;
   profile: ProfileMeResponse | null;
+  featured?: boolean;
 }) {
   const details = getCardDisplayDetails(card, profile);
   const style = cardTypeStyles[card.type];
 
   return (
-    <div className="group rounded-lg bg-background shadow-[0_18px_48px_rgba(20,52,48,0.08)] transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_64px_rgba(20,52,48,0.12)]">
-      <div
-        className={cn(
-          "relative flex min-h-[17.5rem] flex-col overflow-hidden rounded-md border border-border/80 p-5 pl-6",
-          style.faceClassName,
-        )}
-      >
-        <div className={cn("absolute inset-y-0 left-0 w-1.5", style.foilClassName)} />
-        <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-primary/35 to-transparent" />
+    <div className="card-flip-scene h-[22rem] rounded-xl">
+      <div className="card-flip-inner rounded-xl">
         <div
           className={cn(
-            "pointer-events-none absolute -right-4 top-2 text-[8rem] font-semibold leading-none tracking-normal",
-            style.watermarkClassName,
+            "card-face flex flex-col overflow-hidden rounded-xl border-[0.5px] p-5",
+            style.faceClassName,
+            featured && style.featuredBorderClassName,
           )}
         >
-          {details.initials}
-        </div>
-        <div className="pointer-events-none absolute bottom-0 right-0 h-24 w-24 rounded-tl-full border-l border-t border-primary/10 bg-background/30" />
-
-        <div className="relative flex items-start justify-between gap-5">
-          <div className="min-w-0">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-primary">
-              ContactBook
-            </p>
-            <p className="mt-5 truncate text-2xl font-semibold tracking-normal text-foreground">
-              {details.name}
-            </p>
-            <p className="mt-2 truncate text-sm font-medium text-muted-foreground">
-              {details.role}
-            </p>
+          <div className="relative flex items-center justify-between gap-3">
+            <Badge variant="secondary" className={style.badgeClassName}>
+              {cardTypeLabels[card.type]}
+            </Badge>
+            <p className="label-section">Updated {formatDate(card.updatedAt)}</p>
           </div>
-          <div className="shrink-0 text-right">
+
+          <div className="relative mt-5 flex flex-col items-center text-center">
             <div
               className={cn(
-                "flex h-12 w-12 items-center justify-center rounded-full text-sm font-semibold shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_10px_22px_rgba(20,52,48,0.13)]",
-                style.initialsClassName,
+                "flex h-14 w-14 items-center justify-center rounded-full text-sm font-semibold",
+                featured ? style.initialsClassName : style.initialsMutedClassName,
               )}
             >
               {details.initials}
             </div>
-            <Badge variant="secondary" className={cn("mt-3", style.badgeClassName)}>
-              {cardTypeLabels[card.type]}
-            </Badge>
+            <p className="title-section mt-3 max-w-full truncate text-[16px]">
+              {details.name}
+            </p>
+            {details.role && (
+              <p className="body mt-1 max-w-full truncate">{details.role}</p>
+            )}
+          </div>
+
+          <div className="relative mt-5 grid gap-x-5 gap-y-3 border-y border-border py-4 text-sm sm:grid-cols-2">
+            <CardPreviewLine icon={Building2} label="Company" value={details.company} />
+            <CardPreviewLine icon={Phone} label="Phone" value={details.phone} />
+            <CardPreviewLine icon={Mail} label="Email" value={details.email} />
+            <CardPreviewLine icon={MapPin} label="Location" value={details.location} />
+            <CardPreviewLine icon={Globe2} label="Online" value={details.social} />
+          </div>
+
+          <div className="relative mt-auto flex items-center justify-end gap-3 pt-4">
+            <p className="shrink-0 text-[10px] text-text-muted">Hover to flip</p>
           </div>
         </div>
 
-        <div className="relative mt-8 grid gap-x-5 gap-y-3 border-y border-border/70 py-4 text-sm sm:grid-cols-2">
-          <CardPreviewLine icon={Building2} label="Company" value={details.company} />
-          <CardPreviewLine icon={Phone} label="Phone" value={details.phone} />
-          <CardPreviewLine icon={Mail} label="Email" value={details.email} />
-          <CardPreviewLine icon={MapPin} label="Location" value={details.location} />
-          <CardPreviewLine icon={Globe2} label="Online" value={details.social} />
-        </div>
-
-        <div className="relative mt-auto flex items-center justify-between gap-3 pt-6">
-          <p className="truncate text-xs font-medium text-muted-foreground">
-            Updated {formatDate(card.updatedAt)}
-          </p>
-          <div className="flex shrink-0 items-center gap-2">
-            <Link
-              to={getCardDetailPath(card.id)}
-              className={cn(buttonVariants({ variant: "outline", size: "sm" }), "rounded-full")}
-            >
-              Open
-              <ArrowRight className="h-4 w-4" aria-hidden="true" />
-            </Link>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              className="rounded-full"
-              aria-label={`Share ${card.name}`}
-              title={`Share ${card.name}`}
-              onClick={() => {
-                void shareCard(card);
-              }}
-            >
-              <Share2 className="h-4 w-4" aria-hidden="true" />
-            </Button>
-          </div>
-        </div>
+        <CardsPageCardBack
+          cardId={card.id}
+          cardTypeLabel={cardTypeLabels[card.type]}
+          details={details}
+          style={style}
+          onShare={() => void shareCard(card)}
+        />
       </div>
     </div>
   );
@@ -303,14 +352,18 @@ function CardPreviewLine({
   label: string;
   value: string;
 }) {
+  if (!value) {
+    return null;
+  }
+
   return (
-    <div className="flex min-w-0 gap-2">
-      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+    <div className="flex min-w-0 gap-2.5">
+      <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent-muted" aria-hidden="true" />
       <div className="min-w-0">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-text-muted">
           {label}
         </p>
-        <p className="mt-1 truncate font-medium text-foreground">{value}</p>
+        <p className="mt-0.5 truncate text-[13px] font-medium text-foreground">{value}</p>
       </div>
     </div>
   );

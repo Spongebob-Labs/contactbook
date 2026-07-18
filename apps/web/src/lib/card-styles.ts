@@ -1,5 +1,13 @@
 import type { ContactCardType } from "@/lib/types";
 
+/** Shared brass badge / avatar language for ContactBook cards */
+const brassBadge =
+  "rounded bg-accent-subtle px-2 py-[3px] text-[9px] font-semibold uppercase tracking-[0.1em] text-primary ring-0";
+const brassInitialsFeatured =
+  "bg-accent-subtle text-primary";
+const brassInitialsMuted =
+  "bg-[rgba(107,114,128,0.12)] text-[#9CA3AF]";
+
 export const cardTypeStyles: Record<
   ContactCardType,
   {
@@ -8,43 +16,49 @@ export const cardTypeStyles: Record<
     faceClassName: string;
     foilClassName: string;
     initialsClassName: string;
+    initialsMutedClassName: string;
     watermarkClassName: string;
+    featuredBorderClassName: string;
   }
 > = {
   BUSINESS: {
     accentClassName: "bg-primary",
-    badgeClassName: "rounded-full bg-primary text-primary-foreground ring-primary/20",
-    faceClassName:
-      "bg-[linear-gradient(135deg,hsl(var(--card))_0%,hsl(var(--muted))_62%,hsl(var(--primary)/0.12)_100%)]",
+    badgeClassName: brassBadge,
+    faceClassName: "bg-card border-border",
     foilClassName: "bg-primary",
-    initialsClassName: "bg-primary text-primary-foreground",
+    initialsClassName: brassInitialsFeatured,
+    initialsMutedClassName: brassInitialsMuted,
     watermarkClassName: "text-primary/5",
+    featuredBorderClassName: "border-accent-border border-t-2 border-t-primary",
   },
   PERSONAL: {
-    accentClassName: "bg-secondary",
-    badgeClassName: "rounded-full bg-secondary text-secondary-foreground ring-secondary-foreground/10",
-    faceClassName:
-      "bg-[linear-gradient(135deg,hsl(var(--card))_0%,hsl(var(--muted))_68%,hsl(var(--secondary))_100%)]",
-    foilClassName: "bg-secondary",
-    initialsClassName: "bg-secondary text-secondary-foreground",
-    watermarkClassName: "text-secondary-foreground/5",
+    accentClassName: "bg-primary",
+    badgeClassName: brassBadge,
+    faceClassName: "bg-card border-border",
+    foilClassName: "bg-primary",
+    initialsClassName: brassInitialsFeatured,
+    initialsMutedClassName: brassInitialsMuted,
+    watermarkClassName: "text-primary/5",
+    featuredBorderClassName: "border-accent-border border-t-2 border-t-primary",
   },
   PAYMENT: {
-    accentClassName: "bg-accent",
-    badgeClassName: "rounded-full bg-accent text-accent-foreground ring-accent-foreground/10",
-    faceClassName:
-      "bg-[linear-gradient(135deg,hsl(var(--card))_0%,hsl(var(--muted))_68%,hsl(var(--accent)/0.34)_100%)]",
-    foilClassName: "bg-accent",
-    initialsClassName: "bg-accent text-accent-foreground",
-    watermarkClassName: "text-accent/10",
+    accentClassName: "bg-primary",
+    badgeClassName: brassBadge,
+    faceClassName: "bg-card border-border",
+    foilClassName: "bg-primary",
+    initialsClassName: brassInitialsFeatured,
+    initialsMutedClassName: brassInitialsMuted,
+    watermarkClassName: "text-primary/5",
+    featuredBorderClassName: "border-accent-border border-t-2 border-t-primary",
   },
   CUSTOM: {
-    accentClassName: "bg-accent",
-    badgeClassName: "rounded-full bg-accent text-accent-foreground ring-accent-foreground/10",
-    faceClassName:
-      "bg-[linear-gradient(135deg,hsl(var(--card))_0%,hsl(var(--muted))_68%,hsl(var(--accent)/0.34)_100%)]",
-    foilClassName: "bg-accent",
-    initialsClassName: "bg-accent text-accent-foreground",
-    watermarkClassName: "text-accent/10",
+    accentClassName: "bg-primary",
+    badgeClassName: brassBadge,
+    faceClassName: "bg-card border-border",
+    foilClassName: "bg-primary",
+    initialsClassName: brassInitialsFeatured,
+    initialsMutedClassName: brassInitialsMuted,
+    watermarkClassName: "text-primary/5",
+    featuredBorderClassName: "border-accent-border border-t-2 border-t-primary",
   },
 };

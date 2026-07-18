@@ -1,5 +1,47 @@
 # Decision Context
 
+## 2026-07-18 - Dashboard Personal Hub Revamp
+
+- Decision: Rebuild the dashboard as a personal sharing hub: greeting header, slim inline CountUp stats, SpotlightCard card grid, profile completion + Quick Share bottom row. Remove large stat boxes, full-width sample banner, Helpful tips, and Classic/Story mode switch.
+- Reason: Dashboard was metrics-heavy with weak hierarchy; cards are the product centerpiece and need premium treatment with brass design system.
+- Notes:
+  - ReactBits: SpotlightCard + CountUp (via `motion`); lightweight SplitText without GSAP Club plugin.
+  - Sample data is an inline chip under the greeting. QR is a placeholder mark; Share/Copy use existing card share helpers.
+  - Data fetching, onboarding modals, and post-setup nudges preserved; nudge targets rewired to New card / Complete profile.
+- Files: `dashboard-page.tsx`, `components/ui/SpotlightCard.tsx`, `CountUp.tsx`, `SplitText.tsx`, `package.json` (`motion`), `decision-context.md`.
+- Alternatives considered: Full GSAP SplitText — skipped (Club plugin). Keeping Classic/Story modes — removed for a single clear hierarchy.
+
+## 2026-07-18 - Warm Brass App Design System
+
+- Decision: Overhaul authenticated-app visual tokens to Warm Brass (CardStack-inspired): page `#0C0D0F`, surface `#17181C`, accent `#C8B89A`, DM Sans headings + Inter body. Public marketing teal pages remain unchanged.
+- Reason: Replace templated teal/mint SaaS look with a professional brass system while keeping routes, data, and public brand surfaces intact.
+- Notes:
+  - Tokens remapped in `styles.css` (`.dark` + brass-adapted light `:root`); helpers `accent-subtle`, `accent-border`, `sidebar`, etc.
+  - Fonts: `@fontsource/dm-sans` + `@fontsource/inter` (Geist removed).
+  - Components: button (no glow), badge, alert, card, sample notice, segmented tabs, app-shell sidebar, dashboard stats, card previews, card detail, logo/favicon theme color.
+  - Featured cards use brass top border + accent-border; left foil ribbons and watermarks removed from list previews.
+- Files: `styles.css`, `main.tsx`, `package.json`, `index.html`, `site.webmanifest`, `app-logo.svg`, `favicon.svg`, `app-shell.tsx`, `button.tsx`, `badge.tsx`, `card.tsx`, `alert.tsx`, `sample-data-notice.tsx`, `segmented-tabs.tsx`, `card-styles.ts`, `dashboard-page.tsx`, `cards-page.tsx`, `card-detail-page.tsx`, `decision-context.md`.
+- Alternatives considered: Retinting public marketing pages — deferred (scope 1A). Forcing dark-only app theme — deferred; light mode kept as warm neutrals.
+
+## 2026-07-18 - Contact Card Flip Fix And Professional Preview Layout
+
+- Decision: Fix broken 3-D card flip stacking and restructure Cards/Dashboard contact card previews into a centered professional identity layout.
+- Reason: Back faces were missing `card-face card-face-back`, so Open/Share and identity content rendered on top of the front detail grid. Users asked for no overlapping layers and a cleaner shareable-card structure aligned with the existing dark design system.
+- Notes:
+  - Flip CSS: `.card-flip-inner` now fills scene height; `.card-face-back` only applies the Y rotation (positioning comes from `.card-face`).
+  - Front layout: brand + type badge header, centered avatar/name/role, two-column detail grid, footer meta. Giant watermark and corner ornament removed from list previews to stop visual collision.
+  - Actions stay on the flip back only. Same treatment on Cards page and Dashboard so the bug cannot recur on either surface.
+  - Card Detail page watermark treatment left unchanged.
+- Files: `apps/web/src/styles.css`, `apps/web/src/pages/cards-page.tsx`, `apps/web/src/pages/dashboard-page.tsx`, `decision-context.md`.
+- Alternatives considered: Dropping flip entirely for always-visible actions — rejected so interaction depth stays; adapting the light public-card reference 1:1 — rejected to keep ContactBook dark tokens.
+
+## 2026-07-17 - Auth Bypass For Dashboard Viewing
+
+- Decision: Comment out all auth-related routing, protected route checks, and session bootstrapping so the dashboard is directly accessible without authentication.
+- Reason: User wants to view the full dashboard and internal working without going through WhatsApp OTP sign-in.
+- Files affected: `apps/web/src/App.tsx`, `apps/web/src/components/protected-route.tsx`, `apps/web/src/pages/landing-page.tsx`, `apps/web/src/context/auth-context.tsx`
+- Notes: All original auth code is commented out (not deleted) for easy restoration. Landing page "Get started" buttons now link to `/dashboard`. TypeScript lint passes cleanly.
+
 ## 2026-06-02 - Contact Detail Inline Tag And Group Creation
 
 - Decision: Add inline create-and-assign controls inside the Contact Detail `Tags & groups` card for both tags and groups.
@@ -1147,3 +1189,42 @@
 - Decision: Remove the dashboard workspace hero card and move summary stat cards to the top of the page.
 - Reason: The dashboard already has direct stat cards with links, so the hero duplicated navigation and pushed the primary metrics down.
 - Notes: The Today checklist remains below the stats, and overview data still feeds summary counts and checklist state.
+
+## 2026-07-18 - Design System v2 (Glass Shell + Tokens)
+
+- Decision: Ship a refined app design system before client feature work (live card generation, import progress, knowledge base, WhatsApp handoff).
+- Reason: Current UI was mid-maturity and not client-deliverable; references (HeyDrop-style cards, mobile profile CTA stack, current dark dashboard) call for softer glass surfaces, larger radii, clearer elevation, and a collapsible shell.
+- Notes: Tokens in `styles.css` now include glass/surface/elevation, ambient app background, Plus Jakarta Sans + Fraunces loaded; AppShell gains desktop collapse + glass chrome; Button/Card/Input/Select/Badge/Alert refined; dashboard and cards list use fixed oklch-safe surface gradients (removed broken `hsl(var(--…))`); card *product* redesign and new features remain gated pending explicit approval.
+- Files: `apps/web/src/styles.css`, `apps/web/index.html`, `apps/web/src/components/app-shell.tsx`, `apps/web/src/components/ui/*`, `apps/web/src/lib/card-styles.ts`, `apps/web/src/pages/dashboard-page.tsx`, `apps/web/src/pages/cards-page.tsx`.
+
+## 2026-07-18 - Compact Profile Workspace Layout
+
+- Decision: Redesign Profile as a dense workspace view and extract reusable UI primitives (`SegmentedTabs`, `DetailGrid`/`RecordPanel`) for the same density pattern elsewhere.
+- Reason: Profile was oversized (hero identity, min-h-16 tabs, min-h-20rem record cards, duplicated titles), so little data was visible above the fold.
+- Notes: Compact identity strip, slim tabs, single glass panel, field grids without marketing-card chrome; dashboard Classic/Story now uses shared `SegmentedTabs`. Card product redesign and client feature work remain gated.
+- Files: `apps/web/src/pages/profile-page.tsx`, `apps/web/src/components/ui/segmented-tabs.tsx`, `apps/web/src/components/ui/detail-fields.tsx`, `apps/web/src/pages/dashboard-page.tsx`.
+
+## 2026-07-18 - Adopt Geist Sans
+
+- Decision: Replace Plus Jakarta Sans with Geist Variable (`@fontsource-variable/geist`) as the app sans/display font.
+- Reason: User requested a more refined professional typeface for the product UI.
+- Notes: JetBrains Mono kept for mono; public marketing theme fonts unchanged; theme-preview Fraunces remains local to that page.
+- Files: `apps/web/package.json`, `apps/web/src/main.tsx`, `apps/web/src/styles.css`, `apps/web/index.html`.
+
+## 2026-07-18 - Design System v3 (Floating Sidebar, Flat Palette, 3-D Card Flip)
+
+- Decision: Comprehensive UI revamp removing AI-like gradients, replacing the bordered panel sidebar with a transparent floating sidebar, and adding a 3-D hover-flip to all contact cards.
+- Reason: Client requires a professional, natural, elegant look (HeyDrop-style). Previous surface gradients looked AI-generated; sidebar was static and visually heavy; cards lacked interaction depth.
+- Notes:
+  - `styles.css`: removed `surface-gradient*` utilities and the second warm-accent radial from `--app-ambient`; added `card-flip-scene / card-flip-inner / card-face / card-face-back` CSS for native 3-D flip on `hover: hover` devices.
+  - `app-shell.tsx`: sidebar is now transparent (no background/border); nav items float freely; a `position: fixed` mini toggle button (`h-6 w-6` rounded-full) hovers at the exact right edge of the sidebar area; header is `bg-background/80 backdrop-blur-xl` without glass-panel chrome.
+  - `card-styles.ts`: `faceClassName` changed from `surface-gradient*` → `bg-card` across all four card types.
+  - `dashboard-page.tsx`: `DashboardStatCard` → `bg-card`; `DashboardOverviewPanel` → `bg-card`; `DashboardContactCard` wrapped in `card-flip-scene/card-flip-inner` with `CardBackFace` (avatar + Open card + Share card).
+  - `cards-page.tsx`: `CardsPageContactCard` same flip treatment with `CardsPageCardBack`.
+  - `import-page.tsx`: replaced oversized hero card with compact section-heading + stat strip grid + import options.
+  - `contact-import-options.tsx`: `rounded-[28px]` → `rounded-2xl`, custom shadows → `elevation-soft`, button `rounded-full` → `rounded-xl`.
+  - `table.tsx`: lighter hover `bg-foreground/[0.03]`, tighter column header style.
+  - `contacts-page.tsx`: button `rounded-full` → `rounded-xl` on search, pagination, and CTA buttons.
+- Files: `styles.css`, `app-shell.tsx`, `card-styles.ts`, `dashboard-page.tsx`, `cards-page.tsx`, `import-page.tsx`, `contact-import-options.tsx`, `table.tsx`, `contacts-page.tsx`.
+- Checks: `tsc --noEmit` + `pnpm lint` both pass cleanly.
+

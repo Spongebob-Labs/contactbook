@@ -4,8 +4,8 @@
   "description": "Create a living contact profile, share personal cards, and keep imported contacts current.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#F8FEFB",
-  "theme_color": "#058765",
+  "background_color": "#0C0D0F",
+  "theme_color": "#C8B89A",
   "icons": [
     {
       "src": "/app-logo.svg",

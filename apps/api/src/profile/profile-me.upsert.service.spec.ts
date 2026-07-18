@@ -43,7 +43,7 @@ describe("ProfileMeUpsertService", () => {
       name: "Acme",
       updatedAt: new Date(),
       fields: [],
-    } as never);
+    });
     await svc().patch(mocks.userId, { work: [] });
     expect(mocks.persistence.deleteGroup).not.toHaveBeenCalled();
   });
@@ -72,7 +72,7 @@ describe("ProfileMeUpsertService", () => {
           groupId: "fg-fin",
         },
       ],
-    } as never);
+    });
     await svc().patch(mocks.userId, {
       financial: {
         bankAccounts: [

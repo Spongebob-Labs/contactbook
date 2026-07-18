@@ -39,6 +39,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let isMounted = true;
 
     const bootstrapSession = async () => {
+      // --- Auth bypass: always report authenticated for viewing ---
+      if (isMounted) {
+        setUserId("viewer");
+        setProfileIdentity(null);
+        setIsAuthenticated(true);
+        setIsLoading(false);
+      }
+      return;
+
+      // Original auth flow (commented out)
       const currentPath = window.location.pathname;
       const isPublicRoute =
         currentPath === "/" ||

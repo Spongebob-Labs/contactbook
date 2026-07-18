@@ -566,7 +566,7 @@ export default function ContactsPage() {
         <div className="flex w-full flex-col gap-3 lg:max-w-2xl lg:items-end">
           <Link
             to="/dashboard/import"
-            className={cn(buttonVariants({ variant: "default" }), "cursor-pointer rounded-full")}
+            className={cn(buttonVariants({ variant: "default" }), "cursor-pointer rounded-xl")}
           >
             <Download className="h-4 w-4" aria-hidden="true" />
             Import contacts
@@ -594,7 +594,7 @@ export default function ContactsPage() {
             <Select
               value={sourceFilter}
               onChange={(event) => updateSourceFilter(event.target.value as SourceFilter)}
-              className="cursor-pointer rounded-full"
+              className="cursor-pointer rounded-xl"
               aria-label="Filter contacts by source"
             >
               {sourceOptions.map((option) => (
@@ -606,7 +606,7 @@ export default function ContactsPage() {
             <Select
               value={tagFilter}
               onChange={(event) => updateTagFilter(event.target.value)}
-              className="cursor-pointer rounded-full"
+              className="cursor-pointer rounded-xl"
               aria-label="Filter contacts by tag"
             >
               <option value="ALL">All tags</option>
@@ -619,7 +619,7 @@ export default function ContactsPage() {
             <Select
               value={groupFilter}
               onChange={(event) => updateGroupFilter(event.target.value)}
-              className="cursor-pointer rounded-full"
+              className="cursor-pointer rounded-xl"
               aria-label="Filter contacts by group"
             >
               <option value="ALL">All groups</option>
@@ -635,7 +635,7 @@ export default function ContactsPage() {
                 value={query}
                 onChange={(event) => updateQuery(event.target.value)}
                 placeholder="Search contacts"
-                className="rounded-full pl-9"
+                className="rounded-xl pl-9"
               />
             </div>
           </div>
@@ -662,7 +662,7 @@ export default function ContactsPage() {
                 to="/dashboard/import"
                 className={cn(
                   buttonVariants({ variant: "default" }),
-                  "mt-5 cursor-pointer rounded-full",
+                  "mt-5 cursor-pointer rounded-xl",
                 )}
               >
                 <Download className="h-4 w-4" aria-hidden="true" />
@@ -725,7 +725,7 @@ export default function ContactsPage() {
                   <Select
                     value={String(pageSize)}
                     onChange={(event) => updatePageSize(Number(event.target.value))}
-                    className="w-28 cursor-pointer rounded-full"
+                    className="w-28 cursor-pointer rounded-xl"
                     aria-label="Rows per page"
                   >
                     {pageSizeOptions.map((value) => (
@@ -738,7 +738,7 @@ export default function ContactsPage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="cursor-pointer rounded-full disabled:cursor-not-allowed"
+                    className="cursor-pointer rounded-xl disabled:cursor-not-allowed"
                     onClick={() => setPage((current) => Math.max(1, current - 1))}
                     disabled={currentPage === 1}
                   >
@@ -752,7 +752,7 @@ export default function ContactsPage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="cursor-pointer rounded-full disabled:cursor-not-allowed"
+                    className="cursor-pointer rounded-xl disabled:cursor-not-allowed"
                     onClick={() =>
                       setPage((current) => Math.min(totalPages, current + 1))
                     }

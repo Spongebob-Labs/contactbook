@@ -8,7 +8,7 @@ import { SampleDataNotice } from "@/components/sample-data-notice";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { buildContactImportSummary } from "@/lib/contact-summary";
 import {
   fetchAllContacts,
@@ -245,91 +245,75 @@ export default function ImportPage() {
     <AppShell>
       {isMockData && <SampleDataNotice />}
 
-      <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
-        <div className="rounded-[28px] border border-border bg-card p-6 shadow-[0_12px_32px_rgba(20,52,48,0.06)] md:p-8">
-          <Badge variant="secondary" className="rounded-full">
-            Google import
-          </Badge>
-          <div className="mt-5 max-w-3xl space-y-4">
-            <h1 className="text-3xl font-semibold tracking-normal md:text-4xl">
-              Bring your Google contacts into ContactBook.
-            </h1>
-            <p className="text-base text-muted-foreground">
-              {hasConnectedGoogle
-                ? "Sync contacts from your connected Google account into your ContactBook import queue."
-                : "Sync your Google contacts into your ContactBook import queue."}
-            </p>
-          </div>
-          <div className="mt-6">
-            {hasConnectedGoogle ? (
-              <Button
-                type="button"
-                variant="outline"
-                className="rounded-full"
-                onClick={() => void syncGoogle()}
-                disabled={isSyncing}
-              >
-                <RefreshCw className="h-4 w-4" aria-hidden="true" />
-                Sync contacts
-              </Button>
-            ) : (
-              <Button
-                type="button"
-                className="rounded-full"
-                onClick={() => void connectGoogle()}
-                disabled={isConnectingGoogle}
-              >
-                <RefreshCw className="h-4 w-4" aria-hidden="true" />
-                {isConnectingGoogle ? "Connecting" : "Connect Google"}
-              </Button>
-            )}
-          </div>
-          {vcfError && (
-            <Alert className="mt-5 flex items-start gap-3">
-              <AlertCircle className="mt-0.5 h-4 w-4 text-destructive" aria-hidden="true" />
-              <div>
-                <p className="font-medium">VCF import failed</p>
-                <p className="mt-1 text-sm text-muted-foreground">{vcfError}</p>
-              </div>
-            </Alert>
+      {/* Page header */}
+      <section className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between app-fade-up">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            Contacts
+          </p>
+          <h1 className="mt-1 text-3xl font-semibold tracking-tight">Import</h1>
+          <p className="mt-1 max-w-xl text-sm text-muted-foreground">
+            {hasConnectedGoogle
+              ? "Sync your Google account or upload a VCF file to add contacts."
+              : "Connect a source to bring your existing contacts into ContactBook."}
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {hasConnectedGoogle && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void syncGoogle()}
+              disabled={isSyncing}
+            >
+              <RefreshCw className="h-4 w-4" aria-hidden="true" />
+              {isSyncing ? "Syncing…" : "Sync now"}
+            </Button>
+          )}
+          {!hasConnectedGoogle && (
+            <Button
+              type="button"
+              onClick={() => void connectGoogle()}
+              disabled={isConnectingGoogle}
+            >
+              {isConnectingGoogle ? "Connecting…" : "Connect Google"}
+            </Button>
           )}
         </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Import status</CardTitle>
-            <CardDescription>Current import snapshot</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex items-center justify-between rounded-full border border-border bg-background/60 p-3 px-4">
-              <span className="text-sm text-muted-foreground">Imported contacts</span>
-              <span className="text-lg font-semibold">
-                {summary?.totalActive ?? imports.length}
-              </span>
-            </div>
-            <div className="flex items-center justify-between rounded-full border border-border bg-background/60 p-3 px-4">
-              <span className="text-sm text-muted-foreground">Google contacts</span>
-              <span className="text-lg font-semibold">
-                {googleSummary?.activeCount ?? 0}
-              </span>
-            </div>
-            <div className="flex items-center justify-between rounded-full border border-border bg-background/60 p-3 px-4">
-              <span className="text-sm text-muted-foreground">VCF contacts</span>
-              <span className="text-lg font-semibold">
-                {vcfSummary?.activeCount ?? 0}
-              </span>
-            </div>
-            <div className="flex items-center justify-between rounded-full border border-border bg-background/60 p-3 px-4">
-              <span className="text-sm text-muted-foreground">Last activity</span>
-              <span className="text-sm font-medium">
-                {formatDate(getLastImportActivity(summary))}
-              </span>
-            </div>
-          </CardContent>
-        </Card>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-3">
+      {/* Import stats strip */}
+      <section className="grid grid-cols-2 gap-3 sm:grid-cols-4 app-fade-up">
+        {[
+          { label: "Total contacts", value: summary?.totalActive ?? imports.length },
+          { label: "Google contacts", value: googleSummary?.activeCount ?? 0 },
+          { label: "VCF contacts", value: vcfSummary?.activeCount ?? 0 },
+          { label: "Last activity", value: formatDate(getLastImportActivity(summary)) },
+        ].map((item) => (
+          <div
+            key={item.label}
+            className="flex flex-col gap-1 rounded-2xl border border-border/60 bg-card/60 px-4 py-3 backdrop-blur-sm"
+          >
+            <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              {item.label}
+            </span>
+            <span className="text-lg font-semibold tracking-tight">{item.value}</span>
+          </div>
+        ))}
+      </section>
+
+      {vcfError && (
+        <Alert className="flex items-start gap-3 app-fade-up">
+          <AlertCircle className="mt-0.5 h-4 w-4 text-destructive" aria-hidden="true" />
+          <div>
+            <p className="font-medium">VCF import failed</p>
+            <p className="mt-1 text-sm text-muted-foreground">{vcfError}</p>
+          </div>
+        </Alert>
+      )}
+
+      {/* Import options */}
+      <section className="grid gap-4 lg:grid-cols-3 app-fade-up">
         <ContactImportOptions
           hideGoogle={hasConnectedGoogle}
           onConnectGoogle={connectGoogle}
@@ -340,11 +324,11 @@ export default function ImportPage() {
         />
 
         {hasConnectedGoogle && (
-          <Card className="min-h-64">
+          <Card>
             <CardHeader>
               <CardTitle>Contacts directory</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-3">
               {error && (
                 <Alert className="flex items-start gap-3">
                   <AlertCircle className="mt-0.5 h-4 w-4 text-destructive" />
@@ -356,25 +340,18 @@ export default function ImportPage() {
                   </div>
                 </Alert>
               )}
-              <div className="flex flex-col gap-4 rounded-[24px] border border-border bg-background/60 p-4">
-                <div>
-                  <p className="font-medium">
-                    {isLoading
-                      ? "Loading contacts status"
-                      : `${summary?.totalActive ?? imports.length} contacts`}
-                  </p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Open the Contacts page to search and inspect contacts.
-                  </p>
-                </div>
-                <Link
-                  to="/dashboard/contacts"
-                  className={cn(buttonVariants({ variant: "default" }), "rounded-full")}
-                >
-                  View contacts
-                  <ArrowRight className="h-4 w-4" aria-hidden="true" />
-                </Link>
-              </div>
+              <p className="text-sm text-muted-foreground">
+                {isLoading
+                  ? "Loading…"
+                  : `${summary?.totalActive ?? imports.length} contacts ready to review.`}
+              </p>
+              <Link
+                to="/dashboard/contacts"
+                className={cn(buttonVariants({ variant: "default" }), "w-full justify-center")}
+              >
+                View contacts
+                <ArrowRight className="h-4 w-4" aria-hidden="true" />
+              </Link>
             </CardContent>
           </Card>
         )}

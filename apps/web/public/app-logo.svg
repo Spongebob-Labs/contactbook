@@ -1,9 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="ContactBook">
-  <rect width="64" height="64" rx="18" fill="#058765"/>
-  <path d="M19 16h26a5 5 0 0 1 5 5v22a5 5 0 0 1-5 5H19a5 5 0 0 1-5-5V21a5 5 0 0 1 5-5Z" fill="#F8FEFB" opacity=".96"/>
-  <path d="M20 16v32" stroke="#058765" stroke-width="4" stroke-linecap="round"/>
-  <circle cx="33" cy="29" r="6" fill="#058765"/>
-  <path d="M23 43c2.1-5.8 6-8.7 10-8.7s7.9 2.9 10 8.7" fill="none" stroke="#058765" stroke-width="4" stroke-linecap="round"/>
-  <path d="M45 22c3.4 1.6 5.7 5 5.7 9s-2.3 7.4-5.7 9" fill="none" stroke="#8FE7C4" stroke-width="3" stroke-linecap="round"/>
-  <path d="M48 28h5M48 34h5" stroke="#8FE7C4" stroke-width="3" stroke-linecap="round"/>
+  <rect width="64" height="64" rx="18" fill="#C8B89A"/>
+  <path d="M19 16h26a5 5 0 0 1 5 5v22a5 5 0 0 1-5 5H19a5 5 0 0 1-5-5V21a5 5 0 0 1 5-5Z" fill="#0C0D0F" opacity=".96"/>
+  <path d="M20 16v32" stroke="#C8B89A" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="33" cy="29" r="6" fill="#C8B89A"/>
+  <path d="M23 43c2.1-5.8 6-8.7 10-8.7s7.9 2.9 10 8.7" fill="none" stroke="#C8B89A" stroke-width="4" stroke-linecap="round"/>
+  <path d="M45 22c3.4 1.6 5.7 5 5.7 9s-2.3 7.4-5.7 9" fill="none" stroke="#E8E4DC" stroke-width="3" stroke-linecap="round"/>
+  <path d="M48 28h5M48 34h5" stroke="#E8E4DC" stroke-width="3" stroke-linecap="round"/>
 </svg>

@@ -209,7 +209,7 @@ export default function LandingPage() {
             </div>
             <div className="flex flex-col gap-3 sm:flex-row">
               <Link
-                to="/auth"
+                to="/dashboard"
                 className={cn(buttonVariants({ size: "lg" }), "h-12 bg-public-teal text-public-inverse hover:bg-public-teal/90")}
               >
                 Get started
@@ -466,7 +466,7 @@ export default function LandingPage() {
             </div>
           </div>
           <Link
-            to="/auth"
+            to="/dashboard"
             className={cn(buttonVariants({ size: "lg" }), "h-12 bg-public-inverse text-public-charcoal hover:bg-public-inverse/90")}
           >
             Get started

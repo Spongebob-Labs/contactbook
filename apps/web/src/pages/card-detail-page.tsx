@@ -487,32 +487,20 @@ function CardDetailPreview({
   const sections = cardDetailSections(card, profile);
 
   return (
-    <Card className="relative overflow-hidden border-border/80 shadow-[0_24px_70px_rgba(20,52,48,0.11)]">
-      <div className={cn("absolute inset-y-0 left-0 w-1.5", style.foilClassName)} />
+    <Card className="relative overflow-hidden rounded-xl border-[0.5px] border-accent-border border-t-2 border-t-primary bg-card">
       <CardContent className="p-0">
         <div
           className={cn(
-            "relative min-h-[34rem] overflow-hidden p-6 pl-8 md:p-8 md:pl-10",
+            "relative min-h-[34rem] overflow-hidden p-6 md:p-8",
             style.faceClassName,
           )}
         >
-          <div className="pointer-events-none absolute inset-x-12 top-0 h-px bg-gradient-to-r from-transparent via-primary/35 to-transparent" />
-          <div
-            className={cn(
-              "pointer-events-none absolute -right-8 top-4 text-[12rem] font-semibold leading-none tracking-normal md:text-[16rem]",
-              style.watermarkClassName,
-            )}
-          >
-            {details.initials}
-          </div>
-          <div className="pointer-events-none absolute bottom-0 right-0 h-44 w-44 rounded-tl-full border-l border-t border-primary/10 bg-background/30" />
-
           <div className="relative flex min-w-0 flex-col">
             <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
               <div className="flex min-w-0 flex-col gap-5 sm:flex-row sm:items-center">
                 <div
                   className={cn(
-                    "flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-full text-3xl font-semibold shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_18px_36px_rgba(20,52,48,0.14)]",
+                    "flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-full text-3xl font-semibold",
                     media && isRenderableImage(media)
                       ? "bg-card"
                       : style.initialsClassName,
@@ -530,13 +518,11 @@ function CardDetailPreview({
                   )}
                 </div>
                 <div className="min-w-0">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.32em] text-primary">
-                    ContactBook
-                  </p>
-                  <h2 className="mt-4 max-w-5xl break-words text-4xl font-semibold tracking-normal text-foreground md:text-5xl">
+                  <p className="label-section text-primary">ContactBook</p>
+                  <h2 className="title-display mt-4 max-w-5xl break-words md:text-5xl">
                     {details.name}
                   </h2>
-                  <p className="mt-3 truncate text-base font-medium text-muted-foreground">
+                  <p className="body mt-3 truncate text-base">
                     {details.role}
                   </p>
                 </div>
@@ -548,7 +534,6 @@ function CardDetailPreview({
                 <Button
                   type="button"
                   variant="outline"
-                  className="rounded-full bg-background/70"
                   onClick={() => {
                     void shareCard(card);
                   }}
