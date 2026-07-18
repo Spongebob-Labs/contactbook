@@ -32,6 +32,7 @@ describe("OtpService", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    config.get.mockImplementation(() => "919676240186");
     prisma.otpSession.create.mockResolvedValue({ id: "otp-1" });
     prisma.otpSession.update.mockResolvedValue({});
     prisma.otpSession.delete.mockResolvedValue({});
@@ -67,6 +68,53 @@ describe("OtpService", () => {
       service.sendPhoneOtp("+12166772305", null),
     ).resolves.toBeUndefined();
     expect(messaging.sendOtp).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not send WhatsApp OTPs when dummy login is enabled", async () => {
+    config.get.mockImplementation((key: string) =>
+      key === "DUMMY_OTP_LOGIN_ENABLED" ? "true" : "919676240186",
+    );
+
+    await service.sendPhoneOtp("+12166772305", "user-1");
+
+    expect(prisma.otpSession.create).toHaveBeenCalled();
+    expect(messaging.sendOtp).not.toHaveBeenCalled();
+  });
+
+  it("accepts any six-digit OTP when dummy login is enabled", async () => {
+    config.get.mockImplementation((key: string) =>
+      key === "DUMMY_OTP_LOGIN_ENABLED" ? "true" : "919676240186",
+    );
+    prisma.otpSession.findFirst.mockResolvedValue({
+      id: "otp-1",
+      userId: "user-1",
+      codeHash: await bcrypt.hash("123456", 4),
+      attemptCount: 0,
+    });
+
+    await expect(
+      service.verifyPhoneOtp("+12166772305", "654321"),
+    ).resolves.toBe("user-1");
+    expect(tx.user.update).toHaveBeenCalledWith({
+      where: { id: "user-1" },
+      data: { isActive: true },
+    });
+  });
+
+  it("rejects non-six-digit OTPs when dummy login is enabled", async () => {
+    config.get.mockImplementation((key: string) =>
+      key === "DUMMY_OTP_LOGIN_ENABLED" ? "true" : "919676240186",
+    );
+    prisma.otpSession.findFirst.mockResolvedValue({
+      id: "otp-1",
+      userId: "user-1",
+      codeHash: await bcrypt.hash("123456", 4),
+      attemptCount: 0,
+    });
+
+    await expect(
+      service.verifyPhoneOtp("+12166772305", "12345"),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
   it("returns a structured initiation response when OpenWA reports 463", async () => {

@@ -35,6 +35,9 @@ export class OtpService {
         expiresAt: new Date(Date.now() + OTP_TTL_MS),
       },
     });
+    if (this.isDummyOtpLoginEnabled()) {
+      return;
+    }
     try {
       await this.messaging.sendOtp({
         toE164: phoneE164,
@@ -78,7 +81,9 @@ export class OtpService {
     if (!session || session.attemptCount >= OTP_MAX_ATTEMPTS) {
       throw new UnauthorizedException("Invalid or expired code");
     }
-    const valid = await bcrypt.compare(code, session.codeHash);
+    const valid = this.isDummyOtpLoginEnabled()
+      ? /^\d{6}$/.test(code)
+      : await bcrypt.compare(code, session.codeHash);
     if (!valid) {
       const attemptCount = session.attemptCount + 1;
       await this.prisma.otpSession.update({
@@ -108,6 +113,11 @@ export class OtpService {
     return userId;
   }
 
+  private isDummyOtpLoginEnabled(): boolean {
+    return (
+      this.config.get<string>("DUMMY_OTP_LOGIN_ENABLED", "false") === "true"
+    );
+  }
 }
 
 function normalizeSender(value: string): string {
