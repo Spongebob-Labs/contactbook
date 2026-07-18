@@ -15,6 +15,7 @@ import { ProfileModule } from "./profile/profile.module";
 import { StorageModule } from "./storage/storage.module";
 import { SyncModule } from "./sync/sync.module";
 import { TravelModule } from "./travel/travel.module";
+import { TwilioOtpModule } from "./twilio-otp/twilio-otp.module";
 import { WhatsappCloudModule } from "./whatsapp-cloud/whatsapp-cloud.module";
 import { LoggerModule } from "./common/logger/logger.module";
 
@@ -40,6 +41,7 @@ import { LoggerModule } from "./common/logger/logger.module";
     ConnectionModule,
     TravelModule,
     JobsModule,
+    TwilioOtpModule,
     WhatsappCloudModule,
     LoggerModule,
   ],

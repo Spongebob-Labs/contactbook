@@ -109,6 +109,48 @@ export class AuthService {
     };
   }
 
+  /**
+   * Issues the same session (identical access-token claims + refresh token) as
+   * WhatsApp login for a phone whose ownership has ALREADY been proven
+   * out-of-band — e.g. a verified Twilio OTP. Activates the account (OTP proves
+   * control of the number) and mirrors the login broadcast.
+   *
+   * Returns `null` when no account exists for the phone, so the caller can
+   * respond with a "verified but not registered" result instead of a session.
+   */
+  async issueSessionForVerifiedPhone(
+    phoneRaw: string,
+    countryCallingPrefix: string,
+  ): Promise<{
+    isOnboarded: boolean;
+    userId: string;
+    accessToken: string;
+    refreshToken: string;
+  } | null> {
+    const phone = normalizeNationalPhone(phoneRaw);
+    const countryCode = normalizeDialCode(countryCallingPrefix);
+    const user = await this.prisma.user.findUnique({
+      where: { countryCode_phone: { countryCode, phone } },
+      select: { id: true, isActive: true, profileOnboardingCompletedAt: true },
+    });
+    if (!user) {
+      return null;
+    }
+    if (!user.isActive) {
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { isActive: true },
+      });
+    }
+    const tokens = await this.issueTokenPair(user.id);
+    await this.loginBroadcast.sendForUser(user.id);
+    return {
+      isOnboarded: user.profileOnboardingCompletedAt != null,
+      userId: user.id,
+      ...tokens,
+    };
+  }
+
   async completeRegister(
     dto: CompleteRegisterDto,
   ): Promise<{ userId: string; accessToken: string; refreshToken: string }> {
