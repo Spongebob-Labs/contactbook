@@ -1,6 +1,7 @@
 import { ConfigService } from "@nestjs/config";
 import {
   WHATSAPP_DELIVERY_FAILED,
+  WHATSAPP_GATEWAY_SESSION_NOT_READY,
   WhatsappProviderError,
 } from "./whatsapp-errors";
 import type {
@@ -195,10 +196,7 @@ export class OpenWaProvider implements WhatsappProvider {
       const raw = await response.text();
       const json = raw ? asObject(JSON.parse(raw)) : {};
       if (!response.ok || !json) {
-        throw new WhatsappProviderError(
-          WHATSAPP_DELIVERY_FAILED,
-          `OpenWA request failed with status ${response.status}.`,
-        );
+        throw openWaError(response.status, json);
       }
       return json;
     } finally {
@@ -219,6 +217,50 @@ export class OpenWaProvider implements WhatsappProvider {
       throw new Error(`${key} must be a positive integer`);
     return parsed;
   }
+}
+
+function openWaError(
+  status: number,
+  response: JsonObject | null,
+): WhatsappProviderError {
+  const providerMessage = stringValue(response?.message);
+  const providerError = stringValue(response?.error);
+  const providerStatus = stringValue(response?.status);
+  const message = providerMessage
+    ? `OpenWA request failed with status ${status}: ${providerMessage}`
+    : `OpenWA request failed with status ${status}.`;
+  const code = isSessionNotReady(
+    status,
+    providerMessage,
+    providerError,
+    providerStatus,
+  )
+    ? WHATSAPP_GATEWAY_SESSION_NOT_READY
+    : WHATSAPP_DELIVERY_FAILED;
+  return new WhatsappProviderError(code, message, {
+    providerStatusCode: status,
+    ...(response ? { providerResponse: response } : {}),
+  });
+}
+
+function isSessionNotReady(
+  status: number,
+  message?: string,
+  error?: string,
+  sessionStatus?: string,
+): boolean {
+  const text =
+    `${message ?? ""} ${error ?? ""} ${sessionStatus ?? ""}`.toLowerCase();
+  return (
+    status === 409 &&
+    (text.includes("session is not connected") ||
+      text.includes("client is not ready") ||
+      text.includes("session is not ready") ||
+      text.includes("session is not started") ||
+      text.includes("qr_ready") ||
+      text.includes("disconnected") ||
+      text.includes("failed"))
+  );
 }
 
 function e164ToChatId(value: string): string {

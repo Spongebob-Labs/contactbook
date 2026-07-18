@@ -1,5 +1,6 @@
 import { ConfigService } from "@nestjs/config";
 import { WhatsappMessagePurpose } from "@prisma/client";
+import { WHATSAPP_GATEWAY_SESSION_NOT_READY } from "./whatsapp-errors";
 import { OpenWaProvider } from "./openwa.provider";
 
 describe("OpenWaProvider", () => {
@@ -59,6 +60,45 @@ describe("OpenWaProvider", () => {
       providerMessageId: "out-463",
       status: "failed",
       errorCode: "463",
+    });
+  });
+
+  it("maps OpenWA session-not-ready 409 responses to a stable gateway error", async () => {
+    jest.spyOn(global, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          message:
+            "Session is not connected. The WhatsApp client is not ready.",
+          error: "Conflict",
+          statusCode: 409,
+        }),
+        {
+          status: 409,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+    const provider = new OpenWaProvider(config);
+
+    await expect(
+      provider.sendText({
+        toE164: "+917069567007",
+        text: "Hello",
+        purpose: WhatsappMessagePurpose.CONVERSATION,
+      }),
+    ).rejects.toMatchObject({
+      code: WHATSAPP_GATEWAY_SESSION_NOT_READY,
+      message:
+        "OpenWA request failed with status 409: Session is not connected. The WhatsApp client is not ready.",
+      details: {
+        providerStatusCode: 409,
+        providerResponse: {
+          message:
+            "Session is not connected. The WhatsApp client is not ready.",
+          error: "Conflict",
+          statusCode: 409,
+        },
+      },
     });
   });
 
