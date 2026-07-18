@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { apiFetch } from "@/lib/api";
+import { friendlyErrorMessages, logUiError } from "@/lib/friendly-errors";
 import type { ContactCard, ContactCardType } from "@/lib/types";
 
 const cardTypeOptions: Array<{
@@ -72,7 +73,8 @@ export function CardOnboardingModal({
       toast.success(isSetupMode ? "Your first card is ready." : "Card created.");
       onComplete(card);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not create card.");
+      logUiError("Could not create card", error);
+      toast.error(friendlyErrorMessages.save);
     } finally {
       setIsSaving(false);
     }
@@ -102,7 +104,7 @@ export function CardOnboardingModal({
                 <p className="mt-2 text-sm text-muted-foreground">
                   {isSetupMode
                     ? "Cards let you package the profile details you want to share for a specific context. Start simple now and refine the fields later."
-                    : "Create another shareable card for a personal, business, payment, or custom context."}
+                    : "Create another shareable card for a personal, business, or custom context."}
                 </p>
               </div>
               <Button

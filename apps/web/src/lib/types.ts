@@ -10,7 +10,7 @@ export type ContactSource =
   | "GOOGLE"
   | "ICLOUD"
   | "VCARD"
-  | "MANUAL";
+  | "CONTACTBOOK";
 
 export type ContactPhone = {
   value: string;
@@ -81,6 +81,16 @@ export type ContactImportSummary = {
   }>;
 };
 
+export type ContactLabel = {
+  id: string;
+  name: string;
+};
+
+export type ContactGroup = ContactLabel & {
+  source?: ContactSource | null;
+  externalId?: string | null;
+};
+
 export type ContactProviderLink = {
   source: ContactSource;
   externalId: string;
@@ -100,6 +110,9 @@ export type ContactImport = {
   lastName?: string | null;
   primaryPhone?: ContactPhone | null;
   primaryEmail?: ContactEmail | null;
+  tags: ContactLabel[];
+  groups: ContactGroup[];
+  providerLinks?: ContactProviderLink[];
   createdAt: string;
   updatedAt: string;
 };
@@ -114,8 +127,15 @@ export type ContactDetail = ContactImport & {
   organizations: ContactOrganization[];
   addresses: ContactAddress[];
   urls: ContactUrl[];
-  providerLinks?: ContactProviderLink[];
   deletedAt?: string | null;
+};
+
+export type ContactListResponse = {
+  items: ContactDetail[];
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
 };
 
 export type GoogleSyncResponse = {
@@ -123,6 +143,17 @@ export type GoogleSyncResponse = {
   processedCount: number;
   totalContacts: number;
   lastSyncAt: string | null;
+};
+
+export type ContactImportResult = ContactImportSummary & {
+  importedCount?: number;
+  processedCount?: number;
+  createdCount?: number;
+  updatedCount?: number;
+  skippedCount?: number;
+  totalContacts?: number;
+  message?: string;
+  summary?: ContactImportSummary;
 };
 
 export type PostalAddress = {

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { AlertCircle, CheckCircle2 } from "lucide-react";
+import { useAuth } from "@/context/auth-context";
 import { apiFetch } from "@/lib/api";
 import { GOOGLE_IMPORT_NEXT_KEY } from "@/lib/session-storage";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
@@ -37,6 +38,7 @@ export default function AuthCallbackPage() {
   const [message, setMessage] = useState("Connecting your Google account.");
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { markAuthenticated } = useAuth();
   const hasRun = useRef(false);
 
   useEffect(() => {
@@ -124,6 +126,7 @@ export default function AuthCallbackPage() {
             scope: providerScope,
           },
         });
+        markAuthenticated();
         await supabase.auth.signOut().catch(() => undefined);
         sessionStorage.removeItem(GOOGLE_IMPORT_NEXT_KEY);
         setState("success");
@@ -144,7 +147,7 @@ export default function AuthCallbackPage() {
     };
 
     void run();
-  }, [navigate, searchParams]);
+  }, [markAuthenticated, navigate, searchParams]);
 
   if (state === "loading") {
     return <PageLoader />;

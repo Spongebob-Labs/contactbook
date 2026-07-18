@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { apiFetch, getCookie } from "@/lib/api";
+import { ApiError, apiFetch, getCookie } from "@/lib/api";
 import {
   clearContactBookSessionState,
   GOOGLE_CONNECTED_KEY,
@@ -20,7 +20,7 @@ type AuthContextValue = {
   profileIdentity: ProfileMeResponse["identity"] | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  refreshUser: () => void;
+  refreshUser: () => Promise<void>;
   markAuthenticated: () => void;
   logout: () => Promise<void>;
 };
@@ -39,6 +39,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let isMounted = true;
 
     const bootstrapSession = async () => {
+      const currentPath = window.location.pathname;
+      const isPublicRoute =
+        currentPath === "/" ||
+        currentPath === "/auth/callback";
+      const cookieUserId = getCookie("cb_user_id");
+
+      if (isPublicRoute && !cookieUserId) {
+        setUserId(null);
+        setProfileIdentity(null);
+        setIsAuthenticated(false);
+        setIsLoading(false);
+        return;
+      }
+
       try {
         const profile = await apiFetch<ProfileMeResponse>("/v1/profile/me");
         if (!isMounted) {
@@ -68,12 +82,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const refreshUser = useCallback(() => {
-    const nextUserId = getCookie("cb_user_id");
-    setUserId(nextUserId);
-    setProfileIdentity(null);
-    setIsAuthenticated(Boolean(nextUserId));
-    setIsLoading(false);
+  const refreshUser = useCallback(async () => {
+    try {
+      const profile = await apiFetch<ProfileMeResponse>("/v1/profile/me");
+      setUserId(getCookie("cb_user_id") ?? profile.identity.primaryEmail);
+      setProfileIdentity(profile.identity);
+      setIsAuthenticated(true);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        clearContactBookSessionState();
+        setUserId(null);
+        setProfileIdentity(null);
+        setIsAuthenticated(false);
+      }
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
   const markAuthenticated = useCallback(() => {

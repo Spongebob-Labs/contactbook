@@ -13,8 +13,10 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { useAuth } from "@/context/auth-context";
 import { apiFetch } from "@/lib/api";
 import { DIAL_COUNTRIES } from "@/lib/dial-countries";
+import { friendlyErrorMessages, logUiError } from "@/lib/friendly-errors";
 import { buildE164, nationalDigits } from "@/lib/phone";
 import type { VerifyCodeResponse } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 const COUNTRY_CODE_PATTERN = /^\+\d{1,4}$/;
 const NATIONAL_PHONE_PATTERN = /^\d{4,15}$/;
@@ -58,6 +60,14 @@ const COUNTRY_CODE_OPTIONS = [...DIAL_COUNTRIES].sort((current, next) => {
 
   return current.name.localeCompare(next.name);
 });
+
+function countryCodeInput(value: string) {
+  return `+${value.replace(/\D/g, "").slice(0, 4)}`;
+}
+
+function phoneNumberInput(value: string) {
+  return value.replace(/\D/g, "").slice(0, 15);
+}
 
 export default function AuthPage() {
   const [step, setStep] = useState<Step>("phone");
@@ -108,7 +118,8 @@ export default function AuthPage() {
     try {
       buildE164(countryCode, values.national);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Enter a valid phone number.");
+      logUiError("Invalid phone number", error);
+      toast.error("Enter a valid phone number.");
       return;
     }
     setIsBusy(true);
@@ -121,7 +132,8 @@ export default function AuthPage() {
       setStep("otp");
       toast.success("Verification code sent.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not send code.");
+      logUiError("Could not send code", error);
+      toast.error("We couldn't send the code. Please try again.");
     } finally {
       setIsBusy(false);
     }
@@ -148,7 +160,8 @@ export default function AuthPage() {
       setStep("register");
       toast.info("Complete your profile to continue.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not verify code.");
+      logUiError("Could not verify code", error);
+      toast.error(friendlyErrorMessages.auth);
     } finally {
       setIsBusy(false);
     }
@@ -174,7 +187,8 @@ export default function AuthPage() {
       toast.success("Account created.");
       navigate(onboardingPath, { replace: true });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not create account.");
+      logUiError("Could not create account", error);
+      toast.error("We couldn't create your account. Please try again.");
     } finally {
       setIsBusy(false);
     }
@@ -190,17 +204,17 @@ export default function AuthPage() {
           <span className="font-semibold">ContactBook</span>
         </div>
         <div className="max-w-xl space-y-5">
-          <p className="text-sm font-medium text-primary">Private by design</p>
+          <p className="text-sm font-medium text-primary">Never lose contact</p>
           <h1 className="text-5xl font-semibold tracking-normal text-foreground">
-            Build a contact profile people can actually keep up to date.
+            Create the address book profile that updates itself.
           </h1>
           <p className="max-w-lg text-base text-muted-foreground">
-            Sign in with WhatsApp, create your profile, and bring your Google
-            contacts into one focused workspace.
+            Sign in with WhatsApp, create your personal ContactBook, and choose
+            the details family, friends, and new connections can keep current.
           </p>
         </div>
         <div className="grid max-w-lg grid-cols-3 gap-3">
-          {["OTP login", "Google import", "Dark mode"].map((item) => (
+          {["Connect", "Control", "Current"].map((item) => (
             <div key={item} className="rounded-lg border border-border bg-card p-3 text-sm">
               <Check className="mb-3 h-4 w-4 text-primary" aria-hidden="true" />
               {item}
@@ -230,28 +244,41 @@ export default function AuthPage() {
             {step === "phone" && (
               <form className="space-y-5" onSubmit={phoneForm.handleSubmit(onRequestCode)}>
                 <label className="flex flex-col gap-2 text-sm font-medium">
-                  <span>Country code</span>
-                  <CountryCodeCombobox
-                    value={selectedCountryCode}
-                    options={COUNTRY_CODE_OPTIONS}
-                    disabled={isBusy}
-                    onChange={(countryCode) =>
-                      phoneForm.setValue("countryCode", countryCode, {
-                        shouldDirty: true,
-                        shouldTouch: true,
-                        shouldValidate: true,
-                      })
-                    }
-                  />
-                </label>
-                <label className="flex flex-col gap-2 text-sm font-medium">
                   <span>Phone number</span>
-                  <Input
-                    inputMode="tel"
-                    autoComplete="tel-national"
-                    placeholder="5551234567"
-                    {...phoneForm.register("national")}
-                  />
+                  <div className="flex h-11 rounded-md border border-input bg-background shadow-xs transition-colors focus-within:ring-2 focus-within:ring-ring">
+                    <CountryCodeCombobox
+                      embedded
+                      value={selectedCountryCode}
+                      options={COUNTRY_CODE_OPTIONS}
+                      disabled={isBusy}
+                      onChange={(countryCode) =>
+                        phoneForm.setValue("countryCode", countryCode, {
+                          shouldDirty: true,
+                          shouldTouch: true,
+                          shouldValidate: true,
+                        })
+                      }
+                    />
+                    <div className="my-2 w-px bg-border" aria-hidden="true" />
+                    <Input
+                      inputMode="tel"
+                      autoComplete="tel-national"
+                      placeholder="Enter phone number"
+                      className="h-full min-w-0 flex-1 border-0 shadow-none focus-visible:ring-0"
+                      {...phoneForm.register("national")}
+                      onChange={(event) =>
+                        phoneForm.setValue(
+                          "national",
+                          phoneNumberInput(event.target.value),
+                          {
+                            shouldDirty: true,
+                            shouldTouch: true,
+                            shouldValidate: true,
+                          },
+                        )
+                      }
+                    />
+                  </div>
                 </label>
                 {phoneForm.formState.errors.countryCode && (
                   <p className="text-sm text-destructive">
@@ -361,11 +388,13 @@ export default function AuthPage() {
 
 function CountryCodeCombobox({
   disabled,
+  embedded = false,
   onChange,
   options,
   value,
 }: {
   disabled?: boolean;
+  embedded?: boolean;
   onChange: (value: string) => void;
   options: CountryCodeOption[];
   value: string;
@@ -396,8 +425,13 @@ function CountryCodeCombobox({
   };
 
   return (
-    <div className="relative">
-      <div className="flex rounded-md border border-input bg-background shadow-xs transition-colors focus-within:ring-2 focus-within:ring-ring">
+    <div className={cn("relative", embedded && "w-28 shrink-0 sm:w-32")}>
+      <div
+        className={cn(
+          "flex rounded-md border border-input bg-background shadow-xs transition-colors focus-within:ring-2 focus-within:ring-ring",
+          embedded && "h-full rounded-none border-0 bg-transparent shadow-none focus-within:ring-0",
+        )}
+      >
         <Input
           inputMode="tel"
           autoComplete="tel-country-code"
@@ -420,15 +454,18 @@ function CountryCodeCombobox({
             setIsOpen(false);
           }}
           onChange={(event) => {
-            setQuery(event.target.value);
+            setQuery(countryCodeInput(event.target.value));
             setIsOpen(true);
           }}
           onFocus={() => {
-            setQuery(selectedOption ? `${selectedOption.name} ${selectedOption.dial}` : value);
+            setQuery(value);
             setIsOpen(true);
           }}
           placeholder="+1"
-          className="border-0 shadow-none focus-visible:ring-0"
+          className={cn(
+            "border-0 shadow-none focus-visible:ring-0",
+            embedded && "h-full rounded-none bg-transparent px-3",
+          )}
           role="combobox"
           aria-expanded={isOpen}
           aria-controls="country-code-options"
@@ -437,10 +474,13 @@ function CountryCodeCombobox({
           type="button"
           variant="outline"
           disabled={disabled}
-          className="rounded-l-none border-y-0 border-r-0 px-3 shadow-none focus-visible:ring-0"
+          className={cn(
+            "rounded-l-none border-y-0 border-r-0 px-3 shadow-none focus-visible:ring-0",
+            embedded && "h-full rounded-none border-0 bg-transparent px-2 hover:bg-muted",
+          )}
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => {
-            setQuery(selectedOption ? `${selectedOption.name} ${selectedOption.dial}` : value);
+            setQuery(value);
             setIsOpen((current) => !current);
           }}
           aria-label="Show country codes"
@@ -453,7 +493,10 @@ function CountryCodeCombobox({
         <div
           id="country-code-options"
           role="listbox"
-          className="absolute z-20 mt-2 max-h-60 w-full overflow-y-auto rounded-md border border-border bg-popover p-2 text-popover-foreground shadow-md"
+          className={cn(
+            "absolute z-20 mt-2 max-h-60 w-full overflow-y-auto rounded-md border border-border bg-popover p-2 text-popover-foreground shadow-md",
+            embedded && "w-72",
+          )}
         >
           {filteredOptions.length > 0 ? (
             filteredOptions.map((option) => (

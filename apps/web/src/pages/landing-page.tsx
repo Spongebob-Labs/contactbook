@@ -1,346 +1,479 @@
 import {
   ArrowRight,
   BadgeCheck,
-  Bell,
   CheckCircle2,
   ContactRound,
-  FolderSync,
+  Globe2,
+  HeartHandshake,
+  IdCard,
   Layers3,
   LockKeyhole,
-  MessageCircle,
-  Search,
+  Mail,
+  Phone,
+  RefreshCw,
   ShieldCheck,
   Sparkles,
-  Tag,
   UsersRound,
 } from "lucide-react";
 import { Link } from "react-router-dom";
+import heroCityImage from "@/assets/contactbook-hero-city.webp";
+import { PublicImageCarousel } from "@/components/public-image-carousel";
+import { PublicPageShell } from "@/components/public-page-shell";
 import { Badge } from "@/components/ui/badge";
-import { Button, buttonVariants } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { buttonVariants } from "@/components/ui/button";
+import { publicContactImages } from "@/lib/public-images";
+import { usePublicReveal } from "@/lib/use-public-reveal";
 import { cn } from "@/lib/utils";
 
 const navItems = [
-  { label: "Features", href: "#features" },
-  { label: "Security", href: "#security" },
-  { label: "Workflow", href: "#workflow" },
+  { label: "Problems", href: "#problems" },
+  { label: "How it works", href: "#how-it-works" },
+  { label: "Why it works", href: "#why-it-works" },
+  { label: "About", href: "/about" },
+  { label: "Contact", href: "/contact" },
 ];
 
-const metrics = [
-  { value: "One", label: "shared contact workspace" },
-  { value: "Real-time", label: "team visibility" },
-  { value: "Secure", label: "permission-aware access" },
+const proofPoints = [
+  { value: "Current", label: "details that can keep pace with life" },
+  { value: "Controlled", label: "share how much, how little, and with whom" },
+  { value: "Complete", label: "fewer gaps, duplicates, and outdated records" },
 ];
 
-const features = [
+const problems = [
+  {
+    icon: RefreshCw,
+    title: "Outdated details",
+    description:
+      "People move home, switch jobs, open new email accounts, and change mobile numbers. Your address book can become outdated the moment it is updated.",
+  },
+  {
+    icon: IdCard,
+    title: "Incomplete records",
+    description:
+      "Business cards, old chats, and partial profiles leave important information scattered across different places.",
+  },
+  {
+    icon: Layers3,
+    title: "Duplicated contacts",
+    description:
+      "Multiple versions of the same person make it harder to know which number, email, or company detail is the right one.",
+  },
+];
+
+const workflow = [
+  {
+    title: "Create your ContactBook",
+    description: "Start with the details people need so your address book can update itself.",
+  },
+  {
+    title: "Choose what to share",
+    description: "Control how much or how little you share with each relationship.",
+  },
+  {
+    title: "Stay connected",
+    description: "Keep each other’s latest contact details as numbers, homes, jobs, and email addresses change.",
+  },
+];
+
+const strengths = [
   {
     icon: ContactRound,
-    title: "Unified contact profiles",
-    description:
-      "Bring identity, phone, email, notes, and relationship context into one profile your team can trust.",
-  },
-  {
-    icon: UsersRound,
-    title: "Team contact sharing",
-    description:
-      "Give the right people access to shared contacts without passing spreadsheets back and forth.",
-  },
-  {
-    icon: Tag,
-    title: "Groups and custom tags",
-    description:
-      "Organize relationships by client, region, expertise, priority, or any workflow your team already uses.",
-  },
-  {
-    icon: Bell,
-    title: "Notes and follow-ups",
-    description:
-      "Keep useful context next to the contact, so every conversation starts with the latest information.",
-  },
-];
-
-const securityItems = [
-  "Protected account access",
-  "Permission-aware sharing",
-  "Organized import workflows",
-  "Privacy-first contact records",
-];
-
-const workflowItems = [
-  {
-    icon: Search,
-    title: "Find the right contact",
-    description: "Search across clean, structured contact data instead of hunting through scattered lists.",
-  },
-  {
-    icon: FolderSync,
-    title: "Import and organize",
-    description: "Start from existing sources, then shape contacts into groups, tags, and profiles.",
+    title: "Connect",
+    description: "Rapidly add people you meet and make a stronger introduction with your contact card.",
   },
   {
     icon: ShieldCheck,
-    title: "Share with confidence",
-    description: "Keep collaboration focused by giving teams access to the contacts they need.",
+    title: "Control",
+    description: "Choose which contact details you share, with whom, and keep sharing intentional.",
+  },
+  {
+    icon: RefreshCw,
+    title: "Current",
+    description: "Automatic updates help people keep each other’s latest contact details.",
+  },
+  {
+    icon: BadgeCheck,
+    title: "Concise",
+    description: "A single ContactBook profile brings the details people need into one clear place.",
+  },
+  {
+    icon: CheckCircle2,
+    title: "Complete",
+    description: "Reduce duplicates, gaps, and outdated information in the way people stay connected.",
+  },
+  {
+    icon: LockKeyhole,
+    title: "Secure",
+    description: "A privacy-first contact experience keeps personal sharing deliberate and trusted.",
   },
 ];
 
-export default function LandingPage() {
+const audiences = [
+  "Individuals",
+  "Networkers",
+  "Frequent flyers",
+  "Friends and family",
+  "New connections",
+  "Alumni networks",
+];
+
+function CurvedConnector({
+  className,
+  loop = false,
+}: {
+  className?: string;
+  loop?: boolean;
+}) {
+  const primaryPathClassName = loop ? "public-hero-path-loop" : "public-draw-path";
+  const secondaryPathClassName = loop
+    ? "public-hero-path-loop public-hero-path-loop-slow"
+    : "public-draw-path";
+  const nodeClassName = loop ? "public-hero-node" : "";
+
   return (
-    <main className="min-h-screen bg-[oklch(0.985_0.012_190)] text-foreground dark:bg-background">
-      <header className="sticky top-0 z-20 border-b border-border/70 bg-background/88 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          <Link to="/" className="flex items-center gap-2" aria-label="ContactBook home">
-            <span className="flex h-9 w-9 items-center justify-center rounded-md bg-primary text-primary-foreground">
-              <MessageCircle className="h-4 w-4" aria-hidden="true" />
-            </span>
-            <span className="text-base font-semibold">ContactBook</span>
-          </Link>
+    <svg className={cn("pointer-events-none absolute", className)} viewBox="0 0 760 360" fill="none" aria-hidden="true">
+      <path
+        className={primaryPathClassName}
+        pathLength="1"
+        d="M20 285C140 95 287 340 398 158C493 1 623 55 738 23"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <path
+        className={secondaryPathClassName}
+        pathLength="1"
+        d="M91 330C230 225 302 275 426 214C545 155 593 241 710 136"
+        stroke="currentColor"
+        strokeWidth="1"
+        strokeLinecap="round"
+        opacity="0.45"
+      />
+      {[["20", "285"], ["398", "158"], ["738", "23"], ["91", "330"], ["426", "214"], ["710", "136"]].map(
+        ([cx, cy], index) => (
+          <circle
+            key={`${cx}-${cy}`}
+            className={nodeClassName}
+            cx={cx}
+            cy={cy}
+            r="7"
+            fill="currentColor"
+            opacity="0.88"
+            style={loop ? { animationDelay: `${index * 0.42}s` } : undefined}
+          />
+        ),
+      )}
+    </svg>
+  );
+}
 
-          <nav className="hidden items-center gap-7 text-sm font-medium text-muted-foreground md:flex">
-            {navItems.map((item) => (
-              <a key={item.href} href={item.href} className="transition-colors hover:text-foreground">
-                {item.label}
-              </a>
-            ))}
-          </nav>
+export default function LandingPage() {
+  usePublicReveal();
 
-          <div className="flex items-center gap-2">
-            <ThemeToggle />
-            <Link to="/auth" className={cn(buttonVariants({ variant: "ghost" }), "hidden sm:inline-flex")}>
-              Sign in
-            </Link>
-            <Link to="/auth" className={buttonVariants()}>
-              Get started
-              <ArrowRight className="h-4 w-4" aria-hidden="true" />
-            </Link>
-          </div>
-        </div>
-      </header>
+  return (
+    <PublicPageShell navItems={navItems}>
+      <section className="relative isolate min-h-[calc(100vh-4rem)] overflow-hidden bg-public-charcoal text-public-inverse">
+        <img
+          src={heroCityImage}
+          alt=""
+          className="public-hero-image-motion absolute inset-0 -z-30 h-full w-full object-cover"
+          aria-hidden="true"
+        />
+        <div className="absolute inset-0 -z-20 bg-public-charcoal/72" />
+        <div className="absolute inset-x-0 bottom-0 -z-10 h-28 rounded-t-[55%] bg-public-background" />
+        <CurvedConnector loop className="right-[-180px] top-16 z-0 w-[760px] text-public-mint/55" />
+        <p className="public-drift pointer-events-none absolute -right-10 top-20 z-0 font-public-display text-[9rem] leading-none text-public-inverse/[0.05] sm:text-[13rem]">
+          CONTACT
+        </p>
+        <p className="pointer-events-none absolute bottom-28 left-4 z-0 font-public-display text-[6rem] leading-none text-public-mint/[0.08] sm:left-12 sm:text-[10rem]">
+          CB
+        </p>
 
-      <section className="border-b border-border/70 bg-background">
-        <div className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-7xl items-center gap-12 px-4 py-12 sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(420px,0.86fr)] lg:px-8">
-          <div className="max-w-3xl space-y-7">
-            <Badge variant="secondary" className="h-8 gap-2 px-3">
+        <div className="relative z-10 mx-auto flex min-h-[calc(100vh-4rem)] max-w-7xl flex-col justify-center gap-10 px-4 pb-32 pt-20 sm:px-6 lg:px-8">
+          <div className="public-reveal max-w-4xl space-y-7">
+            <Badge className="border border-public-inverse/25 bg-public-inverse/12 text-public-inverse">
               <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
-              Contact management built for modern teams
+              The address book that updates itself
             </Badge>
             <div className="space-y-5">
-              <h1 className="max-w-4xl text-5xl font-semibold leading-[1.02] tracking-normal text-foreground sm:text-6xl lg:text-7xl">
-                One reliable place for every contact your team depends on.
+              <p className="text-xs font-semibold uppercase tracking-[0.38em] text-public-mint">
+                Introducing ContactBook
+              </p>
+              <h1 className="max-w-5xl font-public-display text-6xl font-normal leading-[0.9] tracking-normal text-public-inverse sm:text-7xl lg:text-8xl">
+                Never lose contact.
               </h1>
-              <p className="max-w-2xl text-lg leading-8 text-muted-foreground">
-                ContactBook helps teams organize, share, and maintain contact records with the
-                context needed to build stronger relationships.
+              <p className="max-w-3xl text-lg leading-8 text-public-inverse/82 sm:text-xl">
+                The address book that updates itself helps people keep current,
+                complete contact details without losing the relationships behind them.
               </p>
             </div>
             <div className="flex flex-col gap-3 sm:flex-row">
-              <Link to="/auth" className={cn(buttonVariants({ size: "lg" }), "h-12")}>
+              <Link
+                to="/auth"
+                className={cn(buttonVariants({ size: "lg" }), "h-12 bg-public-teal text-public-inverse hover:bg-public-teal/90")}
+              >
                 Get started
                 <ArrowRight className="h-4 w-4" aria-hidden="true" />
               </Link>
-              <Link
-                to="/auth"
-                className={cn(buttonVariants({ size: "lg", variant: "outline" }), "h-12")}
+              <a
+                href="#problems"
+                className={cn(
+                  buttonVariants({ size: "lg", variant: "outline" }),
+                  "h-12 border-public-inverse/35 bg-public-inverse/8 text-public-inverse hover:bg-public-inverse/15",
+                )}
               >
-                Sign in
-              </Link>
-            </div>
-            <div className="grid max-w-2xl gap-3 sm:grid-cols-3">
-              {metrics.map((metric) => (
-                <div key={metric.label} className="border-l border-border pl-4">
-                  <p className="text-lg font-semibold">{metric.value}</p>
-                  <p className="text-sm leading-5 text-muted-foreground">{metric.label}</p>
-                </div>
-              ))}
+                See the problem
+              </a>
             </div>
           </div>
 
-          <div className="relative">
-            <div className="absolute -left-6 top-10 hidden h-28 w-28 rounded-lg bg-accent/45 blur-3xl lg:block" />
-            <div className="relative overflow-hidden rounded-lg border border-border bg-card shadow-2xl shadow-primary/10">
-              <div className="border-b border-border bg-muted/35 px-4 py-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="h-2.5 w-2.5 rounded-full bg-destructive" />
-                    <span className="h-2.5 w-2.5 rounded-full bg-warning" />
-                    <span className="h-2.5 w-2.5 rounded-full bg-success" />
-                  </div>
-                  <Badge variant="outline">Live workspace</Badge>
-                </div>
+          <div className="public-reveal grid max-w-4xl gap-5 border-l border-public-mint/70 pl-5 sm:grid-cols-3">
+            {proofPoints.map((point, index) => (
+              <div
+                key={point.label}
+                className="public-hero-proof space-y-1"
+                style={{ animationDelay: `${index * 0.9}s` }}
+              >
+                <p className="font-public-display text-3xl text-public-inverse">{point.value}</p>
+                <p className="max-w-52 text-sm leading-5 text-public-inverse/72">{point.label}</p>
               </div>
-              <div className="grid gap-0 md:grid-cols-[220px_minmax(0,1fr)]">
-                <aside className="hidden border-r border-border bg-muted/25 p-4 md:block">
-                  <div className="mb-5 h-9 rounded-md bg-primary/10" />
-                  {["All contacts", "Shared groups", "Tags", "Imports"].map((item, index) => (
-                    <div
-                      key={item}
-                      className={`mb-2 flex items-center gap-2 rounded-md px-3 py-2 text-sm ${
-                        index === 0 ? "bg-primary text-primary-foreground" : "text-muted-foreground"
-                      }`}
-                    >
-                      <span className="h-2 w-2 rounded-full bg-current" />
-                      {item}
-                    </div>
-                  ))}
-                </aside>
-                <div className="space-y-4 p-4 sm:p-6">
-                  <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-                    <div>
-                      <p className="text-sm text-muted-foreground">Team directory</p>
-                      <h2 className="text-2xl font-semibold tracking-normal">Priority contacts</h2>
-                    </div>
-                    <Button size="sm" variant="secondary">
-                      <UsersRound className="h-4 w-4" aria-hidden="true" />
-                      Share group
-                    </Button>
-                  </div>
-
-                  <div className="grid gap-3">
-                    {[
-                      ["Avery Johnson", "Partner lead", "Enterprise", "Updated today"],
-                      ["Maya Patel", "Customer success", "Healthcare", "Shared with Sales"],
-                      ["Noah Chen", "Finance advisor", "Investor", "Follow-up set"],
-                    ].map(([name, role, tag, status]) => (
-                      <div
-                        key={name}
-                        className="grid gap-3 rounded-lg border border-border bg-background p-4 sm:grid-cols-[1fr_auto] sm:items-center"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-11 w-11 items-center justify-center rounded-md bg-secondary font-semibold text-secondary-foreground">
-                            {name
-                              .split(" ")
-                              .map((part) => part[0])
-                              .join("")}
-                          </div>
-                          <div>
-                            <p className="font-medium">{name}</p>
-                            <p className="text-sm text-muted-foreground">{role}</p>
-                          </div>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge variant="secondary">{tag}</Badge>
-                          <Badge variant="outline">{status}</Badge>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section id="features" className="bg-[oklch(0.985_0.012_190)] py-20 dark:bg-background">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="max-w-2xl space-y-3">
-            <Badge variant="outline">Core features</Badge>
-            <h2 className="text-3xl font-semibold tracking-normal sm:text-4xl">
-              Replace scattered contact lists with a shared operating system for relationships.
-            </h2>
-          </div>
-          <div className="mt-10 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            {features.map((feature) => (
-              <Card key={feature.title} className="rounded-lg shadow-none">
-                <CardContent className="space-y-5 p-5">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary/10 text-primary">
-                    <feature.icon className="h-5 w-5" aria-hidden="true" />
-                  </div>
-                  <div className="space-y-2">
-                    <h3 className="font-semibold">{feature.title}</h3>
-                    <p className="text-sm leading-6 text-muted-foreground">{feature.description}</p>
-                  </div>
-                </CardContent>
-              </Card>
             ))}
           </div>
         </div>
       </section>
 
-      <section id="security" className="border-y border-border bg-background py-20">
-        <div className="mx-auto grid max-w-7xl gap-10 px-4 sm:px-6 lg:grid-cols-[0.85fr_1fr] lg:px-8">
-          <div className="space-y-4">
-            <Badge variant="success" className="gap-2">
-              <LockKeyhole className="h-3.5 w-3.5" aria-hidden="true" />
-              Secure by design
-            </Badge>
-            <h2 className="text-3xl font-semibold tracking-normal sm:text-4xl">
-              Give teams access to contacts without losing control of the data.
+      <section className="relative overflow-hidden bg-public-background py-20">
+        <div className="pointer-events-none absolute -left-28 top-16 h-64 w-64 rounded-[48%] border border-public-teal/20" />
+        <p className="pointer-events-none absolute right-4 top-6 font-public-display text-[7rem] leading-none text-public-teal/[0.06] sm:text-[12rem]">
+          CON
+        </p>
+        <div className="public-reveal mx-auto grid max-w-7xl gap-8 px-4 sm:px-6 lg:grid-cols-[0.9fr_1.1fr] lg:items-center lg:px-8">
+          <div className="space-y-3">
+            <Badge className="bg-public-hero text-public-charcoal">The power of connectivity</Badge>
+            <h2 className="font-public-display text-5xl font-normal leading-tight tracking-normal text-public-charcoal sm:text-6xl">
+              Focused on the value of staying connected.
             </h2>
-            <p className="text-base leading-7 text-muted-foreground">
-              ContactBook keeps the workspace centered on privacy, account protection, and
-              organized sharing so your relationship data stays useful and intentional.
+          </div>
+          <p className="text-base leading-8 text-public-muted">
+            The market often uses connectivity to push content. ContactBook uses it to
+            build relationships, helping people maintain the personal and professional
+            links that matter over time.
+          </p>
+        </div>
+      </section>
+
+      <section id="problems" className="relative overflow-hidden bg-public-surface-muted py-24">
+        <div className="absolute inset-x-0 top-0 h-20 rounded-b-[55%] bg-public-background" />
+        <CurvedConnector className="left-[-220px] top-32 w-[760px] text-public-teal/18" />
+        <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="public-reveal max-w-3xl space-y-4">
+            <Badge variant="outline" className="border-public-teal/40 text-public-teal">
+              The problems we solve
+            </Badge>
+            <h2 className="font-public-display text-5xl font-normal leading-tight tracking-normal text-public-charcoal sm:text-6xl">
+              Your address book is almost certainly out of date.
+            </h2>
+            <p className="text-base leading-7 text-public-muted">
+              In fact, an address book can be outdated the minute it is updated.
+              ContactBook is built around a simple truth: contact details change,
+              but relationships should not disappear because a phone number,
+              address, or job title moved on.
             </p>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {securityItems.map((item) => (
-              <div key={item} className="flex items-center gap-3 rounded-lg border border-border bg-card p-4">
-                <CheckCircle2 className="h-5 w-5 text-success" aria-hidden="true" />
-                <span className="font-medium">{item}</span>
+
+          <div className="mt-12 divide-y divide-public-border/80">
+            {problems.map((problem, index) => (
+              <div
+                key={problem.title}
+                className="public-reveal grid gap-5 py-7 sm:grid-cols-[96px_180px_1fr] sm:items-start"
+                style={{ transitionDelay: `${index * 90}ms` }}
+              >
+                <span className="font-public-display text-5xl text-public-teal/70">{String(index + 1).padStart(2, "0")}</span>
+                <div className="flex items-center gap-3">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-full border border-public-teal/30 text-public-teal">
+                    <problem.icon className="h-5 w-5" aria-hidden="true" />
+                  </span>
+                  <h3 className="text-lg font-semibold text-public-charcoal">{problem.title}</h3>
+                </div>
+                <p className="max-w-2xl text-sm leading-6 text-public-muted">{problem.description}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      <section id="workflow" className="bg-[oklch(0.985_0.012_190)] py-20 dark:bg-background">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="grid gap-10 lg:grid-cols-[0.8fr_1fr] lg:items-end">
-            <div className="space-y-3">
-              <Badge variant="warning">Simple workflow</Badge>
-              <h2 className="text-3xl font-semibold tracking-normal sm:text-4xl">
-                Start with the contacts you have. Build the workspace your team needs.
+      <section id="how-it-works" className="relative overflow-hidden border-y border-public-border bg-public-background py-24">
+        <p className="pointer-events-none absolute -left-8 top-14 font-public-display text-[8rem] leading-none text-public-grey/[0.08] sm:text-[14rem]">
+          TACT
+        </p>
+        <div className="pointer-events-none absolute right-[-12rem] top-20 h-[34rem] w-[34rem] rounded-[50%] border border-public-mint/25" />
+        <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="grid gap-12 lg:grid-cols-[0.82fr_1.18fr] lg:items-start">
+            <div className="public-reveal space-y-4">
+              <Badge className="bg-public-teal text-public-inverse">How it works</Badge>
+              <h2 className="font-public-display text-5xl font-normal leading-tight tracking-normal text-public-charcoal sm:text-6xl">
+                The address book that updates itself starts with your card.
+              </h2>
+              <p className="text-base leading-7 text-public-muted">
+                Start with the essentials, share intentionally, and give people a
+                cleaner way to keep your latest details.
+              </p>
+            </div>
+
+            <div className="relative">
+              <svg className="absolute left-7 top-8 hidden h-[calc(100%-4rem)] w-16 text-public-teal/35 sm:block" viewBox="0 0 80 500" fill="none" aria-hidden="true">
+                <path className="public-draw-path" pathLength="1" d="M39 2C74 118 7 205 42 312C66 385 32 428 41 498" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+              <div className="space-y-8">
+                {workflow.map((step, index) => (
+                  <div
+                    key={step.title}
+                    className="public-reveal relative grid gap-4 pl-0 sm:grid-cols-[88px_1fr] sm:pl-0"
+                    style={{ transitionDelay: `${index * 120}ms` }}
+                  >
+                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-public-hero text-public-teal ring-8 ring-public-background">
+                      <span className="font-public-display text-3xl">{index + 1}</span>
+                    </div>
+                    <div className="border-b border-public-border pb-8">
+                      <h3 className="text-2xl font-semibold text-public-charcoal">{step.title}</h3>
+                      <p className="mt-2 max-w-xl text-sm leading-6 text-public-muted">{step.description}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="why-it-works" className="relative overflow-hidden bg-public-surface-muted py-24">
+        <div className="absolute inset-x-0 bottom-0 h-24 rounded-t-[55%] bg-public-background" />
+        <CurvedConnector className="right-[-260px] top-10 w-[820px] text-public-teal/18" />
+        <div className="relative mx-auto max-w-7xl px-4 pb-10 sm:px-6 lg:px-8">
+          <div className="public-reveal grid gap-10 lg:grid-cols-[0.75fr_1.25fr] lg:items-end">
+            <div className="space-y-4">
+              <Badge variant="outline" className="border-public-teal/40 text-public-teal">
+                Why it works
+              </Badge>
+              <h2 className="font-public-display text-5xl font-normal leading-tight tracking-normal text-public-charcoal sm:text-6xl">
+                Built for relationships, not just records.
               </h2>
             </div>
-            <p className="text-base leading-7 text-muted-foreground">
-              The first landing page pass focuses on the product promise: centralize contacts,
-              organize them clearly, and share them with confidence.
+            <p className="text-base leading-7 text-public-muted">
+              ContactBook turns contact management into a living connection layer:
+              concise enough to use, complete enough to trust, current enough to
+              matter, and controlled by the people sharing their details.
             </p>
           </div>
-          <div className="mt-10 grid gap-4 md:grid-cols-3">
-            {workflowItems.map((item, index) => (
-              <div key={item.title} className="rounded-lg border border-border bg-card p-5">
-                <div className="mb-6 flex items-center justify-between">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-md bg-secondary text-secondary-foreground">
-                    <item.icon className="h-5 w-5" aria-hidden="true" />
-                  </div>
-                  <span className="text-sm font-semibold text-muted-foreground">
-                    {String(index + 1).padStart(2, "0")}
-                  </span>
+
+          <div className="mt-12 grid gap-x-10 gap-y-8 sm:grid-cols-2 lg:grid-cols-3">
+            {strengths.map((strength, index) => (
+              <div
+                key={strength.title}
+                className="public-reveal group relative border-t border-public-border pt-5"
+                style={{ transitionDelay: `${index * 70}ms` }}
+              >
+                <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-full bg-public-background text-public-teal shadow-sm shadow-public-teal/10">
+                  <strength.icon className="h-5 w-5" aria-hidden="true" />
                 </div>
-                <h3 className="font-semibold">{item.title}</h3>
-                <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.description}</p>
+                <h3 className="font-semibold text-public-charcoal">{strength.title}</h3>
+                <p className="mt-2 text-sm leading-6 text-public-muted">{strength.description}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      <section className="bg-foreground py-16 text-background dark:bg-card dark:text-foreground">
-        <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
-          <div className="max-w-2xl space-y-2">
-            <Badge className="bg-background text-foreground dark:bg-primary dark:text-primary-foreground">
-              <BadgeCheck className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
-              Public landing page
+      <section className="relative overflow-hidden bg-public-background py-24">
+        <div className="relative mx-auto grid max-w-7xl gap-10 px-4 sm:px-6 lg:grid-cols-[0.7fr_1.3fr] lg:items-center lg:px-8">
+          <div className="public-reveal space-y-4">
+            <Badge className="bg-public-hero text-public-charcoal">
+              <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+              Real connection moments
             </Badge>
-            <h2 className="text-3xl font-semibold tracking-normal">Ready to organize your team contacts?</h2>
-            <p className="text-sm leading-6 text-background/75 dark:text-muted-foreground">
-              Create an account or sign in to continue into the ContactBook workspace.
+            <h2 className="font-public-display text-5xl font-normal leading-tight tracking-normal text-public-charcoal sm:text-6xl">
+              From first exchange to lasting contact.
+            </h2>
+            <p className="text-base leading-7 text-public-muted">
+              ContactBook belongs in the everyday moments where people meet, exchange
+              details, and need those details to stay useful.
             </p>
+          </div>
+          <div className="public-reveal">
+            <PublicImageCarousel images={publicContactImages} className="rounded-[2rem]" />
+          </div>
+        </div>
+      </section>
+
+      <section className="relative overflow-hidden bg-public-surface-muted py-24">
+        <p className="public-drift pointer-events-none absolute right-[-2rem] top-0 font-public-display text-[8rem] leading-none text-public-teal/[0.06] sm:text-[13rem]">
+          PEOPLE
+        </p>
+        <div className="relative mx-auto grid max-w-7xl gap-10 px-4 sm:px-6 lg:grid-cols-[0.9fr_1.1fr] lg:items-center lg:px-8">
+          <div className="public-reveal space-y-4">
+            <Badge className="bg-public-hero text-public-charcoal">
+              <Globe2 className="h-3.5 w-3.5" aria-hidden="true" />
+              Use cases
+            </Badge>
+            <h2 className="font-public-display text-5xl font-normal leading-tight tracking-normal text-public-charcoal sm:text-6xl">
+              Designed for people and groups who rely on real networks.
+            </h2>
+            <p className="text-base leading-7 text-public-muted">
+              From family and friends to frequent flyers, alumni networks, and new
+              introductions, ContactBook helps contact details keep pace with the
+              people behind them.
+            </p>
+          </div>
+
+          <div className="public-reveal flex flex-wrap gap-3">
+            {audiences.map((audience) => (
+              <span
+                key={audience}
+                className="inline-flex items-center gap-2 rounded-full border border-public-border bg-public-surface px-4 py-2 text-sm font-medium text-public-charcoal"
+              >
+                <UsersRound className="h-4 w-4 text-public-teal" aria-hidden="true" />
+                {audience}
+              </span>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section id="contact" className="relative overflow-hidden bg-public-charcoal py-20 text-public-inverse">
+        <div className="absolute inset-x-0 top-0 h-20 rounded-b-[55%] bg-public-background" />
+        <CurvedConnector className="bottom-[-7rem] left-[-8rem] w-[760px] text-public-mint/22" />
+        <p className="pointer-events-none absolute right-4 top-16 font-public-display text-[7rem] leading-none text-public-inverse/[0.05] sm:text-[12rem]">
+          CONNECT
+        </p>
+        <div className="public-reveal relative mx-auto flex max-w-7xl flex-col gap-8 px-4 pt-16 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
+          <div className="max-w-2xl space-y-4">
+            <Badge className="bg-public-inverse text-public-charcoal">
+              <HeartHandshake className="h-3.5 w-3.5" aria-hidden="true" />
+              ContactBook
+            </Badge>
+            <h2 className="font-public-display text-5xl font-normal leading-tight tracking-normal">
+              Ready to make your details easier to share?
+            </h2>
+            <div className="flex flex-col gap-2 text-sm text-public-inverse/76 sm:flex-row sm:flex-wrap sm:gap-x-5">
+              <span className="inline-flex items-center gap-2">
+                <Phone className="h-4 w-4" aria-hidden="true" />
+                +65 98204588
+              </span>
+              <span className="inline-flex items-center gap-2">
+                <Mail className="h-4 w-4" aria-hidden="true" />
+                info@contactbookapp.com
+              </span>
+            </div>
           </div>
           <Link
             to="/auth"
-            className={cn(
-              buttonVariants({ size: "lg" }),
-              "h-12 bg-background text-foreground hover:bg-background/90 dark:bg-primary dark:text-primary-foreground",
-            )}
+            className={cn(buttonVariants({ size: "lg" }), "h-12 bg-public-inverse text-public-charcoal hover:bg-public-inverse/90")}
           >
             Get started
             <ArrowRight className="h-4 w-4" aria-hidden="true" />
           </Link>
         </div>
       </section>
-    </main>
+    </PublicPageShell>
   );
 }

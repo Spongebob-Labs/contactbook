@@ -74,21 +74,29 @@ function clearGetCache() {
   getCache.clear();
 }
 
+function isFormDataBody(body: unknown): body is FormData {
+  return typeof FormData !== "undefined" && body instanceof FormData;
+}
+
 async function requestJson<T>(
   path: string,
   options: ApiOptions,
 ): Promise<T> {
+  const body = options.body;
+  const isFormData = isFormDataBody(body);
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,
     credentials: "include",
     headers: {
-      "Content-Type": "application/json",
+      ...(isFormData ? {} : { "Content-Type": "application/json" }),
       ...options.headers,
     },
     body:
-      options.body === undefined
+      body === undefined
         ? undefined
-        : JSON.stringify(options.body),
+        : isFormData
+          ? body
+          : JSON.stringify(body),
   });
 
   if (response.status === 401 && options.retry !== false) {
