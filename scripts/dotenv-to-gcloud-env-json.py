@@ -67,16 +67,42 @@ def parse_dotenv(path: str) -> dict[str, str]:
     return env
 
 
+def _load_exclude(path: str) -> set[str]:
+    """Read a keys file (one NAME per line, `#` comments/blank ignored)."""
+    names: set[str] = set()
+    with open(path, encoding="utf-8") as f:
+        for raw in f:
+            line = raw.strip()
+            if line and not line.startswith("#"):
+                names.add(line)
+    return names
+
+
 def main() -> None:
-    if len(sys.argv) != 3:
-        print("usage: dotenv-to-gcloud-env-json.py <input.env> <output.json>", file=sys.stderr)
+    if len(sys.argv) < 3:
+        print(
+            "usage: dotenv-to-gcloud-env-json.py <input.env> <output.json> [--exclude-file <keys>]",
+            file=sys.stderr,
+        )
         sys.exit(2)
     inp, outp = sys.argv[1], sys.argv[2]
+
+    excluded: set[str] = set()
+    if "--exclude-file" in sys.argv:
+        idx = sys.argv.index("--exclude-file")
+        if idx + 1 >= len(sys.argv):
+            print("--exclude-file requires a path", file=sys.stderr)
+            sys.exit(2)
+        excluded = _load_exclude(sys.argv[idx + 1])
+
     data = parse_dotenv(inp)
-    
-    # Remove Cloud Run reserved environment variables
+
+    # Remove Cloud Run reserved environment variables and any keys sourced from
+    # Secret Manager (they are injected via `--set-secrets`, not as literals).
     for reserved in ["PORT", "K_SERVICE", "K_REVISION", "K_CONFIGURATION"]:
         data.pop(reserved, None)
+    for name in excluded:
+        data.pop(name, None)
 
     with open(outp, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False)

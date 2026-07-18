@@ -22,23 +22,44 @@ cp uat.env.example uat.env
 
 For **local development**, keep using [`../.env`](../.env) and optional [`../.env.local`](../.env.local) (see [`../.env.example`](../.env.example)).
 
-## Encode for GitHub Actions
+## Runtime env: base64 blob + Secret Manager (hybrid)
 
-From repo root (after `prod.env` / `uat.env` are filled in):
+On deploy, `cd.yml` sets Cloud Run env from **two** sources:
+
+1. **Literals** — the base64 blob (`API_ENV_*_B64`), decoded and applied via
+   `--env-vars-file`, **minus** any key listed in the env's `*.secret-keys` file.
+2. **Secret refs** — every name in [`prod.secret-keys`](prod.secret-keys) /
+   [`uat.secret-keys`](uat.secret-keys) is injected via `--set-secrets` as
+   `cb-api-<env>-<NAME>:latest` from Google Secret Manager.
+
+A var is **either** a literal or a secret ref, never both — that's why secret-managed
+keys are excluded from the blob side. `prod.secret-keys` currently holds the Twilio
+vars; `uat.secret-keys` is empty (UAT takes everything from its blob).
+
+### Move a var to Secret Manager (console, no CLI)
+
+1. **Secret Manager → Create secret**: name `cb-api-<env>-<VARNAME>` (e.g.
+   `cb-api-prod-TWILIO_OTP_CONTENT_SID`), paste the value, create.
+2. **IAM**: grant the Cloud Run **runtime** service account
+   `Secret Manager Secret Accessor` on it (Secret Manager → the secret →
+   Permissions → Grant access). Granting once at the project level covers all.
+3. Add the `VARNAME` to `apps/api/env/<env>.secret-keys` and commit.
+4. Next `apps/api/**` deploy picks it up. **Create the secret before the deploy** or
+   it fails.
+
+**Rotate:** Secret Manager → secret → **+ New version** → redeploy (uses `:latest`).
+**Read current value:** Secret Manager → secret → version → **View secret value**.
+
+## Build/test env — still the base64 blob
+
+The Docker build (`prisma generate`) and `api-test.yml` still decode
+`API_ENV_PROD_B64` / `API_ENV_UAT_B64` into `apps/api/.env`. These rarely change and
+don't include runtime integration config (Twilio, etc.). Update them only when a
+build/test-time var changes:
 
 ```bash
-# Prod → Settings → Secrets → API_ENV_PROD_B64
-base64 < apps/api/env/prod.env | tr -d '\n' | pbcopy
-
-# UAT → API_ENV_UAT_B64
-base64 < apps/api/env/uat.env | tr -d '\n' | pbcopy
-```
-
-Or from repo root:
-
-```bash
-./scripts/encode-env-for-gh.sh apps/api/env/prod.env
-./scripts/encode-env-for-gh.sh apps/api/env/uat.env
+./scripts/encode-env-for-gh.sh apps/api/env/prod.env   # → API_ENV_PROD_B64
+./scripts/encode-env-for-gh.sh apps/api/env/uat.env    # → API_ENV_UAT_B64
 ```
 
 ## Infra outputs
