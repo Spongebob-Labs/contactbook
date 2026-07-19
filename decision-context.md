@@ -1,5 +1,60 @@
 # Decision Context
 
+## 2026-07-19 - Card Detail Shareable Hub Revamp
+
+- Decision: Rebuild Card Detail around the live shareable preview (Mobile/Landscape × Front/Back) plus a compact “On this card” fact list. Remove the dense icon-tile sections as the primary view; tuck profile-composed extras behind a collapsible “Profile extras” block when maker fields are absent.
+- Reason: Opening a card after create felt like a database record; networking UX needs the same professional card surface as the maker.
+- Files: `card-detail-page.tsx`, `decision-context.md`.
+
+## 2026-07-19 - Professional Card Preview Redesign
+
+- Decision: Redesign live card faces to match the shareable-card reference: portrait mobile share page (front) + QR back; landscape Stealth card (front identity / back with QR). Add Mobile ↔ Landscape orientation toggle alongside Front/Back. Prioritize typography, whitespace, and hierarchy over nested chrome.
+- Reason: Prior front/back felt congested and unsuited for event networking; cards are the product centerpiece and must read as premium shareable surfaces.
+- Notes: UI-only in maker preview. Dashboard/list reuse of these faces deferred to a follow-up. Dummy QR remains until backend share URLs exist.
+- Files: `live-card-preview.tsx`, `card-onboarding-page.tsx`, `decision-context.md`.
+
+## 2026-07-19 - Live Card Front / Back Preview
+
+- Decision: Add Front/Back segmented toggle on the live card maker preview. Back face shows a deterministic dummy QR (seeded from entered fields) plus compact person details. Same left-side fields drive both faces; real QR/share URL deferred to backend.
+- Reason: User needs to inspect the shareable back (QR + data) while editing, without waiting for share-link APIs.
+- Files: `live-card-preview.tsx`, `card-onboarding-page.tsx`, `decision-context.md`.
+- Alternatives considered: New QR library dependency — skipped (dummy SVG modules). Separate back-only editable fields — deferred; shared fields keep editing simple for now.
+
+## 2026-07-19 - Live Card Maker Layout Fix
+
+- Decision: Give the Create Card modal a fixed viewport height (`100dvh` minus inset) so left/right panes scroll independently instead of clipping. Pin Create actions to the editor footer. Make Main details / Color / Socials (and mobile preview) collapsible; Socials collapsed by default. Compact live preview sizing.
+- Reason: Tall preview + form were clipped by `max-height` + `overflow-hidden` without a definite shell height, so the blue card CTAs were cut off mid-frame.
+- Files: `card-onboarding-page.tsx`, `live-card-preview.tsx`, `card-theme-picker.tsx`, `decision-context.md`.
+
+## 2026-07-19 - Live Card Maker On Create
+
+- Decision: Replace the name/type-only Create Card modal with a split live card maker: left editor (main details → theme → socials), right mobile-portrait shareable preview that updates as the user types. Persist `fields` + `theme` on local cards; prefer maker fields in `getCardDisplayDetails` when present.
+- Reason: Card creation is a core product moment; creating a shell and filling previews from profile/dummy fallbacks felt unfinished. User wants a professional live maker matching a mobile shareable-card reference (not landscape), with premium color swatches plus custom hex.
+- Notes:
+  - UI-only. Still behind `USE_LOCAL_CARDS`; API create path remains name/type only until backend supports fields/theme.
+  - Preview is portrait/mobile (reference left layout): avatar, name, title, phone/email, company block, themed CTAs, social icons. No landscape Stealth card in v1.
+  - Theme: curated presets + native color picker + hex input; primary drives border, badge, links, CTAs, logo mark.
+- Files: `card-onboarding-page.tsx`, `live-card-preview.tsx`, `card-theme-picker.tsx`, `card-maker.ts`, `local-cards.ts`, `card-display.ts`, `types.ts`, `decision-context.md`.
+- Alternatives considered: Landscape Stealth preview — rejected (user wants mobile-only). Free color-only without swatches — rejected (want premium presets + custom hex).
+
+## 2026-07-19 - Static Local Cards For UI Pass
+
+- Decision: Route card create/list/detail through a frontend-only `localStorage` store (`lib/local-cards.ts`) behind `USE_LOCAL_CARDS = true`. Creating a card no longer POSTs to `/v1/cards`; after create, navigate to `/dashboard/cards/:id`. Flip the flag off when the backend cards API is ready.
+- Reason: UI design pass is blocked by 401s on live card create; designer needs to create cards and inspect detail without auth/API.
+- Files: `local-cards.ts`, `card-onboarding-page.tsx`, `cards-page.tsx`, `card-detail-page.tsx`, `dashboard-page.tsx`, `decision-context.md`.
+- Alternatives considered: Silent API catch + mock-only — rejected because newly created cards would not persist across navigations.
+
+## 2026-07-19 - Persistent Collapsed Sidebar Rail
+
+- Decision: Keep the floating sidebar always present. Collapse narrows to an icon rail (not fully hidden); expand restores labels. One control only: `PanelLeftClose` when expanded, edge chevron when collapsed. No drop shadow; no Workspace header duplicate toggle; no left-edge hover peek.
+- Reason: User preferred the earlier persistent-rail collapse over the fully-disappearing hover-reveal experiment.
+- Files: `app-shell.tsx`, `decision-context.md`.
+
+## 2026-07-19 - Hover-Reveal Hidden Sidebar
+
+- Decision: Superseded — collapse no longer fully hides the sidebar (see Persistent Collapsed Sidebar Rail).
+- Reason: User rejected full disappear + hover reveal in favor of the persistent icon rail.
+
 ## 2026-07-19 - Light Mode Text Contrast Pass
 
 - Decision: Replace hardcoded dark-only utilities (`text-white/*`, `bg-white/*`, `border-white/*`, `text-[#6B7280]`) on Dashboard, Profile, Cards, Card Detail, Contacts, Import, and shared import options with semantic tokens (`text-muted-foreground`, `bg-muted`, `border-border`, `border-border-strong`, `bg-bg-hover`).

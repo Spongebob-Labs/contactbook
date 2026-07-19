@@ -48,6 +48,27 @@ export type ContactUrl = {
 
 export type ContactCardType = "BUSINESS" | "PERSONAL" | "PAYMENT" | "CUSTOM";
 
+/** Fields entered in the live card maker (UI / local store). */
+export type ContactCardFields = {
+  displayName: string;
+  title: string;
+  phone: string;
+  email: string;
+  company: string;
+  address: string;
+  website: string;
+  linkedin: string;
+  twitter: string;
+  facebook: string;
+  instagram: string;
+};
+
+/** Theme for shareable card chrome (preset id or custom hex). */
+export type ContactCardTheme = {
+  presetId: string;
+  primary: string;
+};
+
 export type ContactCard = {
   id: string;
   userId: string;
@@ -55,6 +76,9 @@ export type ContactCard = {
   type: ContactCardType;
   createdAt: string;
   updatedAt: string;
+  /** Optional maker payload — present on locally created cards during UI pass. */
+  fields?: ContactCardFields;
+  theme?: ContactCardTheme;
 };
 
 export type ContactImportSummary = {

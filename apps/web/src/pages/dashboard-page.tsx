@@ -29,7 +29,12 @@ import {
   getProfileCompletion,
 } from "@/lib/profile-completion";
 import { logUiError } from "@/lib/friendly-errors";
-import { mockCards, mockContactListResponse, mockContactsBySource, mockProfile } from "@/lib/mock-data";
+import {
+  createLocalCard,
+  listLocalCards,
+  USE_LOCAL_CARDS,
+} from "@/lib/local-cards";
+import { mockContactListResponse, mockContactsBySource, mockProfile } from "@/lib/mock-data";
 import type {
   ContactCard,
   ContactCardType,
@@ -260,7 +265,9 @@ export default function DashboardPage() {
 
   const completeSetupStarterCards = useCallback(
     async (identity: ProfileOnboardingResult["identity"]) => {
-      const liveCards = await apiFetch<ContactCard[]>("/v1/cards");
+      const liveCards = USE_LOCAL_CARDS
+        ? listLocalCards()
+        : await apiFetch<ContactCard[]>("/v1/cards");
       const starterCards = getStarterCardRequests(identity);
       const createdCards: ContactCard[] = [];
 
@@ -273,10 +280,12 @@ export default function DashboardPage() {
           continue;
         }
 
-        const card = await apiFetch<ContactCard>("/v1/cards", {
-          method: "POST",
-          body: starterCard,
-        });
+        const card = USE_LOCAL_CARDS
+          ? createLocalCard(starterCard)
+          : await apiFetch<ContactCard>("/v1/cards", {
+              method: "POST",
+              body: starterCard,
+            });
         createdCards.push(card);
       }
 
@@ -335,6 +344,13 @@ export default function DashboardPage() {
 
   const loadCards = useCallback(async (shouldUpdate: () => boolean = () => true) => {
     try {
+      if (USE_LOCAL_CARDS) {
+        if (shouldUpdate()) {
+          setCards(listLocalCards());
+          setIsMockData(true);
+        }
+        return;
+      }
       const data = await apiFetch<ContactCard[]>("/v1/cards");
       if (shouldUpdate()) {
         setCards(data);
@@ -342,7 +358,7 @@ export default function DashboardPage() {
     } catch (error) {
       logUiError("Could not load dashboard cards", error);
       if (shouldUpdate()) {
-        setCards(mockCards);
+        setCards(listLocalCards());
         setIsMockData(true);
       }
     }
@@ -705,7 +721,7 @@ export default function DashboardPage() {
             setCards((current) =>
               current.some((item) => item.id === card.id) ? current : [card, ...current],
             );
-            navigate(returnTo ?? "/dashboard", {
+            navigate(`/dashboard/cards/${card.id}`, {
               replace: true,
             });
             void Promise.all([loadCards(), loadOverview()]);

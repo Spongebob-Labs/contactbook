@@ -9,6 +9,12 @@ export type CardDisplayDetails = {
   phone: string;
   role: string;
   social: string;
+  website: string;
+  linkedin: string;
+  twitter: string;
+  facebook: string;
+  instagram: string;
+  themePrimary: string | null;
 };
 
 function firstText(...values: Array<string | null | undefined>) {
@@ -50,10 +56,48 @@ function initialsFor(value: string) {
   return initials || "CB";
 }
 
+function emptySocials() {
+  return {
+    website: "",
+    linkedin: "",
+    twitter: "",
+    facebook: "",
+    instagram: "",
+    themePrimary: null as string | null,
+  };
+}
+
 export function getCardDisplayDetails(
   card: ContactCard,
   profile: ProfileMeResponse | null,
 ): CardDisplayDetails {
+  if (card.fields) {
+    const fields = card.fields;
+    const personName = firstText(fields.displayName, card.name);
+    return {
+      company: firstText(fields.company),
+      email: firstText(fields.email),
+      initials: initialsFor(personName),
+      location: firstText(fields.address),
+      name: personName || card.name,
+      phone: firstText(fields.phone),
+      role: firstText(fields.title),
+      social: firstText(
+        fields.website,
+        fields.linkedin,
+        fields.instagram,
+        fields.twitter,
+        fields.facebook,
+      ),
+      website: firstText(fields.website),
+      linkedin: firstText(fields.linkedin),
+      twitter: firstText(fields.twitter),
+      facebook: firstText(fields.facebook),
+      instagram: firstText(fields.instagram),
+      themePrimary: card.theme?.primary ?? null,
+    };
+  }
+
   const personal = profile?.personal;
   const work = profile?.work[0];
   const business = profile?.business[0];
@@ -76,6 +120,7 @@ export function getCardDisplayDetails(
     work?.workTitle,
     "Business contact",
   );
+  const socialExtras = emptySocials();
 
   if (card.type === "BUSINESS") {
     return {
@@ -98,6 +143,11 @@ export function getCardDisplayDetails(
       ),
       role: businessRole,
       social: firstText(social?.linkedin, social?.website, "contactbook.app"),
+      ...socialExtras,
+      website: firstText(social?.website),
+      linkedin: firstText(social?.linkedin),
+      facebook: firstText(social?.facebook),
+      themePrimary: card.theme?.primary ?? null,
     };
   }
 
@@ -111,6 +161,11 @@ export function getCardDisplayDetails(
       phone: firstText(profile?.identity.primaryPhone, "+1 555 0103"),
       role: "Custom contact card",
       social: firstText(social?.website, social?.linkedin, "contactbook.app"),
+      ...socialExtras,
+      website: firstText(social?.website),
+      linkedin: firstText(social?.linkedin),
+      facebook: firstText(social?.facebook),
+      themePrimary: card.theme?.primary ?? null,
     };
   }
 
@@ -128,5 +183,11 @@ export function getCardDisplayDetails(
       social?.linkedin,
       "contactbook.app",
     ),
+    ...socialExtras,
+    website: firstText(social?.website),
+    linkedin: firstText(social?.linkedin),
+    facebook: firstText(social?.facebook),
+    instagram: firstText(customValue(social, "instagram")),
+    themePrimary: card.theme?.primary ?? null,
   };
 }

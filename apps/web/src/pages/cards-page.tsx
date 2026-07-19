@@ -24,7 +24,8 @@ import { apiFetch } from "@/lib/api";
 import { getCardDisplayDetails } from "@/lib/card-display";
 import { cardTypeStyles } from "@/lib/card-styles";
 import { friendlyErrorMessages, logUiError } from "@/lib/friendly-errors";
-import { mockCards, mockProfile } from "@/lib/mock-data";
+import { listLocalCards, USE_LOCAL_CARDS } from "@/lib/local-cards";
+import { mockProfile } from "@/lib/mock-data";
 import type { ContactCard, ContactCardType, ProfileMeResponse } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -105,14 +106,22 @@ export default function CardsPage() {
       let usedMockData = false;
 
       try {
-        const data = await apiFetch<ContactCard[]>("/v1/cards");
-        if (isMounted) {
-          setCards(data);
+        if (USE_LOCAL_CARDS) {
+          if (isMounted) {
+            setCards(listLocalCards());
+            setError(null);
+          }
+          usedMockData = true;
+        } else {
+          const data = await apiFetch<ContactCard[]>("/v1/cards");
+          if (isMounted) {
+            setCards(data);
+          }
         }
       } catch (err) {
         if (isMounted) {
           logUiError("Could not load cards", err);
-          setCards(mockCards);
+          setCards(listLocalCards());
           setError(null);
         }
         usedMockData = true;

@@ -8,7 +8,6 @@ import {
   Import,
   LogOut,
   Menu,
-  PanelLeft,
   PanelLeftClose,
   UserCircle,
   UserRound,
@@ -143,7 +142,7 @@ export function AppShell({ children, headerActions }: AppShellProps) {
         <div
           className={cn(
             "relative mb-3 flex shrink-0 items-center",
-            rail ? "w-full flex-col gap-2 px-0 pt-1" : "justify-between gap-2 px-1",
+            rail ? "w-full justify-center px-0 pt-1" : "justify-between gap-2 px-1",
           )}
         >
           <Link
@@ -277,8 +276,7 @@ export function AppShell({ children, headerActions }: AppShellProps) {
           width: sidebarWidth,
         }}
         className={cn(
-          "fixed z-30 hidden overflow-visible rounded-[20px] bg-sidebar/95 backdrop-blur-xl transition-[width] duration-300 ease-out lg:block",
-          "shadow-[0_12px_40px_rgba(0,0,0,0.45),0_0_0_1px_rgba(255,255,255,0.04)]",
+          "fixed z-30 hidden overflow-visible rounded-[20px] border border-border/40 bg-sidebar/95 backdrop-blur-xl transition-[width] duration-300 ease-out lg:block",
         )}
         aria-label="App navigation"
       >
@@ -290,7 +288,7 @@ export function AppShell({ children, headerActions }: AppShellProps) {
             type="button"
             aria-label="Expand sidebar"
             onClick={toggleCollapsed}
-            className="absolute -right-3 top-5 z-10 flex h-6 w-6 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-[0_4px_16px_rgba(0,0,0,0.25)] transition-colors hover:border-accent-border hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="absolute -right-3 top-5 z-10 flex h-6 w-6 items-center justify-center rounded-full border border-border bg-card text-muted-foreground transition-colors hover:border-accent-border hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <ChevronRight className="h-3 w-3" aria-hidden="true" />
           </button>
@@ -305,7 +303,7 @@ export function AppShell({ children, headerActions }: AppShellProps) {
             className="absolute inset-0 bg-background/60 backdrop-blur-sm"
             onClick={() => setOpen(false)}
           />
-          <div className="absolute bottom-3 left-3 top-3 w-64 max-w-[86vw] overflow-hidden rounded-[20px] bg-sidebar/95 p-2 shadow-[0_12px_40px_rgba(0,0,0,0.45),0_0_0_1px_rgba(255,255,255,0.04)] backdrop-blur-xl app-fade-up">
+          <div className="absolute bottom-3 left-3 top-3 w-64 max-w-[86vw] overflow-hidden rounded-[20px] border border-border/40 bg-sidebar/95 p-2 backdrop-blur-xl app-fade-up">
             {sidebarContent(true)}
           </div>
         </div>
@@ -327,14 +325,6 @@ export function AppShell({ children, headerActions }: AppShellProps) {
             >
               {open ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
             </Button>
-            <button
-              type="button"
-              className="hidden h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-bg-hover hover:text-primary lg:flex"
-              aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-              onClick={toggleCollapsed}
-            >
-              <PanelLeft className="h-4 w-4" aria-hidden="true" />
-            </button>
             <span className="hidden text-sm font-medium text-foreground sm:block">
               Workspace
             </span>

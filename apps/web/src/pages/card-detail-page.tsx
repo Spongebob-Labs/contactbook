@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
   AlertCircle,
@@ -21,15 +21,31 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
+import {
+  LiveCardPreview,
+  type LiveCardFace,
+  type LiveCardOrientation,
+} from "@/components/cards/live-card-preview";
 import { Alert } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { SegmentedTabs } from "@/components/ui/segmented-tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
 import { getCardDisplayDetails } from "@/lib/card-display";
-import { cardTypeStyles } from "@/lib/card-styles";
+import {
+  DEFAULT_CARD_THEME,
+  EMPTY_CARD_FIELDS,
+} from "@/lib/card-maker";
 import { friendlyErrorMessages, logUiError } from "@/lib/friendly-errors";
-import { mockCardDetail, mockProfile } from "@/lib/mock-data";
-import type { ContactCard, ContactCardType, ProfileMeResponse } from "@/lib/types";
+import { getLocalCard, listLocalCards, USE_LOCAL_CARDS } from "@/lib/local-cards";
+import { mockProfile } from "@/lib/mock-data";
+import type {
+  ContactCard,
+  ContactCardFields,
+  ContactCardTheme,
+  ContactCardType,
+  ProfileMeResponse,
+} from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const cardTypeLabels: Record<ContactCardType, string> = {
@@ -126,23 +142,33 @@ function maskedEnd(value: string | null | undefined, visible = 4) {
   return `•••• ${suffix}`;
 }
 
-function compactAddress(value: string) {
-  return value || "";
-}
-
-function primaryMedia(profile: ProfileMeResponse | null, card: ContactCard) {
-  const work = profile?.work[0];
-  const business = profile?.business[0];
-
-  if (card.type === "BUSINESS") {
-    return firstText(business?.businessLogo, work?.companyLogo, profile?.identity.profilePhoto);
+function fieldsFromCard(
+  card: ContactCard,
+  profile: ProfileMeResponse | null,
+): ContactCardFields {
+  if (card.fields) {
+    return { ...EMPTY_CARD_FIELDS, ...card.fields };
   }
 
-  return firstText(profile?.identity.profilePhoto, business?.businessLogo, work?.companyLogo);
+  const details = getCardDisplayDetails(card, profile);
+  return {
+    ...EMPTY_CARD_FIELDS,
+    displayName: details.name,
+    title: details.role,
+    phone: details.phone,
+    email: details.email,
+    company: details.company,
+    address: details.location,
+    website: details.website || details.social,
+    linkedin: details.linkedin,
+    twitter: details.twitter,
+    facebook: details.facebook,
+    instagram: details.instagram,
+  };
 }
 
-function isRenderableImage(value: string) {
-  return /^(https?:|data:image\/|blob:)/i.test(value);
+function themeFromCard(card: ContactCard): ContactCardTheme {
+  return card.theme ?? DEFAULT_CARD_THEME;
 }
 
 function cardDetailSections(card: ContactCard, profile: ProfileMeResponse | null) {
@@ -169,11 +195,6 @@ function cardDetailSections(card: ContactCard, profile: ProfileMeResponse | null
         : personal?.landline,
     ),
     maybeItem(
-      Phone,
-      "Fax",
-      useBusinessProfile ? firstText(business?.businessFax, work?.workFax) : undefined,
-    ),
-    maybeItem(
       Mail,
       "Email",
       useBusinessProfile
@@ -183,51 +204,32 @@ function cardDetailSections(card: ContactCard, profile: ProfileMeResponse | null
     maybeItem(
       MapPin,
       useBusinessProfile ? "Business address" : "Address",
-      compactAddress(
-        useBusinessProfile
-          ? firstText(
-              addressLine(business?.businessPostalAddress),
-              addressLine(work?.workPostalAddress),
-            )
-          : firstText(personal?.currentLocation, addressLine(personal?.postalAddress)),
-      ),
+      useBusinessProfile
+        ? firstText(
+            addressLine(business?.businessPostalAddress),
+            addressLine(work?.workPostalAddress),
+          )
+        : firstText(personal?.currentLocation, addressLine(personal?.postalAddress)),
     ),
   ]);
 
   const organizationItems = compactItems([
     maybeItem(Building2, "Business", business?.businessName),
     maybeItem(UserRound, "Business title", business?.businessTitle),
-    maybeItem(Building2, "Business type", business?.businessType),
-    maybeItem(Hash, "Business registration", business?.businessRegNumber),
-    maybeItem(Hash, "GSTIN", business?.gstin),
     maybeItem(Building2, "Company", work?.companyName),
     maybeItem(UserRound, "Work title", work?.workTitle),
-    maybeItem(Hash, "Employee ID", work?.employeeId),
-    maybeItem(Hash, "Company registration", work?.companyRegNumber),
-    maybeItem(ImageIcon, "Business logo", business?.businessLogo),
-    maybeItem(ImageIcon, "Company logo", work?.companyLogo),
     ...customItems(business?.custom),
     ...customItems(work?.custom),
   ]);
 
   const personalItems = compactItems([
     maybeItem(UserRound, "Nickname", personal?.custom?.nickname),
-    maybeItem(UserRound, "Relationship", personal?.relationshipStatus),
-    maybeItem(CalendarDays, "Date of birth", personal?.dateOfBirth ?? personal?.yearOfBirth),
-    maybeItem(MapPin, "Current location", personal?.currentLocation),
     maybeItem(UserRound, "Title", personal?.custom?.title),
-    maybeItem(UserRound, "Partner", personal?.custom?.partnerName),
-    maybeItem(UserRound, "Kids", personal?.custom?.kidsNames),
-    maybeItem(UserRound, "Pets", personal?.custom?.petNames),
-    maybeItem(Hash, "Blood group", personal?.custom?.bloodGroup),
+    maybeItem(MapPin, "Current location", personal?.currentLocation),
+    maybeItem(CalendarDays, "Date of birth", personal?.dateOfBirth ?? personal?.yearOfBirth),
     ...customItems(useBusinessProfile ? undefined : personal?.custom, [
       "nickname",
-      "relationshipStatus",
       "title",
-      "partnerName",
-      "kidsNames",
-      "petNames",
-      "bloodGroup",
     ]),
   ]);
 
@@ -238,9 +240,7 @@ function cardDetailSections(card: ContactCard, profile: ProfileMeResponse | null
     maybeItem(LinkIcon, "Facebook", social?.facebook),
     maybeItem(LinkIcon, "X / Twitter", social?.twitter),
     maybeItem(LinkIcon, "GitHub", social?.github),
-    maybeItem(LinkIcon, "Blog", social?.blog),
     maybeItem(Phone, "WhatsApp", social?.whatsApp),
-    maybeItem(LinkIcon, "Skype", social?.skype),
     ...customItems(social?.custom, ["instagram"]),
   ]);
 
@@ -252,19 +252,12 @@ function cardDetailSections(card: ContactCard, profile: ProfileMeResponse | null
               Landmark,
               account.tag || "Bank account",
               firstText(
-                [
-                  account.bankName,
-                  maskedEnd(account.accountNumber),
-                  account.currency,
-                ]
+                [account.bankName, maskedEnd(account.accountNumber), account.currency]
                   .filter(Boolean)
                   .join(" • "),
               ),
             ),
             maybeItem(Banknote, "IFSC", maskedEnd(account.ifsc)),
-            maybeItem(Banknote, "IBAN", maskedEnd(account.iban)),
-            maybeItem(Banknote, "SWIFT / BIC", maskedEnd(account.swiftBic)),
-            maybeItem(Banknote, "Routing number", maskedEnd(account.routingNumber)),
           ]),
         ),
         ...(profile?.financial.digitalWallets ?? []).map((wallet) =>
@@ -272,15 +265,6 @@ function cardDetailSections(card: ContactCard, profile: ProfileMeResponse | null
             Wallet,
             wallet.tag || wallet.platform || "Digital wallet",
             [wallet.platform, maskedEnd(wallet.handleOrLink, 3)]
-              .filter(Boolean)
-              .join(" • "),
-          ),
-        ),
-        ...(profile?.financial.cryptoWallets ?? []).map((wallet) =>
-          maybeItem(
-            Wallet,
-            wallet.tag || wallet.network || "Crypto wallet",
-            [wallet.network, maskedEnd(wallet.address, 4)]
               .filter(Boolean)
               .join(" • "),
           ),
@@ -294,34 +278,43 @@ function cardDetailSections(card: ContactCard, profile: ProfileMeResponse | null
     maybeItem(ImageIcon, "Company logo", work?.companyLogo),
   ]);
 
-  const sections: DetailSection[] = [
-    { title: "Contact", items: contactItems },
-  ];
-
-  if (imageItems.length > 0) {
-    sections.push({ title: "Images", items: imageItems });
-  }
+  const sections: DetailSection[] = [{ title: "Contact", items: contactItems }];
 
   if (!useBusinessProfile && personalItems.length > 0) {
     sections.push({ title: "Personal", items: personalItems });
   }
-
   if (organizationItems.length > 0) {
     sections.push({
-      title: useBusinessProfile ? "Business" : "Work and business",
+      title: useBusinessProfile ? "Business" : "Work",
       items: organizationItems,
     });
   }
-
   if (socialItems.length > 0) {
     sections.push({ title: "Social", items: socialItems });
   }
-
   if (financialItems.length > 0) {
     sections.push({ title: "Financial", items: financialItems });
   }
+  if (imageItems.length > 0) {
+    sections.push({ title: "Media", items: imageItems });
+  }
 
   return sections.filter((section) => section.items.length > 0);
+}
+
+function essentialFacts(fields: ContactCardFields): DetailItem[] {
+  return compactItems([
+    maybeItem(Phone, "Phone", fields.phone),
+    maybeItem(Mail, "Email", fields.email),
+    maybeItem(Building2, "Company", fields.company),
+    maybeItem(MapPin, "Address", fields.address),
+    maybeItem(Globe2, "Website", fields.website),
+    maybeItem(UserRound, "Title", fields.title),
+    maybeItem(LinkIcon, "LinkedIn", fields.linkedin),
+    maybeItem(LinkIcon, "X / Twitter", fields.twitter),
+    maybeItem(LinkIcon, "Facebook", fields.facebook),
+    maybeItem(LinkIcon, "Instagram", fields.instagram),
+  ]);
 }
 
 function getCardDetailPath(cardId: string) {
@@ -377,14 +370,23 @@ export default function CardDetailPage() {
       let usedMockData = false;
 
       try {
-        const data = await apiFetch<ContactCard>(`/v1/cards/${cardId}`);
-        if (isMounted) {
-          setCard(data);
+        if (USE_LOCAL_CARDS) {
+          const localCard = getLocalCard(cardId) ?? listLocalCards()[0] ?? null;
+          if (isMounted) {
+            setCard(localCard);
+            setError(localCard ? null : "Card not found.");
+          }
+          usedMockData = true;
+        } else {
+          const data = await apiFetch<ContactCard>(`/v1/cards/${cardId}`);
+          if (isMounted) {
+            setCard(data);
+          }
         }
       } catch (err) {
         if (isMounted) {
           logUiError("Could not load card", err);
-          setCard(mockCardDetail(cardId));
+          setCard(getLocalCard(cardId) ?? listLocalCards()[0] ?? null);
           setError(null);
         }
         usedMockData = true;
@@ -417,7 +419,7 @@ export default function CardDetailPage() {
 
   return (
     <AppShell>
-      <section className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <section className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap items-center gap-3">
           <Link
             to="/dashboard/cards"
@@ -449,8 +451,9 @@ export default function CardDetailPage() {
       </section>
 
       {isLoading && (
-        <section>
-          <Skeleton className="h-80 w-full rounded-[14px]" />
+        <section className="grid gap-4 lg:grid-cols-[minmax(280px,340px)_minmax(0,1fr)]">
+          <Skeleton className="h-[520px] w-full rounded-[22px]" />
+          <Skeleton className="h-72 w-full rounded-[18px]" />
         </section>
       )}
 
@@ -467,9 +470,7 @@ export default function CardDetailPage() {
       )}
 
       {!isLoading && !error && card && (
-        <section>
-          <CardDetailPreview card={card} profile={profile} />
-        </section>
+        <CardDetailPreview card={card} profile={profile} />
       )}
     </AppShell>
   );
@@ -482,54 +483,76 @@ function CardDetailPreview({
   card: ContactCard;
   profile: ProfileMeResponse | null;
 }) {
-  const details = getCardDisplayDetails(card, profile);
-  const style = cardTypeStyles[card.type];
-  const media = primaryMedia(profile, card);
-  const sections = cardDetailSections(card, profile);
+  const [face, setFace] = useState<LiveCardFace>("front");
+  const [orientation, setOrientation] = useState<LiveCardOrientation>("portrait");
+  const [showMore, setShowMore] = useState(false);
+
+  const fields = useMemo(() => fieldsFromCard(card, profile), [card, profile]);
+  const theme = useMemo(() => themeFromCard(card), [card]);
+  const facts = useMemo(() => essentialFacts(fields), [fields]);
+  const extraSections = useMemo(
+    () => (card.fields ? [] : cardDetailSections(card, profile)),
+    [card, profile],
+  );
 
   return (
-    <div className="overflow-hidden rounded-[14px] border border-accent-border border-t-2 border-t-primary bg-card">
-      <div className="relative flex min-w-0 flex-col p-6 md:p-8">
-        <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
-          <div className="flex min-w-0 flex-col gap-5 sm:flex-row sm:items-center">
-            <div
-              className={cn(
-                "flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full text-2xl font-semibold sm:h-24 sm:w-24 sm:text-3xl",
-                media && isRenderableImage(media)
-                  ? "bg-muted/60"
-                  : style.initialsClassName,
-              )}
-            >
-              {media && isRenderableImage(media) ? (
-                <img
-                  src={media}
-                  alt=""
-                  className="h-full w-full object-cover"
-                  referrerPolicy="no-referrer"
-                />
-              ) : (
-                details.initials
-              )}
-            </div>
+    <section className="grid items-start gap-6 lg:grid-cols-[minmax(280px,340px)_minmax(0,1fr)] lg:gap-8">
+      {/* Shareable card — primary surface */}
+      <aside className="rounded-[22px] border border-border bg-muted/30 p-4 sm:p-5">
+        <div className="mb-4 space-y-2">
+          <SegmentedTabs
+            aria-label="Card orientation"
+            className="w-full"
+            value={orientation}
+            onChange={setOrientation}
+            items={[
+              { key: "portrait", label: "Mobile" },
+              { key: "landscape", label: "Landscape" },
+            ]}
+          />
+          <SegmentedTabs
+            aria-label="Card face"
+            className="w-full"
+            value={face}
+            onChange={setFace}
+            items={[
+              { key: "front", label: "Front" },
+              { key: "back", label: "Back" },
+            ]}
+          />
+        </div>
+        <div className="flex justify-center overflow-x-auto py-1">
+          <LiveCardPreview
+            fields={fields}
+            theme={theme}
+            face={face}
+            orientation={orientation}
+          />
+        </div>
+      </aside>
+
+      {/* Compact details */}
+      <div className="min-w-0 space-y-5">
+        <header className="rounded-[18px] border border-border bg-card p-5 sm:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="label-section text-primary">ContactBook</p>
-              <h2 className="title-display mt-2 max-w-5xl break-words">
-                {details.name}
-              </h2>
-              {details.role && (
-                <p className="mt-2 truncate text-[13px] text-muted-foreground">
-                  {details.role}
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-primary">
+                {cardTypeLabels[card.type]} card
+              </p>
+              <h1 className="mt-2 font-display text-2xl font-semibold tracking-tight text-foreground sm:text-[28px]">
+                {card.name}
+              </h1>
+              {fields.displayName && fields.displayName !== card.name ? (
+                <p className="mt-1.5 text-sm text-muted-foreground">
+                  Showing as {fields.displayName}
+                  {fields.title ? ` · ${fields.title}` : ""}
                 </p>
-              )}
+              ) : fields.title ? (
+                <p className="mt-1.5 text-sm text-muted-foreground">{fields.title}</p>
+              ) : null}
             </div>
-          </div>
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
-            <span className={cn("w-fit shrink-0", style.badgeClassName)}>
-              {cardTypeLabels[card.type]}
-            </span>
             <Button
               type="button"
-              variant="outline"
               size="sm"
               onClick={() => {
                 void shareCard(card);
@@ -539,102 +562,91 @@ function CardDetailPreview({
               Share card
             </Button>
           </div>
+
+          <p className="mt-4 text-xs text-muted-foreground">
+            Created {formatDate(card.createdAt)}
+            <span className="mx-2 text-border-strong">·</span>
+            Updated {formatDate(card.updatedAt)}
+          </p>
+        </header>
+
+        <div className="rounded-[18px] border border-border bg-card p-5 sm:p-6">
+          <h2 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            On this card
+          </h2>
+          {facts.length > 0 ? (
+            <dl className="mt-4 divide-y divide-border">
+              {facts.map((item) => (
+                <div
+                  key={`${item.label}-${item.value}`}
+                  className="flex items-baseline justify-between gap-4 py-3 first:pt-0 last:pb-0"
+                >
+                  <dt className="shrink-0 text-[12px] font-medium text-muted-foreground">
+                    {item.label}
+                  </dt>
+                  <dd className="min-w-0 text-right text-[13px] font-medium text-foreground">
+                    <span className="break-words">{item.value}</span>
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          ) : (
+            <p className="mt-3 text-sm text-muted-foreground">
+              No fields saved on this card yet.
+            </p>
+          )}
         </div>
 
-        <div className="mt-8 grid gap-2 md:grid-cols-3">
-          <MetadataChip
-            icon={CalendarDays}
-            label="Created"
-            value={formatDate(card.createdAt)}
-          />
-          <MetadataChip
-            icon={CalendarDays}
-            label="Updated"
-            value={formatDate(card.updatedAt)}
-          />
-          <MetadataChip
-            icon={Share2}
-            label="Share type"
-            value={cardTypeLabels[card.type]}
-          />
-        </div>
+        {extraSections.length > 0 && (
+          <div className="rounded-[18px] border border-border bg-card p-5 sm:p-6">
+            <button
+              type="button"
+              onClick={() => setShowMore((current) => !current)}
+              className="flex w-full items-center justify-between gap-3 text-left"
+              aria-expanded={showMore}
+            >
+              <div>
+                <h2 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                  Profile extras
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Optional profile data not stored on the card shell.
+                </p>
+              </div>
+              <span className="text-xs font-semibold text-primary">
+                {showMore ? "Hide" : "Show"}
+              </span>
+            </button>
 
-        <div className="mt-8 space-y-4">
-          {sections.map((section) => (
-            <CardDetailSection key={section.title} section={section} />
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function CardDetailSection({ section }: { section: DetailSection }) {
-  return (
-    <section className="rounded-[14px] border border-border bg-muted/40 p-5">
-      <h3 className="label-section text-primary">{section.title}</h3>
-      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {section.items.map((item) => (
-          <DetailTile
-            key={`${section.title}-${item.label}-${item.value}`}
-            icon={item.icon}
-            label={item.label}
-            value={item.value}
-          />
-        ))}
+            {showMore ? (
+              <div className="mt-5 space-y-5 border-t border-border pt-5">
+                {extraSections.map((section) => (
+                  <div key={section.title}>
+                    <h3 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-primary">
+                      {section.title}
+                    </h3>
+                    <dl className="mt-2 divide-y divide-border">
+                      {section.items.map((item) => (
+                        <div
+                          key={`${section.title}-${item.label}-${item.value}`}
+                          className="flex items-baseline justify-between gap-4 py-2.5"
+                        >
+                          <dt className="shrink-0 text-[12px] text-muted-foreground">
+                            {item.label}
+                          </dt>
+                          <dd className="min-w-0 break-words text-right text-[13px] font-medium text-foreground">
+                            {item.value}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        )}
       </div>
     </section>
-  );
-}
-
-function DetailTile({
-  icon: Icon,
-  label,
-  value,
-}: {
-  icon: LucideIcon;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="flex min-w-0 gap-3 rounded-[10px] border border-border bg-card p-3.5">
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-subtle text-primary">
-        <Icon className="h-3.5 w-3.5" aria-hidden="true" />
-      </span>
-      <div className="min-w-0">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-          {label}
-        </p>
-        <p className="mt-1 break-words text-[13px] font-medium text-foreground">
-          {value}
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function MetadataChip({
-  icon: Icon,
-  label,
-  value,
-}: {
-  icon: LucideIcon;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="flex min-w-0 items-start gap-3 rounded-[10px] border border-border bg-muted/40 p-3">
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-subtle text-primary">
-        <Icon className="h-3.5 w-3.5" aria-hidden="true" />
-      </span>
-      <div className="min-w-0">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-          {label}
-        </p>
-        <p className="mt-1 truncate text-[13px] font-medium text-foreground">
-          {value}
-        </p>
-      </div>
-    </div>
   );
 }
