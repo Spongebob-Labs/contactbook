@@ -1,4 +1,5 @@
 import type { ContactCard, ProfileMeResponse } from "@/lib/types";
+import { formatCardPhone, normalizeDialCode } from "@/lib/card-maker";
 
 export type CardDisplayDetails = {
   company: string;
@@ -63,41 +64,14 @@ function emptySocials() {
     twitter: "",
     facebook: "",
     instagram: "",
-    themePrimary: null as string | null,
   };
 }
 
-export function getCardDisplayDetails(
+/** Profile-composed details used as the uniform gallery/detail baseline. */
+function getProfileComposedDetails(
   card: ContactCard,
   profile: ProfileMeResponse | null,
 ): CardDisplayDetails {
-  if (card.fields) {
-    const fields = card.fields;
-    const personName = firstText(fields.displayName, card.name);
-    return {
-      company: firstText(fields.company),
-      email: firstText(fields.email),
-      initials: initialsFor(personName),
-      location: firstText(fields.address),
-      name: personName || card.name,
-      phone: firstText(fields.phone),
-      role: firstText(fields.title),
-      social: firstText(
-        fields.website,
-        fields.linkedin,
-        fields.instagram,
-        fields.twitter,
-        fields.facebook,
-      ),
-      website: firstText(fields.website),
-      linkedin: firstText(fields.linkedin),
-      twitter: firstText(fields.twitter),
-      facebook: firstText(fields.facebook),
-      instagram: firstText(fields.instagram),
-      themePrimary: card.theme?.primary ?? null,
-    };
-  }
-
   const personal = profile?.personal;
   const work = profile?.work[0];
   const business = profile?.business[0];
@@ -125,14 +99,19 @@ export function getCardDisplayDetails(
   if (card.type === "BUSINESS") {
     return {
       company: businessCompany,
-      email: firstText(business?.businessEmail, work?.workEmail, profile?.identity.primaryEmail, "hello@example.com"),
-      initials: initialsFor(card.name),
+      email: firstText(
+        business?.businessEmail,
+        work?.workEmail,
+        profile?.identity.primaryEmail,
+        "hello@example.com",
+      ),
+      initials: initialsFor(firstText(card.name, personName)),
       location: firstText(
         addressLine(business?.businessPostalAddress),
         addressLine(work?.workPostalAddress),
         "San Francisco, CA",
       ),
-      name: card.name,
+      name: firstText(card.name, personName, "Contact card"),
       phone: firstText(
         business?.businessMobile,
         business?.businessLandline,
@@ -144,7 +123,7 @@ export function getCardDisplayDetails(
       role: businessRole,
       social: firstText(social?.linkedin, social?.website, "contactbook.app"),
       ...socialExtras,
-      website: firstText(social?.website),
+      website: firstText(social?.website, "contactbook.app"),
       linkedin: firstText(social?.linkedin),
       facebook: firstText(social?.facebook),
       themePrimary: card.theme?.primary ?? null,
@@ -155,14 +134,14 @@ export function getCardDisplayDetails(
     return {
       company: firstText(workCompany, "ContactBook"),
       email: firstText(profile?.identity.primaryEmail, "hello@example.com"),
-      initials: initialsFor(card.name),
+      initials: initialsFor(firstText(card.name, personName)),
       location: personalLocation,
-      name: card.name,
+      name: firstText(card.name, personName, "Contact card"),
       phone: firstText(profile?.identity.primaryPhone, "+1 555 0103"),
       role: "Custom contact card",
       social: firstText(social?.website, social?.linkedin, "contactbook.app"),
       ...socialExtras,
-      website: firstText(social?.website),
+      website: firstText(social?.website, "contactbook.app"),
       linkedin: firstText(social?.linkedin),
       facebook: firstText(social?.facebook),
       themePrimary: card.theme?.primary ?? null,
@@ -171,10 +150,14 @@ export function getCardDisplayDetails(
 
   return {
     company: workCompany,
-    email: firstText(personal?.email, profile?.identity.primaryEmail, "hello@example.com"),
+    email: firstText(
+      personal?.email,
+      profile?.identity.primaryEmail,
+      "hello@example.com",
+    ),
     initials: initialsFor(personName),
     location: personalLocation,
-    name: card.name,
+    name: firstText(card.name, personName, "Contact card"),
     phone: firstText(personal?.mobile, profile?.identity.primaryPhone, "+1 555 0101"),
     role: personalTitle,
     social: firstText(
@@ -184,10 +167,68 @@ export function getCardDisplayDetails(
       "contactbook.app",
     ),
     ...socialExtras,
-    website: firstText(social?.website),
+    website: firstText(social?.website, "contactbook.app"),
     linkedin: firstText(social?.linkedin),
     facebook: firstText(social?.facebook),
     instagram: firstText(customValue(social, "instagram")),
     themePrimary: card.theme?.primary ?? null,
   };
+}
+
+/**
+ * Display details for gallery/detail surfaces.
+ * Maker fields overlay the profile baseline so incomplete creates never leave empty slots.
+ */
+export function getCardDisplayDetails(
+  card: ContactCard,
+  profile: ProfileMeResponse | null,
+): CardDisplayDetails {
+  const base = getProfileComposedDetails(card, profile);
+
+  if (!card.fields) {
+    return base;
+  }
+
+  const fields = card.fields;
+  const personName = firstText(fields.displayName, card.name, base.name);
+  const dial = normalizeDialCode(fields.countryCode || "+1");
+  const national = firstText(fields.phone);
+  const composedPhone = national
+    ? formatCardPhone(dial, national)
+    : base.phone;
+
+  return {
+    company: firstText(fields.company, base.company),
+    email: firstText(fields.email, base.email),
+    initials: initialsFor(personName),
+    location: firstText(fields.address, base.location),
+    name: personName,
+    phone: composedPhone,
+    role: firstText(fields.title, base.role),
+    social: firstText(
+      fields.website,
+      fields.linkedin,
+      fields.instagram,
+      fields.twitter,
+      fields.facebook,
+      base.social,
+    ),
+    website: firstText(fields.website, base.website),
+    linkedin: firstText(fields.linkedin, base.linkedin),
+    twitter: firstText(fields.twitter, base.twitter),
+    facebook: firstText(fields.facebook, base.facebook),
+    instagram: firstText(fields.instagram, base.instagram),
+    themePrimary: card.theme?.primary ?? null,
+  };
+}
+
+/** Fixed gallery detail slots — always the same model for every card. */
+export function getCardGalleryFields(details: CardDisplayDetails) {
+  return [
+    { label: "Company", value: details.company || "—" },
+    { label: "Phone", value: details.phone || "—" },
+    { label: "Email", value: details.email || "—" },
+    { label: "Location", value: details.location || "—" },
+    { label: "Online", value: details.social || details.website || "—" },
+  ] as const;
 }

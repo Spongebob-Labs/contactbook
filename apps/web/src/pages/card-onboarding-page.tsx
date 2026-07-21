@@ -5,33 +5,37 @@ import {
   BadgeCheck,
   Building2,
   ChevronDown,
+  LayoutTemplate,
   Loader2,
   Share2,
   UserRound,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
+import { CardPhotoUpload } from "@/components/cards/card-photo-upload";
+import { CardTemplateChooser } from "@/components/cards/card-template-chooser";
 import { CardThemePicker } from "@/components/cards/card-theme-picker";
-import {
-  LiveCardPreview,
-  type LiveCardFace,
-  type LiveCardOrientation,
-} from "@/components/cards/live-card-preview";
+import { LiveCardPreview } from "@/components/cards/live-card-preview";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { SegmentedTabs } from "@/components/ui/segmented-tabs";
 import { apiFetch } from "@/lib/api";
 import {
+  CARD_DIAL_OPTIONS,
+  CARD_TEMPLATE_OPTIONS,
+  DEFAULT_CARD_TEMPLATE,
   DEFAULT_CARD_THEME,
   EMPTY_CARD_FIELDS,
+  initialsFromName,
+  normalizeDialCode,
 } from "@/lib/card-maker";
 import { friendlyErrorMessages, logUiError } from "@/lib/friendly-errors";
 import { createLocalCard, USE_LOCAL_CARDS } from "@/lib/local-cards";
 import type {
   ContactCard,
   ContactCardFields,
+  ContactCardTemplate,
   ContactCardTheme,
   ContactCardType,
 } from "@/lib/types";
@@ -137,63 +141,30 @@ function CollapsibleSection({
 function LivePreviewPane({
   fields,
   theme,
-  face,
-  onFaceChange,
-  orientation,
-  onOrientationChange,
+  template,
+  showChooser = true,
 }: {
   fields: ContactCardFields;
   theme: ContactCardTheme;
-  face: LiveCardFace;
-  onFaceChange: (face: LiveCardFace) => void;
-  orientation: LiveCardOrientation;
-  onOrientationChange: (orientation: LiveCardOrientation) => void;
+  template: ContactCardTemplate;
+  showChooser?: boolean;
 }) {
+  const selected = CARD_TEMPLATE_OPTIONS.find((item) => item.id === template);
+
   return (
     <div className="space-y-4">
-      <div className="grid gap-2">
-        <SegmentedTabs
-          aria-label="Card orientation"
-          className="w-full"
-          value={orientation}
-          onChange={onOrientationChange}
-          items={[
-            { key: "portrait", label: "Mobile" },
-            { key: "landscape", label: "Landscape" },
-          ]}
-        />
-        <SegmentedTabs
-          aria-label="Card face"
-          className="w-full"
-          value={face}
-          onChange={onFaceChange}
-          items={[
-            { key: "front", label: "Front" },
-            { key: "back", label: "Back" },
-          ]}
-        />
-      </div>
-      <div
-        className={cn(
-          "flex justify-center",
-          orientation === "landscape" && "px-1",
-        )}
-      >
-        <LiveCardPreview
-          fields={fields}
-          theme={theme}
-          face={face}
-          orientation={orientation}
-        />
+      {showChooser ? null : (
+        <p className="text-center text-xs leading-relaxed text-muted-foreground">
+          {selected?.description ?? "This is what they’ll see on their phone."}
+        </p>
+      )}
+      <div className="flex justify-center rounded-[28px] bg-[#12151C] px-4 py-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+        <div className="w-full max-w-[300px] drop-shadow-[0_24px_48px_rgba(0,0,0,0.45)]">
+          <LiveCardPreview fields={fields} theme={theme} template={template} />
+        </div>
       </div>
       <p className="text-center text-xs leading-relaxed text-muted-foreground">
-        {orientation === "portrait"
-          ? face === "front"
-            ? "Mobile share view — identity, actions, and socials."
-            : "Mobile back — scan QR and read contact details."
-          : face === "front"
-            ? "Landscape Stealth card — event-ready identity layout."
-            : "Landscape back — Stealth card with share QR."}
+        This is what they’ll see on their phone.
       </p>
     </div>
   );
@@ -211,16 +182,24 @@ export function CardOnboardingModal({
   const [type, setType] = useState<ContactCardType>("PERSONAL");
   const [fields, setFields] = useState<ContactCardFields>(EMPTY_CARD_FIELDS);
   const [theme, setTheme] = useState<ContactCardTheme>(DEFAULT_CARD_THEME);
+  const [template, setTemplate] =
+    useState<ContactCardTemplate>(DEFAULT_CARD_TEMPLATE);
   const [isSaving, setIsSaving] = useState(false);
+  const [templateOpen, setTemplateOpen] = useState(true);
   const [detailsOpen, setDetailsOpen] = useState(true);
   const [colorOpen, setColorOpen] = useState(true);
   const [socialsOpen, setSocialsOpen] = useState(false);
   const [mobilePreviewOpen, setMobilePreviewOpen] = useState(true);
-  const [previewFace, setPreviewFace] = useState<LiveCardFace>("front");
-  const [previewOrientation, setPreviewOrientation] =
-    useState<LiveCardOrientation>("portrait");
 
   const selectedType = cardTypeOptions.find((option) => option.value === type);
+  const detailsHint =
+    template === "scan"
+      ? "Name, phone, and email sit front-and-center on Scan."
+      : "Name, contact, and organization on the Connect share page.";
+  const socialsHint =
+    template === "scan"
+      ? "Socials appear on Connect; optional for Scan cards."
+      : "Shown as themed badges at the bottom of Connect.";
 
   const updateField = <K extends keyof ContactCardFields>(
     key: K,
@@ -244,6 +223,7 @@ export function CardOnboardingModal({
     const payloadFields: ContactCardFields = {
       displayName: fields.displayName.trim(),
       title: fields.title.trim(),
+      countryCode: normalizeDialCode(fields.countryCode),
       phone: fields.phone.trim(),
       email: fields.email.trim(),
       company: fields.company.trim(),
@@ -253,6 +233,7 @@ export function CardOnboardingModal({
       twitter: fields.twitter.trim(),
       facebook: fields.facebook.trim(),
       instagram: fields.instagram.trim(),
+      photoDataUrl: fields.photoDataUrl.trim(),
     };
 
     setIsSaving(true);
@@ -263,6 +244,7 @@ export function CardOnboardingModal({
             type,
             fields: payloadFields,
             theme,
+            template,
           })
         : await apiFetch<ContactCard>("/v1/cards", {
             method: "POST",
@@ -306,7 +288,8 @@ export function CardOnboardingModal({
                     : "Create a ContactBook card."}
                 </h1>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  Fill in your details and watch the shareable card update live.
+                  Pick a template, add your details — this is what they’ll see on
+                  their phone.
                 </p>
               </div>
               <Button
@@ -324,7 +307,7 @@ export function CardOnboardingModal({
             <div className="mt-5 lg:hidden">
               <CollapsibleSection
                 title="Live preview"
-                description="Front and back of your mobile card."
+                description="Staged phone view of your card."
                 icon={<BadgeCheck className="h-4 w-4" aria-hidden="true" />}
                 open={mobilePreviewOpen}
                 onOpenChange={setMobilePreviewOpen}
@@ -332,15 +315,27 @@ export function CardOnboardingModal({
                 <LivePreviewPane
                   fields={fields}
                   theme={theme}
-                  face={previewFace}
-                  onFaceChange={setPreviewFace}
-                  orientation={previewOrientation}
-                  onOrientationChange={setPreviewOrientation}
+                  template={template}
+                  showChooser={false}
                 />
               </CollapsibleSection>
             </div>
 
             <div className="mt-6 grid gap-4">
+              <CollapsibleSection
+                title="Template"
+                description="Connect for actions, Scan for QR handoff."
+                icon={<LayoutTemplate className="h-4 w-4" aria-hidden="true" />}
+                open={templateOpen}
+                onOpenChange={setTemplateOpen}
+              >
+                <CardTemplateChooser
+                  value={template}
+                  theme={theme}
+                  onChange={setTemplate}
+                />
+              </CollapsibleSection>
+
               <section className="grid gap-4 sm:grid-cols-2">
                 <Field id="card-name" label="Card name">
                   <Input
@@ -373,11 +368,24 @@ export function CardOnboardingModal({
 
               <CollapsibleSection
                 title="Main details"
-                description="Name, contact, and organization on the card."
+                description={detailsHint}
                 icon={<UserRound className="h-4 w-4" aria-hidden="true" />}
                 open={detailsOpen}
                 onOpenChange={setDetailsOpen}
               >
+                <div className="mb-5 rounded-xl border border-border bg-background/60 p-3.5 sm:p-4">
+                  <CardPhotoUpload
+                    value={fields.photoDataUrl}
+                    primary={theme.primary}
+                    initials={initialsFromName(
+                      fields.displayName || cardName || "YN",
+                    )}
+                    onChange={(photoDataUrl) =>
+                      updateField("photoDataUrl", photoDataUrl)
+                    }
+                  />
+                </div>
+
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field id="display-name" label="Full name">
                     <Input
@@ -400,18 +408,44 @@ export function CardOnboardingModal({
                       placeholder="Product Designer"
                     />
                   </Field>
-                  <Field id="phone" label="Phone">
-                    <Input
+                  <div className="sm:col-span-2">
+                    <Field
                       id="phone"
-                      value={fields.phone}
-                      onChange={(event) =>
-                        updateField("phone", event.target.value)
-                      }
-                      placeholder="+1 555 0100"
-                      inputMode="tel"
-                      autoComplete="tel"
-                    />
-                  </Field>
+                      label="Phone"
+                      hint="Choose a country code, then enter the local number."
+                    >
+                      <div className="grid grid-cols-[6.25rem_minmax(0,1fr)] gap-2">
+                        <Select
+                          id="country-code"
+                          aria-label="Country code"
+                          value={normalizeDialCode(fields.countryCode)}
+                          onChange={(event) =>
+                            updateField(
+                              "countryCode",
+                              normalizeDialCode(event.target.value),
+                            )
+                          }
+                          className="font-semibold tabular-nums"
+                        >
+                          {CARD_DIAL_OPTIONS.map((dial) => (
+                            <option key={dial} value={dial}>
+                              {dial}
+                            </option>
+                          ))}
+                        </Select>
+                        <Input
+                          id="phone"
+                          value={fields.phone}
+                          onChange={(event) =>
+                            updateField("phone", event.target.value)
+                          }
+                          placeholder="555 0100"
+                          inputMode="tel"
+                          autoComplete="tel-national"
+                        />
+                      </div>
+                    </Field>
+                  </div>
                   <Field id="email" label="Email">
                     <Input
                       id="email"
@@ -491,7 +525,7 @@ export function CardOnboardingModal({
 
               <CollapsibleSection
                 title="Socials"
-                description="Optional links at the bottom of the card."
+                description={socialsHint}
                 icon={<Share2 className="h-4 w-4" aria-hidden="true" />}
                 open={socialsOpen}
                 onOpenChange={setSocialsOpen}
@@ -571,17 +605,15 @@ export function CardOnboardingModal({
               Live card
             </p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Mobile or landscape · Front or Back. Theme drives accents.
+              This is what they’ll see on their phone.
             </p>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 lg:px-6">
             <LivePreviewPane
               fields={fields}
               theme={theme}
-              face={previewFace}
-              onFaceChange={setPreviewFace}
-              orientation={previewOrientation}
-              onOrientationChange={setPreviewOrientation}
+              template={template}
+              showChooser={false}
             />
           </div>
         </aside>

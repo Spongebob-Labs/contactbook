@@ -6,6 +6,8 @@ import {
   Banknote,
   Building2,
   CalendarDays,
+  Copy,
+  Download,
   Globe2,
   Hash,
   Image as ImageIcon,
@@ -21,20 +23,19 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
-import {
-  LiveCardPreview,
-  type LiveCardFace,
-  type LiveCardOrientation,
-} from "@/components/cards/live-card-preview";
+import { LiveCardPreview } from "@/components/cards/live-card-preview";
 import { Alert } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { SegmentedTabs } from "@/components/ui/segmented-tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
 import { getCardDisplayDetails } from "@/lib/card-display";
 import {
+  CARD_TEMPLATE_OPTIONS,
   DEFAULT_CARD_THEME,
   EMPTY_CARD_FIELDS,
+  formatCardPhone,
+  normalizeDialCode,
+  resolveTemplate,
 } from "@/lib/card-maker";
 import { friendlyErrorMessages, logUiError } from "@/lib/friendly-errors";
 import { getLocalCard, listLocalCards, USE_LOCAL_CARDS } from "@/lib/local-cards";
@@ -42,6 +43,7 @@ import { mockProfile } from "@/lib/mock-data";
 import type {
   ContactCard,
   ContactCardFields,
+  ContactCardTemplate,
   ContactCardTheme,
   ContactCardType,
   ProfileMeResponse,
@@ -147,7 +149,11 @@ function fieldsFromCard(
   profile: ProfileMeResponse | null,
 ): ContactCardFields {
   if (card.fields) {
-    return { ...EMPTY_CARD_FIELDS, ...card.fields };
+    return {
+      ...EMPTY_CARD_FIELDS,
+      ...card.fields,
+      countryCode: normalizeDialCode(card.fields.countryCode || "+1"),
+    };
   }
 
   const details = getCardDisplayDetails(card, profile);
@@ -155,7 +161,8 @@ function fieldsFromCard(
     ...EMPTY_CARD_FIELDS,
     displayName: details.name,
     title: details.role,
-    phone: details.phone,
+    countryCode: "+1",
+    phone: details.phone.replace(/^\+\d{1,4}\s*/, ""),
     email: details.email,
     company: details.company,
     address: details.location,
@@ -164,11 +171,16 @@ function fieldsFromCard(
     twitter: details.twitter,
     facebook: details.facebook,
     instagram: details.instagram,
+    photoDataUrl: "",
   };
 }
 
 function themeFromCard(card: ContactCard): ContactCardTheme {
   return card.theme ?? DEFAULT_CARD_THEME;
+}
+
+function templateFromCard(card: ContactCard): ContactCardTemplate {
+  return resolveTemplate(card.template);
 }
 
 function cardDetailSections(card: ContactCard, profile: ProfileMeResponse | null) {
@@ -304,7 +316,16 @@ function cardDetailSections(card: ContactCard, profile: ProfileMeResponse | null
 
 function essentialFacts(fields: ContactCardFields): DetailItem[] {
   return compactItems([
-    maybeItem(Phone, "Phone", fields.phone),
+    maybeItem(
+      Phone,
+      "Phone",
+      fields.phone.trim()
+        ? formatCardPhone(
+            normalizeDialCode(fields.countryCode || "+1"),
+            fields.phone,
+          )
+        : "",
+    ),
     maybeItem(Mail, "Email", fields.email),
     maybeItem(Building2, "Company", fields.company),
     maybeItem(MapPin, "Address", fields.address),
@@ -345,6 +366,44 @@ async function shareCard(card: ContactCard) {
     logUiError("Could not share card", error);
     toast.error("We couldn't share this card right now.");
   }
+}
+
+async function copyCardLink(card: ContactCard) {
+  const url = `${window.location.origin}${getCardDetailPath(card.id)}`;
+  try {
+    await navigator.clipboard.writeText(url);
+    toast.success("Link copied.");
+  } catch (error) {
+    logUiError("Could not copy card link", error);
+    toast.error("Could not copy link.");
+  }
+}
+
+function downloadContactStub(card: ContactCard, fields: ContactCardFields) {
+  const lines = [
+    "BEGIN:VCARD",
+    "VERSION:3.0",
+    `FN:${fields.displayName || card.name}`,
+    fields.title ? `TITLE:${fields.title}` : null,
+    fields.company ? `ORG:${fields.company}` : null,
+    fields.phone
+      ? `TEL;TYPE=CELL:${normalizeDialCode(fields.countryCode)} ${fields.phone}`
+      : null,
+    fields.email ? `EMAIL:${fields.email}` : null,
+    fields.website ? `URL:${fields.website}` : null,
+    "END:VCARD",
+  ].filter(Boolean);
+
+  const blob = new Blob([lines.join("\n")], { type: "text/vcard;charset=utf-8" });
+  const href = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = href;
+  anchor.download = `${(fields.displayName || card.name || "contact")
+    .replace(/\s+/g, "-")
+    .toLowerCase()}.vcf`;
+  anchor.click();
+  URL.revokeObjectURL(href);
+  toast.success("Contact file downloaded.");
 }
 
 export default function CardDetailPage() {
@@ -483,12 +542,12 @@ function CardDetailPreview({
   card: ContactCard;
   profile: ProfileMeResponse | null;
 }) {
-  const [face, setFace] = useState<LiveCardFace>("front");
-  const [orientation, setOrientation] = useState<LiveCardOrientation>("portrait");
   const [showMore, setShowMore] = useState(false);
 
   const fields = useMemo(() => fieldsFromCard(card, profile), [card, profile]);
   const theme = useMemo(() => themeFromCard(card), [card]);
+  const template = useMemo(() => templateFromCard(card), [card]);
+  const templateMeta = CARD_TEMPLATE_OPTIONS.find((item) => item.id === template);
   const facts = useMemo(() => essentialFacts(fields), [fields]);
   const extraSections = useMemo(
     () => (card.fields ? [] : cardDetailSections(card, profile)),
@@ -498,36 +557,23 @@ function CardDetailPreview({
   return (
     <section className="grid items-start gap-6 lg:grid-cols-[minmax(280px,340px)_minmax(0,1fr)] lg:gap-8">
       {/* Shareable card — primary surface */}
-      <aside className="rounded-[22px] border border-border bg-muted/30 p-4 sm:p-5">
-        <div className="mb-4 space-y-2">
-          <SegmentedTabs
-            aria-label="Card orientation"
-            className="w-full"
-            value={orientation}
-            onChange={setOrientation}
-            items={[
-              { key: "portrait", label: "Mobile" },
-              { key: "landscape", label: "Landscape" },
-            ]}
-          />
-          <SegmentedTabs
-            aria-label="Card face"
-            className="w-full"
-            value={face}
-            onChange={setFace}
-            items={[
-              { key: "front", label: "Front" },
-              { key: "back", label: "Back" },
-            ]}
-          />
+      <aside className="rounded-[22px] border border-border bg-[#12151C] p-4 sm:p-5">
+        <div className="mb-4">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-white/45">
+            {templateMeta?.label ?? "Connect"} template
+          </p>
+          <p className="mt-1 text-xs text-white/55">
+            {templateMeta?.description}
+          </p>
         </div>
-        <div className="flex justify-center overflow-x-auto py-1">
-          <LiveCardPreview
-            fields={fields}
-            theme={theme}
-            face={face}
-            orientation={orientation}
-          />
+        <div className="flex justify-center overflow-x-auto py-2">
+          <div className="w-full max-w-[300px] drop-shadow-[0_20px_40px_rgba(0,0,0,0.4)]">
+            <LiveCardPreview
+              fields={fields}
+              theme={theme}
+              template={template}
+            />
+          </div>
         </div>
       </aside>
 
@@ -551,15 +597,41 @@ function CardDetailPreview({
                 <p className="mt-1.5 text-sm text-muted-foreground">{fields.title}</p>
               ) : null}
             </div>
+          </div>
+
+          <div className="mt-5 grid gap-2 sm:grid-cols-3">
             <Button
               type="button"
               size="sm"
+              className="justify-center"
               onClick={() => {
                 void shareCard(card);
               }}
             >
               <Share2 className="h-4 w-4" aria-hidden="true" />
-              Share card
+              Share
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="justify-center"
+              onClick={() => {
+                void copyCardLink(card);
+              }}
+            >
+              <Copy className="h-4 w-4" aria-hidden="true" />
+              Copy link
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="justify-center"
+              onClick={() => downloadContactStub(card, fields)}
+            >
+              <Download className="h-4 w-4" aria-hidden="true" />
+              Save contact
             </Button>
           </div>
 

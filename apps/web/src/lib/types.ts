@@ -52,6 +52,9 @@ export type ContactCardType = "BUSINESS" | "PERSONAL" | "PAYMENT" | "CUSTOM";
 export type ContactCardFields = {
   displayName: string;
   title: string;
+  /** E.164-style dial prefix, e.g. "+971". */
+  countryCode: string;
+  /** National / local phone digits (no country code). */
   phone: string;
   email: string;
   company: string;
@@ -61,6 +64,11 @@ export type ContactCardFields = {
   twitter: string;
   facebook: string;
   instagram: string;
+  /**
+   * Compressed data-URL headshot for the live card avatar.
+   * Local UI pass only until media upload API exists.
+   */
+  photoDataUrl: string;
 };
 
 /** Theme for shareable card chrome (preset id or custom hex). */
@@ -68,6 +76,13 @@ export type ContactCardTheme = {
   presetId: string;
   primary: string;
 };
+
+/**
+ * Mobile portrait layout templates.
+ * - connect: white identity panel, CTAs, socials (share page)
+ * - scan: solid theme card with brand pill, details, and QR
+ */
+export type ContactCardTemplate = "connect" | "scan";
 
 export type ContactCard = {
   id: string;
@@ -79,6 +94,7 @@ export type ContactCard = {
   /** Optional maker payload — present on locally created cards during UI pass. */
   fields?: ContactCardFields;
   theme?: ContactCardTheme;
+  template?: ContactCardTemplate;
 };
 
 export type ContactImportSummary = {

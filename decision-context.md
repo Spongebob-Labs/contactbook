@@ -1,5 +1,54 @@
 # Decision Context
 
+## 2026-07-20 - Remove Gallery Template Silhouette
+
+- Decision: Remove `CardGalleryMark` (Connect/Scan silhouette + theme swatch) from Dashboard and Cards gallery tiles.
+- Reason: Cluttered card list tiles without adding useful scan value; template/theme belong in maker/detail, not gallery chrome.
+- Files: `dashboard-page.tsx`, `cards-page.tsx`, deleted `card-gallery-mark.tsx`, `decision-context.md`.
+
+## 2026-07-19 - Card Profile Photo Upload
+
+- Decision: Add `photoDataUrl` on maker fields with an Upload/Change/Remove control in Main details. Compress to ≤512px JPEG client-side for localStorage. Render the photo on Connect + Scan avatars, Cards gallery, and Dashboard tiles; initials remain the fallback.
+- Reason: Executive networking cards need a real headshot in the live preview, not only placeholders.
+- Files: `types.ts`, `card-maker.ts`, `card-photo-upload.tsx`, `live-card-preview.tsx`, `card-onboarding-page.tsx`, `card-detail-page.tsx`, `cards-page.tsx`, `dashboard-page.tsx`, `decision-context.md`.
+
+## 2026-07-19 - Executive Card Polish
+
+- Decision: Elevate Connect + Scan to event-ready craft. Expand `resolveCardSurface` tokens (heroInk/metaInk/pageWash/CTA/social). Recalibrate Brass to `#C4A882`. Connect: tiered CTAs with icons, solid social badges, themed page wash. Scan: dual-ink hierarchy, QR caption, soft atmosphere gradient. Maker: thumbnail template chooser + dark lit preview stage; Template section first. Detail: Share / Copy link / Save contact (vCard stub) cluster + dark stage. Gallery: template silhouette + theme swatch.
+- Reason: Cards must feel designed for CEO/CTO networking handoffs, not form previews.
+- Files: `card-maker.ts`, `live-card-preview.tsx`, `card-template-chooser.tsx`, `card-gallery-mark.tsx`, `card-theme-picker.tsx`, `card-onboarding-page.tsx`, `card-detail-page.tsx`, `cards-page.tsx`, `dashboard-page.tsx`, `decision-context.md`.
+
+## 2026-07-19 - Connect / Scan Templates (No Front-Back)
+
+- Decision: Replace Front/Back and Mobile/Landscape with two mobile-portrait templates — **Connect** (white share page: avatar, identity, CTAs, socials) and **Scan** (solid theme card: brand pill, details, QR). Persist `template` on local cards; picker lives on the live maker preview. Color presets/custom hex unchanged. Scan matches the reference (no address row).
+- Reason: Cards are shareable networking surfaces; users choose a layout template, not a physical card flip or landscape face.
+- Files: `types.ts`, `card-maker.ts`, `local-cards.ts`, `live-card-preview.tsx`, `card-onboarding-page.tsx`, `card-detail-page.tsx`, `decision-context.md`.
+- Alternatives considered: Keep Front/Back as aliases for the two layouts — rejected (confusing). Landscape — removed per product direction.
+
+## 2026-07-19 - Solid Themes + Circular Socials
+
+- Decision: Remove gradient themes; palette is solid swatches + custom hex only. Soften live-card type from heavy bold to medium/semibold. Place Facebook / X / LinkedIn in three circular badge containers on the mobile front footer.
+- Reason: Gradients and overly heavy type felt off; socials needed a cleaner professional treatment.
+- Files: `card-maker.ts`, `types.ts`, `card-theme-picker.tsx`, `live-card-preview.tsx`, `decision-context.md`.
+
+## 2026-07-19 - Card Phone Field Fix + Gradient Themes
+
+- Decision: Split country code and phone into two adjacent fields (no nested overflow select). Expand theme presets with gradient pairs (`primary` + `secondary`); custom picker supports both stops. Refine live card type/spacing/contrast; deepen light accents for ink on white; solid faces use gradient surfaces with adaptive foreground.
+- Reason: Nested dial select visually broke out of the phone box; limited flat colors and light brass type lacked launch-ready polish for networking cards.
+- Files: `card-onboarding-page.tsx`, `card-theme-picker.tsx`, `card-maker.ts`, `types.ts`, `live-card-preview.tsx`, `decision-context.md`.
+
+## 2026-07-19 - Synergy Card Layout + Country Code
+
+- Decision: Rebuild live card faces to match Synergy references — portrait front as mobile share page (overlapping avatar, white identity panel, themed CTAs/socials); portrait/landscape back as solid theme card with brand pill, hierarchy, and QR. Add separate `countryCode` (+) field before phone in the maker; display as `+971 50 …`. Keep swatch/custom theme coloring; default theme Brass to match reference gold.
+- Reason: User wants the shareable card itself to match the professional reference layouts, not the prior congested template; country code must be explicit for international networking.
+- Files: `live-card-preview.tsx`, `card-maker.ts`, `types.ts`, `card-onboarding-page.tsx`, `card-display.ts`, `card-detail-page.tsx`, `decision-context.md`.
+
+## 2026-07-19 - Cards Gallery Uniformity And Type Contrast
+
+- Decision: Maker-card display details overlay a profile baseline so empty field slots never collapse the gallery model. Always render the same five detail rows (Company, Phone, Email, Location, Online). Increase gallery type size/weight/contrast on Cards and Dashboard.
+- Reason: Incomplete local creates looked empty next to sample cards; 10px muted detail text lacked pulse on monitors.
+- Files: `card-display.ts`, `cards-page.tsx`, `dashboard-page.tsx`, `decision-context.md`.
+
 ## 2026-07-19 - Card Detail Shareable Hub Revamp
 
 - Decision: Rebuild Card Detail around the live shareable preview (Mobile/Landscape × Front/Back) plus a compact “On this card” fact list. Remove the dense icon-tile sections as the primary view; tuck profile-composed extras behind a collapsible “Profile extras” block when maker fields are absent.

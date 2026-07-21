@@ -21,7 +21,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import SplitText from "@/components/ui/SplitText";
 import SpotlightCard from "@/components/ui/SpotlightCard";
 import { apiFetch } from "@/lib/api";
-import { getCardDisplayDetails } from "@/lib/card-display";
+import { getCardDisplayDetails, getCardGalleryFields } from "@/lib/card-display";
 import { cardTypeStyles } from "@/lib/card-styles";
 import { friendlyErrorMessages, logUiError } from "@/lib/friendly-errors";
 import { listLocalCards, USE_LOCAL_CARDS } from "@/lib/local-cards";
@@ -285,75 +285,96 @@ function CardsGalleryCard({
 }) {
   const details = getCardDisplayDetails(card, profile);
   const style = cardTypeStyles[card.type];
-  const fields = [
-    { icon: Building2, label: "Company", value: details.company },
-    { icon: Phone, label: "Phone", value: details.phone },
-    { icon: Mail, label: "Email", value: details.email },
-    { icon: MapPin, label: "Location", value: details.location },
-    { icon: Globe2, label: "Online", value: details.social },
-  ].filter((field) => Boolean(field.value));
+  const fields = getCardGalleryFields(details);
+  const fieldIcons = {
+    Company: Building2,
+    Phone,
+    Email: Mail,
+    Location: MapPin,
+    Online: Globe2,
+  } as const;
 
   return (
     <SpotlightCard
       className={cn(
-        "group rounded-[14px] border border-border bg-card p-5 transition-all duration-300 hover:border-border-strong",
+        "group flex h-full flex-col rounded-[14px] border border-border bg-card p-5 transition-all duration-300 hover:border-border-strong",
         featured && "border-t-2 border-t-primary border-accent-border",
       )}
       spotlightColor={
         featured ? "rgba(200,184,154,0.08)" : "rgba(255,255,255,0.03)"
       }
     >
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex items-center justify-between gap-3">
         <span
           className={cn(
-            "rounded px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.12em]",
+            "rounded px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.1em]",
             featured
               ? "bg-accent-subtle text-primary"
-              : "bg-muted text-muted-foreground",
+              : "bg-muted text-foreground/70",
           )}
         >
           {cardTypeLabels[card.type]}
         </span>
-        <span className="text-[9px] text-muted-foreground/60">
+        <span className="text-[11px] font-medium text-muted-foreground">
           Updated {formatDate(card.updatedAt)}
         </span>
       </div>
 
-      <div className="mb-3 flex justify-center">
+      <div className="mb-3.5 flex justify-center">
         <div
           className={cn(
-            "flex h-12 w-12 items-center justify-center rounded-full text-[14px] font-bold",
-            featured ? style.initialsClassName : style.initialsMutedClassName,
+            "flex h-14 w-14 items-center justify-center overflow-hidden rounded-full text-[15px] font-bold",
+            !card.fields?.photoDataUrl &&
+              (featured ? style.initialsClassName : style.initialsMutedClassName),
           )}
         >
-          {details.initials}
+          {card.fields?.photoDataUrl ? (
+            <img
+              src={card.fields.photoDataUrl}
+              alt=""
+              className="h-full w-full object-cover"
+              draggable={false}
+            />
+          ) : (
+            details.initials
+          )}
         </div>
       </div>
 
       <div className="mb-4 text-center">
-        <p className="text-[14px] font-semibold tracking-[-0.02em] text-foreground">
+        <p className="font-display text-[17px] font-bold tracking-[-0.02em] text-foreground">
           {details.name}
         </p>
-        {details.role && (
-          <p className="mt-0.5 text-[11px] text-muted-foreground">{details.role}</p>
-        )}
+        <p className="mt-1 text-[13px] font-medium text-foreground/70">
+          {details.role || "Contact"}
+        </p>
       </div>
 
-      <div className="mb-3 h-px bg-muted" />
+      <div className="mb-3.5 h-px bg-border" />
 
-      <div className="grid grid-cols-2 gap-y-2">
-        {fields.map((field) => (
-          <div key={field.label} className="flex min-w-0 items-center gap-1.5">
-            <field.icon
-              className="h-2.5 w-2.5 shrink-0 text-primary opacity-60"
-              aria-hidden="true"
-            />
-            <span className="truncate text-[10px] text-muted-foreground">{field.value}</span>
-          </div>
-        ))}
+      <div className="grid flex-1 grid-cols-2 gap-x-3 gap-y-3 content-start">
+        {fields.map((field) => {
+          const Icon = fieldIcons[field.label];
+          return (
+            <div key={field.label} className="flex min-w-0 items-start gap-2">
+              <Icon
+                className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary"
+                aria-hidden="true"
+              />
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                  {field.label}
+                </p>
+                <p className="mt-0.5 truncate text-[13px] font-semibold text-foreground">
+                  {field.value}
+                </p>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
-      <div className="mt-4 flex items-center gap-2 border-t border-border pt-3 opacity-80 transition-opacity duration-200 group-hover:opacity-100">
+      <div className="mt-5 flex items-center gap-2 border-t border-border pt-3.5">
         <Link
           to={getCardDetailPath(card.id)}
           className={cn(buttonVariants({ size: "sm" }), "flex-1 justify-center")}
