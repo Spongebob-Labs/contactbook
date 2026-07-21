@@ -23,7 +23,6 @@ import { Select } from "@/components/ui/select";
 import { apiFetch } from "@/lib/api";
 import {
   CARD_DIAL_OPTIONS,
-  CARD_TEMPLATE_OPTIONS,
   DEFAULT_CARD_TEMPLATE,
   DEFAULT_CARD_THEME,
   EMPTY_CARD_FIELDS,
@@ -142,30 +141,17 @@ function LivePreviewPane({
   fields,
   theme,
   template,
-  showChooser = true,
 }: {
   fields: ContactCardFields;
   theme: ContactCardTheme;
   template: ContactCardTemplate;
-  showChooser?: boolean;
 }) {
-  const selected = CARD_TEMPLATE_OPTIONS.find((item) => item.id === template);
-
   return (
-    <div className="space-y-4">
-      {showChooser ? null : (
-        <p className="text-center text-xs leading-relaxed text-muted-foreground">
-          {selected?.description ?? "This is what they’ll see on their phone."}
-        </p>
-      )}
-      <div className="flex justify-center rounded-[28px] bg-[#12151C] px-4 py-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
-        <div className="w-full max-w-[300px] drop-shadow-[0_24px_48px_rgba(0,0,0,0.45)]">
-          <LiveCardPreview fields={fields} theme={theme} template={template} />
-        </div>
+    <div className="flex h-full min-h-0 w-full items-center justify-center overflow-hidden px-2">
+      {/* Wider stage; light scale so the full card stays in one view */}
+      <div className="w-full max-w-[360px] origin-center scale-[0.86] xl:scale-[0.92]">
+        <LiveCardPreview fields={fields} theme={theme} template={template} />
       </div>
-      <p className="text-center text-xs leading-relaxed text-muted-foreground">
-        This is what they’ll see on their phone.
-      </p>
     </div>
   );
 }
@@ -187,19 +173,9 @@ export function CardOnboardingModal({
   const [isSaving, setIsSaving] = useState(false);
   const [templateOpen, setTemplateOpen] = useState(true);
   const [detailsOpen, setDetailsOpen] = useState(true);
-  const [colorOpen, setColorOpen] = useState(true);
+  const [colorOpen, setColorOpen] = useState(false);
   const [socialsOpen, setSocialsOpen] = useState(false);
-  const [mobilePreviewOpen, setMobilePreviewOpen] = useState(true);
-
-  const selectedType = cardTypeOptions.find((option) => option.value === type);
-  const detailsHint =
-    template === "scan"
-      ? "Name, phone, and email sit front-and-center on Scan."
-      : "Name, contact, and organization on the Connect share page.";
-  const socialsHint =
-    template === "scan"
-      ? "Socials appear on Connect; optional for Scan cards."
-      : "Shown as themed badges at the bottom of Connect.";
+  const [mobilePreviewOpen, setMobilePreviewOpen] = useState(false);
 
   const updateField = <K extends keyof ContactCardFields>(
     key: K,
@@ -284,13 +260,9 @@ export function CardOnboardingModal({
                 </Badge>
                 <h1 className="mt-3 font-display text-2xl font-semibold tracking-tight">
                   {isSetupMode
-                    ? "Create your first ContactBook card."
-                    : "Create a ContactBook card."}
+                    ? "Create your first card"
+                    : "Create a card"}
                 </h1>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Pick a template, add your details — this is what they’ll see on
-                  their phone.
-                </p>
               </div>
               <Button
                 type="button"
@@ -298,40 +270,42 @@ export function CardOnboardingModal({
                 onClick={skipCard}
                 className="self-start"
               >
-                Skip for now
+                Skip
                 <ArrowRight className="h-4 w-4" aria-hidden="true" />
               </Button>
             </div>
 
-            {/* Mobile / tablet live preview — collapsible */}
+            {/* Mobile / tablet live preview — collapsible, closed by default */}
             <div className="mt-5 lg:hidden">
               <CollapsibleSection
-                title="Live preview"
-                description="Staged phone view of your card."
+                title="Preview"
+                description="Your card"
                 icon={<BadgeCheck className="h-4 w-4" aria-hidden="true" />}
                 open={mobilePreviewOpen}
                 onOpenChange={setMobilePreviewOpen}
               >
-                <LivePreviewPane
-                  fields={fields}
-                  theme={theme}
-                  template={template}
-                  showChooser={false}
-                />
+                <div className="flex justify-center rounded-2xl bg-[#12151C] py-4">
+                  <div className="w-full max-w-[340px] origin-top scale-[0.9]">
+                    <LiveCardPreview
+                      fields={fields}
+                      theme={theme}
+                      template={template}
+                    />
+                  </div>
+                </div>
               </CollapsibleSection>
             </div>
 
-            <div className="mt-6 grid gap-4">
+            <div className="mt-6 grid gap-3">
               <CollapsibleSection
                 title="Template"
-                description="Connect for actions, Scan for QR handoff."
+                description="Connect or Scan"
                 icon={<LayoutTemplate className="h-4 w-4" aria-hidden="true" />}
                 open={templateOpen}
                 onOpenChange={setTemplateOpen}
               >
                 <CardTemplateChooser
                   value={template}
-                  theme={theme}
                   onChange={setTemplate}
                 />
               </CollapsibleSection>
@@ -345,11 +319,7 @@ export function CardOnboardingModal({
                     placeholder="My personal card"
                   />
                 </Field>
-                <Field
-                  id="card-type"
-                  label="Card type"
-                  hint={selectedType?.description}
-                >
+                <Field id="card-type" label="Card type">
                   <Select
                     id="card-type"
                     value={type}
@@ -368,7 +338,7 @@ export function CardOnboardingModal({
 
               <CollapsibleSection
                 title="Main details"
-                description={detailsHint}
+                description="Name and contact"
                 icon={<UserRound className="h-4 w-4" aria-hidden="true" />}
                 open={detailsOpen}
                 onOpenChange={setDetailsOpen}
@@ -409,11 +379,7 @@ export function CardOnboardingModal({
                     />
                   </Field>
                   <div className="sm:col-span-2">
-                    <Field
-                      id="phone"
-                      label="Phone"
-                      hint="Choose a country code, then enter the local number."
-                    >
+                    <Field id="phone" label="Phone">
                       <div className="grid grid-cols-[6.25rem_minmax(0,1fr)] gap-2">
                         <Select
                           id="country-code"
@@ -508,8 +474,8 @@ export function CardOnboardingModal({
               </CollapsibleSection>
 
               <CollapsibleSection
-                title="Card color"
-                description="Premium swatches or a custom hex."
+                title="Color"
+                description="Theme"
                 icon={
                   <span
                     className="h-3.5 w-3.5 rounded-full"
@@ -525,7 +491,7 @@ export function CardOnboardingModal({
 
               <CollapsibleSection
                 title="Socials"
-                description={socialsHint}
+                description="Optional"
                 icon={<Share2 className="h-4 w-4" aria-hidden="true" />}
                 open={socialsOpen}
                 onOpenChange={setSocialsOpen}
@@ -598,22 +564,18 @@ export function CardOnboardingModal({
           </div>
         </div>
 
-        {/* Desktop live preview — independent scroll */}
-        <aside className="hidden min-h-0 min-w-0 flex-col border-l border-border bg-muted/35 lg:flex">
-          <div className="shrink-0 border-b border-border px-5 py-4 lg:px-6">
-            <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+        {/* Desktop live preview — fixed, full card in one view */}
+        <aside className="hidden min-h-0 min-w-0 flex-col overflow-hidden border-l border-border bg-[#12151C] lg:flex">
+          <div className="shrink-0 px-5 py-3 lg:px-6">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-white/45">
               Live card
             </p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              This is what they’ll see on their phone.
-            </p>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 lg:px-6">
+          <div className="min-h-0 flex-1 overflow-hidden px-3 pb-4">
             <LivePreviewPane
               fields={fields}
               theme={theme}
               template={template}
-              showChooser={false}
             />
           </div>
         </aside>

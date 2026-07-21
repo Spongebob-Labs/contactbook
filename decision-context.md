@@ -1,5 +1,23 @@
 # Decision Context
 
+## 2026-07-21 - Connect Width + Scan Reference Fit
+
+- Decision: Widen Connect to `max-w-[360px]` for fuller mobile share fill. Rebuild Scan to Synergy reference proportions (`aspect-[3/4.55]`, `max-w-[340px]`): tighter spacing, white type on solid fill, QR plate only (no captions). Preview stage uses lighter scale so cards read larger.
+- Reason: Client-approved Scan layout must match the shared reference; Connect felt too narrow for real phone handoff.
+- Files: `live-card-preview.tsx`, `card-maker.ts`, `card-onboarding-page.tsx`, `decision-context.md`.
+
+## 2026-07-21 - Create Card Maker Declutter
+
+- Decision: Template chooser is text-only Connect/Scan segmented control (no thumbnails). Live preview pane is fixed/non-scrolling with scale-to-fit so the full card is visible at a glance. Trim section copy; Color/Socials/mobile preview collapsed by default.
+- Reason: Maker felt cluttered — duplicate visual chrome, scrolling preview, and verbose helper text hurt UX.
+- Files: `card-template-chooser.tsx`, `card-onboarding-page.tsx`, `card-maker.ts`, `card-theme-picker.tsx`, `card-photo-upload.tsx`, `decision-context.md`.
+
+## 2026-07-21 - Collapsed Sidebar Scrollbar Fix
+
+- Decision: On the collapsed icon rail, hide overflow (`overflow-hidden`) on the sidebar content root and nav. Expanded nav keeps `overflow-y-auto` with `overflow-x-hidden`.
+- Reason: Narrow rail was showing a stray horizontal scrollbar thumb at the bottom — meaningless chrome in the collapsed state.
+- Files: `app-shell.tsx`, `decision-context.md`.
+
 ## 2026-07-20 - Remove Gallery Template Silhouette
 
 - Decision: Remove `CardGalleryMark` (Connect/Scan silhouette + theme swatch) from Dashboard and Cards gallery tiles.

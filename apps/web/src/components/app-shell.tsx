@@ -138,7 +138,12 @@ export function AppShell({ children, headerActions }: AppShellProps) {
     const rail = collapsed && !isMobile;
 
     return (
-      <div className={cn("flex h-full flex-col", rail && "items-center")}>
+      <div
+        className={cn(
+          "flex h-full flex-col",
+          rail && "items-center overflow-hidden",
+        )}
+      >
         <div
           className={cn(
             "relative mb-3 flex shrink-0 items-center",
@@ -190,8 +195,10 @@ export function AppShell({ children, headerActions }: AppShellProps) {
 
         <nav
           className={cn(
-            "flex flex-1 flex-col gap-1 overflow-y-auto",
-            rail ? "w-full items-center px-1.5" : "px-1.5",
+            "flex flex-1 flex-col gap-1",
+            rail
+              ? "w-full items-center overflow-hidden px-1.5"
+              : "overflow-x-hidden overflow-y-auto px-1.5",
           )}
           aria-label="Primary"
         >
