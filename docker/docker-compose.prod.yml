@@ -1,0 +1,34 @@
+# VM deployment compose file. Copied to the VM by .github/workflows/deploy.yml,
+# which also writes a sibling .env (rendered from individual GitHub secrets) and
+# exports API_IMAGE before running `docker compose pull && up -d`.
+#
+# The image is pulled from Docker Hub — it is NOT built on the VM.
+services:
+  contactbook-api:
+    image: ${API_IMAGE}
+    container_name: contactbook-api
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Fixed container port so the host mapping below stays stable regardless of
+      # what any PORT value in .env says. The Nest app reads process.env.PORT.
+      NODE_ENV: production
+      PORT: "8080"
+      # GCS profile-photo storage: no key file. On a GCE VM the app authenticates
+      # via the instance's attached service account (ADC). Attach an SA with
+      # roles/storage.objectAdmin on the bucket to enable photo uploads; without
+      # one, uploads/deletes fail gracefully and the rest of the API works.
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

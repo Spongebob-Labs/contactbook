@@ -1,0 +1,181 @@
+# Deploy the ContactBook API to a VM via Docker.
+#
+# Flow on push to main:
+#   test        → reusable api-test.yml (typecheck + jest), env from individual secrets
+#   build-push  → build the image and push it to Docker Hub
+#   deploy      → SSH to the VM, write .env from individual secrets, docker compose up
+#
+# Required GitHub secrets
+#   Registry / VM access:
+#     DOCKER_USERNAME, DOCKER_PASSWORD   Docker Hub login (password or access token)
+#     SSH_HOST, SSH_USERNAME, SSH_KEY    VM SSH access (private key). Optional: SSH_PORT
+#   Runtime env (one secret per var — see scripts/render-api-env.sh for the full list):
+#     DATABASE_URL, DIRECT_URL, JWT_SECRET, TWILIO_*, OPENWA_*, GOOGLE_*, GCS_*, ...
+#
+# The VM's SSH user must be in the `docker` group so `docker` runs without sudo.
+
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/deploy.yml"
+      - ".github/workflows/api-test.yml"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "package.json"
+      - "apps/api/**"
+      - "packages/**"
+      - "scripts/**"
+      - "docker/docker-compose.prod.yml"
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    uses: ./.github/workflows/api-test.yml
+    secrets: inherit
+    with:
+      fetch_depth: 0
+
+  build-push:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Render minimal build env (for prisma generate)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+        run: |
+          ./scripts/render-api-env.sh apps/api/.env
+          test -s apps/api/.env || { echo "Failed to render apps/api/.env"; exit 1; }
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        env:
+          DOCKER_BUILD_RECORD_UPLOAD: false
+          DOCKER_BUILD_SUMMARY: false
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/contactbook-api:latest
+            ${{ secrets.DOCKER_USERNAME }}/contactbook-api:${{ github.sha }}
+          provenance: false
+          sbom: false
+          secret-files: |
+            api_env=${{ github.workspace }}/apps/api/.env
+          cache-from: type=gha
+          cache-to: type=gha,mode=min
+
+  deploy:
+    needs: build-push
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DIRECT_URL: ${{ secrets.DIRECT_URL }}
+      CORS_ORIGIN: ${{ secrets.CORS_ORIGIN }}
+      JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      JWT_EXPIRES_IN: ${{ secrets.JWT_EXPIRES_IN }}
+      JWT_REFRESH_EXPIRES_IN: ${{ secrets.JWT_REFRESH_EXPIRES_IN }}
+      JWT_PHONE_VERIFY_EXPIRES_IN: ${{ secrets.JWT_PHONE_VERIFY_EXPIRES_IN }}
+      AUTH_COOKIE_SAME_SITE: ${{ secrets.AUTH_COOKIE_SAME_SITE }}
+      COOKIE_SECURE: ${{ secrets.COOKIE_SECURE }}
+      APP_PUBLIC_URL: ${{ secrets.APP_PUBLIC_URL }}
+      WEB_APP_URL: ${{ secrets.WEB_APP_URL }}
+      WHATSAPP_PROVIDER: ${{ secrets.WHATSAPP_PROVIDER }}
+      OPENWA_BASE_URL: ${{ secrets.OPENWA_BASE_URL }}
+      OPENWA_API_KEY: ${{ secrets.OPENWA_API_KEY }}
+      OPENWA_SESSION_ID: ${{ secrets.OPENWA_SESSION_ID }}
+      OPENWA_SENDER_PHONE: ${{ secrets.OPENWA_SENDER_PHONE }}
+      OPENWA_WEBHOOK_SECRET: ${{ secrets.OPENWA_WEBHOOK_SECRET }}
+      OPENWA_REQUEST_TIMEOUT_MS: ${{ secrets.OPENWA_REQUEST_TIMEOUT_MS }}
+      OPENWA_DELIVERY_POLL_ATTEMPTS: ${{ secrets.OPENWA_DELIVERY_POLL_ATTEMPTS }}
+      OPENWA_DELIVERY_POLL_INTERVAL_MS: ${{ secrets.OPENWA_DELIVERY_POLL_INTERVAL_MS }}
+      LOGIN_BROADCAST_ENABLED: ${{ secrets.LOGIN_BROADCAST_ENABLED }}
+      LOGIN_BROADCAST_RECIPIENTS: ${{ secrets.LOGIN_BROADCAST_RECIPIENTS }}
+      DUMMY_OTP_LOGIN_ENABLED: ${{ secrets.DUMMY_OTP_LOGIN_ENABLED }}
+      TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+      TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+      TWILIO_VERIFY_SERVICE_SID: ${{ secrets.TWILIO_VERIFY_SERVICE_SID }}
+      TWILIO_WHATSAPP_FROM: ${{ secrets.TWILIO_WHATSAPP_FROM }}
+      TWILIO_OTP_CONTENT_SID: ${{ secrets.TWILIO_OTP_CONTENT_SID }}
+      TWILIO_INBOUND_WEBHOOK_ENABLED: ${{ secrets.TWILIO_INBOUND_WEBHOOK_ENABLED }}
+      TWILIO_WA_CONNECTION_CONTENT_SID: ${{ secrets.TWILIO_WA_CONNECTION_CONTENT_SID }}
+      TWILIO_WA_CARD_PICK_CONTENT_SID: ${{ secrets.TWILIO_WA_CARD_PICK_CONTENT_SID }}
+      WHATSAPP_CLOUD_VERIFY_TOKEN: ${{ secrets.WHATSAPP_CLOUD_VERIFY_TOKEN }}
+      WHATSAPP_CLOUD_APP_SECRET: ${{ secrets.WHATSAPP_CLOUD_APP_SECRET }}
+      GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+      GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+      OAUTH_TOKEN_ENCRYPTION_KEY_BASE64: ${{ secrets.OAUTH_TOKEN_ENCRYPTION_KEY_BASE64 }}
+      FINANCIAL_FIELD_ENCRYPTION_KEY_BASE64: ${{ secrets.FINANCIAL_FIELD_ENCRYPTION_KEY_BASE64 }}
+      GCS_PROFILE_PHOTOS_BUCKET: ${{ secrets.GCS_PROFILE_PHOTOS_BUCKET }}
+      GCS_PUBLIC_BASE_URL: ${{ secrets.GCS_PUBLIC_BASE_URL }}
+      GCS_PROJECT_ID: ${{ secrets.GCS_PROJECT_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Stage deployment bundle (compose + .env)
+        run: |
+          set -euo pipefail
+          mkdir -p deploy-bundle
+          cp docker/docker-compose.prod.yml deploy-bundle/docker-compose.yml
+          ./scripts/render-api-env.sh deploy-bundle/.env
+          test -s deploy-bundle/.env || { echo "Rendered .env is empty — check the runtime secrets."; exit 1; }
+
+      - name: Copy bundle to VM
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          source: "deploy-bundle/docker-compose.yml,deploy-bundle/.env"
+          target: "~/contactbook-api"
+          strip_components: 1
+          overwrite: true
+
+      - name: Pull image and restart on VM
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+          IMAGE_TAG: ${{ github.sha }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          envs: DOCKER_USERNAME,DOCKER_PASSWORD,IMAGE_TAG
+          script: |
+            set -euo pipefail
+            cd ~/contactbook-api
+            echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+            export API_IMAGE="${DOCKER_USERNAME}/contactbook-api:${IMAGE_TAG}"
+            echo "Deploying ${API_IMAGE}"
+            docker compose pull
+            docker compose up -d --remove-orphans
+            docker image prune -af
+            docker logout
