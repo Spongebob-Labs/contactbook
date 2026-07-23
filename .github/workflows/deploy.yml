@@ -144,6 +144,10 @@ jobs:
           cp docker/docker-compose.prod.yml deploy-bundle/docker-compose.yml
           ./scripts/render-api-env.sh deploy-bundle/.env
           test -s deploy-bundle/.env || { echo "Rendered .env is empty — check the runtime secrets."; exit 1; }
+          # render-api-env.sh writes .env as 600; scp-action tars the bundle from
+          # inside a container as a different UID and can't read it. Relax to 644
+          # for the (encrypted) transfer; it's re-locked to 600 on the VM below.
+          chmod 644 deploy-bundle/.env
 
       - name: Copy bundle to VM
         uses: appleboy/scp-action@v0.1.7
@@ -172,6 +176,7 @@ jobs:
           script: |
             set -euo pipefail
             cd ~/contactbook-api
+            chmod 600 .env
             echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
             export API_IMAGE="${DOCKER_USERNAME}/contactbook-api:${IMAGE_TAG}"
             echo "Deploying ${API_IMAGE}"
