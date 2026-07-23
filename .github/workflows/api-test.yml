@@ -21,54 +21,58 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    env:
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      DIRECT_URL: ${{ secrets.DIRECT_URL }}
-      CORS_ORIGIN: ${{ secrets.CORS_ORIGIN }}
-      JWT_SECRET: ${{ secrets.JWT_SECRET }}
-      JWT_EXPIRES_IN: ${{ secrets.JWT_EXPIRES_IN }}
-      JWT_REFRESH_EXPIRES_IN: ${{ secrets.JWT_REFRESH_EXPIRES_IN }}
-      JWT_PHONE_VERIFY_EXPIRES_IN: ${{ secrets.JWT_PHONE_VERIFY_EXPIRES_IN }}
-      AUTH_COOKIE_SAME_SITE: ${{ secrets.AUTH_COOKIE_SAME_SITE }}
-      COOKIE_SECURE: ${{ secrets.COOKIE_SECURE }}
-      APP_PUBLIC_URL: ${{ secrets.APP_PUBLIC_URL }}
-      WEB_APP_URL: ${{ secrets.WEB_APP_URL }}
-      WHATSAPP_PROVIDER: ${{ secrets.WHATSAPP_PROVIDER }}
-      OPENWA_BASE_URL: ${{ secrets.OPENWA_BASE_URL }}
-      OPENWA_API_KEY: ${{ secrets.OPENWA_API_KEY }}
-      OPENWA_SESSION_ID: ${{ secrets.OPENWA_SESSION_ID }}
-      OPENWA_SENDER_PHONE: ${{ secrets.OPENWA_SENDER_PHONE }}
-      OPENWA_WEBHOOK_SECRET: ${{ secrets.OPENWA_WEBHOOK_SECRET }}
-      OPENWA_REQUEST_TIMEOUT_MS: ${{ secrets.OPENWA_REQUEST_TIMEOUT_MS }}
-      OPENWA_DELIVERY_POLL_ATTEMPTS: ${{ secrets.OPENWA_DELIVERY_POLL_ATTEMPTS }}
-      OPENWA_DELIVERY_POLL_INTERVAL_MS: ${{ secrets.OPENWA_DELIVERY_POLL_INTERVAL_MS }}
-      LOGIN_BROADCAST_ENABLED: ${{ secrets.LOGIN_BROADCAST_ENABLED }}
-      LOGIN_BROADCAST_RECIPIENTS: ${{ secrets.LOGIN_BROADCAST_RECIPIENTS }}
-      DUMMY_OTP_LOGIN_ENABLED: ${{ secrets.DUMMY_OTP_LOGIN_ENABLED }}
-      TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
-      TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
-      TWILIO_VERIFY_SERVICE_SID: ${{ secrets.TWILIO_VERIFY_SERVICE_SID }}
-      TWILIO_WHATSAPP_FROM: ${{ secrets.TWILIO_WHATSAPP_FROM }}
-      TWILIO_OTP_CONTENT_SID: ${{ secrets.TWILIO_OTP_CONTENT_SID }}
-      TWILIO_INBOUND_WEBHOOK_ENABLED: ${{ secrets.TWILIO_INBOUND_WEBHOOK_ENABLED }}
-      TWILIO_WA_CONNECTION_CONTENT_SID: ${{ secrets.TWILIO_WA_CONNECTION_CONTENT_SID }}
-      TWILIO_WA_CARD_PICK_CONTENT_SID: ${{ secrets.TWILIO_WA_CARD_PICK_CONTENT_SID }}
-      WHATSAPP_CLOUD_VERIFY_TOKEN: ${{ secrets.WHATSAPP_CLOUD_VERIFY_TOKEN }}
-      WHATSAPP_CLOUD_APP_SECRET: ${{ secrets.WHATSAPP_CLOUD_APP_SECRET }}
-      GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
-      GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
-      OAUTH_TOKEN_ENCRYPTION_KEY_BASE64: ${{ secrets.OAUTH_TOKEN_ENCRYPTION_KEY_BASE64 }}
-      FINANCIAL_FIELD_ENCRYPTION_KEY_BASE64: ${{ secrets.FINANCIAL_FIELD_ENCRYPTION_KEY_BASE64 }}
-      GCS_PROFILE_PHOTOS_BUCKET: ${{ secrets.GCS_PROFILE_PHOTOS_BUCKET }}
-      GCS_PUBLIC_BASE_URL: ${{ secrets.GCS_PUBLIC_BASE_URL }}
-      GCS_PROJECT_ID: ${{ secrets.GCS_PROJECT_ID }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: ${{ inputs.fetch_depth }}
 
+      # Env is scoped to THIS step only: render-api-env.sh needs the values to
+      # write apps/api/.env, but they must NOT leak into the jest process — some
+      # validators (e.g. IsProfilePhotoUrl) read process.env directly and would
+      # change behaviour under test. Tests read config from the app, not the shell.
       - name: Render API env from secrets
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+          CORS_ORIGIN: ${{ secrets.CORS_ORIGIN }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          JWT_EXPIRES_IN: ${{ secrets.JWT_EXPIRES_IN }}
+          JWT_REFRESH_EXPIRES_IN: ${{ secrets.JWT_REFRESH_EXPIRES_IN }}
+          JWT_PHONE_VERIFY_EXPIRES_IN: ${{ secrets.JWT_PHONE_VERIFY_EXPIRES_IN }}
+          AUTH_COOKIE_SAME_SITE: ${{ secrets.AUTH_COOKIE_SAME_SITE }}
+          COOKIE_SECURE: ${{ secrets.COOKIE_SECURE }}
+          APP_PUBLIC_URL: ${{ secrets.APP_PUBLIC_URL }}
+          WEB_APP_URL: ${{ secrets.WEB_APP_URL }}
+          WHATSAPP_PROVIDER: ${{ secrets.WHATSAPP_PROVIDER }}
+          OPENWA_BASE_URL: ${{ secrets.OPENWA_BASE_URL }}
+          OPENWA_API_KEY: ${{ secrets.OPENWA_API_KEY }}
+          OPENWA_SESSION_ID: ${{ secrets.OPENWA_SESSION_ID }}
+          OPENWA_SENDER_PHONE: ${{ secrets.OPENWA_SENDER_PHONE }}
+          OPENWA_WEBHOOK_SECRET: ${{ secrets.OPENWA_WEBHOOK_SECRET }}
+          OPENWA_REQUEST_TIMEOUT_MS: ${{ secrets.OPENWA_REQUEST_TIMEOUT_MS }}
+          OPENWA_DELIVERY_POLL_ATTEMPTS: ${{ secrets.OPENWA_DELIVERY_POLL_ATTEMPTS }}
+          OPENWA_DELIVERY_POLL_INTERVAL_MS: ${{ secrets.OPENWA_DELIVERY_POLL_INTERVAL_MS }}
+          LOGIN_BROADCAST_ENABLED: ${{ secrets.LOGIN_BROADCAST_ENABLED }}
+          LOGIN_BROADCAST_RECIPIENTS: ${{ secrets.LOGIN_BROADCAST_RECIPIENTS }}
+          DUMMY_OTP_LOGIN_ENABLED: ${{ secrets.DUMMY_OTP_LOGIN_ENABLED }}
+          TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+          TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+          TWILIO_VERIFY_SERVICE_SID: ${{ secrets.TWILIO_VERIFY_SERVICE_SID }}
+          TWILIO_WHATSAPP_FROM: ${{ secrets.TWILIO_WHATSAPP_FROM }}
+          TWILIO_OTP_CONTENT_SID: ${{ secrets.TWILIO_OTP_CONTENT_SID }}
+          TWILIO_INBOUND_WEBHOOK_ENABLED: ${{ secrets.TWILIO_INBOUND_WEBHOOK_ENABLED }}
+          TWILIO_WA_CONNECTION_CONTENT_SID: ${{ secrets.TWILIO_WA_CONNECTION_CONTENT_SID }}
+          TWILIO_WA_CARD_PICK_CONTENT_SID: ${{ secrets.TWILIO_WA_CARD_PICK_CONTENT_SID }}
+          WHATSAPP_CLOUD_VERIFY_TOKEN: ${{ secrets.WHATSAPP_CLOUD_VERIFY_TOKEN }}
+          WHATSAPP_CLOUD_APP_SECRET: ${{ secrets.WHATSAPP_CLOUD_APP_SECRET }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          OAUTH_TOKEN_ENCRYPTION_KEY_BASE64: ${{ secrets.OAUTH_TOKEN_ENCRYPTION_KEY_BASE64 }}
+          FINANCIAL_FIELD_ENCRYPTION_KEY_BASE64: ${{ secrets.FINANCIAL_FIELD_ENCRYPTION_KEY_BASE64 }}
+          GCS_PROFILE_PHOTOS_BUCKET: ${{ secrets.GCS_PROFILE_PHOTOS_BUCKET }}
+          GCS_PUBLIC_BASE_URL: ${{ secrets.GCS_PUBLIC_BASE_URL }}
+          GCS_PROJECT_ID: ${{ secrets.GCS_PROJECT_ID }}
         run: |
           ./scripts/render-api-env.sh apps/api/.env
           test -s apps/api/.env || { echo "apps/api/.env is empty — are the GitHub secrets set?"; exit 1; }
