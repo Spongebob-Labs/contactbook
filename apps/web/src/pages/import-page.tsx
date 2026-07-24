@@ -1,14 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { AlertCircle, ArrowRight, RefreshCw, Users } from "lucide-react";
+import { AlertCircle, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
 import { ContactImportOptions } from "@/components/contact-import-options";
 import { Alert } from "@/components/ui/alert";
-import { Button, buttonVariants } from "@/components/ui/button";
-import CountUp from "@/components/ui/CountUp";
-import SplitText from "@/components/ui/SplitText";
-import SpotlightCard from "@/components/ui/SpotlightCard";
+import { buttonVariants } from "@/components/ui/button";
+import { PageHeader } from "@/components/ui/page-header";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { buildContactImportSummary } from "@/lib/contact-summary";
 import {
   fetchAllContacts,
@@ -250,83 +249,72 @@ export default function ImportPage() {
 
   return (
     <AppShell>
-      <section className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <SplitText text="Import" className="title-display" delay={70} tag="h1" />
-          <p className="mt-1 flex flex-wrap items-center gap-2 text-[13px] text-muted-foreground">
-            <span>
-              {hasConnectedGoogle
-                ? "Sync Google or upload a VCF to add contacts."
-                : "Connect a source to bring contacts into ContactBook."}
-            </span>
-            {isMockData && (
-              <span className="rounded border border-accent-border bg-accent-subtle px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-primary">
-                Sample data
+      <div className="space-y-6">
+        <PageHeader
+          title="Import"
+          subtitle={
+            <span className="inline-flex flex-wrap items-center gap-2">
+              <span>
+                {hasConnectedGoogle
+                  ? "Sync Google or upload a VCF to add contacts."
+                  : "Connect a source to bring contacts into ContactBook."}
               </span>
-            )}
-          </p>
-          {hasConnectedGoogle && (
-            <p className="mt-2 text-[11px] text-primary">
-              Google connected · Last sync {googleLastSync}
-            </p>
-          )}
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {hasConnectedGoogle ? (
-            <Button
-              type="button"
-              onClick={() => void syncGoogle()}
-              disabled={isSyncing}
+              {isMockData ? (
+                <StatusBadge variant="neutral">Sample data</StatusBadge>
+              ) : null}
+            </span>
+          }
+          actions={
+            <Link
+              to="/dashboard/contacts"
+              className={cn(buttonVariants({ variant: "secondary" }), "shrink-0")}
             >
-              <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
-              {isSyncing ? "Syncing…" : "Sync now"}
-            </Button>
-          ) : (
-            <Button
-              type="button"
-              onClick={() => void connectGoogle()}
-              disabled={isConnectingGoogle}
-            >
-              {isConnectingGoogle ? "Connecting…" : "Connect Google"}
-            </Button>
-          )}
-        </div>
-      </section>
+              View contacts
+              <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+            </Link>
+          }
+        />
 
-      <section className="mb-8 flex flex-wrap items-center gap-6 border-b border-border pb-6">
-        <div>
-          <span className="font-display text-[22px] font-bold tracking-[-0.04em] text-foreground">
-            <CountUp from={0} to={totalContacts} duration={1.2} />
-          </span>
-          <span className="ml-2 text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
-            total
-          </span>
-        </div>
-        <div className="hidden h-5 w-px bg-border sm:block" aria-hidden="true" />
-        <div>
-          <span className="font-display text-[22px] font-bold tracking-[-0.04em] text-foreground">
-            <CountUp from={0} to={googleCount} duration={1} />
-          </span>
-          <span className="ml-2 text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
-            google
-          </span>
-        </div>
-        <div className="hidden h-5 w-px bg-border sm:block" aria-hidden="true" />
-        <div>
-          <span className="font-display text-[22px] font-bold tracking-[-0.04em] text-foreground">
-            <CountUp from={0} to={vcfCount} duration={1} />
-          </span>
-          <span className="ml-2 text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
-            vcf
-          </span>
-        </div>
-        <div className="ml-auto text-[11px] text-muted-foreground">
-          Last activity · {lastActivity}
-        </div>
-      </section>
+        <section className="inline-flex flex-wrap items-stretch overflow-hidden rounded-lg border border-border bg-surface">
+          <div className="px-5 py-4">
+            <p className="text-3xl font-bold tracking-[-0.01em] text-foreground">
+              {isLoading ? "—" : totalContacts}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">Total</p>
+          </div>
+          <div className="w-px self-stretch bg-border" aria-hidden="true" />
+          <div className="px-5 py-4">
+            <p className="text-3xl font-bold tracking-[-0.01em] text-foreground">
+              {isLoading ? "—" : googleCount}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">Google</p>
+          </div>
+          <div className="w-px self-stretch bg-border" aria-hidden="true" />
+          <div className="px-5 py-4">
+            <p className="text-3xl font-bold tracking-[-0.01em] text-foreground">
+              {isLoading ? "—" : vcfCount}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">VCF</p>
+          </div>
+          <div className="flex items-center border-t border-border px-5 py-3 text-xs text-muted-foreground sm:border-l sm:border-t-0">
+            Last activity · {lastActivity}
+          </div>
+        </section>
+
+      {error && (
+        <Alert className="flex items-start gap-3">
+          <AlertCircle className="mt-0.5 h-4 w-4 text-destructive" aria-hidden="true" />
+          <div>
+            <p className="font-medium">Could not load import status</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {friendlyErrorMessages.load}
+            </p>
+          </div>
+        </Alert>
+      )}
 
       {vcfError && (
-        <Alert className="mb-4 flex items-start gap-3">
+        <Alert className="flex items-start gap-3">
           <AlertCircle className="mt-0.5 h-4 w-4 text-destructive" aria-hidden="true" />
           <div>
             <p className="font-medium">VCF import failed</p>
@@ -335,62 +323,28 @@ export default function ImportPage() {
         </Alert>
       )}
 
-      <section
-        className={cn(
-          "grid gap-4",
-          hasConnectedGoogle ? "lg:grid-cols-2" : "lg:grid-cols-1",
-        )}
-      >
-        <ContactImportOptions
-          hideGoogle={hasConnectedGoogle}
-          onConnectGoogle={connectGoogle}
-          isConnectingGoogle={isConnectingGoogle}
-          onUploadVcf={uploadVcf}
-          isUploadingVcf={isUploadingVcf}
-        />
-
-        {hasConnectedGoogle && (
-          <SpotlightCard
-            className="rounded-[14px] border border-border bg-card"
-            spotlightColor="rgba(200,184,154,0.06)"
-          >
-            <div className="flex h-full min-h-52 flex-col p-5">
-              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-accent-subtle text-primary">
-                <Users className="h-5 w-5" aria-hidden="true" />
-              </div>
-              <div className="mt-5 flex-1">
-                <h2 className="text-lg font-semibold tracking-normal">
-                  Contacts directory
-                </h2>
-                {error ? (
-                  <Alert className="mt-3 flex items-start gap-3">
-                    <AlertCircle className="mt-0.5 h-4 w-4 text-destructive" />
-                    <div>
-                      <p className="font-medium">Could not load import status</p>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        {friendlyErrorMessages.load}
-                      </p>
-                    </div>
-                  </Alert>
-                ) : (
-                  <p className="mt-2 text-[13px] text-muted-foreground">
-                    {isLoading
-                      ? "Loading…"
-                      : `${totalContacts} contacts ready to review.`}
-                  </p>
-                )}
-              </div>
-              <Link
-                to="/dashboard/contacts"
-                className={cn(buttonVariants(), "mt-5 w-full justify-center")}
-              >
-                View contacts
-                <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-              </Link>
-            </div>
-          </SpotlightCard>
-        )}
-      </section>
+      <ContactImportOptions
+        onConnectGoogle={connectGoogle}
+        isConnectingGoogle={isConnectingGoogle}
+        googleConnected={hasConnectedGoogle}
+        onSyncGoogle={() => void syncGoogle()}
+        isSyncingGoogle={isSyncing}
+        googleMeta={
+          hasConnectedGoogle
+            ? `${googleCount} contacts · Last sync ${googleLastSync}`
+            : undefined
+        }
+        onUploadVcf={uploadVcf}
+        isUploadingVcf={isUploadingVcf}
+        vcfMeta={
+          vcfCount > 0
+            ? `${vcfCount} contacts · Last activity ${formatDate(
+                vcfSummary?.lastSync?.at ?? vcfSummary?.lastSyncAt ?? null,
+              )}`
+            : undefined
+        }
+      />
+      </div>
     </AppShell>
   );
 }

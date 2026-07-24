@@ -1,29 +1,20 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowRight,
-  Building2,
-  Globe2,
-  IdCard,
-  Link2,
-  Mail,
-  MapPin,
-  Phone,
+  CreditCard,
+  Import,
   Plus,
-  QrCode,
-  Share2,
   UserRound,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
-import { Button, buttonVariants } from "@/components/ui/button";
-import CountUp from "@/components/ui/CountUp";
-import SplitText from "@/components/ui/SplitText";
-import SpotlightCard from "@/components/ui/SpotlightCard";
+import { CardPairTile } from "@/components/cards/card-pair-tile";
+import { buttonVariants } from "@/components/ui/button";
+import { Panel } from "@/components/ui/panel";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { apiFetch } from "@/lib/api";
 import { fetchImportSummary } from "@/lib/contacts-api";
-import { getCardDisplayDetails, getCardGalleryFields } from "@/lib/card-display";
-import { cardTypeStyles } from "@/lib/card-styles";
 import {
   getMissingProfileSections,
   getProfileCompletion,
@@ -50,26 +41,12 @@ import {
 import { cn } from "@/lib/utils";
 
 type OnboardingStep = "profile" | "import" | "card";
-type DashboardNudgeId = "add-card" | "review-profile";
-
-const DASHBOARD_NUDGE_IDS: DashboardNudgeId[] = ["add-card", "review-profile"];
-
-const cardTypeLabels: Record<ContactCardType, string> = {
-  BUSINESS: "Business",
-  PERSONAL: "Personal",
-  PAYMENT: "Custom",
-  CUSTOM: "Custom",
-};
 
 function getOnboardingStep(value: string | null): OnboardingStep | null {
   if (value === "profile" || value === "import" || value === "card") {
     return value;
   }
   return null;
-}
-
-function getInitialDashboardNudgeState(): Record<DashboardNudgeId, boolean> {
-  return { "add-card": false, "review-profile": false };
 }
 
 function getTimeOfDayGreeting() {
@@ -79,62 +56,11 @@ function getTimeOfDayGreeting() {
   return "evening";
 }
 
-function isDashboardNudgeEligible(id: DashboardNudgeId) {
-  return id === "add-card" || id === "review-profile";
-}
-
 function getSafeReturnPath(value: string | null) {
   if (!value || !value.startsWith("/") || value.startsWith("//")) {
     return null;
   }
   return value;
-}
-
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-  }).format(new Date(value));
-}
-
-function getCardDetailPath(cardId: string) {
-  return `/dashboard/cards/${cardId}`;
-}
-
-async function shareCard(card: ContactCard) {
-  const url = `${window.location.origin}${getCardDetailPath(card.id)}`;
-  const shareData = {
-    title: card.name,
-    text: `Open ${card.name} in ContactBook.`,
-    url,
-  };
-
-  try {
-    if (navigator.share) {
-      await navigator.share(shareData);
-      return;
-    }
-
-    await navigator.clipboard.writeText(url);
-    toast.success("Card link copied.");
-  } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") {
-      return;
-    }
-
-    logUiError("Could not share card", error);
-    toast.error("We couldn't share this card right now.");
-  }
-}
-
-async function copyCardLink(card: ContactCard) {
-  const url = `${window.location.origin}${getCardDetailPath(card.id)}`;
-  try {
-    await navigator.clipboard.writeText(url);
-    toast.success("Card link copied.");
-  } catch (error) {
-    logUiError("Could not copy card link", error);
-    toast.error("We couldn't copy this link right now.");
-  }
 }
 
 type StarterCardRequest = {
@@ -176,77 +102,35 @@ export default function DashboardPage() {
   const [profile, setProfile] = useState<ProfileMeResponse | null>(null);
   const [importSummary, setImportSummary] = useState<ContactImportSummary | null>(null);
   const [isMockData, setIsMockData] = useState(false);
-  const [activeShareCardIndex, setActiveShareCardIndex] = useState(0);
-  const [dismissedNudges, setDismissedNudges] = useState<
-    Record<DashboardNudgeId, boolean>
-  >(getInitialDashboardNudgeState);
-  const [isPostOnboardingNudgeSession, setIsPostOnboardingNudgeSession] =
-    useState(false);
   const hasConsumedPostOnboardingRoute = useRef(false);
-  const addCardNudgeRef = useRef<HTMLAnchorElement>(null);
-  const reviewProfileNudgeRef = useRef<HTMLAnchorElement>(null);
   const onboardingStep = getOnboardingStep(searchParams.get("onboarding"));
   const returnTo = getSafeReturnPath(searchParams.get("returnTo"));
   const isSetupFlow = searchParams.get("flow") === "setup";
   const profileCompletion = getProfileCompletion(profile);
   const missingProfileSections = getMissingProfileSections(profile);
   const isPostOnboardingLanding = isSetupFlow && onboardingStep === null;
-  const visibleCards = cards.slice(0, 4);
+  const visibleCards = cards.slice(0, 6);
   const connectionCount = importSummary?.totalActive ?? 0;
   const firstName =
     profile?.identity.firstName?.trim() ||
     profile?.identity.primaryEmail?.split("@")[0] ||
     "there";
   const timeOfDay = getTimeOfDayGreeting();
-  const shareCards = visibleCards.length > 0 ? visibleCards : cards.slice(0, 2);
-  const activeShareCard = shareCards[activeShareCardIndex] ?? shareCards[0] ?? null;
-  const dashboardNudges: DashboardNudge[] = [
-    {
-      id: "add-card",
-      icon: IdCard,
-      targetRef: addCardNudgeRef,
-      title: "Add another card",
-      detail:
-        "Create a separate card for another context, role, or way you share your details.",
-      action: "Add card",
-    },
-    {
-      id: "review-profile",
-      icon: UserRound,
-      targetRef: reviewProfileNudgeRef,
-      title:
-        profileCompletion.percent === 100
-          ? "Review your profile details"
-          : "Complete your profile details",
-      detail:
-        profileCompletion.percent === 100
-          ? "Check saved fields and edit anything that should stay current across your cards."
-          : "Add the missing details so every card can stay accurate.",
-      action: profileCompletion.percent === 100 ? "Review profile" : "Update profile",
-    },
-  ];
-  const activeNudge =
-    isPostOnboardingNudgeSession && onboardingStep === null
-      ? dashboardNudges.find((nudge) => {
-          if (dismissedNudges[nudge.id]) {
-            return false;
-          }
-
-          return isDashboardNudgeEligible(nudge.id);
-        }) ?? null
-      : null;
 
   const setOnboardingStep = useCallback(
     (step: OnboardingStep | null) => {
-      setSearchParams((current) => {
-        const next = new URLSearchParams(current);
-        if (step) {
-          next.set("onboarding", step);
-        } else {
-          next.delete("onboarding");
-        }
-        return next;
-      }, { replace: true });
+      setSearchParams(
+        (current) => {
+          const next = new URLSearchParams(current);
+          if (step) {
+            next.set("onboarding", step);
+          } else {
+            next.delete("onboarding");
+          }
+          return next;
+        },
+        { replace: true },
+      );
     },
     [setSearchParams],
   );
@@ -371,7 +255,9 @@ export default function DashboardPage() {
           await completeSetupStarterCards(result.identity);
         } catch (error) {
           logUiError("Could not create starter cards", error);
-          toast.error("Your profile was saved, but we couldn't create your cards right now.");
+          toast.error(
+            "Your profile was saved, but we couldn't create your cards right now.",
+          );
         }
       }
 
@@ -396,37 +282,15 @@ export default function DashboardPage() {
     }
 
     hasConsumedPostOnboardingRoute.current = true;
-    setDismissedNudges(getInitialDashboardNudgeState());
-    setIsPostOnboardingNudgeSession(true);
-    setSearchParams((current) => {
-      const next = new URLSearchParams(current);
-      next.delete("flow");
-      return next;
-    }, { replace: true });
-  }, [isPostOnboardingLanding, setSearchParams]);
-
-  const dismissDashboardNudge = useCallback((id: DashboardNudgeId) => {
-    setDismissedNudges((current) => ({ ...current, [id]: true }));
-  }, []);
-
-  useEffect(() => {
-    if (!isPostOnboardingNudgeSession) {
-      return;
-    }
-
-    const hasRemainingNudge = DASHBOARD_NUDGE_IDS.some(
-      (id) => !dismissedNudges[id] && isDashboardNudgeEligible(id),
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        next.delete("flow");
+        return next;
+      },
+      { replace: true },
     );
-    if (!hasRemainingNudge) {
-      setIsPostOnboardingNudgeSession(false);
-    }
-  }, [dismissedNudges, isPostOnboardingNudgeSession]);
-
-  useEffect(() => {
-    if (activeShareCardIndex >= shareCards.length) {
-      setActiveShareCardIndex(0);
-    }
-  }, [activeShareCardIndex, shareCards.length]);
+  }, [isPostOnboardingLanding, setSearchParams]);
 
   useEffect(() => {
     let isMounted = true;
@@ -447,119 +311,74 @@ export default function DashboardPage() {
 
   return (
     <AppShell>
-      {/* Header */}
-      <section className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
-          <SplitText
-            text={`Good ${timeOfDay}, ${firstName}`}
-            className="title-display"
-            delay={80}
-            animationFrom={{ opacity: 0, transform: "translateY(8px)" }}
-            animationTo={{ opacity: 1, transform: "translateY(0)" }}
-            tag="h1"
-          />
-          <p className="mt-1 flex flex-wrap items-center gap-2 text-[13px] text-muted-foreground">
-            <span>
-              {cards.length} cards · {connectionCount} connections
-            </span>
-            {isMockData && (
-              <span className="rounded border border-accent-border bg-accent-subtle px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-primary">
+      <section className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 space-y-2">
+          <h1 className="title-display">
+            Good {timeOfDay}, {firstName}
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Here&apos;s your networking snapshot.
+            {isMockData ? (
+              <StatusBadge variant="neutral" className="ml-2 align-middle">
                 Sample data
-              </span>
-            )}
+              </StatusBadge>
+            ) : null}
           </p>
         </div>
         <Link
-          ref={addCardNudgeRef}
           to="/dashboard?onboarding=card&returnTo=/dashboard"
-          className={cn(
-            buttonVariants(),
-            "shrink-0",
-            activeNudge?.id === "add-card" &&
-              "relative z-[60] outline outline-2 outline-dashed outline-primary outline-offset-4",
-          )}
-          onClick={() => {
-            if (activeNudge?.id === "add-card") {
-              dismissDashboardNudge("add-card");
-            }
-          }}
+          className={cn(buttonVariants(), "shrink-0 self-start")}
         >
           <Plus className="h-3.5 w-3.5" aria-hidden="true" />
           New card
         </Link>
       </section>
 
-      {/* Slim stat strip */}
-      <section className="mb-8 flex flex-wrap items-center gap-6 border-b border-border pb-6">
-        <div>
-          <span className="font-display text-[22px] font-bold tracking-[-0.04em] text-foreground">
-            <CountUp from={0} to={connectionCount} duration={1.2} />
-          </span>
-          <span className="ml-2 text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
-            connections
-          </span>
-        </div>
-        <div className="hidden h-5 w-px bg-border sm:block" aria-hidden="true" />
-        <div>
-          <span className="font-display text-[22px] font-bold tracking-[-0.04em] text-foreground">
-            <CountUp from={0} to={cards.length} duration={1} />
-          </span>
-          <span className="ml-2 text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
-            cards
-          </span>
-        </div>
-        <div className="hidden h-5 w-px bg-border sm:block" aria-hidden="true" />
-        <div className="flex max-w-[220px] flex-1 items-center gap-2">
-          <span className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
-            Profile
-          </span>
-          <div className="h-[2px] max-w-[120px] flex-1 rounded-full bg-muted">
-            <div
-              className="h-[2px] rounded-full bg-primary transition-all duration-1000"
-              style={{ width: `${profileCompletion.percent}%` }}
-            />
+      <section className="mb-8">
+        <div className="inline-flex items-stretch overflow-hidden rounded-md border border-border bg-surface">
+          <div className="px-5 py-4">
+            <p className="text-3xl font-bold tracking-[-0.01em] text-foreground">
+              {cards.length}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">Cards</p>
           </div>
-          <span className="text-[11px] text-primary">{profileCompletion.percent}%</span>
+          <div className="w-px self-stretch bg-border" aria-hidden="true" />
+          <div className="px-5 py-4">
+            <p className="text-3xl font-bold tracking-[-0.01em] text-foreground">
+              {connectionCount}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">Contacts</p>
+          </div>
         </div>
       </section>
 
-      {/* Your cards */}
       <section className="mb-8">
-        <div className="mb-4 flex items-center justify-between">
-          <span className="label-section">Your cards</span>
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h2 className="title-section">Your cards</h2>
           <Link
             to="/dashboard/cards"
-            className="flex items-center gap-1 text-[12px] text-primary transition-colors hover:text-primary"
+            className="flex items-center gap-1 text-sm text-muted-foreground transition-colors duration-150 hover:text-foreground"
           >
             View all
-            <ArrowRight className="h-3 w-3" aria-hidden="true" />
+            <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
           </Link>
         </div>
 
         {visibleCards.length > 0 ? (
-          <div className="grid gap-4 md:grid-cols-2">
-            {visibleCards.map((card, index) => (
-              <div
-                key={card.id}
-                className="app-fade-up"
-                style={{ animationDelay: `${index * 0.15}s` }}
-              >
-                <DashboardSpotlightCard
-                  card={card}
-                  featured={index === 0}
-                  index={index}
-                  profile={profile}
-                />
-              </div>
+          <div className="flex gap-4 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {visibleCards.map((card) => (
+              <CardPairTile key={card.id} card={card} className="w-[376px]" />
             ))}
           </div>
         ) : (
-          <div className="rounded-[14px] border border-dashed border-border bg-card p-6">
+          <Panel className="border-dashed">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p className="text-sm font-semibold text-foreground">No cards yet</p>
-                <p className="mt-1 text-[13px] text-muted-foreground">
-                  Create a personal or work card when you are ready.
+                <p className="text-sm font-semibold text-foreground">
+                  Create your first card
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Start with a personal or work card when you are ready.
                 </p>
               </div>
               <Link
@@ -567,132 +386,79 @@ export default function DashboardPage() {
                 className={cn(buttonVariants(), "shrink-0")}
               >
                 <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-                New card
+                Create card
               </Link>
             </div>
-          </div>
+          </Panel>
         )}
       </section>
 
-      {/* Bottom row */}
-      <section className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-[14px] border border-border bg-card p-5 app-fade-up">
-          <p className="text-[13px] font-semibold text-foreground">Profile completion</p>
-          <p className="mt-1 text-[11px] text-muted-foreground">
-            {profileCompletion.completed} of {profileCompletion.total} sections done
-          </p>
-          <div className="mb-4 mt-4 h-[3px] rounded-full bg-muted">
-            <div
-              className="h-[3px] rounded-full bg-primary transition-all duration-1000"
-              style={{ width: `${profileCompletion.percent}%` }}
-            />
+      {profileCompletion.percent < 100 ? (
+        <section className="mb-8 overflow-hidden rounded-lg bg-primary px-5 py-4 text-primary-foreground sm:px-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold">
+                Complete your profile to get the most out of ContactBook
+              </p>
+              <p className="mt-1 text-sm text-primary-foreground/70">
+                {Math.max(profileCompletion.total - profileCompletion.completed, 0)}{" "}
+                {profileCompletion.total - profileCompletion.completed === 1
+                  ? "section"
+                  : "sections"}{" "}
+                left
+                {missingProfileSections[0]
+                  ? ` · Next: ${missingProfileSections[0]}`
+                  : ""}
+              </p>
+            </div>
+            <Link
+              to="/profile"
+              className={cn(
+                buttonVariants({ variant: "secondary" }),
+                "shrink-0 border-0 bg-white text-foreground hover:bg-white/90",
+              )}
+            >
+              Complete profile
+            </Link>
           </div>
-          <div className="flex flex-col gap-2">
-            {(missingProfileSections.length > 0
-              ? missingProfileSections
-              : ["All core sections complete"]
-            ).map((field) => (
-              <div
-                key={field}
-                className="flex items-center gap-2 text-[11px] text-muted-foreground"
-              >
-                <div
-                  className={cn(
-                    "h-1 w-1 rounded-full",
-                    missingProfileSections.length > 0
-                      ? "bg-primary opacity-50"
-                      : "bg-primary",
-                  )}
-                />
-                {field}
-              </div>
-            ))}
-          </div>
+        </section>
+      ) : null}
+
+      <section>
+        <h2 className="title-section mb-4">Next steps</h2>
+        <div className="grid gap-4 sm:grid-cols-3">
           <Link
-            ref={reviewProfileNudgeRef}
-            to="/profile"
-            className={cn(
-              "mt-4 flex w-full items-center justify-center rounded-[7px] border border-accent-border py-2 text-[11px] font-semibold text-primary transition-colors hover:bg-accent-subtle",
-              activeNudge?.id === "review-profile" &&
-                "relative z-[60] outline outline-2 outline-dashed outline-primary outline-offset-4",
-            )}
-            onClick={() => {
-              if (activeNudge?.id === "review-profile") {
-                dismissDashboardNudge("review-profile");
-              }
-            }}
+            to="/dashboard?onboarding=card&returnTo=/dashboard"
+            className="rounded-lg border border-border bg-surface p-5 transition-colors duration-150 hover:bg-bg-hover"
           >
-            {profileCompletion.percent === 100 ? "Review profile →" : "Complete profile →"}
-          </Link>
-        </div>
-
-        <div className="rounded-[14px] border border-border bg-card p-5 app-fade-up">
-          <p className="text-[13px] font-semibold text-foreground">Quick share</p>
-          <p className="mt-1 text-[11px] text-muted-foreground">
-            Share your active card instantly
-          </p>
-
-          {shareCards.length > 0 ? (
-            <>
-              <div className="mb-4 mt-4 flex flex-wrap gap-2">
-                {shareCards.map((card, index) => (
-                  <button
-                    key={card.id}
-                    type="button"
-                    onClick={() => setActiveShareCardIndex(index)}
-                    className={cn(
-                      "rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.06em] transition-colors",
-                      activeShareCardIndex === index
-                        ? "bg-accent-subtle text-primary"
-                        : "bg-muted text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    {cardTypeLabels[card.type]}
-                  </button>
-                ))}
-              </div>
-
-              <div className="flex items-center gap-4">
-                <div className="flex h-[72px] w-[72px] shrink-0 items-center justify-center rounded-[10px] border border-border bg-muted/60">
-                  <QrCode className="h-8 w-8 text-muted-foreground/60" aria-hidden="true" />
-                </div>
-                <div className="flex flex-1 flex-col gap-2">
-                  <button
-                    type="button"
-                    disabled={!activeShareCard}
-                    onClick={() => {
-                      if (activeShareCard) void shareCard(activeShareCard);
-                    }}
-                    className={cn(
-                      buttonVariants({ size: "sm" }),
-                      "w-full justify-center",
-                    )}
-                  >
-                    <Share2 className="h-3 w-3" aria-hidden="true" />
-                    Share now
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!activeShareCard}
-                    onClick={() => {
-                      if (activeShareCard) void copyCardLink(activeShareCard);
-                    }}
-                    className={cn(
-                      buttonVariants({ variant: "outline", size: "sm" }),
-                      "w-full justify-center",
-                    )}
-                  >
-                    <Link2 className="h-3 w-3" aria-hidden="true" />
-                    Copy link
-                  </button>
-                </div>
-              </div>
-            </>
-          ) : (
-            <p className="mt-4 text-[11px] text-muted-foreground">
-              Create a card to enable quick sharing.
+            <CreditCard className="mb-3 h-5 w-5 text-foreground" aria-hidden="true" />
+            <p className="text-sm font-semibold text-foreground">
+              Create your first card
             </p>
-          )}
+            <p className="mt-1 text-xs text-muted-foreground">
+              Build a Connect or Scan card for sharing.
+            </p>
+          </Link>
+          <Link
+            to="/dashboard/import"
+            className="rounded-lg border border-border bg-surface p-5 transition-colors duration-150 hover:bg-bg-hover"
+          >
+            <Import className="mb-3 h-5 w-5 text-foreground" aria-hidden="true" />
+            <p className="text-sm font-semibold text-foreground">Import contacts</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Sync Google Contacts or upload a VCF file.
+            </p>
+          </Link>
+          <Link
+            to="/profile"
+            className="rounded-lg border border-border bg-surface p-5 transition-colors duration-150 hover:bg-bg-hover"
+          >
+            <UserRound className="mb-3 h-5 w-5 text-foreground" aria-hidden="true" />
+            <p className="text-sm font-semibold text-foreground">Add profile photo</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Keep the details that appear on your cards current.
+            </p>
+          </Link>
         </div>
       </section>
 
@@ -719,7 +485,9 @@ export default function DashboardPage() {
           mode="create"
           onComplete={(card) => {
             setCards((current) =>
-              current.some((item) => item.id === card.id) ? current : [card, ...current],
+              current.some((item) => item.id === card.id)
+                ? current
+                : [card, ...current],
             );
             navigate(`/dashboard/cards/${card.id}`, {
               replace: true,
@@ -729,260 +497,6 @@ export default function DashboardPage() {
           onSkip={() => setOnboardingStep(null)}
         />
       )}
-      {activeNudge && (
-        <DashboardNudgeOverlay
-          nudge={activeNudge}
-          onDismiss={dismissDashboardNudge}
-        />
-      )}
     </AppShell>
-  );
-}
-
-
-type DashboardNudge = {
-  action: string;
-  detail: string;
-  icon: typeof IdCard;
-  id: DashboardNudgeId;
-  targetRef: RefObject<HTMLElement | null>;
-  title: string;
-};
-
-type SpotlightTargetRect = {
-  bottom: number;
-  height: number;
-  left: number;
-  top: number;
-  width: number;
-};
-
-function DashboardNudgeOverlay({
-  nudge,
-  onDismiss,
-}: {
-  nudge: DashboardNudge;
-  onDismiss: (id: DashboardNudgeId) => void;
-}) {
-  const Icon = nudge.icon;
-  const [targetRect, setTargetRect] = useState<SpotlightTargetRect | null>(null);
-
-  useEffect(() => {
-    const measureTarget = () => {
-      const target = nudge.targetRef.current;
-      if (!target) {
-        setTargetRect(null);
-        return;
-      }
-
-      const rect = target.getBoundingClientRect();
-      setTargetRect({
-        bottom: rect.bottom,
-        height: rect.height,
-        left: rect.left,
-        top: rect.top,
-        width: rect.width,
-      });
-    };
-
-    measureTarget();
-    window.addEventListener("resize", measureTarget);
-    window.addEventListener("scroll", measureTarget, true);
-    return () => {
-      window.removeEventListener("resize", measureTarget);
-      window.removeEventListener("scroll", measureTarget, true);
-    };
-  }, [nudge.targetRef]);
-
-  const viewportWidth = typeof window === "undefined" ? 1024 : window.innerWidth;
-  const calloutWidth = Math.min(360, Math.max(280, viewportWidth - 32));
-  const targetCenter = targetRect
-    ? targetRect.left + targetRect.width / 2
-    : viewportWidth / 2;
-  const calloutLeft = Math.min(
-    Math.max(16, targetCenter - calloutWidth / 2),
-    Math.max(16, viewportWidth - calloutWidth - 16),
-  );
-  const calloutTop = targetRect ? targetRect.bottom + 28 : 140;
-  const arrowLeft = Math.min(
-    Math.max(24, targetCenter - calloutLeft),
-    calloutWidth - 24,
-  );
-
-  return (
-    <div className="fixed inset-0 z-50">
-      <button
-        type="button"
-        aria-label="Dismiss dashboard nudge"
-        className="absolute inset-0 bg-background/60 backdrop-blur-md"
-        onClick={() => onDismiss(nudge.id)}
-      />
-      {targetRect && (
-        <div
-          className="pointer-events-none fixed z-[65] rounded-full border-2 border-dashed border-primary/80"
-          style={{
-            height: targetRect.height + 18,
-            left: targetRect.left - 9,
-            top: targetRect.top - 9,
-            width: targetRect.width + 18,
-          }}
-        />
-      )}
-      <div
-        className="pointer-events-none fixed z-[70] w-full overflow-hidden rounded-2xl border border-border bg-card p-4 app-fade-up"
-        style={{
-          left: calloutLeft,
-          top: calloutTop,
-          width: calloutWidth,
-        }}
-      >
-        <div
-          className="absolute -top-3 h-6 w-6 rotate-45 border-l border-t border-border bg-card"
-          style={{ left: arrowLeft - 12 }}
-        />
-        <div className="relative flex items-start gap-4">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-accent-subtle text-primary">
-            <Icon className="h-5 w-5" aria-hidden="true" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-primary">
-              Look here
-            </p>
-            <h2 className="mt-2 text-xl font-semibold tracking-tight text-foreground">
-              {nudge.title}
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              {nudge.detail}
-            </p>
-            <p className="mt-3 text-xs font-medium text-primary">
-              Click the highlighted {nudge.action} button to continue.
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function DashboardSpotlightCard({
-  card,
-  featured,
-  profile,
-}: {
-  card: ContactCard;
-  featured: boolean;
-  index: number;
-  profile: ProfileMeResponse | null;
-}) {
-  const details = getCardDisplayDetails(card, profile);
-  const style = cardTypeStyles[card.type];
-  const fields = getCardGalleryFields(details);
-  const fieldIcons = {
-    Company: Building2,
-    Phone,
-    Email: Mail,
-    Location: MapPin,
-    Online: Globe2,
-  } as const;
-
-  return (
-    <SpotlightCard
-      className={cn(
-        "group flex h-full cursor-pointer flex-col rounded-[14px] border border-border bg-card p-5 transition-all duration-300 hover:border-border-strong app-fade-up",
-        featured && "border-t-2 border-t-primary border-accent-border",
-      )}
-      spotlightColor={
-        featured ? "rgba(200,184,154,0.08)" : "rgba(255,255,255,0.03)"
-      }
-    >
-      <Link to={getCardDetailPath(card.id)} className="flex flex-1 flex-col outline-none">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <span
-            className={cn(
-              "rounded px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.1em]",
-              featured
-                ? "bg-accent-subtle text-primary"
-                : "bg-muted text-foreground/70",
-            )}
-          >
-            {cardTypeLabels[card.type]}
-          </span>
-          <span className="text-[11px] font-medium text-muted-foreground">
-            {formatDate(card.updatedAt)}
-          </span>
-        </div>
-
-        <div className="mb-3.5 flex justify-center">
-          <div
-            className={cn(
-              "flex h-14 w-14 items-center justify-center overflow-hidden rounded-full text-[15px] font-bold",
-              !card.fields?.photoDataUrl &&
-                (featured
-                  ? style.initialsClassName
-                  : style.initialsMutedClassName),
-            )}
-          >
-            {card.fields?.photoDataUrl ? (
-              <img
-                src={card.fields.photoDataUrl}
-                alt=""
-                className="h-full w-full object-cover"
-                draggable={false}
-              />
-            ) : (
-              details.initials
-            )}
-          </div>
-        </div>
-
-        <div className="mb-4 text-center">
-          <p className="font-display text-[17px] font-bold tracking-[-0.02em] text-foreground">
-            {details.name}
-          </p>
-          <p className="mt-1 text-[13px] font-medium text-foreground/70">
-            {details.role || "Contact"}
-          </p>
-        </div>
-
-        <div className="mb-3.5 h-px bg-border" />
-
-        <div className="grid flex-1 grid-cols-2 content-start gap-x-3 gap-y-3">
-          {fields.map((field) => {
-            const Icon = fieldIcons[field.label];
-            return (
-              <div key={field.label} className="flex min-w-0 items-start gap-2">
-                <Icon
-                  className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary"
-                  aria-hidden="true"
-                />
-                <div className="min-w-0">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                    {field.label}
-                  </p>
-                  <p className="mt-0.5 truncate text-[13px] font-semibold text-foreground">
-                    {field.value}
-                  </p>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </Link>
-
-      <div className="mt-4 flex items-center justify-center gap-2 border-t border-border pt-3.5">
-        <button
-          type="button"
-          onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            void shareCard(card);
-          }}
-          className="flex items-center gap-1.5 text-[12px] font-semibold tracking-wide text-primary"
-        >
-          <Share2 className="h-3.5 w-3.5" aria-hidden="true" />
-          Share card
-        </button>
-      </div>
-    </SpotlightCard>
   );
 }

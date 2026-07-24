@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import {
   AlertCircle,
   ArrowLeft,
@@ -17,6 +17,7 @@ import {
   MapPin,
   Phone,
   Share2,
+  Smartphone,
   UserRound,
   Wallet,
   type LucideIcon,
@@ -24,9 +25,13 @@ import {
 import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
 import { LiveCardPreview } from "@/components/cards/live-card-preview";
+import { MobileCardPreview } from "@/components/cards/mobile-card-preview";
 import { Alert } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Panel } from "@/components/ui/panel";
+import { ShareSheet, type ShareSheetOptionId } from "@/components/ui/share-sheet";
 import { Skeleton } from "@/components/ui/skeleton";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { apiFetch } from "@/lib/api";
 import { getCardDisplayDetails } from "@/lib/card-display";
 import {
@@ -183,6 +188,13 @@ function templateFromCard(card: ContactCard): ContactCardTemplate {
   return resolveTemplate(card.template);
 }
 
+function templateFromQuery(value: string | null): ContactCardTemplate | null {
+  if (value === "connect" || value === "scan") {
+    return value;
+  }
+  return null;
+}
+
 function cardDetailSections(card: ContactCard, profile: ProfileMeResponse | null) {
   const personal = profile?.personal;
   const work = profile?.work[0];
@@ -316,6 +328,8 @@ function cardDetailSections(card: ContactCard, profile: ProfileMeResponse | null
 
 function essentialFacts(fields: ContactCardFields): DetailItem[] {
   return compactItems([
+    maybeItem(UserRound, "Name", fields.displayName),
+    maybeItem(UserRound, "Title", fields.title),
     maybeItem(
       Phone,
       "Phone",
@@ -330,7 +344,6 @@ function essentialFacts(fields: ContactCardFields): DetailItem[] {
     maybeItem(Building2, "Company", fields.company),
     maybeItem(MapPin, "Address", fields.address),
     maybeItem(Globe2, "Website", fields.website),
-    maybeItem(UserRound, "Title", fields.title),
     maybeItem(LinkIcon, "LinkedIn", fields.linkedin),
     maybeItem(LinkIcon, "X / Twitter", fields.twitter),
     maybeItem(LinkIcon, "Facebook", fields.facebook),
@@ -379,6 +392,26 @@ async function copyCardLink(card: ContactCard) {
   }
 }
 
+async function handleShareOption(card: ContactCard, option: ShareSheetOptionId) {
+  switch (option) {
+    case "copy":
+      await copyCardLink(card);
+      return;
+    case "native":
+      await shareCard(card);
+      return;
+    case "whatsapp":
+      toast.message("WhatsApp sharing is coming soon.");
+      return;
+    case "messages":
+      toast.message("Messages sharing is coming soon.");
+      return;
+    case "qr":
+      toast.message("QR sharing is coming soon.");
+      return;
+  }
+}
+
 function downloadContactStub(card: ContactCard, fields: ContactCardFields) {
   const lines = [
     "BEGIN:VCARD",
@@ -408,11 +441,14 @@ function downloadContactStub(card: ContactCard, fields: ContactCardFields) {
 
 export default function CardDetailPage() {
   const { cardId } = useParams();
+  const [searchParams] = useSearchParams();
+  const templateParam = templateFromQuery(searchParams.get("template"));
   const [card, setCard] = useState<ContactCard | null>(null);
   const [profile, setProfile] = useState<ProfileMeResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isMockData, setIsMockData] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -487,11 +523,7 @@ export default function CardDetailPage() {
             <ArrowLeft className="h-4 w-4" aria-hidden="true" />
             Cards
           </Link>
-          {isMockData && (
-            <span className="rounded border border-accent-border bg-accent-subtle px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-primary">
-              Sample data
-            </span>
-          )}
+          {isMockData && <StatusBadge variant="neutral">Sample data</StatusBadge>}
         </div>
         {card && (
           <Button
@@ -499,9 +531,7 @@ export default function CardDetailPage() {
             variant="outline"
             size="sm"
             className="self-start"
-            onClick={() => {
-              void shareCard(card);
-            }}
+            onClick={() => setShareOpen(true)}
           >
             <Share2 className="h-4 w-4" aria-hidden="true" />
             Share
@@ -510,9 +540,9 @@ export default function CardDetailPage() {
       </section>
 
       {isLoading && (
-        <section className="grid gap-4 lg:grid-cols-[minmax(280px,340px)_minmax(0,1fr)]">
-          <Skeleton className="h-[520px] w-full rounded-[22px]" />
-          <Skeleton className="h-72 w-full rounded-[18px]" />
+        <section className="grid gap-4 lg:grid-cols-[minmax(320px,400px)_minmax(0,1fr)]">
+          <Skeleton className="h-[560px] w-full rounded-xl" />
+          <Skeleton className="h-72 w-full rounded-xl" />
         </section>
       )}
 
@@ -529,8 +559,24 @@ export default function CardDetailPage() {
       )}
 
       {!isLoading && !error && card && (
-        <CardDetailPreview card={card} profile={profile} />
+        <CardDetailPreview
+          card={card}
+          profile={profile}
+          preferredTemplate={templateParam}
+          onShare={() => setShareOpen(true)}
+        />
       )}
+
+      {card ? (
+        <ShareSheet
+          open={shareOpen}
+          onClose={() => setShareOpen(false)}
+          onSelect={(id) => {
+            setShareOpen(false);
+            void handleShareOption(card, id);
+          }}
+        />
+      ) : null}
     </AppShell>
   );
 }
@@ -538,15 +584,23 @@ export default function CardDetailPage() {
 function CardDetailPreview({
   card,
   profile,
+  preferredTemplate,
+  onShare,
 }: {
   card: ContactCard;
   profile: ProfileMeResponse | null;
+  preferredTemplate: ContactCardTemplate | null;
+  onShare: () => void;
 }) {
   const [showMore, setShowMore] = useState(false);
+  const [mobilePreviewOpen, setMobilePreviewOpen] = useState(false);
 
   const fields = useMemo(() => fieldsFromCard(card, profile), [card, profile]);
   const theme = useMemo(() => themeFromCard(card), [card]);
-  const template = useMemo(() => templateFromCard(card), [card]);
+  const template = useMemo(
+    () => preferredTemplate ?? templateFromCard(card),
+    [card, preferredTemplate],
+  );
   const templateMeta = CARD_TEMPLATE_OPTIONS.find((item) => item.id === template);
   const facts = useMemo(() => essentialFacts(fields), [fields]);
   const extraSections = useMemo(
@@ -555,37 +609,47 @@ function CardDetailPreview({
   );
 
   return (
-    <section className="grid items-start gap-6 lg:grid-cols-[minmax(280px,340px)_minmax(0,1fr)] lg:gap-8">
-      {/* Shareable card — primary surface */}
-      <aside className="rounded-[22px] border border-border bg-[#12151C] p-4 sm:p-5">
+    <section className="grid items-start gap-6 lg:grid-cols-[minmax(320px,400px)_minmax(0,1fr)] lg:gap-8">
+      <aside className="rounded-xl border border-border bg-surface p-4 sm:p-5">
         <div className="mb-4">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-white/45">
+          <p className="text-sm font-semibold text-foreground">
             {templateMeta?.label ?? "Connect"} template
           </p>
-          <p className="mt-1 text-xs text-white/55">
+          <p className="mt-1 text-xs text-muted-foreground">
             {templateMeta?.description}
           </p>
         </div>
-        <div className="flex justify-center overflow-x-auto py-2">
-          <div className="w-full max-w-[300px] drop-shadow-[0_20px_40px_rgba(0,0,0,0.4)]">
+        <div className="flex justify-center rounded-xl border border-border bg-bg-hover/80 px-3 py-5 sm:px-4 sm:py-6">
+          <div className="w-full max-w-[340px]">
             <LiveCardPreview
               fields={fields}
               theme={theme}
               template={template}
+              onSaveContact={() => downloadContactStub(card, fields)}
+              onShareCard={onShare}
             />
           </div>
         </div>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          className="mt-3 w-full justify-center"
+          onClick={() => setMobilePreviewOpen(true)}
+        >
+          <Smartphone className="h-3.5 w-3.5" aria-hidden="true" />
+          View on phone
+        </Button>
       </aside>
 
-      {/* Compact details */}
       <div className="min-w-0 space-y-5">
-        <header className="rounded-[18px] border border-border bg-card p-5 sm:p-6">
+        <Panel className="p-5 sm:p-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-primary">
+              <p className="text-sm font-medium text-muted-foreground">
                 {cardTypeLabels[card.type]} card
               </p>
-              <h1 className="mt-2 font-display text-2xl font-semibold tracking-tight text-foreground sm:text-[28px]">
+              <h1 className="mt-1 font-sans text-2xl font-semibold tracking-tight text-foreground sm:text-[28px]">
                 {card.name}
               </h1>
               {fields.displayName && fields.displayName !== card.name ? (
@@ -599,17 +663,25 @@ function CardDetailPreview({
             </div>
           </div>
 
-          <div className="mt-5 grid gap-2 sm:grid-cols-3">
+          <div className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             <Button
               type="button"
               size="sm"
               className="justify-center"
-              onClick={() => {
-                void shareCard(card);
-              }}
+              onClick={onShare}
             >
               <Share2 className="h-4 w-4" aria-hidden="true" />
               Share
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="justify-center"
+              onClick={() => setMobilePreviewOpen(true)}
+            >
+              <Smartphone className="h-4 w-4" aria-hidden="true" />
+              Preview
             </Button>
             <Button
               type="button"
@@ -640,12 +712,10 @@ function CardDetailPreview({
             <span className="mx-2 text-border-strong">·</span>
             Updated {formatDate(card.updatedAt)}
           </p>
-        </header>
+        </Panel>
 
-        <div className="rounded-[18px] border border-border bg-card p-5 sm:p-6">
-          <h2 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-            On this card
-          </h2>
+        <Panel className="p-5 sm:p-6">
+          <h2 className="text-sm font-semibold text-foreground">On this card</h2>
           {facts.length > 0 ? (
             <dl className="mt-4 divide-y divide-border">
               {facts.map((item) => (
@@ -667,10 +737,10 @@ function CardDetailPreview({
               No fields saved on this card yet.
             </p>
           )}
-        </div>
+        </Panel>
 
         {extraSections.length > 0 && (
-          <div className="rounded-[18px] border border-border bg-card p-5 sm:p-6">
+          <Panel className="p-5 sm:p-6">
             <button
               type="button"
               onClick={() => setShowMore((current) => !current)}
@@ -678,14 +748,14 @@ function CardDetailPreview({
               aria-expanded={showMore}
             >
               <div>
-                <h2 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                <h2 className="text-sm font-semibold text-foreground">
                   Profile extras
                 </h2>
                 <p className="mt-1 text-sm text-muted-foreground">
                   Optional profile data not stored on the card shell.
                 </p>
               </div>
-              <span className="text-xs font-semibold text-primary">
+              <span className="text-xs font-semibold text-foreground">
                 {showMore ? "Hide" : "Show"}
               </span>
             </button>
@@ -694,7 +764,7 @@ function CardDetailPreview({
               <div className="mt-5 space-y-5 border-t border-border pt-5">
                 {extraSections.map((section) => (
                   <div key={section.title}>
-                    <h3 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-primary">
+                    <h3 className="text-sm font-semibold text-foreground">
                       {section.title}
                     </h3>
                     <dl className="mt-2 divide-y divide-border">
@@ -716,9 +786,23 @@ function CardDetailPreview({
                 ))}
               </div>
             ) : null}
-          </div>
+          </Panel>
         )}
       </div>
+
+      <MobileCardPreview
+        open={mobilePreviewOpen}
+        onClose={() => setMobilePreviewOpen(false)}
+        fields={fields}
+        theme={theme}
+        template={template}
+        title={card.name}
+        onSaveContact={() => downloadContactStub(card, fields)}
+        onShareCard={() => {
+          setMobilePreviewOpen(false);
+          onShare();
+        }}
+      />
     </section>
   );
 }

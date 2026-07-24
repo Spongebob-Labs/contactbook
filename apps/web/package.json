@@ -10,7 +10,6 @@
     "lint": "tsc --noEmit --pretty false"
   },
   "dependencies": {
-    "@fontsource/dm-sans": "^5.2.8",
     "@fontsource/inter": "^5.2.8",
     "@hookform/resolvers": "^5.2.2",
     "@repo/types": "workspace:*",

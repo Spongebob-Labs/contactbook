@@ -1,69 +1,43 @@
 import { useRef, useState } from "react";
 import { Cloud, FileUp, UploadCloud } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import SpotlightCard from "@/components/ui/SpotlightCard";
+import { Panel } from "@/components/ui/panel";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { cn } from "@/lib/utils";
-
-type ImportOption = {
-  key: "google" | "vcf";
-  title: string;
-  description: string;
-  badge: string;
-  icon: typeof UploadCloud;
-};
 
 type ContactImportOptionsProps = {
   className?: string;
+  /** @deprecated Row layout ignores card density flags. */
   compact?: boolean;
+  /** @deprecated Row layout ignores featured grid flags. */
   featuredGoogle?: boolean;
+  hideGoogle?: boolean;
+  onConnectGoogle?: () => void;
+  isConnectingGoogle?: boolean;
+  onSyncGoogle?: () => void;
+  isSyncingGoogle?: boolean;
+  googleConnected?: boolean;
+  googleMeta?: string;
   onUploadVcf?: (file: File) => void | Promise<void>;
   isUploadingVcf?: boolean;
-} & (
-  | {
-      hideGoogle: true;
-      onConnectGoogle?: () => void;
-      isConnectingGoogle?: boolean;
-    }
-  | {
-      hideGoogle?: false;
-      onConnectGoogle: () => void;
-      isConnectingGoogle: boolean;
-    }
-);
-
-const options: ImportOption[] = [
-  {
-    key: "google",
-    title: "Google Contacts",
-    description: "Connect your Google account and sync contacts into ContactBook.",
-    badge: "Available",
-    icon: UploadCloud,
-  },
-  {
-    key: "vcf",
-    title: "Upload VCF file",
-    description: "Upload exported vCard files from your device.",
-    badge: "Available",
-    icon: FileUp,
-  },
-];
+  vcfMeta?: string;
+};
 
 export function ContactImportOptions({
   onConnectGoogle,
   isConnectingGoogle = false,
+  onSyncGoogle,
+  isSyncingGoogle = false,
+  googleConnected = false,
+  googleMeta,
   onUploadVcf,
   isUploadingVcf = false,
+  vcfMeta,
   className,
-  compact = false,
-  featuredGoogle = false,
   hideGoogle = false,
 }: ContactImportOptionsProps) {
   const vcfInputRef = useRef<HTMLInputElement | null>(null);
   const [isDraggingVcf, setIsDraggingVcf] = useState(false);
-  const visibleOptions = hideGoogle
-    ? options.filter((option) => option.key !== "google")
-    : options;
 
   const handleVcfFileChange = (file: File | undefined) => {
     if (!file || !onUploadVcf) {
@@ -76,152 +50,144 @@ export function ContactImportOptions({
   };
 
   return (
-    <div className={cn("space-y-3", className)}>
+    <Panel className={cn("overflow-hidden p-0", className)}>
+      {!hideGoogle ? (
+        <>
+          <div className="flex items-center gap-3 px-4 py-3.5 sm:px-5">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border bg-surface text-foreground">
+              <UploadCloud className="h-4 w-4" aria-hidden="true" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-sm font-semibold text-foreground">
+                  Google Contacts
+                </p>
+                {googleConnected ? (
+                  <StatusBadge variant="connected">Connected</StatusBadge>
+                ) : null}
+              </div>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {googleMeta ??
+                  (googleConnected
+                    ? "Sync contacts from your Google account"
+                    : "Connect your Google account to sync contacts")}
+              </p>
+            </div>
+            {googleConnected ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="shrink-0 rounded-full"
+                onClick={onSyncGoogle}
+                disabled={isSyncingGoogle || !onSyncGoogle}
+              >
+                {isSyncingGoogle ? "Syncing…" : "Sync now"}
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="shrink-0 rounded-full"
+                onClick={onConnectGoogle}
+                disabled={isConnectingGoogle || !onConnectGoogle}
+              >
+                {isConnectingGoogle ? "Connecting…" : "Connect"}
+              </Button>
+            )}
+          </div>
+          <div className="border-t border-border" role="separator" />
+        </>
+      ) : null}
+
       <div
         className={cn(
-          "grid gap-4",
-          featuredGoogle && !hideGoogle
-            ? "lg:grid-cols-2"
-            : visibleOptions.length === 1
-              ? "lg:grid-cols-1"
-              : "lg:grid-cols-2",
+          "flex items-center gap-3 px-4 py-3.5 sm:px-5",
+          isDraggingVcf && "bg-bg-hover",
         )}
-      >
-        {visibleOptions.map((option) => {
-          const Icon = option.icon;
-          const isVcfOption = option.key === "vcf";
-          const isDisabled = isVcfOption && !onUploadVcf;
-          const isGoogleFeatured = featuredGoogle && option.key === "google";
-
-          return (
-            <SpotlightCard
-              key={option.key}
-              className={cn(
-                "rounded-[14px] border border-border bg-card transition-colors",
-                compact ? "min-h-44" : "min-h-52",
-                isGoogleFeatured && "lg:col-span-2",
-                isDisabled && "opacity-60",
-                isVcfOption &&
-                  isDraggingVcf &&
-                  "border-accent-border bg-accent-subtle/30",
-              )}
-              spotlightColor={
-                isDisabled
-                  ? "rgba(255,255,255,0.03)"
-                  : "rgba(200,184,154,0.08)"
+        onDragOver={
+          onUploadVcf
+            ? (event) => {
+                event.preventDefault();
+                setIsDraggingVcf(true);
               }
-            >
-              <div
-                className={cn(
-                  "flex h-full min-h-[inherit] flex-col",
-                  compact ? "p-4" : "p-5",
-                )}
-                onDragOver={
-                  isVcfOption && onUploadVcf
-                    ? (event) => {
-                        event.preventDefault();
-                        setIsDraggingVcf(true);
-                      }
-                    : undefined
-                }
-                onDragLeave={
-                  isVcfOption
-                    ? () => {
-                        setIsDraggingVcf(false);
-                      }
-                    : undefined
-                }
-                onDrop={
-                  isVcfOption && onUploadVcf
-                    ? (event) => {
-                        event.preventDefault();
-                        setIsDraggingVcf(false);
-                        handleVcfFileChange(event.dataTransfer.files?.[0]);
-                      }
-                    : undefined
-                }
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div
-                    className={cn(
-                      "flex items-center justify-center rounded-full bg-accent-subtle text-primary",
-                      compact ? "h-9 w-9" : "h-11 w-11",
-                    )}
-                  >
-                    <Icon
-                      className={cn(compact ? "h-4 w-4" : "h-5 w-5")}
-                      aria-hidden="true"
-                    />
-                  </div>
-                  <Badge
-                    variant="secondary"
-                    className="rounded-full border border-accent-border bg-accent-subtle text-primary"
-                  >
-                    {option.badge}
-                  </Badge>
-                </div>
-                <div className={cn("flex-1", compact ? "mt-4" : "mt-5")}>
-                  <h2
-                    className={cn(
-                      "font-semibold tracking-normal",
-                      compact ? "text-base" : "text-lg",
-                    )}
-                  >
-                    {option.title}
-                  </h2>
-                  <p className="mt-2 text-[13px] text-muted-foreground">
-                    {option.description}
-                  </p>
-                  {isVcfOption && onUploadVcf && (
-                    <p className="mt-2 text-[11px] text-muted-foreground">
-                      {isDraggingVcf
-                        ? "Drop file to upload"
-                        : "Or drag and drop a .vcf file here"}
-                    </p>
-                  )}
-                </div>
-                {option.key === "google" ? (
-                  <Button
-                    type="button"
-                    className={cn("w-full", compact ? "mt-4" : "mt-5")}
-                    onClick={onConnectGoogle}
-                    disabled={isConnectingGoogle}
-                  >
-                    <UploadCloud className="h-3.5 w-3.5" aria-hidden="true" />
-                    {isConnectingGoogle ? "Connecting" : "Connect Google"}
-                  </Button>
-                ) : (
-                  <>
-                    <input
-                      ref={vcfInputRef}
-                      type="file"
-                      accept=".vcf,.vcard,text/vcard,text/x-vcard"
-                      className="sr-only"
-                      onChange={(event) =>
-                        handleVcfFileChange(event.target.files?.[0])
-                      }
-                    />
-                    <Button
-                      type="button"
-                      className={cn("w-full", compact ? "mt-4" : "mt-5")}
-                      disabled={isUploadingVcf || !onUploadVcf}
-                      onClick={() => vcfInputRef.current?.click()}
-                    >
-                      <FileUp className="h-3.5 w-3.5" aria-hidden="true" />
-                      {isUploadingVcf ? "Uploading" : "Upload"}
-                    </Button>
-                  </>
-                )}
-              </div>
-            </SpotlightCard>
-          );
-        })}
+            : undefined
+        }
+        onDragLeave={
+          onUploadVcf
+            ? () => {
+                setIsDraggingVcf(false);
+              }
+            : undefined
+        }
+        onDrop={
+          onUploadVcf
+            ? (event) => {
+                event.preventDefault();
+                setIsDraggingVcf(false);
+                handleVcfFileChange(event.dataTransfer.files?.[0]);
+              }
+            : undefined
+        }
+      >
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border bg-surface text-foreground">
+          <FileUp className="h-4 w-4" aria-hidden="true" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm font-semibold text-foreground">Upload VCF</p>
+          </div>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {isDraggingVcf
+              ? "Drop file to upload"
+              : (vcfMeta ?? "Upload a .vcf or .vcard file from your device")}
+          </p>
+        </div>
+        <input
+          ref={vcfInputRef}
+          type="file"
+          accept=".vcf,.vcard,text/vcard,text/x-vcard"
+          className="sr-only"
+          onChange={(event) => handleVcfFileChange(event.target.files?.[0])}
+        />
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="shrink-0 rounded-full"
+          disabled={isUploadingVcf || !onUploadVcf}
+          onClick={() => vcfInputRef.current?.click()}
+        >
+          {isUploadingVcf ? "Uploading…" : "Upload file"}
+        </Button>
       </div>
 
-      <p className="flex items-center gap-2 text-[11px] text-muted-foreground">
-        <Cloud className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-        iCloud Contacts coming soon
-      </p>
-    </div>
+      <div className="border-t border-border" role="separator" />
+
+      <div className="flex items-center gap-3 px-4 py-3.5 opacity-60 sm:px-5">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border bg-surface text-foreground">
+          <Cloud className="h-4 w-4" aria-hidden="true" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm font-semibold text-foreground">iCloud Contacts</p>
+            <StatusBadge variant="neutral">Coming soon</StatusBadge>
+          </div>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Apple Contacts sync will land in a later release
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="shrink-0 rounded-full"
+          disabled
+        >
+          Connect
+        </Button>
+      </div>
+    </Panel>
   );
 }

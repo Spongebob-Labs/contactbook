@@ -14,18 +14,17 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
-  Search,
   Tags,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { Alert } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
-import CountUp from "@/components/ui/CountUp";
-import { Input } from "@/components/ui/input";
+import { FilterTabBar } from "@/components/ui/filter-tab-bar";
+import { PageHeader } from "@/components/ui/page-header";
+import { SearchInput } from "@/components/ui/search-input";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import SplitText from "@/components/ui/SplitText";
+import { StatusBadge } from "@/components/ui/status-badge";
 import {
   Table,
   TableBody,
@@ -68,19 +67,19 @@ const contactSourceValues: ContactSource[] = [
   "VCARD",
 ];
 
-const sourcePills: Array<{ value: SourceFilter; label: string }> = [
-  { value: "ALL", label: "All" },
-  { value: "GOOGLE", label: "Google" },
-  { value: "VCARD", label: "vCard" },
+const sourceTabs: Array<{ key: SourceFilter; label: string }> = [
+  { key: "ALL", label: "All" },
+  { key: "GOOGLE", label: "Google" },
+  { key: "VCARD", label: "vCard" },
 ];
 
 const pageSizeOptions = [25, 50, 100];
 
-const sourceBadgeStyles: Record<ContactSource, string> = {
-  GOOGLE: "border border-accent-border bg-accent-subtle text-primary",
-  ICLOUD: "border border-border bg-muted/60 text-muted-foreground",
-  VCARD: "border border-accent-border/60 bg-accent-subtle/60 text-primary/90",
-  CONTACTBOOK: "border border-success/20 bg-success/10 text-success",
+const sourceLabels: Record<ContactSource, string> = {
+  GOOGLE: "Google",
+  ICLOUD: "iCloud",
+  VCARD: "vCard",
+  CONTACTBOOK: "ContactBook",
 };
 
 const sortableTableColumns: Partial<Record<string, SortKey>> = {
@@ -91,7 +90,7 @@ const sortableTableColumns: Partial<Record<string, SortKey>> = {
 
 function ContactAvatar({ contact }: { contact: ContactDetail }) {
   return (
-    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-subtle text-sm font-semibold text-primary">
+    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-secondary text-[11px] font-semibold text-muted-foreground">
       {getInitials(contact)}
     </div>
   );
@@ -179,13 +178,26 @@ function getSortTooltipText(
     : "Showing Z to A. Click for A to Z.";
 }
 
+function getVisiblePageNumbers(currentPage: number, totalPages: number) {
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, index) => index + 1);
+  }
+
+  const pages = new Set<number>([1, totalPages, currentPage]);
+  for (let offset = 1; offset <= 2; offset += 1) {
+    pages.add(Math.max(1, currentPage - offset));
+    pages.add(Math.min(totalPages, currentPage + offset));
+  }
+
+  return Array.from(pages).sort((a, b) => a - b);
+}
+
 function renderContactLabels(contact: ContactDetail) {
   const labels = [
-    ...contact.tags.map((tag) => ({ id: `tag-${tag.id}`, label: tag.name, tone: "tag" })),
+    ...contact.tags.map((tag) => ({ id: `tag-${tag.id}`, label: tag.name })),
     ...contact.groups.map((group) => ({
       id: `group-${group.id}`,
       label: group.name,
-      tone: "group",
     })),
   ];
   const visibleLabels = labels.slice(0, 3);
@@ -198,23 +210,12 @@ function renderContactLabels(contact: ContactDetail) {
   return (
     <div className="flex max-w-72 flex-wrap gap-1.5">
       {visibleLabels.map((label) => (
-        <Badge
-          key={label.id}
-          variant="secondary"
-          className={cn(
-            "rounded-full border",
-            label.tone === "tag"
-              ? "border-accent-border bg-accent-subtle text-primary"
-              : "border-border bg-muted/60 text-muted-foreground",
-          )}
-        >
+        <StatusBadge key={label.id} variant="neutral">
           {label.label}
-        </Badge>
+        </StatusBadge>
       ))}
       {hiddenCount > 0 && (
-        <Badge variant="secondary" className="rounded-full">
-          +{hiddenCount}
-        </Badge>
+        <StatusBadge variant="neutral">+{hiddenCount}</StatusBadge>
       )}
     </div>
   );
@@ -315,7 +316,7 @@ export default function ContactsPage() {
       <button
         type="button"
         className={cn(
-          "group relative -ml-2 inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-full px-2 text-xs font-medium uppercase transition-colors hover:bg-muted hover:text-foreground",
+          "group relative -ml-2 inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md px-2 text-xs font-medium uppercase transition-colors hover:bg-bg-hover hover:text-foreground",
           isActive ? "text-foreground" : "text-muted-foreground",
         )}
         onClick={() => updateSortColumn(columnSortKey)}
@@ -325,13 +326,13 @@ export default function ContactsPage() {
         <SortIcon
           className={cn(
             "h-3.5 w-3.5",
-            isActive ? "text-primary" : "text-muted-foreground/50",
+            isActive ? "text-foreground" : "text-muted-foreground/50",
           )}
           aria-hidden="true"
         />
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 w-max max-w-56 -translate-x-1/2 rounded-full border border-border bg-popover px-3 py-2 text-xs normal-case text-popover-foreground opacity-0 shadow-lg transition-opacity duration-100 group-hover:opacity-100 group-focus-visible:opacity-100"
+          className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 w-max max-w-56 -translate-x-1/2 rounded-md border border-border bg-popover px-3 py-2 text-xs normal-case text-popover-foreground opacity-0 transition-opacity duration-100 group-hover:opacity-100 group-focus-visible:opacity-100"
         >
           {tooltip}
         </span>
@@ -351,13 +352,13 @@ export default function ContactsPage() {
             <div className="flex min-w-0 items-center gap-3">
               <ContactAvatar contact={contact} />
               <div className="min-w-0">
-                <p className="truncate font-medium text-foreground">
+                <p className="truncate text-sm font-medium text-foreground">
                   {getContactName(contact)}
                 </p>
-                <p className="truncate text-sm text-muted-foreground">
+                <p className="truncate text-xs text-muted-foreground">
                   {getCompany(contact) ||
                     getTitle(contact) ||
-                    contact.source.toLowerCase()}
+                    sourceLabels[contact.source]}
                 </p>
               </div>
             </div>
@@ -368,7 +369,7 @@ export default function ContactsPage() {
         id: "email",
         header: "Email",
         cell: ({ row }) => (
-          <span className="block max-w-64 truncate text-muted-foreground">
+          <span className="block max-w-64 truncate text-sm text-muted-foreground">
             {getPrimaryEmail(row.original) || "No email"}
           </span>
         ),
@@ -377,7 +378,7 @@ export default function ContactsPage() {
         id: "phone",
         header: "Phone",
         cell: ({ row }) => (
-          <span className="whitespace-nowrap text-muted-foreground">
+          <span className="whitespace-nowrap text-sm text-muted-foreground">
             {getPrimaryPhone(row.original) || "No phone"}
           </span>
         ),
@@ -391,19 +392,18 @@ export default function ContactsPage() {
         accessorKey: "source",
         header: () => renderSortableHeader("source", "Source"),
         cell: ({ row }) => (
-          <Badge
-            variant="secondary"
-            className={cn("rounded-full", sourceBadgeStyles[row.original.source])}
+          <StatusBadge
+            variant={row.original.source === "GOOGLE" ? "connected" : "neutral"}
           >
-            {row.original.source.toLowerCase()}
-          </Badge>
+            {sourceLabels[row.original.source]}
+          </StatusBadge>
         ),
       },
       {
         accessorKey: "updatedAt",
         header: () => renderSortableHeader("updatedAt", "Updated"),
         cell: ({ row }) => (
-          <span className="whitespace-nowrap text-muted-foreground">
+          <span className="whitespace-nowrap text-sm text-muted-foreground">
             {formatContactDate(row.original.updatedAt)}
           </span>
         ),
@@ -528,6 +528,7 @@ export default function ContactsPage() {
   const currentPage = Math.min(page, totalPages);
   const pageStart = total === 0 ? 0 : (currentPage - 1) * pageSize + 1;
   const pageEnd = Math.min(currentPage * pageSize, total);
+  const visiblePages = getVisiblePageNumbers(currentPage, totalPages);
 
   const updateSourceFilter = (value: SourceFilter) => {
     setSourceFilter(value);
@@ -559,32 +560,26 @@ export default function ContactsPage() {
 
   return (
     <AppShell>
-      <section className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <SplitText text="Contacts" className="title-display" delay={70} tag="h1" />
-          <p className="mt-1 flex flex-wrap items-center gap-2 text-[13px] text-muted-foreground">
-            <span>
-              <CountUp
-                from={0}
-                to={total}
-                duration={1}
-                className="font-semibold text-foreground"
-              />
-              {" "}
-              contacts
-            </span>
-            {isMockData && (
-              <span className="rounded border border-accent-border bg-accent-subtle px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-primary">
-                Sample data
+      <div className="space-y-6">
+        <PageHeader
+          title="Contacts"
+          subtitle={
+            <span className="inline-flex flex-wrap items-center gap-2">
+              <span>
+                {total} {total === 1 ? "contact" : "contacts"}
               </span>
-            )}
-          </p>
-        </div>
-        <Link to="/dashboard/import" className={cn(buttonVariants(), "shrink-0")}>
-          <Download className="h-3.5 w-3.5" aria-hidden="true" />
-          Import contacts
-        </Link>
-      </section>
+              {isMockData ? (
+                <StatusBadge variant="neutral">Sample data</StatusBadge>
+              ) : null}
+            </span>
+          }
+          actions={
+            <Link to="/dashboard/import" className={cn(buttonVariants(), "shrink-0")}>
+              <Download className="h-3.5 w-3.5" aria-hidden="true" />
+              Import contacts
+            </Link>
+          }
+        />
 
       {error && (
         <Alert className="mb-4 flex items-start gap-3">
@@ -600,28 +595,16 @@ export default function ContactsPage() {
 
       <section className="space-y-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by source">
-            {sourcePills.map((pill) => (
-              <button
-                key={pill.value}
-                type="button"
-                onClick={() => updateSourceFilter(pill.value)}
-                className={cn(
-                  "rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.06em] transition-colors",
-                  sourceFilter === pill.value
-                    ? "bg-accent-subtle text-primary"
-                    : "bg-muted text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {pill.label}
-              </button>
-            ))}
-          </div>
+          <FilterTabBar
+            tabs={sourceTabs}
+            value={sourceFilter}
+            onChange={updateSourceFilter}
+          />
           <div className="grid w-full gap-2 sm:grid-cols-2 lg:w-auto lg:grid-cols-[160px_160px_minmax(200px,260px)]">
             <Select
               value={tagFilter}
               onChange={(event) => updateTagFilter(event.target.value)}
-              className="cursor-pointer rounded-xl"
+              className="cursor-pointer rounded-md"
               aria-label="Filter contacts by tag"
             >
               <option value="ALL">All tags</option>
@@ -634,7 +617,7 @@ export default function ContactsPage() {
             <Select
               value={groupFilter}
               onChange={(event) => updateGroupFilter(event.target.value)}
-              className="cursor-pointer rounded-xl"
+              className="cursor-pointer rounded-md"
               aria-label="Filter contacts by group"
             >
               <option value="ALL">All groups</option>
@@ -644,33 +627,31 @@ export default function ContactsPage() {
                 </option>
               ))}
             </Select>
-            <div className="relative sm:col-span-2 lg:col-span-1">
-              <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                value={query}
-                onChange={(event) => updateQuery(event.target.value)}
-                placeholder="Search contacts"
-                className="rounded-xl pl-9"
-              />
-            </div>
+            <SearchInput
+              value={query}
+              onChange={(event) => updateQuery(event.target.value)}
+              placeholder="Search contacts..."
+              containerClassName="sm:col-span-2 lg:col-span-1"
+              aria-label="Search contacts"
+            />
           </div>
         </div>
 
-        <div className="overflow-hidden rounded-[14px] border border-border bg-card">
+        <div className="overflow-hidden rounded-lg border border-border bg-surface">
           {isLoading && (
             <div className="space-y-1 p-4">
               {Array.from({ length: 8 }).map((_, index) => (
-                <Skeleton key={index} className="h-14 w-full" />
+                <Skeleton key={index} className="h-12 w-full" />
               ))}
             </div>
           )}
 
           {!isLoading && !error && contacts.length === 0 && (
-            <div className="flex min-h-56 flex-col items-center justify-center border border-dashed border-transparent px-6 py-12 text-center">
-              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-accent-subtle text-primary">
+            <div className="flex min-h-56 flex-col items-center justify-center px-6 py-12 text-center">
+              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-secondary text-muted-foreground">
                 <Tags className="h-5 w-5" aria-hidden="true" />
               </div>
-              <h2 className="title-section">No contacts found</h2>
+              <h2 className="text-base font-semibold text-foreground">No contacts found</h2>
               <p className="mt-2 max-w-sm text-[13px] text-muted-foreground">
                 Import contacts, or adjust your search, tag, and group filters.
               </p>
@@ -689,11 +670,12 @@ export default function ContactsPage() {
               <Table>
                 <TableHeader>
                   {table.getHeaderGroups().map((headerGroup) => (
-                    <TableRow key={headerGroup.id}>
+                    <TableRow key={headerGroup.id} className="hover:bg-transparent">
                       {headerGroup.headers.map((header) => (
                         <TableHead
                           key={header.id}
                           aria-sort={getHeaderAriaSort(header.column.id)}
+                          className="h-10 text-xs font-medium uppercase tracking-normal text-muted-foreground"
                         >
                           {header.isPlaceholder
                             ? null
@@ -712,7 +694,7 @@ export default function ContactsPage() {
                       key={row.id}
                       role="link"
                       tabIndex={0}
-                      className="cursor-pointer"
+                      className="h-12 cursor-pointer hover:bg-bg-hover"
                       onClick={() => navigate(`/dashboard/contacts/${row.original.id}`)}
                       onKeyDown={(event) => {
                         if (event.key === "Enter" || event.key === " ") {
@@ -722,7 +704,7 @@ export default function ContactsPage() {
                       }}
                     >
                       {row.getVisibleCells().map((cell) => (
-                        <TableCell key={cell.id}>
+                        <TableCell key={cell.id} className="py-0">
                           {flexRender(cell.column.columnDef.cell, cell.getContext())}
                         </TableCell>
                       ))}
@@ -731,14 +713,14 @@ export default function ContactsPage() {
                 </TableBody>
               </Table>
               <div className="flex flex-col gap-3 border-t border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-xs text-muted-foreground">
                   Showing {pageStart}-{pageEnd} of {total}
                 </p>
                 <div className="flex flex-wrap items-center gap-2">
                   <Select
                     value={String(pageSize)}
                     onChange={(event) => updatePageSize(Number(event.target.value))}
-                    className="w-28 cursor-pointer rounded-xl"
+                    className="w-28 cursor-pointer rounded-md"
                     aria-label="Rows per page"
                   >
                     {pageSizeOptions.map((value) => (
@@ -749,29 +731,53 @@ export default function ContactsPage() {
                   </Select>
                   <Button
                     type="button"
-                    variant="outline"
-                    size="sm"
-                    className="cursor-pointer rounded-xl disabled:cursor-not-allowed"
+                    variant="ghost"
+                    size="icon"
+                    className="disabled:cursor-not-allowed"
                     onClick={() => setPage((current) => Math.max(1, current - 1))}
                     disabled={currentPage === 1}
+                    aria-label="Previous page"
                   >
                     <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-                    Previous
                   </Button>
-                  <span className="text-[11px] text-muted-foreground">
-                    Page {currentPage} of {totalPages}
-                  </span>
+                  <div className="flex items-center gap-1" role="navigation" aria-label="Pagination">
+                    {visiblePages.map((pageNumber, index) => {
+                      const previous = visiblePages[index - 1];
+                      const showEllipsis =
+                        previous !== undefined && pageNumber - previous > 1;
+                      return (
+                        <span key={pageNumber} className="contents">
+                          {showEllipsis ? (
+                            <span className="px-1 text-xs text-muted-foreground">…</span>
+                          ) : null}
+                          <button
+                            type="button"
+                            onClick={() => setPage(pageNumber)}
+                            aria-current={pageNumber === currentPage ? "page" : undefined}
+                            className={cn(
+                              "flex h-8 min-w-8 items-center justify-center rounded-full px-2 text-sm font-medium transition-colors duration-150",
+                              pageNumber === currentPage
+                                ? "bg-primary text-primary-foreground"
+                                : "text-muted-foreground hover:bg-bg-hover hover:text-foreground",
+                            )}
+                          >
+                            {pageNumber}
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
                   <Button
                     type="button"
-                    variant="outline"
-                    size="sm"
-                    className="cursor-pointer rounded-xl disabled:cursor-not-allowed"
+                    variant="ghost"
+                    size="icon"
+                    className="disabled:cursor-not-allowed"
                     onClick={() =>
                       setPage((current) => Math.min(totalPages, current + 1))
                     }
                     disabled={currentPage === totalPages}
+                    aria-label="Next page"
                   >
-                    Next
                     <ChevronRight className="h-4 w-4" aria-hidden="true" />
                   </Button>
                 </div>
@@ -780,6 +786,7 @@ export default function ContactsPage() {
           )}
         </div>
       </section>
+      </div>
     </AppShell>
   );
 }

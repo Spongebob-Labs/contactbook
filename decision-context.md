@@ -1,5 +1,47 @@
 # Decision Context
 
+## 2026-07-24 - Card UI Proportion Refinement Pass
+
+- Decision: Rebalance Connect/Scan for gallery + live detail. Thumbs: Connect fills height as mini share page (labeled Save/Share stubs + socials + phone/email); Scan QR moderated to 72px with phone/email rows so identity isn’t crushed. Live Scan: wider `max-w-[360px]`, aspect `3/4.8`, QR 118px, tighter vertical rhythm. Live Connect: themed `pageWash` shell + bordered identity card. Detail stage: wider column + `bg-bg-hover` preview well. Pair tile padding/gap increased. `essentialFacts` includes Name so “On this card” isn’t empty when only displayName is set.
+- Reason: Screenshot feedback — Connect looked stubby/empty, Scan QR overcrowded faces, detail preview floated small in white-on-white.
+- Files: `card-thumbs.tsx`, `live-card-preview.tsx`, `card-pair-tile.tsx`, `card-detail-page.tsx`, `dashboard-page.tsx`, `decision-context.md`.
+- Alternatives considered: Scale full LiveCardPreview in gallery — still rejected. Image-backed Scan themes — deferred.
+
+## 2026-07-24 - Card Preview Fidelity Wave (Approach A)
+
+- Decision: Ship gallery proportion fix + full-screen mobile preview without scaling LiveCardPreview into thumbs. Thumbs use `aspect-[3/4.55]` / 176px width: denser Connect identity stack (stub CTA bars), QR-dominant Scan. New `MobileCardPreview` phone-frame overlay renders real `LiveCardPreview`. Entry: Detail “View on phone” + action Preview; Maker “Phone” / “View on phone”. Esc / backdrop / Close dismiss; body scroll lock; share from preview closes overlay first.
+- Reason: DS board completeness gap — gallery Connect looked stubby, Scan QR underfilled, no phone-state preview. Approach A keeps thumbs vs live separation (B already rejected).
+- Files: `card-thumbs.tsx`, `mobile-card-preview.tsx`, `card-detail-page.tsx`, `card-onboarding-page.tsx`, `dashboard-page.tsx`, `decision-context.md`.
+- Alternatives considered: CSS-scale LiveCardPreview in gallery (B) — rejected. New public-style Connect page only (C) — deferred as larger product change. Image-backed Scan themes / accent `#2563EB` reopen — out of wave.
+
+## 2026-07-23 - Dashboard + Cards Premium Pair Pass
+
+- Decision: Fix glitched Dashboard/Cards by introducing compact `ConnectThumb`/`ScanThumb` (no share CTAs) and shared `CardPairTile`. Dashboard: snapshot greeting + New card, horizontal Connect+Scan pairs, near-black profile banner with sections-left. Cards: toolbar with count + SearchInput + Create, filter tabs, paired thumbs; Connect/Scan pills deep-link `?template=`. Detail honors template query.
+- Reason: Full LiveCardPreview at thumb size looked broken; unpaired rails and missing search broke reference composition.
+- Files: `card-thumbs.tsx`, `card-pair-tile.tsx`, `dashboard-page.tsx`, `cards-page.tsx`, `card-detail-page.tsx`, `decision-context.md`.
+- Alternatives considered: CSS-scale full LiveCardPreview — rejected. Gallery-mode prop on LiveCardPreview — deferred for clearer separation.
+
+## 2026-07-23 - Contacts / Import / Maker chrome pass
+
+- Decision: Align Contacts table, Import source rows, and Maker/Detail chrome to DS freeze. Contacts: `SearchInput`, 12px medium uppercase headers, ~48px rows, `bg-bg-hover`, 28px avatars, `StatusBadge` sources, numeric pagination pills. Import: row list (icon | name+badge | meta | ghost CTA) with Connected/Sync, Upload, iCloud coming soon. Detail/Maker: light `Panel` preview stages (no `#12151C`/heavy shadows); Share opens `ShareSheet` with copy/native/stub toasts; sentence-case Inter headers. Remove `@fontsource/dm-sans`; tokenise app-shell hover/icon greys.
+- Reason: Finish authenticated chrome sweep for §7.8 / §7.12 / maker-detail without touching APIs or marketing.
+- Files: `contacts-page.tsx`, `contact-import-options.tsx`, `import-page.tsx`, `card-detail-page.tsx`, `card-onboarding-page.tsx`, `app-shell.tsx`, `apps/web/package.json`, `decision-context.md`.
+- Alternatives considered: Keep dark lit preview stage — rejected (borders-only light chrome). Hide Google row when connected — rejected (Connected + Sync now on the row).
+
+## 2026-07-23 - Profile Edit, Connect Share §9, Contacts/Import, Hygiene Pass
+
+- Decision: Ship remaining DS gaps against the client reference while keeping freeze rules (near-black chrome, borders-only, Playfair greeting-only). Profile: section Edit/Save/Cancel + CompletionRing/checklist sidebar. Connect: Save Contact / Share Card CTAs + ShareSheet handoff on detail. Contacts §7.8 + Import §7.12 rows with StatusBadge/SearchInput. Maker/Detail light Panel chrome. Remove `@fontsource/dm-sans`.
+- Reason: These surfaces are the highest client-visible gaps after the shell/dashboard token pass.
+- Files: `profile-page.tsx`, `completion-ring.tsx`, `editable-section.tsx`, `search-input.tsx`, `share-sheet.tsx`, `live-card-preview.tsx`, `card-detail-page.tsx`, `card-onboarding-page.tsx`, `contacts-page.tsx`, `contact-import-options.tsx`, `import-page.tsx`, `app-shell.tsx`, `input.tsx`, `profile-completion.ts`, `package.json`.
+- Alternatives considered: Full profile onboarding rewrite for edits — rejected (section edit matches DS §16). Keep Synergy multi-CTA Connect — replaced with §9 Save/Share pair per reference.
+
+## 2026-07-23 - Authenticated Design System Freeze + Revamp
+
+- Decision: Freeze and ship achromatic authenticated chrome. Scope: auth app + auth/onboarding; public marketing unchanged. Cards remain Connect/Scan (not Light/Dark/Photo). Kill brass in chrome; light-only (no theme toggle). Playfair only on dashboard greeting (no emoji). Fixed 240px sidebar; no collapse; no Groups; Logout in sidebar bottom; no desktop sticky top bar; mobile tabs Dashboard/Cards/Contacts/Profile. Borders-only elevation; blur only on overlays. No decorative motion; delete CountUp/SplitText/SpotlightCard. Tokens: DS block aliased into shadcn/`@theme`. Profile view-first section Edit. Contacts + Import stay separate routes. Maker/detail restyle only. Dashboard follows §8.1; remove spotlight tour.
+- Reason: Client delivery needs a uniform non-AI editorial system while preserving Connect/Scan product work.
+- Files: `styles.css`, `main.tsx`, `index.html`, `theme-context.tsx`, `app-shell.tsx`, `button.tsx`, `page-header.tsx`, `panel.tsx`, `status-badge.tsx`, `filter-tab-bar.tsx`, `dashboard-page.tsx`, `cards-page.tsx`, `contacts-page.tsx`, `import-page.tsx`, `profile-page.tsx`, `auth-page.tsx`, `contact-import-options.tsx`, `live-card-preview.tsx`, `card-detail-page.tsx`, `card-onboarding-page.tsx`; deleted `CountUp.tsx`, `SplitText.tsx`, `SpotlightCard.tsx`, `theme-toggle.tsx`, `shareable-card-tile.tsx`.
+- Alternatives considered: Merge Contacts/Import — deferred. Light/Dark/Photo card families — rejected for this wave. Keep brass accent wink — rejected.
+
 ## 2026-07-21 - Connect Width + Scan Reference Fit
 
 - Decision: Widen Connect to `max-w-[360px]` for fuller mobile share fill. Rebuild Scan to Synergy reference proportions (`aspect-[3/4.55]`, `max-w-[340px]`): tighter spacing, white type on solid fill, QR plate only (no captions). Preview stage uses lighter scale so cards read larger.

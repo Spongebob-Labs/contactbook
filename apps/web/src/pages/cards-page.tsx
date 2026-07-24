@@ -1,101 +1,76 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import {
-  AlertCircle,
-  ArrowRight,
-  Building2,
-  Globe2,
-  IdCard,
-  Mail,
-  MapPin,
-  Phone,
-  Plus,
-  Share2,
-} from "lucide-react";
-import { toast } from "sonner";
+import { AlertCircle, IdCard, Plus } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
+import { CardPairTile } from "@/components/cards/card-pair-tile";
 import { Alert } from "@/components/ui/alert";
 import { buttonVariants } from "@/components/ui/button";
-import CountUp from "@/components/ui/CountUp";
+import { FilterTabBar } from "@/components/ui/filter-tab-bar";
+import { SearchInput } from "@/components/ui/search-input";
+import { Panel } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
-import SplitText from "@/components/ui/SplitText";
-import SpotlightCard from "@/components/ui/SpotlightCard";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { apiFetch } from "@/lib/api";
-import { getCardDisplayDetails, getCardGalleryFields } from "@/lib/card-display";
-import { cardTypeStyles } from "@/lib/card-styles";
+import { resolveTemplate } from "@/lib/card-maker";
 import { friendlyErrorMessages, logUiError } from "@/lib/friendly-errors";
 import { listLocalCards, USE_LOCAL_CARDS } from "@/lib/local-cards";
-import { mockProfile } from "@/lib/mock-data";
-import type { ContactCard, ContactCardType, ProfileMeResponse } from "@/lib/types";
+import type { ContactCard, ContactCardType } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-const cardTypeLabels: Record<ContactCardType, string> = {
-  BUSINESS: "Business",
-  PERSONAL: "Personal",
-  PAYMENT: "Custom",
-  CUSTOM: "Custom",
-};
+type CardFilter =
+  | "ALL"
+  | "CONNECT"
+  | "SCAN"
+  | "PERSONAL"
+  | "BUSINESS"
+  | "CUSTOM";
 
-type CardFilter = "ALL" | ContactCardType;
-
-const filterChips: Array<{ key: CardFilter; label: string }> = [
+const filterTabs: Array<{ key: CardFilter; label: string }> = [
   { key: "ALL", label: "All" },
+  { key: "CONNECT", label: "Connect" },
+  { key: "SCAN", label: "Scan" },
   { key: "PERSONAL", label: "Personal" },
   { key: "BUSINESS", label: "Business" },
   { key: "CUSTOM", label: "Custom" },
 ];
 
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-  }).format(new Date(value));
-}
-
-function getCardDetailPath(cardId: string) {
-  return `/dashboard/cards/${cardId}`;
-}
-
 function matchesFilter(card: ContactCard, filter: CardFilter) {
   if (filter === "ALL") return true;
+  if (filter === "CONNECT") {
+    return resolveTemplate(card.template) === "connect";
+  }
+  if (filter === "SCAN") {
+    return resolveTemplate(card.template) === "scan";
+  }
   if (filter === "CUSTOM") {
     return card.type === "CUSTOM" || card.type === "PAYMENT";
   }
-  return card.type === filter;
+  return card.type === (filter as ContactCardType);
 }
 
-async function shareCard(card: ContactCard) {
-  const url = `${window.location.origin}${getCardDetailPath(card.id)}`;
-  const shareData = {
-    title: card.name,
-    text: `Open ${card.name} in ContactBook.`,
-    url,
-  };
-
-  try {
-    if (navigator.share) {
-      await navigator.share(shareData);
-      return;
-    }
-
-    await navigator.clipboard.writeText(url);
-    toast.success("Card link copied.");
-  } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") {
-      return;
-    }
-
-    logUiError("Could not share card", error);
-    toast.error("We couldn't share this card right now.");
-  }
+function matchesQuery(card: ContactCard, query: string) {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const haystack = [
+    card.name,
+    card.fields?.displayName,
+    card.fields?.title,
+    card.fields?.company,
+    card.fields?.email,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return haystack.includes(q);
 }
 
 export default function CardsPage() {
   const [cards, setCards] = useState<ContactCard[]>([]);
-  const [profile, setProfile] = useState<ProfileMeResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isMockData, setIsMockData] = useState(false);
   const [filter, setFilter] = useState<CardFilter>("ALL");
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     let isMounted = true;
@@ -125,19 +100,6 @@ export default function CardsPage() {
           setError(null);
         }
         usedMockData = true;
-      }
-
-      try {
-        const profileData = await apiFetch<ProfileMeResponse>("/v1/profile/me");
-        if (isMounted) {
-          setProfile(profileData);
-        }
-      } catch (err) {
-        if (isMounted) {
-          logUiError("Could not load profile for card previews", err);
-          setProfile(mockProfile);
-        }
-        usedMockData = true;
       } finally {
         if (isMounted) {
           setIsMockData(usedMockData);
@@ -153,247 +115,126 @@ export default function CardsPage() {
   }, []);
 
   const filteredCards = useMemo(
-    () => cards.filter((card) => matchesFilter(card, filter)),
-    [cards, filter],
+    () =>
+      cards.filter(
+        (card) => matchesFilter(card, filter) && matchesQuery(card, query),
+      ),
+    [cards, filter, query],
   );
 
   return (
     <AppShell>
-      <section className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <SplitText text="Your cards" className="title-display" delay={70} tag="h1" />
-          <p className="mt-1 flex flex-wrap items-center gap-2 text-[13px] text-muted-foreground">
-            <span>
-              <CountUp from={0} to={cards.length} duration={1} className="font-semibold text-foreground" />
-              {" "}
-              shareable packs
-            </span>
-            {isMockData && (
-              <span className="rounded border border-accent-border bg-accent-subtle px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-primary">
-                Sample data
+      <div className="space-y-6">
+        <div className="flex flex-col gap-3 border-b border-border pb-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <h1 className="text-xl font-semibold tracking-[-0.01em] text-foreground">
+              My cards
+              <span className="ml-2 text-base font-medium text-muted-foreground">
+                {cards.length}
               </span>
-            )}
-          </p>
-        </div>
-        <Link
-          to="/dashboard?onboarding=card&returnTo=/dashboard/cards"
-          className={cn(buttonVariants(), "shrink-0")}
-        >
-          <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-          Create card
-        </Link>
-      </section>
-
-      {isLoading && (
-        <section className="grid gap-4 md:grid-cols-2">
-          {Array.from({ length: 4 }).map((_, index) => (
-            <Skeleton key={index} className="h-80 w-full rounded-[14px]" />
-          ))}
-        </section>
-      )}
-
-      {!isLoading && error && (
-        <Alert className="flex items-start gap-3">
-          <AlertCircle className="mt-0.5 h-4 w-4 text-destructive" aria-hidden="true" />
-          <div>
-            <p className="font-medium">Could not load cards</p>
+            </h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              {friendlyErrorMessages.load}
+              Create, manage and share your digital cards.
+              {isMockData ? (
+                <StatusBadge variant="neutral" className="ml-2 align-middle">
+                  Sample data
+                </StatusBadge>
+              ) : null}
             </p>
           </div>
-        </Alert>
-      )}
-
-      {!isLoading && !error && cards.length > 0 && (
-        <div className="mb-5 flex flex-wrap gap-2">
-          {filterChips.map((chip) => (
-            <button
-              key={chip.key}
-              type="button"
-              onClick={() => setFilter(chip.key)}
-              className={cn(
-                "rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.06em] transition-colors",
-                filter === chip.key
-                  ? "bg-accent-subtle text-primary"
-                  : "bg-muted text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {chip.label}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {!isLoading && !error && cards.length === 0 && (
-        <div className="flex min-h-72 flex-col items-center justify-center rounded-[14px] border border-dashed border-border bg-card px-6 py-12 text-center">
-          <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-full bg-accent-subtle text-primary">
-            <IdCard className="h-5 w-5" aria-hidden="true" />
-          </div>
-          <h2 className="title-section">Create your first card</h2>
-          <p className="mt-2 max-w-md text-[13px] text-muted-foreground">
-            Build a personal, business, or custom card from the profile information
-            you want to share.
-          </p>
-          <Link
-            to="/dashboard?onboarding=card&returnTo=/dashboard/cards"
-            className={cn(buttonVariants(), "mt-5")}
-          >
-            <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-            Create card
-          </Link>
-        </div>
-      )}
-
-      {!isLoading && !error && cards.length > 0 && filteredCards.length === 0 && (
-        <div className="rounded-[14px] border border-dashed border-border bg-card/40 px-6 py-10 text-center">
-          <p className="text-sm font-semibold text-foreground">No cards in this filter</p>
-          <p className="mt-1 text-[13px] text-muted-foreground">
-            Try another type or create a new card.
-          </p>
-        </div>
-      )}
-
-      {!isLoading && !error && filteredCards.length > 0 && (
-        <section className="grid gap-4 md:grid-cols-2">
-          {filteredCards.map((card, index) => (
-            <div
-              key={card.id}
-              className="app-fade-up"
-              style={{ animationDelay: `${index * 0.12}s` }}
-            >
-              <CardsGalleryCard
-                card={card}
-                featured={index === 0 || card.type === "PERSONAL"}
-                profile={profile}
-              />
-            </div>
-          ))}
-        </section>
-      )}
-    </AppShell>
-  );
-}
-
-function CardsGalleryCard({
-  card,
-  featured,
-  profile,
-}: {
-  card: ContactCard;
-  featured: boolean;
-  profile: ProfileMeResponse | null;
-}) {
-  const details = getCardDisplayDetails(card, profile);
-  const style = cardTypeStyles[card.type];
-  const fields = getCardGalleryFields(details);
-  const fieldIcons = {
-    Company: Building2,
-    Phone,
-    Email: Mail,
-    Location: MapPin,
-    Online: Globe2,
-  } as const;
-
-  return (
-    <SpotlightCard
-      className={cn(
-        "group flex h-full flex-col rounded-[14px] border border-border bg-card p-5 transition-all duration-300 hover:border-border-strong",
-        featured && "border-t-2 border-t-primary border-accent-border",
-      )}
-      spotlightColor={
-        featured ? "rgba(200,184,154,0.08)" : "rgba(255,255,255,0.03)"
-      }
-    >
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <span
-          className={cn(
-            "rounded px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.1em]",
-            featured
-              ? "bg-accent-subtle text-primary"
-              : "bg-muted text-foreground/70",
-          )}
-        >
-          {cardTypeLabels[card.type]}
-        </span>
-        <span className="text-[11px] font-medium text-muted-foreground">
-          Updated {formatDate(card.updatedAt)}
-        </span>
-      </div>
-
-      <div className="mb-3.5 flex justify-center">
-        <div
-          className={cn(
-            "flex h-14 w-14 items-center justify-center overflow-hidden rounded-full text-[15px] font-bold",
-            !card.fields?.photoDataUrl &&
-              (featured ? style.initialsClassName : style.initialsMutedClassName),
-          )}
-        >
-          {card.fields?.photoDataUrl ? (
-            <img
-              src={card.fields.photoDataUrl}
-              alt=""
-              className="h-full w-full object-cover"
-              draggable={false}
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+            <SearchInput
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search cards..."
+              containerClassName="w-full sm:w-56"
+              aria-label="Search cards"
             />
-          ) : (
-            details.initials
-          )}
+            <Link
+              to="/dashboard?onboarding=card&returnTo=/dashboard/cards"
+              className={cn(buttonVariants(), "shrink-0 justify-center")}
+            >
+              <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+              Create card
+            </Link>
+          </div>
         </div>
-      </div>
 
-      <div className="mb-4 text-center">
-        <p className="font-display text-[17px] font-bold tracking-[-0.02em] text-foreground">
-          {details.name}
-        </p>
-        <p className="mt-1 text-[13px] font-medium text-foreground/70">
-          {details.role || "Contact"}
-        </p>
-      </div>
+        {isLoading && (
+          <section className="grid gap-4 md:grid-cols-2">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <Skeleton key={index} className="h-72 w-full rounded-lg" />
+            ))}
+          </section>
+        )}
 
-      <div className="mb-3.5 h-px bg-border" />
+        {!isLoading && error && (
+          <Alert className="flex items-start gap-3">
+            <AlertCircle
+              className="mt-0.5 h-4 w-4 text-destructive"
+              aria-hidden="true"
+            />
+            <div>
+              <p className="font-medium">Could not load cards</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {friendlyErrorMessages.load}
+              </p>
+            </div>
+          </Alert>
+        )}
 
-      <div className="grid flex-1 grid-cols-2 gap-x-3 gap-y-3 content-start">
-        {fields.map((field) => {
-          const Icon = fieldIcons[field.label];
-          return (
-            <div key={field.label} className="flex min-w-0 items-start gap-2">
-              <Icon
-                className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary"
-                aria-hidden="true"
-              />
-              <div className="min-w-0">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                  {field.label}
+        {!isLoading && !error && cards.length > 0 && (
+          <FilterTabBar tabs={filterTabs} value={filter} onChange={setFilter} />
+        )}
+
+        {!isLoading && !error && cards.length === 0 && (
+          <Panel className="border-dashed">
+            <div className="flex min-h-56 flex-col items-center justify-center px-2 py-6 text-center">
+              <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-full border border-border bg-surface text-foreground">
+                <IdCard className="h-5 w-5" aria-hidden="true" />
+              </div>
+              <h2 className="text-base font-semibold text-foreground">
+                Create your first card
+              </h2>
+              <p className="mt-2 max-w-md text-sm text-muted-foreground">
+                Build a personal, business, or custom card from the profile
+                information you want to share.
+              </p>
+              <Link
+                to="/dashboard?onboarding=card&returnTo=/dashboard/cards"
+                className={cn(buttonVariants(), "mt-5")}
+              >
+                <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                Create card
+              </Link>
+            </div>
+          </Panel>
+        )}
+
+        {!isLoading &&
+          !error &&
+          cards.length > 0 &&
+          filteredCards.length === 0 && (
+            <Panel className="border-dashed">
+              <div className="px-2 py-8 text-center">
+                <p className="text-sm font-semibold text-foreground">
+                  No cards match
                 </p>
-                <p className="mt-0.5 truncate text-[13px] font-semibold text-foreground">
-                  {field.value}
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Try another filter or search term.
                 </p>
               </div>
-            </div>
-          );
-        })}
-      </div>
-
-      <div className="mt-5 flex items-center gap-2 border-t border-border pt-3.5">
-        <Link
-          to={getCardDetailPath(card.id)}
-          className={cn(buttonVariants({ size: "sm" }), "flex-1 justify-center")}
-        >
-          Open
-          <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-        </Link>
-        <button
-          type="button"
-          onClick={() => void shareCard(card)}
-          className={cn(
-            buttonVariants({ variant: "outline", size: "sm" }),
-            "flex-1 justify-center",
+            </Panel>
           )}
-        >
-          <Share2 className="h-3.5 w-3.5" aria-hidden="true" />
-          Share
-        </button>
+
+        {!isLoading && !error && filteredCards.length > 0 && (
+          <section className="grid gap-4 md:grid-cols-2">
+            {filteredCards.map((card) => (
+              <CardPairTile key={card.id} card={card} showName />
+            ))}
+          </section>
+        )}
       </div>
-    </SpotlightCard>
+    </AppShell>
   );
 }

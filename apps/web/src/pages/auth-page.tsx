@@ -9,7 +9,6 @@ import { PageLoader } from "@/components/page-loader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { useAuth } from "@/context/auth-context";
 import { apiFetch } from "@/lib/api";
 import { DIAL_COUNTRIES } from "@/lib/dial-countries";
@@ -224,9 +223,6 @@ export default function AuthPage() {
       </section>
 
       <section className="flex min-h-screen items-center justify-center px-4 pb-16 pt-24 md:px-8 md:pb-20 md:pt-28 lg:pb-24 lg:pt-24">
-        <div className="absolute right-4 top-4">
-          <ThemeToggle />
-        </div>
         <Card className="w-full max-w-md">
           <CardHeader className="gap-2 p-6 pb-4">
             <CardTitle>

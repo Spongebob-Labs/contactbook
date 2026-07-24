@@ -8,6 +8,7 @@ import {
   LayoutTemplate,
   Loader2,
   Share2,
+  Smartphone,
   UserRound,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -16,10 +17,11 @@ import { CardPhotoUpload } from "@/components/cards/card-photo-upload";
 import { CardTemplateChooser } from "@/components/cards/card-template-chooser";
 import { CardThemePicker } from "@/components/cards/card-theme-picker";
 import { LiveCardPreview } from "@/components/cards/live-card-preview";
-import { Badge } from "@/components/ui/badge";
+import { MobileCardPreview } from "@/components/cards/mobile-card-preview";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { apiFetch } from "@/lib/api";
 import {
   CARD_DIAL_OPTIONS,
@@ -106,14 +108,14 @@ function CollapsibleSection({
   children: ReactNode;
 }) {
   return (
-    <section className="overflow-hidden rounded-2xl border border-border bg-muted/20">
+    <section className="overflow-hidden rounded-lg border border-border bg-surface">
       <button
         type="button"
         onClick={() => onOpenChange(!open)}
-        className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-bg-hover/60 sm:px-5"
+        className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-bg-hover sm:px-5"
         aria-expanded={open}
       >
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-subtle text-primary">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-secondary text-muted-foreground">
           {icon}
         </div>
         <div className="min-w-0 flex-1">
@@ -176,6 +178,7 @@ export function CardOnboardingModal({
   const [colorOpen, setColorOpen] = useState(false);
   const [socialsOpen, setSocialsOpen] = useState(false);
   const [mobilePreviewOpen, setMobilePreviewOpen] = useState(false);
+  const [fullMobilePreviewOpen, setFullMobilePreviewOpen] = useState(false);
 
   const updateField = <K extends keyof ContactCardFields>(
     key: K,
@@ -248,17 +251,16 @@ export function CardOnboardingModal({
 
   return (
     <section className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-3 backdrop-blur-sm sm:p-4 md:p-5">
-      {/* Fixed height shell so panes scroll instead of clipping */}
-      <div className="flex h-[calc(100dvh-1.5rem)] w-full max-w-6xl overflow-hidden rounded-2xl border border-border bg-card shadow-xl sm:h-[calc(100dvh-2rem)] lg:grid lg:grid-cols-[minmax(0,1.1fr)_minmax(280px,0.9fr)]">
+      <div className="flex h-[calc(100dvh-1.5rem)] w-full max-w-6xl overflow-hidden rounded-xl border border-border bg-surface sm:h-[calc(100dvh-2rem)] lg:grid lg:grid-cols-[minmax(0,1.1fr)_minmax(280px,0.9fr)]">
         {/* Editor column */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-5 md:p-6">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="max-w-2xl">
-                <Badge variant={isSetupMode ? "success" : "secondary"}>
+                <StatusBadge variant={isSetupMode ? "connected" : "neutral"}>
                   {isSetupMode ? "Final setup step" : "Card"}
-                </Badge>
-                <h1 className="mt-3 font-display text-2xl font-semibold tracking-tight">
+                </StatusBadge>
+                <h1 className="mt-3 font-sans text-2xl font-semibold tracking-tight">
                   {isSetupMode
                     ? "Create your first card"
                     : "Create a card"}
@@ -284,7 +286,7 @@ export function CardOnboardingModal({
                 open={mobilePreviewOpen}
                 onOpenChange={setMobilePreviewOpen}
               >
-                <div className="flex justify-center rounded-2xl bg-[#12151C] py-4">
+                <div className="flex justify-center rounded-lg border border-border bg-surface py-4">
                   <div className="w-full max-w-[340px] origin-top scale-[0.9]">
                     <LiveCardPreview
                       fields={fields}
@@ -293,6 +295,16 @@ export function CardOnboardingModal({
                     />
                   </div>
                 </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="mt-3 w-full justify-center"
+                  onClick={() => setFullMobilePreviewOpen(true)}
+                >
+                  <Smartphone className="h-3.5 w-3.5" aria-hidden="true" />
+                  View on phone
+                </Button>
               </CollapsibleSection>
             </div>
 
@@ -431,7 +443,7 @@ export function CardOnboardingModal({
                     className="h-3.5 w-3.5 text-muted-foreground"
                     aria-hidden="true"
                   />
-                  <p className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                  <p className="text-xs font-medium text-muted-foreground">
                     {type === "BUSINESS" ? "Business" : "Organization"}
                   </p>
                 </div>
@@ -543,7 +555,7 @@ export function CardOnboardingModal({
           </div>
 
           {/* Sticky actions — always in frame */}
-          <div className="shrink-0 border-t border-border bg-card/95 px-4 py-3 backdrop-blur-sm sm:px-5 md:px-6">
+          <div className="shrink-0 border-t border-border bg-surface px-4 py-3 sm:px-5 md:px-6">
             <div className="flex flex-col gap-2.5 sm:flex-row">
               <Button
                 type="button"
@@ -565,11 +577,19 @@ export function CardOnboardingModal({
         </div>
 
         {/* Desktop live preview — fixed, full card in one view */}
-        <aside className="hidden min-h-0 min-w-0 flex-col overflow-hidden border-l border-border bg-[#12151C] lg:flex">
-          <div className="shrink-0 px-5 py-3 lg:px-6">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-white/45">
-              Live card
-            </p>
+        <aside className="hidden min-h-0 min-w-0 flex-col overflow-hidden border-l border-border bg-surface lg:flex">
+          <div className="flex shrink-0 items-center justify-between gap-2 px-5 py-3 lg:px-6">
+            <p className="text-sm font-semibold text-foreground">Live card</p>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 px-2"
+              onClick={() => setFullMobilePreviewOpen(true)}
+            >
+              <Smartphone className="h-3.5 w-3.5" aria-hidden="true" />
+              Phone
+            </Button>
           </div>
           <div className="min-h-0 flex-1 overflow-hidden px-3 pb-4">
             <LivePreviewPane
@@ -580,6 +600,15 @@ export function CardOnboardingModal({
           </div>
         </aside>
       </div>
+
+      <MobileCardPreview
+        open={fullMobilePreviewOpen}
+        onClose={() => setFullMobilePreviewOpen(false)}
+        fields={fields}
+        theme={theme}
+        template={template}
+        title={cardName.trim() || "Card preview"}
+      />
     </section>
   );
 }
