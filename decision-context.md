@@ -1,5 +1,51 @@
 # Decision Context
 
+## 2026-07-26 - Connect Phone Preview Full-Bleed
+
+- Decision: Connect mobile preview paints edge-to-edge inside the device frame. `pageWash` fills the full screen height (`h-full` flex column + spacer between identity and CTAs). Notch and home indicator are overlays — no white gutters/`FitToPhoneScreen` centering for Connect. Scan keeps scale-to-fit + light screen chrome.
+- Reason: Preview showed a floating sage block with large top/bottom white bands — not how a shared card looks full-screen on a phone.
+- Files: `mobile-card-preview.tsx`, `live-card-preview.tsx`, `decision-context.md`.
+- Alternatives considered: Redesign to ContactBook hero-photo + bottom-nav reference — deferred; this pass is full-bleed Synergy Connect only.
+
+## 2026-07-26 - Executive Card Color Revamp
+
+- Decision: Mature preset palette (muted navy/teal/blue/evergreen/wine/graphite/brass/terracotta). Rework `resolveCardSurface` Connect blending: stronger `pageWash` (~72% paper mix), opaque theme-tinted CTA pills (not low-alpha gray), `avatarBg` / `brandMuted` / denser social muted fills. Scan stays solid primary + white type. Custom hex uses same pipeline.
+- Reason: Midnight and other swatches washed to immature gray on Connect; networking cards need quiet executive color presence.
+- Files: `card-maker.ts`, `live-card-preview.tsx`, `card-thumbs.tsx`, `decision-context.md`.
+
+## 2026-07-26 - Phone Preview One-Glance Fit (No Scroll)
+
+- Decision: Mobile phone preview never scrolls. Screen uses `overflow-hidden` + `FitToPhoneScreen` (ResizeObserver scale-to-fit). Connect `fillPhone` uses denser spacing so content usually fits at scale 1; scale only as safety.
+- Reason: Preview showed a scrollbar and clipped socials — user wants the full card visible in one glance.
+- Files: `mobile-card-preview.tsx`, `live-card-preview.tsx`, `decision-context.md`.
+
+## 2026-07-25 - Create Card Modal Compact Overlay (Approach A)
+
+- Decision: Maker modal is a compact overlay: medium scrim (`bg-foreground/40` + light blur), `max-w-5xl` (~1024px), tall height kept, editor|preview grid `1.15fr / 0.85fr`, live pane scale-to-fit. No backdrop-click dismiss; Phone overlay unchanged. No form field rewrites.
+- Reason: Near-fullscreen `max-w-6xl` + heavy `background/80` felt unusable; user locked compact overlay + medium scrim + width-only shrink.
+- Files: `card-onboarding-page.tsx`, `decision-context.md`.
+- Alternatives considered: Form density pass (B), skinny preview column (C) — deferred.
+
+## 2026-07-24 - Detail Stage: Card Only (Phone on Preview)
+
+- Decision: Card detail Connect/Scan aside shows the normal `LiveCardPreview` card again — no inline phone bezel. Full-phone frame opens only via Preview / View on phone (`MobileCardPreview`).
+- Reason: Inline phone chassis on the detail page was not requested; user wants phone preview only on explicit Preview.
+- Files: `card-detail-page.tsx`, `decision-context.md`.
+
+## 2026-07-24 - Connect Share Page + Full Phone Preview
+
+- Decision: Rebuild Connect to Synergy share-page: avatar, name, title, underlined tel/mailto, company block + brand mark, three themed CTAs (Save my contact / Book a meeting / Navigate to my office), socials. `fillPhone` mode for full-bleed in device frames. Mobile preview uses fixed ~9/19.5 chassis (`min(88dvh,860px)` height). Detail Connect stage uses the same phone chassis. Gallery ConnectThumb mirrors denser structure.
+- Reason: Screenshots showed short-form Connect and a stubby phone preview — not how the card will look when shared on a real phone.
+- Files: `live-card-preview.tsx`, `mobile-card-preview.tsx`, `card-thumbs.tsx`, `card-detail-page.tsx`, `decision-context.md`.
+- Alternatives considered: Keep Save/Share-only CTAs — rejected (reference has three action rows). Add new maker fields — deferred; address/website already drive Navigate/Book.
+
+## 2026-07-24 - Shared Real QR Mark for Scan Thumbs
+
+- Decision: Replace gallery `ThumbQr` (21×21 coarse) with shared `CardQrMark` used by live Scan. Same seed helper (`cardQrSeed`), 29×29 modules, finder + timing + alignment patterns, quiet zone, white rounded plate — dashboard Scan QR matches detail reference.
+- Reason: Dashboard Scan QR looked fake/blocky vs detail Scan; user asked to replicate the real QR onto dashboard thumbs.
+- Files: `card-qr-mark.tsx`, `card-thumbs.tsx`, `live-card-preview.tsx`, `decision-context.md`.
+- Alternatives considered: New QR library dependency — deferred (no approval; shared mark is enough for UI fidelity).
+
 ## 2026-07-24 - Card UI Proportion Refinement Pass
 
 - Decision: Rebalance Connect/Scan for gallery + live detail. Thumbs: Connect fills height as mini share page (labeled Save/Share stubs + socials + phone/email); Scan QR moderated to 72px with phone/email rows so identity isn’t crushed. Live Scan: wider `max-w-[360px]`, aspect `3/4.8`, QR 118px, tighter vertical rhythm. Live Connect: themed `pageWash` shell + bordered identity card. Detail stage: wider column + `bg-bg-hover` preview well. Pair tile padding/gap increased. `essentialFacts` includes Name so “On this card” isn’t empty when only displayName is set.

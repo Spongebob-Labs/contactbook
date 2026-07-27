@@ -150,8 +150,8 @@ function LivePreviewPane({
 }) {
   return (
     <div className="flex h-full min-h-0 w-full items-center justify-center overflow-hidden px-2">
-      {/* Wider stage; light scale so the full card stays in one view */}
-      <div className="w-full max-w-[360px] origin-center scale-[0.86] xl:scale-[0.92]">
+      {/* Scale-to-fit inside compact overlay preview column */}
+      <div className="w-full max-w-[320px] origin-center scale-[0.78] xl:max-w-[340px] xl:scale-[0.84]">
         <LiveCardPreview fields={fields} theme={theme} template={template} />
       </div>
     </div>
@@ -250,13 +250,18 @@ export function CardOnboardingModal({
   };
 
   return (
-    <section className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-3 backdrop-blur-sm sm:p-4 md:p-5">
-      <div className="flex h-[calc(100dvh-1.5rem)] w-full max-w-6xl overflow-hidden rounded-xl border border-border bg-surface sm:h-[calc(100dvh-2rem)] lg:grid lg:grid-cols-[minmax(0,1.1fr)_minmax(280px,0.9fr)]">
+    <section
+      className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 p-3 backdrop-blur-sm sm:p-4"
+      aria-modal="true"
+      role="dialog"
+      aria-label={isSetupMode ? "Create your first card" : "Create a card"}
+    >
+      <div className="flex h-[calc(100dvh-1.5rem)] w-full max-w-5xl overflow-hidden rounded-xl border border-border bg-surface shadow-[0_24px_80px_rgba(15,23,42,0.18)] sm:h-[calc(100dvh-2rem)] lg:grid lg:grid-cols-[minmax(0,1.15fr)_minmax(260px,0.85fr)]">
         {/* Editor column */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-5 md:p-6">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div className="max-w-2xl">
+              <div className="max-w-xl">
                 <StatusBadge variant={isSetupMode ? "connected" : "neutral"}>
                   {isSetupMode ? "Final setup step" : "Card"}
                 </StatusBadge>
@@ -577,8 +582,8 @@ export function CardOnboardingModal({
         </div>
 
         {/* Desktop live preview — fixed, full card in one view */}
-        <aside className="hidden min-h-0 min-w-0 flex-col overflow-hidden border-l border-border bg-surface lg:flex">
-          <div className="flex shrink-0 items-center justify-between gap-2 px-5 py-3 lg:px-6">
+        <aside className="hidden min-h-0 min-w-0 flex-col overflow-hidden border-l border-border bg-bg-hover/40 lg:flex">
+          <div className="flex shrink-0 items-center justify-between gap-2 px-4 py-3">
             <p className="text-sm font-semibold text-foreground">Live card</p>
             <Button
               type="button"
@@ -591,7 +596,7 @@ export function CardOnboardingModal({
               Phone
             </Button>
           </div>
-          <div className="min-h-0 flex-1 overflow-hidden px-3 pb-4">
+          <div className="min-h-0 flex-1 overflow-hidden px-2 pb-3">
             <LivePreviewPane
               fields={fields}
               theme={theme}

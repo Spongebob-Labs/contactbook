@@ -17,11 +17,11 @@ import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
 import { SampleDataNotice } from "@/components/sample-data-notice";
 import { Alert } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Panel, PanelHeader } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { apiFetch } from "@/lib/api";
 import {
   createContactGroup,
@@ -44,6 +44,7 @@ import {
 import { friendlyErrorMessages, logUiError } from "@/lib/friendly-errors";
 import { mockContactDetail } from "@/lib/mock-data";
 import type { ContactDetail, ContactGroup, ContactLabel } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 function ContactAvatar({ contact }: { contact: ContactDetail }) {
   return (
@@ -63,11 +64,16 @@ function DetailTile({
   value: string;
 }) {
   return (
-    <div className="flex gap-3 rounded-md border border-border p-4">
-      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+    <div className="flex gap-3 rounded-lg border border-border bg-surface p-4">
+      <Icon
+        className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground"
+        aria-hidden="true"
+      />
       <div className="min-w-0">
-        <p className="text-xs font-medium uppercase text-muted-foreground">{label}</p>
-        <p className="mt-1 break-words text-sm">{value}</p>
+        <p className="text-[12px] font-medium uppercase tracking-[0.04em] text-muted-foreground">
+          {label}
+        </p>
+        <p className="mt-1 break-words text-sm text-foreground">{value}</p>
       </div>
     </div>
   );
@@ -80,17 +86,81 @@ function ListSection({
 }: {
   title: string;
   empty: string;
-  children: ReactNode;
+  children?: ReactNode;
+}) {
+  const hasContent = children != null && children !== false;
+
+  return (
+    <Panel className="p-5 md:p-6">
+      <PanelHeader title={title} className="mb-3" />
+      {hasContent ? (
+        children
+      ) : (
+        <p className="text-sm text-muted-foreground">{empty}</p>
+      )}
+    </Panel>
+  );
+}
+
+function AssignmentColumn({
+  title,
+  icon: Icon,
+  empty,
+  children,
+  addSlot,
+}: {
+  title: string;
+  icon: LucideIcon;
+  empty: string;
+  children?: ReactNode;
+  addSlot: ReactNode;
+}) {
+  const hasItems = children != null && children !== false;
+
+  return (
+    <div className="flex h-full flex-col rounded-lg border border-border bg-background p-4">
+      <div className="mb-3 flex items-center gap-2">
+        <Icon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+      </div>
+
+      <div className="min-h-0 flex-1">
+        {hasItems ? (
+          <div className="grid gap-1">{children}</div>
+        ) : (
+          <p className="text-sm text-muted-foreground">{empty}</p>
+        )}
+      </div>
+
+      <div className="mt-4 border-t border-border pt-4">{addSlot}</div>
+    </div>
+  );
+}
+
+function AssignmentRow({
+  checked,
+  onChange,
+  label,
+  meta,
+}: {
+  checked: boolean;
+  onChange: () => void;
+  label: string;
+  meta?: ReactNode;
 }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        {children ?? <p className="text-sm text-muted-foreground">{empty}</p>}
-      </CardContent>
-    </Card>
+    <label className="flex cursor-pointer items-center justify-between gap-3 rounded-md px-2.5 py-2 text-sm transition-colors duration-150 hover:bg-bg-hover">
+      <span className="flex min-w-0 items-center gap-3">
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={onChange}
+          className="h-4 w-4 accent-foreground"
+        />
+        <span className="truncate text-foreground">{label}</span>
+      </span>
+      {meta}
+    </label>
   );
 }
 
@@ -238,7 +308,9 @@ export default function ContactDetailPage() {
         current.some((currentTag) => currentTag.id === tag.id)
           ? current
           : [...current, tag].sort((first, second) =>
-              first.name.localeCompare(second.name, undefined, { sensitivity: "base" }),
+              first.name.localeCompare(second.name, undefined, {
+                sensitivity: "base",
+              }),
             ),
       );
       setContact(updatedContact);
@@ -272,7 +344,9 @@ export default function ContactDetailPage() {
         current.some((currentGroup) => currentGroup.id === group.id)
           ? current
           : [...current, group].sort((first, second) =>
-              first.name.localeCompare(second.name, undefined, { sensitivity: "base" }),
+              first.name.localeCompare(second.name, undefined, {
+                sensitivity: "base",
+              }),
             ),
       );
       setContact(updatedContact);
@@ -289,121 +363,98 @@ export default function ContactDetailPage() {
 
   return (
     <AppShell>
-      <section className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <Link
-          to="/dashboard/contacts"
-          className={buttonVariants({ variant: "outline" })}
-        >
-          <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-          Contacts
-        </Link>
-      </section>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between gap-3">
+          <Link
+            to="/dashboard/contacts"
+            className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+            Contacts
+          </Link>
+        </div>
 
-      {error && (
-        <Alert className="flex items-start gap-3">
-          <AlertCircle className="mt-0.5 h-4 w-4 text-destructive" aria-hidden="true" />
-          <div>
-            <p className="font-medium">Could not load contact</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {friendlyErrorMessages.load}
-            </p>
-          </div>
-        </Alert>
-      )}
+        {error ? (
+          <Alert className="flex items-start gap-3">
+            <AlertCircle
+              className="mt-0.5 h-4 w-4 text-destructive"
+              aria-hidden="true"
+            />
+            <div>
+              <p className="font-medium">Could not load contact</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {friendlyErrorMessages.load}
+              </p>
+            </div>
+          </Alert>
+        ) : null}
 
-      {isMockData && <SampleDataNotice />}
+        {isMockData ? <SampleDataNotice /> : null}
 
-      {isLoading && (
-        <Card>
-          <CardContent className="space-y-4 p-6">
+        {isLoading ? (
+          <Panel className="space-y-4">
             <Skeleton className="h-14 w-14 rounded-full" />
             <Skeleton className="h-7 w-64" />
             <Skeleton className="h-24 w-full" />
             <Skeleton className="h-40 w-full" />
-          </CardContent>
-        </Card>
-      )}
+          </Panel>
+        ) : null}
 
-      {!isLoading && !error && contact && (
-        <>
-          <Card>
-            <CardContent className="p-6">
+        {!isLoading && !error && contact ? (
+          <>
+            <Panel className="p-5 md:p-6">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div className="flex min-w-0 items-center gap-4">
                   <ContactAvatar contact={contact} />
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h1 className="text-2xl font-semibold tracking-normal">
+                      <h1 className="text-xl font-semibold tracking-[-0.01em] text-foreground">
                         {getContactName(contact)}
                       </h1>
-                      <Badge variant="secondary">{contact.source.toLowerCase()}</Badge>
+                      <StatusBadge variant="neutral">
+                        {contact.source.toLowerCase()}
+                      </StatusBadge>
                     </div>
                     <p className="mt-1 text-sm text-muted-foreground">
                       {getCompany(contact) || getTitle(contact) || "Contact"}
                     </p>
                   </div>
                 </div>
-                <div className="grid gap-2 text-sm text-muted-foreground sm:grid-cols-2 lg:text-right">
+                <div className="grid gap-1 text-sm text-muted-foreground sm:grid-cols-2 lg:text-right">
                   <p>Created {formatContactDate(contact.createdAt)}</p>
                   <p>Updated {formatContactDate(contact.updatedAt)}</p>
                 </div>
               </div>
-            </CardContent>
-          </Card>
+            </Panel>
 
-          <section className="grid gap-4 md:grid-cols-3">
-            <DetailTile
-              icon={Mail}
-              label="Primary email"
-              value={getPrimaryEmail(contact) || "No email"}
-            />
-            <DetailTile
-              icon={Phone}
-              label="Primary phone"
-              value={getPrimaryPhone(contact) || "No phone"}
-            />
-            <DetailTile
-              icon={MapPin}
-              label="Location"
-              value={getLocation(contact) || "No location"}
-            />
-          </section>
+            <section className="grid gap-4 md:grid-cols-3">
+              <DetailTile
+                icon={Mail}
+                label="Primary email"
+                value={getPrimaryEmail(contact) || "No email"}
+              />
+              <DetailTile
+                icon={Phone}
+                label="Primary phone"
+                value={getPrimaryPhone(contact) || "No phone"}
+              />
+              <DetailTile
+                icon={MapPin}
+                label="Location"
+                value={getLocation(contact) || "No location"}
+              />
+            </section>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Tags & groups</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-5">
-              <div className="grid gap-4 lg:grid-cols-2">
-                <div className="rounded-[24px] border border-border bg-background/60 p-4">
-                  <div className="mb-3 flex items-center gap-2 text-sm font-medium">
-                    <Tags className="h-4 w-4 text-primary" aria-hidden="true" />
-                    Tags
-                  </div>
-                  {availableTags.length > 0 ? (
-                    <div className="grid gap-2">
-                      {availableTags.map((tag) => (
-                        <label
-                          key={tag.id}
-                          className="flex cursor-pointer items-center gap-3 rounded-full px-3 py-2 text-sm transition-colors hover:bg-muted"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={selectedTagIds.includes(tag.id)}
-                            onChange={() =>
-                              setSelectedTagIds((current) => toggleId(current, tag.id))
-                            }
-                            className="h-4 w-4 accent-primary"
-                          />
-                          <span className="truncate">{tag.name}</span>
-                        </label>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">No tags yet</p>
-                  )}
-                  <div className="mt-4 rounded-[20px] border border-dashed border-border bg-card/70 p-3">
-                    <div className="flex flex-col gap-2 sm:flex-row">
+            <Panel className="p-5 md:p-6">
+              <PanelHeader title="Tags & groups" className="mb-4" />
+
+              <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
+                <AssignmentColumn
+                  title="Tags"
+                  icon={Tags}
+                  empty="No tags yet"
+                  addSlot={
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                       <Input
                         value={newTagName}
                         onChange={(event) => setNewTagName(event.target.value)}
@@ -414,64 +465,52 @@ export default function ContactDetailPage() {
                           }
                         }}
                         placeholder="Add new tag"
-                        className="rounded-full"
                         disabled={isCreatingTag || isMockData}
+                        aria-label="New tag name"
                       />
                       <Button
                         type="button"
                         variant="outline"
-                        className="rounded-full"
-                        disabled={!newTagName.trim() || isCreatingTag || isMockData}
+                        size="sm"
+                        className="shrink-0"
+                        disabled={
+                          !newTagName.trim() || isCreatingTag || isMockData
+                        }
                         onClick={() => void createAndAssignTag()}
                       >
                         <Plus className="h-4 w-4" aria-hidden="true" />
                         {isCreatingTag ? "Adding" : "Add"}
                       </Button>
                     </div>
-                  </div>
-                </div>
+                  }
+                >
+                  {availableTags.length > 0
+                    ? availableTags.map((tag) => (
+                        <AssignmentRow
+                          key={tag.id}
+                          checked={selectedTagIds.includes(tag.id)}
+                          onChange={() =>
+                            setSelectedTagIds((current) =>
+                              toggleId(current, tag.id),
+                            )
+                          }
+                          label={tag.name}
+                        />
+                      ))
+                    : null}
+                </AssignmentColumn>
 
-                <div className="rounded-[24px] border border-border bg-background/60 p-4">
-                  <div className="mb-3 flex items-center gap-2 text-sm font-medium">
-                    <FolderKanban className="h-4 w-4 text-primary" aria-hidden="true" />
-                    Groups
-                  </div>
-                  {availableGroups.length > 0 ? (
-                    <div className="grid gap-2">
-                      {availableGroups.map((group) => (
-                        <label
-                          key={group.id}
-                          className="flex cursor-pointer items-center justify-between gap-3 rounded-full px-3 py-2 text-sm transition-colors hover:bg-muted"
-                        >
-                          <span className="flex min-w-0 items-center gap-3">
-                            <input
-                              type="checkbox"
-                              checked={selectedGroupIds.includes(group.id)}
-                              onChange={() =>
-                                setSelectedGroupIds((current) =>
-                                  toggleId(current, group.id),
-                                )
-                              }
-                              className="h-4 w-4 accent-primary"
-                            />
-                            <span className="truncate">{group.name}</span>
-                          </span>
-                          {group.source && (
-                            <Badge variant="secondary" className="rounded-full">
-                              {group.source.toLowerCase()}
-                            </Badge>
-                          )}
-                        </label>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">No groups yet</p>
-                  )}
-                  <div className="mt-4 rounded-[20px] border border-dashed border-border bg-card/70 p-3">
-                    <div className="flex flex-col gap-2 sm:flex-row">
+                <AssignmentColumn
+                  title="Groups"
+                  icon={FolderKanban}
+                  empty="No groups yet"
+                  addSlot={
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                       <Input
                         value={newGroupName}
-                        onChange={(event) => setNewGroupName(event.target.value)}
+                        onChange={(event) =>
+                          setNewGroupName(event.target.value)
+                        }
                         onKeyDown={(event) => {
                           if (event.key === "Enter") {
                             event.preventDefault();
@@ -479,125 +518,182 @@ export default function ContactDetailPage() {
                           }
                         }}
                         placeholder="Add new group"
-                        className="rounded-full"
                         disabled={isCreatingGroup || isMockData}
+                        aria-label="New group name"
                       />
                       <Button
                         type="button"
                         variant="outline"
-                        className="rounded-full"
-                        disabled={!newGroupName.trim() || isCreatingGroup || isMockData}
+                        size="sm"
+                        className="shrink-0"
+                        disabled={
+                          !newGroupName.trim() ||
+                          isCreatingGroup ||
+                          isMockData
+                        }
                         onClick={() => void createAndAssignGroup()}
                       >
                         <Plus className="h-4 w-4" aria-hidden="true" />
                         {isCreatingGroup ? "Adding" : "Add"}
                       </Button>
                     </div>
-                  </div>
-                </div>
+                  }
+                >
+                  {availableGroups.length > 0
+                    ? availableGroups.map((group) => (
+                        <AssignmentRow
+                          key={group.id}
+                          checked={selectedGroupIds.includes(group.id)}
+                          onChange={() =>
+                            setSelectedGroupIds((current) =>
+                              toggleId(current, group.id),
+                            )
+                          }
+                          label={group.name}
+                          meta={
+                            group.source ? (
+                              <StatusBadge variant="neutral">
+                                {group.source.toLowerCase()}
+                              </StatusBadge>
+                            ) : null
+                          }
+                        />
+                      ))
+                    : null}
+                </AssignmentColumn>
               </div>
-              <div className="flex justify-end">
+
+              <div className="mt-5 flex justify-end border-t border-border pt-4">
                 <Button
                   type="button"
-                  className="rounded-full"
-                  disabled={!hasAssignmentChanges || isSavingAssignments || isMockData}
+                  disabled={
+                    !hasAssignmentChanges ||
+                    isSavingAssignments ||
+                    isMockData
+                  }
                   onClick={() => void saveAssignments()}
                 >
                   {isSavingAssignments ? "Saving" : "Save assignments"}
                 </Button>
               </div>
-            </CardContent>
-          </Card>
+            </Panel>
 
-          <section className="grid gap-4 xl:grid-cols-2">
-            <ListSection title="Phones" empty="No phone numbers">
-              {contact.phones.length > 0 ? (
-                <div className="grid gap-2">
-                  {contact.phones.map((phone) => (
-                    <div key={`${phone.value}-${phone.label ?? "phone"}`} className="rounded-md border border-border p-3">
-                      <p className="font-medium">{phone.value}</p>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        {phone.label ?? "Phone"}{phone.isPrimary ? " - Primary" : ""}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-            </ListSection>
+            <section className="grid gap-4 xl:grid-cols-2">
+              <ListSection title="Phones" empty="No phone numbers">
+                {contact.phones.length > 0 ? (
+                  <div className="grid gap-2">
+                    {contact.phones.map((phone) => (
+                      <div
+                        key={`${phone.value}-${phone.label ?? "phone"}`}
+                        className="rounded-lg border border-border bg-background p-3"
+                      >
+                        <p className="font-medium text-foreground">
+                          {phone.value}
+                        </p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {phone.label ?? "Phone"}
+                          {phone.isPrimary ? " · Primary" : ""}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </ListSection>
 
-            <ListSection title="Emails" empty="No email addresses">
-              {contact.emails.length > 0 ? (
-                <div className="grid gap-2">
-                  {contact.emails.map((email) => (
-                    <div key={`${email.value}-${email.label ?? "email"}`} className="rounded-md border border-border p-3">
-                      <p className="font-medium">{email.value}</p>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        {email.label ?? "Email"}{email.isPrimary ? " - Primary" : ""}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-            </ListSection>
+              <ListSection title="Emails" empty="No email addresses">
+                {contact.emails.length > 0 ? (
+                  <div className="grid gap-2">
+                    {contact.emails.map((email) => (
+                      <div
+                        key={`${email.value}-${email.label ?? "email"}`}
+                        className="rounded-lg border border-border bg-background p-3"
+                      >
+                        <p className="font-medium text-foreground">
+                          {email.value}
+                        </p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {email.label ?? "Email"}
+                          {email.isPrimary ? " · Primary" : ""}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </ListSection>
 
-            <ListSection title="Organizations" empty="No organizations">
-              {contact.organizations.length > 0 ? (
-                <div className="grid gap-2">
-                  {contact.organizations.map((organization, index) => (
-                    <div key={`${organization.companyName ?? "organization"}-${index}`} className="rounded-md border border-border p-3">
-                      <div className="flex items-start gap-3">
-                        <Building2 className="mt-0.5 h-4 w-4 text-muted-foreground" aria-hidden="true" />
-                        <div>
-                          <p className="font-medium">
-                            {organization.companyName ?? "Organization"}
-                          </p>
-                          <p className="mt-1 text-sm text-muted-foreground">
-                            {[organization.title, organization.department]
-                              .filter(Boolean)
-                              .join(" - ") || "No role details"}
-                          </p>
+              <ListSection title="Organizations" empty="No organizations">
+                {contact.organizations.length > 0 ? (
+                  <div className="grid gap-2">
+                    {contact.organizations.map((organization, index) => (
+                      <div
+                        key={`${organization.companyName ?? "organization"}-${index}`}
+                        className="rounded-lg border border-border bg-background p-3"
+                      >
+                        <div className="flex items-start gap-3">
+                          <Building2
+                            className="mt-0.5 h-4 w-4 text-muted-foreground"
+                            aria-hidden="true"
+                          />
+                          <div>
+                            <p className="font-medium text-foreground">
+                              {organization.companyName ?? "Organization"}
+                            </p>
+                            <p className="mt-1 text-sm text-muted-foreground">
+                              {[organization.title, organization.department]
+                                .filter(Boolean)
+                                .join(" · ") || "No role details"}
+                            </p>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-            </ListSection>
+                    ))}
+                  </div>
+                ) : null}
+              </ListSection>
 
-            <ListSection title="Addresses" empty="No addresses">
-              {contact.addresses.length > 0 ? (
-                <div className="grid gap-2">
-                  {contact.addresses.map((address, index) => (
-                    <div key={`${address.street ?? "address"}-${index}`} className="rounded-md border border-border p-3">
-                      <p className="font-medium">
-                        {[address.street, address.city, address.region]
-                          .filter(Boolean)
-                          .join(", ") || "Address"}
-                      </p>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        {[address.postalCode, address.country].filter(Boolean).join(", ") ||
-                          "No location details"}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-            </ListSection>
-          </section>
+              <ListSection title="Addresses" empty="No addresses">
+                {contact.addresses.length > 0 ? (
+                  <div className="grid gap-2">
+                    {contact.addresses.map((address, index) => (
+                      <div
+                        key={`${address.street ?? "address"}-${index}`}
+                        className="rounded-lg border border-border bg-background p-3"
+                      >
+                        <p className="font-medium text-foreground">
+                          {[address.street, address.city, address.region]
+                            .filter(Boolean)
+                            .join(", ") || "Address"}
+                        </p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {[address.postalCode, address.country]
+                            .filter(Boolean)
+                            .join(", ") || "No location details"}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </ListSection>
+            </section>
 
-          <section>
             <ListSection title="URLs" empty="No URLs">
               {contact.urls.length > 0 ? (
                 <div className="grid gap-2">
                   {contact.urls.map((url) => (
-                    <div key={url.value} className="flex items-start gap-3 rounded-md border border-border p-3">
-                      <Globe className="mt-0.5 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                    <div
+                      key={url.value}
+                      className="flex items-start gap-3 rounded-lg border border-border bg-background p-3"
+                    >
+                      <Globe
+                        className="mt-0.5 h-4 w-4 text-muted-foreground"
+                        aria-hidden="true"
+                      />
                       <div className="min-w-0">
                         <a
                           href={url.value}
                           target="_blank"
                           rel="noreferrer"
-                          className="break-words font-medium hover:underline"
+                          className="break-words font-medium text-foreground hover:underline"
                         >
                           {url.value}
                         </a>
@@ -610,22 +706,18 @@ export default function ContactDetailPage() {
                 </div>
               ) : null}
             </ListSection>
-          </section>
 
-          {contact.notes && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Notes</CardTitle>
-              </CardHeader>
-              <CardContent>
+            {contact.notes ? (
+              <Panel className="p-5 md:p-6">
+                <PanelHeader title="Notes" className="mb-3" />
                 <p className="whitespace-pre-wrap text-sm text-muted-foreground">
                   {contact.notes}
                 </p>
-              </CardContent>
-            </Card>
-          )}
-        </>
-      )}
+              </Panel>
+            ) : null}
+          </>
+        ) : null}
+      </div>
     </AppShell>
   );
 }
