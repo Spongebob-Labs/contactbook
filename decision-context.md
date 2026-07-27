@@ -1,5 +1,11 @@
 # Decision Context
 
+## 2026-07-27 - Contact Detail Layout DS Align
+
+- Decision: Rebuild contact detail chrome to match Contacts/Profile DS: page `space-y-6`, `Panel` sections, no nested `rounded-[24px]` / pill inputs, Tags & Groups as bordered columns with add-row separator + Save in a bordered footer. Detail tiles and list rows use `rounded-lg` borders-only.
+- Reason: Screenshot showed overlapping Save button, cramped Tags/Groups, and stacked sections with no page gap — unprofessional for client demo.
+- Files: `contact-detail-page.tsx`, `decision-context.md`.
+
 ## 2026-07-26 - Connect Phone Preview Full-Bleed
 
 - Decision: Connect mobile preview paints edge-to-edge inside the device frame. `pageWash` fills the full screen height (`h-full` flex column + spacer between identity and CTAs). Notch and home indicator are overlays — no white gutters/`FitToPhoneScreen` centering for Connect. Scan keeps scale-to-fit + light screen chrome.
