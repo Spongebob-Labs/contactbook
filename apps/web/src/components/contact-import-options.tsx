@@ -1,6 +1,8 @@
 import { useRef, useState } from "react";
 import { Cloud, FileUp, UploadCloud } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { cn } from "@/lib/utils";
@@ -16,11 +18,24 @@ type ContactImportOptionsProps = {
   isConnectingGoogle?: boolean;
   onSyncGoogle?: () => void;
   isSyncingGoogle?: boolean;
+  onFullImportGoogle?: () => void;
+  isFullImportingGoogle?: boolean;
+  onDisconnectGoogle?: () => void;
+  isDisconnectingGoogle?: boolean;
   googleConnected?: boolean;
   googleMeta?: string;
   onUploadVcf?: (file: File) => void | Promise<void>;
   isUploadingVcf?: boolean;
   vcfMeta?: string;
+  onImportIcloud?: (input: {
+    appleId: string;
+    appSpecificPassword: string;
+  }) => void | Promise<void>;
+  isImportingIcloud?: boolean;
+  onSyncIcloud?: () => void;
+  isSyncingIcloud?: boolean;
+  icloudConnected?: boolean;
+  icloudMeta?: string;
 };
 
 export function ContactImportOptions({
@@ -28,16 +43,29 @@ export function ContactImportOptions({
   isConnectingGoogle = false,
   onSyncGoogle,
   isSyncingGoogle = false,
+  onFullImportGoogle,
+  isFullImportingGoogle = false,
+  onDisconnectGoogle,
+  isDisconnectingGoogle = false,
   googleConnected = false,
   googleMeta,
   onUploadVcf,
   isUploadingVcf = false,
   vcfMeta,
+  onImportIcloud,
+  isImportingIcloud = false,
+  onSyncIcloud,
+  isSyncingIcloud = false,
+  icloudConnected = false,
+  icloudMeta,
   className,
   hideGoogle = false,
 }: ContactImportOptionsProps) {
   const vcfInputRef = useRef<HTMLInputElement | null>(null);
   const [isDraggingVcf, setIsDraggingVcf] = useState(false);
+  const [icloudOpen, setIcloudOpen] = useState(false);
+  const [appleId, setAppleId] = useState("");
+  const [appSpecificPassword, setAppSpecificPassword] = useState("");
 
   const handleVcfFileChange = (file: File | undefined) => {
     if (!file || !onUploadVcf) {
@@ -49,11 +77,41 @@ export function ContactImportOptions({
     }
   };
 
+  const submitIcloudImport = async () => {
+    if (!onImportIcloud) {
+      return;
+    }
+
+    const trimmedAppleId = appleId.trim();
+    const trimmedPassword = appSpecificPassword.trim();
+    if (!trimmedAppleId || !trimmedPassword) {
+      toast.error("Enter your Apple ID and an app-specific password.");
+      return;
+    }
+
+    try {
+      await onImportIcloud({
+        appleId: trimmedAppleId,
+        appSpecificPassword: trimmedPassword,
+      });
+      setAppSpecificPassword("");
+      setIcloudOpen(false);
+    } catch {
+      // Parent handler logs and toasts.
+    }
+  };
+
+  const googleBusy =
+    isConnectingGoogle ||
+    isSyncingGoogle ||
+    isFullImportingGoogle ||
+    isDisconnectingGoogle;
+
   return (
     <Panel className={cn("overflow-hidden p-0", className)}>
       {!hideGoogle ? (
         <>
-          <div className="flex items-center gap-3 px-4 py-3.5 sm:px-5">
+          <div className="flex flex-col gap-3 px-4 py-3.5 sm:flex-row sm:items-center sm:px-5">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border bg-surface text-foreground">
               <UploadCloud className="h-4 w-4" aria-hidden="true" />
             </span>
@@ -69,21 +127,43 @@ export function ContactImportOptions({
               <p className="mt-0.5 text-xs text-muted-foreground">
                 {googleMeta ??
                   (googleConnected
-                    ? "Sync contacts from your Google account"
+                    ? "Sync or fully re-import contacts from Google"
                     : "Connect your Google account to sync contacts")}
               </p>
             </div>
             {googleConnected ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="shrink-0 rounded-full"
-                onClick={onSyncGoogle}
-                disabled={isSyncingGoogle || !onSyncGoogle}
-              >
-                {isSyncingGoogle ? "Syncing…" : "Sync now"}
-              </Button>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="shrink-0 rounded-full"
+                  onClick={onSyncGoogle}
+                  disabled={googleBusy || !onSyncGoogle}
+                >
+                  {isSyncingGoogle ? "Syncing…" : "Sync"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="shrink-0 rounded-full"
+                  onClick={onFullImportGoogle}
+                  disabled={googleBusy || !onFullImportGoogle}
+                >
+                  {isFullImportingGoogle ? "Importing…" : "Full import"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="shrink-0 rounded-full text-destructive"
+                  onClick={onDisconnectGoogle}
+                  disabled={googleBusy || !onDisconnectGoogle}
+                >
+                  {isDisconnectingGoogle ? "Disconnecting…" : "Disconnect"}
+                </Button>
+              </div>
             ) : (
               <Button
                 type="button"
@@ -91,7 +171,7 @@ export function ContactImportOptions({
                 size="sm"
                 className="shrink-0 rounded-full"
                 onClick={onConnectGoogle}
-                disabled={isConnectingGoogle || !onConnectGoogle}
+                disabled={googleBusy || !onConnectGoogle}
               >
                 {isConnectingGoogle ? "Connecting…" : "Connect"}
               </Button>
@@ -165,28 +245,95 @@ export function ContactImportOptions({
 
       <div className="border-t border-border" role="separator" />
 
-      <div className="flex items-center gap-3 px-4 py-3.5 opacity-60 sm:px-5">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border bg-surface text-foreground">
-          <Cloud className="h-4 w-4" aria-hidden="true" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="text-sm font-semibold text-foreground">iCloud Contacts</p>
-            <StatusBadge variant="neutral">Coming soon</StatusBadge>
+      <div className="px-4 py-3.5 sm:px-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border bg-surface text-foreground">
+            <Cloud className="h-4 w-4" aria-hidden="true" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-sm font-semibold text-foreground">
+                iCloud Contacts
+              </p>
+              {icloudConnected ? (
+                <StatusBadge variant="connected">Connected</StatusBadge>
+              ) : null}
+            </div>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {icloudMeta ??
+                "Import with Apple ID, then sync for incremental updates"}
+            </p>
           </div>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Apple Contacts sync will land in a later release
-          </p>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {icloudConnected && onSyncIcloud ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="shrink-0 rounded-full"
+                disabled={isSyncingIcloud || isImportingIcloud}
+                onClick={onSyncIcloud}
+              >
+                {isSyncingIcloud ? "Syncing…" : "Sync"}
+              </Button>
+            ) : null}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="shrink-0 rounded-full"
+              disabled={isImportingIcloud || !onImportIcloud}
+              onClick={() => setIcloudOpen((current) => !current)}
+            >
+              {icloudOpen
+                ? "Close"
+                : icloudConnected
+                  ? "Re-import"
+                  : "Connect"}
+            </Button>
+          </div>
         </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="shrink-0 rounded-full"
-          disabled
-        >
-          Connect
-        </Button>
+
+        {icloudOpen ? (
+          <div className="mt-4 space-y-3 border-t border-border pt-4">
+            <Input
+              type="email"
+              value={appleId}
+              onChange={(event) => setAppleId(event.target.value)}
+              placeholder="Apple ID email"
+              autoComplete="username"
+              disabled={isImportingIcloud}
+              aria-label="Apple ID email"
+            />
+            <Input
+              type="password"
+              value={appSpecificPassword}
+              onChange={(event) => setAppSpecificPassword(event.target.value)}
+              placeholder="App-specific password"
+              autoComplete="current-password"
+              disabled={isImportingIcloud}
+              aria-label="App-specific password"
+            />
+            <p className="text-xs text-muted-foreground">
+              Generate an app-specific password in your Apple ID account
+              settings.
+            </p>
+            <Button
+              type="button"
+              size="sm"
+              className="w-full sm:w-auto"
+              disabled={
+                isImportingIcloud ||
+                !onImportIcloud ||
+                !appleId.trim() ||
+                !appSpecificPassword.trim()
+              }
+              onClick={() => void submitIcloudImport()}
+            >
+              {isImportingIcloud ? "Importing…" : "Import from iCloud"}
+            </Button>
+          </div>
+        ) : null}
       </div>
     </Panel>
   );

@@ -1,11 +1,11 @@
-import { lazy, Suspense, useEffect } from "react";
+import { lazy, Suspense, useEffect, type ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AppErrorBoundary } from "@/components/app-error-boundary";
 import { PageLoader } from "@/components/page-loader";
-// import { ProtectedRoute } from "@/components/protected-route";
+import { ProtectedRoute } from "@/components/protected-route";
 
-// const AuthPage = lazy(() => import("@/pages/auth-page"));
-// const AuthCallbackPage = lazy(() => import("@/pages/auth-callback-page"));
+const AuthPage = lazy(() => import("@/pages/auth-page"));
+const AuthCallbackPage = lazy(() => import("@/pages/auth-callback-page"));
 const AboutPage = lazy(() => import("@/pages/about-page"));
 const CardDetailPage = lazy(() => import("@/pages/card-detail-page"));
 const CardsPage = lazy(() => import("@/pages/cards-page"));
@@ -36,12 +36,12 @@ function pageTitleForPath(pathname: string) {
   if (pathname === "/terms") {
     return "Terms and Conditions | ContactBook";
   }
-  // if (pathname === "/auth") {
-  //   return "Sign In | ContactBook";
-  // }
-  // if (pathname === "/auth/callback") {
-  //   return "Connecting Account | ContactBook";
-  // }
+  if (pathname === "/auth") {
+    return "Sign In | ContactBook";
+  }
+  if (pathname === "/auth/callback") {
+    return "Connecting Account | ContactBook";
+  }
   if (pathname === "/profile") {
     return "Profile | ContactBook";
   }
@@ -52,7 +52,7 @@ function pageTitleForPath(pathname: string) {
     return "Theme Preview | ContactBook";
   }
   if (pathname === "/dashboard/cards") {
-    return "Cards | ContactBook";
+    return "My Cards | ContactBook";
   }
   if (pathname.startsWith("/dashboard/cards/")) {
     return "Card Details | ContactBook";
@@ -98,6 +98,10 @@ function RouteScrollReset() {
   return null;
 }
 
+function Protected({ children }: { children: ReactNode }) {
+  return <ProtectedRoute>{children}</ProtectedRoute>;
+}
+
 export default function App() {
   return (
     <AppErrorBoundary>
@@ -110,30 +114,97 @@ export default function App() {
           <Route path="/contact" element={<ContactPage />} />
           <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/terms" element={<TermsPage />} />
-          {/* --- Auth routes (disabled for viewing) --- */}
-          {/* <Route path="/auth" element={<AuthPage />} /> */}
-          {/* <Route path="/auth/callback" element={<AuthCallbackPage />} /> */}
+          <Route path="/auth" element={<AuthPage />} />
+          <Route path="/auth/callback" element={<AuthCallbackPage />} />
 
           <Route
             path="/onboarding/profile"
-            element={<Navigate to="/dashboard?onboarding=profile&flow=setup" replace />}
+            element={
+              <Protected>
+                <Navigate to="/dashboard?onboarding=profile&flow=setup" replace />
+              </Protected>
+            }
           />
           <Route
             path="/onboarding/import"
-            element={<Navigate to="/dashboard?onboarding=import&flow=setup" replace />}
+            element={
+              <Protected>
+                <Navigate to="/dashboard?onboarding=import&flow=setup" replace />
+              </Protected>
+            }
           />
           <Route
             path="/onboarding/card"
-            element={<Navigate to="/dashboard" replace />}
+            element={
+              <Protected>
+                <Navigate to="/dashboard" replace />
+              </Protected>
+            }
           />
-          <Route path="/profile" element={<ProfilePage />} />
-          <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/dashboard/theme-preview" element={<ThemePreviewPage />} />
-          <Route path="/dashboard/cards" element={<CardsPage />} />
-          <Route path="/dashboard/cards/:cardId" element={<CardDetailPage />} />
-          <Route path="/dashboard/contacts/:contactId" element={<ContactDetailPage />} />
-          <Route path="/dashboard/contacts" element={<ContactsPage />} />
-          <Route path="/dashboard/import" element={<ImportPage />} />
+          <Route
+            path="/profile"
+            element={
+              <Protected>
+                <ProfilePage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/dashboard"
+            element={
+              <Protected>
+                <DashboardPage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/dashboard/theme-preview"
+            element={
+              <Protected>
+                <ThemePreviewPage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/dashboard/cards"
+            element={
+              <Protected>
+                <CardsPage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/dashboard/cards/:cardId"
+            element={
+              <Protected>
+                <CardDetailPage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/dashboard/contacts/:contactId"
+            element={
+              <Protected>
+                <ContactDetailPage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/dashboard/contacts"
+            element={
+              <Protected>
+                <ContactsPage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/dashboard/import"
+            element={
+              <Protected>
+                <ImportPage />
+              </Protected>
+            }
+          />
           <Route path="/dashboard/*" element={<Navigate to="/dashboard" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

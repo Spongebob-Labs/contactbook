@@ -18,6 +18,7 @@ import type { ProfileMeResponse } from "@/lib/types";
 type AuthContextValue = {
   userId: string | null;
   profileIdentity: ProfileMeResponse["identity"] | null;
+  profileOnboardingCompletedAt: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   refreshUser: () => Promise<void>;
@@ -32,6 +33,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profileIdentity, setProfileIdentity] = useState<
     ProfileMeResponse["identity"] | null
   >(null);
+  const [profileOnboardingCompletedAt, setProfileOnboardingCompletedAt] =
+    useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -39,25 +42,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let isMounted = true;
 
     const bootstrapSession = async () => {
-      // --- Auth bypass: always report authenticated for viewing ---
-      if (isMounted) {
-        setUserId("viewer");
-        setProfileIdentity(null);
-        setIsAuthenticated(true);
-        setIsLoading(false);
-      }
-      return;
-
-      // Original auth flow (commented out)
       const currentPath = window.location.pathname;
       const isPublicRoute =
         currentPath === "/" ||
+        currentPath === "/about" ||
+        currentPath === "/contact" ||
+        currentPath === "/privacy" ||
+        currentPath === "/terms" ||
+        currentPath === "/auth" ||
         currentPath === "/auth/callback";
       const cookieUserId = getCookie("cb_user_id");
 
       if (isPublicRoute && !cookieUserId) {
+        if (!isMounted) {
+          return;
+        }
         setUserId(null);
         setProfileIdentity(null);
+        setProfileOnboardingCompletedAt(null);
         setIsAuthenticated(false);
         setIsLoading(false);
         return;
@@ -70,6 +72,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         setUserId(getCookie("cb_user_id") ?? profile.identity.primaryEmail);
         setProfileIdentity(profile.identity);
+        setProfileOnboardingCompletedAt(
+          profile.profileOnboardingCompletedAt ?? null,
+        );
         setIsAuthenticated(true);
       } catch {
         if (!isMounted) {
@@ -78,6 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         clearContactBookSessionState();
         setUserId(null);
         setProfileIdentity(null);
+        setProfileOnboardingCompletedAt(null);
         setIsAuthenticated(false);
       } finally {
         if (isMounted) {
@@ -97,12 +103,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const profile = await apiFetch<ProfileMeResponse>("/v1/profile/me");
       setUserId(getCookie("cb_user_id") ?? profile.identity.primaryEmail);
       setProfileIdentity(profile.identity);
+      setProfileOnboardingCompletedAt(
+        profile.profileOnboardingCompletedAt ?? null,
+      );
       setIsAuthenticated(true);
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
         clearContactBookSessionState();
         setUserId(null);
         setProfileIdentity(null);
+        setProfileOnboardingCompletedAt(null);
         setIsAuthenticated(false);
       }
     } finally {
@@ -114,6 +124,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(GOOGLE_CONNECTED_KEY);
     setUserId(getCookie("cb_user_id"));
     setProfileIdentity(null);
+    setProfileOnboardingCompletedAt(null);
     setIsAuthenticated(true);
     setIsLoading(false);
   }, []);
@@ -130,6 +141,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await supabase?.auth.signOut().catch(() => undefined);
       setUserId(null);
       setProfileIdentity(null);
+      setProfileOnboardingCompletedAt(null);
       setIsAuthenticated(false);
       setIsLoading(false);
     }
@@ -139,6 +151,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       userId,
       profileIdentity,
+      profileOnboardingCompletedAt,
       isAuthenticated,
       isLoading,
       refreshUser,
@@ -151,6 +164,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logout,
       markAuthenticated,
       profileIdentity,
+      profileOnboardingCompletedAt,
       refreshUser,
       userId,
     ],

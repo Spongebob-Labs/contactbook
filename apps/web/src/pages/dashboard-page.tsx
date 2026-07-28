@@ -12,20 +12,14 @@ import { AppShell } from "@/components/app-shell";
 import { CardPairTile } from "@/components/cards/card-pair-tile";
 import { buttonVariants } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
-import { StatusBadge } from "@/components/ui/status-badge";
-import { apiFetch } from "@/lib/api";
+import { createCard, listCards } from "@/lib/cards-api";
 import { fetchImportSummary } from "@/lib/contacts-api";
 import {
   getMissingProfileSections,
   getProfileCompletion,
 } from "@/lib/profile-completion";
 import { logUiError } from "@/lib/friendly-errors";
-import {
-  createLocalCard,
-  listLocalCards,
-  USE_LOCAL_CARDS,
-} from "@/lib/local-cards";
-import { mockContactListResponse, mockContactsBySource, mockProfile } from "@/lib/mock-data";
+import { fetchProfileMe } from "@/lib/profile-api";
 import type {
   ContactCard,
   ContactCardType,
@@ -101,7 +95,6 @@ export default function DashboardPage() {
   const [cards, setCards] = useState<ContactCard[]>([]);
   const [profile, setProfile] = useState<ProfileMeResponse | null>(null);
   const [importSummary, setImportSummary] = useState<ContactImportSummary | null>(null);
-  const [isMockData, setIsMockData] = useState(false);
   const hasConsumedPostOnboardingRoute = useRef(false);
   const onboardingStep = getOnboardingStep(searchParams.get("onboarding"));
   const returnTo = getSafeReturnPath(searchParams.get("returnTo"));
@@ -149,9 +142,7 @@ export default function DashboardPage() {
 
   const completeSetupStarterCards = useCallback(
     async (identity: ProfileOnboardingResult["identity"]) => {
-      const liveCards = USE_LOCAL_CARDS
-        ? listLocalCards()
-        : await apiFetch<ContactCard[]>("/v1/cards");
+      const liveCards = await listCards();
       const starterCards = getStarterCardRequests(identity);
       const createdCards: ContactCard[] = [];
 
@@ -164,12 +155,7 @@ export default function DashboardPage() {
           continue;
         }
 
-        const card = USE_LOCAL_CARDS
-          ? createLocalCard(starterCard)
-          : await apiFetch<ContactCard>("/v1/cards", {
-              method: "POST",
-              body: starterCard,
-            });
+        const card = await createCard(starterCard);
         createdCards.push(card);
       }
 
@@ -196,54 +182,32 @@ export default function DashboardPage() {
   const loadOverview = useCallback(async (shouldUpdate: () => boolean = () => true) => {
     try {
       const [profileData, summaryData] = await Promise.all([
-        apiFetch<ProfileMeResponse>("/v1/profile/me"),
+        fetchProfileMe(),
         fetchImportSummary(),
       ]);
       if (shouldUpdate()) {
         setProfile(profileData);
         setImportSummary(summaryData);
-        setIsMockData(false);
       }
     } catch (error) {
       logUiError("Could not load dashboard overview", error);
       if (shouldUpdate()) {
-        const googleContactsData = mockContactsBySource("GOOGLE");
-        setProfile(mockProfile);
-        setImportSummary({
-          totalActive: mockContactListResponse.total,
-          totalDeleted: 0,
-          bySource: [
-            {
-              source: "GOOGLE",
-              activeCount: googleContactsData.total,
-              deletedCount: 0,
-              lastSyncAt: googleContactsData.items[0]?.updatedAt ?? null,
-            },
-          ],
-        });
-        setIsMockData(true);
+        setProfile(null);
+        setImportSummary(null);
       }
     }
   }, []);
 
   const loadCards = useCallback(async (shouldUpdate: () => boolean = () => true) => {
     try {
-      if (USE_LOCAL_CARDS) {
-        if (shouldUpdate()) {
-          setCards(listLocalCards());
-          setIsMockData(true);
-        }
-        return;
-      }
-      const data = await apiFetch<ContactCard[]>("/v1/cards");
+      const data = await listCards();
       if (shouldUpdate()) {
         setCards(data);
       }
     } catch (error) {
       logUiError("Could not load dashboard cards", error);
       if (shouldUpdate()) {
-        setCards(listLocalCards());
-        setIsMockData(true);
+        setCards([]);
       }
     }
   }, []);
@@ -318,11 +282,6 @@ export default function DashboardPage() {
           </h1>
           <p className="text-sm text-muted-foreground">
             Here&apos;s your networking snapshot.
-            {isMockData ? (
-              <StatusBadge variant="neutral" className="ml-2 align-middle">
-                Sample data
-              </StatusBadge>
-            ) : null}
           </p>
         </div>
         <Link

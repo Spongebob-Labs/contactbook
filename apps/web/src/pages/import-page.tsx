@@ -7,17 +7,18 @@ import { ContactImportOptions } from "@/components/contact-import-options";
 import { Alert } from "@/components/ui/alert";
 import { buttonVariants } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
-import { StatusBadge } from "@/components/ui/status-badge";
-import { buildContactImportSummary } from "@/lib/contact-summary";
 import {
+  disconnectGoogle,
   fetchAllContacts,
   fetchImportSummary,
   googleSummaryHasConnection,
+  icloudSummaryHasConnection,
+  importGoogleContacts,
+  importIcloudContacts,
+  syncContacts,
 } from "@/lib/contacts-api";
-import { apiFetch } from "@/lib/api";
 import { friendlyErrorMessages, logUiError } from "@/lib/friendly-errors";
 import { startGoogleImportConnection } from "@/lib/google-import";
-import { mockContactsBySource } from "@/lib/mock-data";
 import {
   GOOGLE_CONNECTED_KEY,
   GOOGLE_OAUTH_PENDING_KEY,
@@ -31,7 +32,6 @@ import { cn } from "@/lib/utils";
 import type {
   ContactImport,
   ContactImportSummary,
-  GoogleSyncResponse,
 } from "@/lib/types";
 
 function getSafeNextPath(value: string | null) {
@@ -73,11 +73,14 @@ export default function ImportPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isConnectingGoogle, setIsConnectingGoogle] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isFullImportingGoogle, setIsFullImportingGoogle] = useState(false);
+  const [isDisconnectingGoogle, setIsDisconnectingGoogle] = useState(false);
   const [isUploadingVcf, setIsUploadingVcf] = useState(false);
+  const [isImportingIcloud, setIsImportingIcloud] = useState(false);
+  const [isSyncingIcloud, setIsSyncingIcloud] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [vcfError, setVcfError] = useState<string | null>(null);
   const [hasConnectedGoogle, setHasConnectedGoogle] = useState(false);
-  const [isMockData, setIsMockData] = useState(false);
 
   const loadImports = useCallback(async () => {
     setIsLoading(true);
@@ -90,24 +93,11 @@ export default function ImportPage() {
       setImports(contactsData);
       setSummary(summaryData);
       setHasConnectedGoogle(hasGoogleConnectionEvidence(summaryData));
-      setIsMockData(false);
     } catch (err) {
       logUiError("Could not load imports", err);
-      const response = mockContactsBySource("GOOGLE");
-      const contactsData = response.items;
-      const summaryData = buildContactImportSummary(contactsData);
-      const googleSummary = summaryData.bySource.find(
-        (item) => item.source === "GOOGLE",
-      );
-      if (googleSummary) {
-        googleSummary.activeCount = response.total;
-        googleSummary.lastSyncAt = response.items[0]?.updatedAt ?? null;
-      }
-      summaryData.totalActive = response.total;
-      setImports(contactsData);
-      setSummary(summaryData);
-      setIsMockData(true);
-      setError(null);
+      setImports([]);
+      setSummary(null);
+      setError(friendlyErrorMessages.load);
     } finally {
       setIsLoading(false);
     }
@@ -116,9 +106,7 @@ export default function ImportPage() {
   const syncGoogle = useCallback(async (nextPath?: string | null) => {
     setIsSyncing(true);
     try {
-      const result = await apiFetch<GoogleSyncResponse>(
-        "/v1/contacts/sync?source=GOOGLE",
-      );
+      const result = await syncContacts("GOOGLE");
       toast.success(`Synced ${result.processedCount} contacts.`);
       await loadImports();
       setHasConnectedGoogle(true);
@@ -137,6 +125,62 @@ export default function ImportPage() {
       setIsSyncing(false);
     }
   }, [loadImports, navigate]);
+
+  const fullImportGoogle = useCallback(async () => {
+    setIsFullImportingGoogle(true);
+    try {
+      const result = await importGoogleContacts();
+      const importedCount = getContactImportCount(result);
+      toast.success(
+        importedCount === null
+          ? "Google full import completed."
+          : `Full import: ${importedCount} contacts processed.`,
+      );
+      await loadImports();
+      setHasConnectedGoogle(true);
+    } catch (err) {
+      logUiError("Could not run Google full import", err);
+      toast.error(friendlyErrorMessages.sync);
+    } finally {
+      setIsFullImportingGoogle(false);
+    }
+  }, [loadImports]);
+
+  const disconnectGoogleAccount = useCallback(async () => {
+    const confirmed = window.confirm(
+      "Disconnect Google? Sync and import will stop until you reconnect.",
+    );
+    if (!confirmed) {
+      return;
+    }
+    setIsDisconnectingGoogle(true);
+    try {
+      await disconnectGoogle();
+      localStorage.removeItem(GOOGLE_CONNECTED_KEY);
+      setHasConnectedGoogle(false);
+      toast.success("Google disconnected.");
+      await loadImports();
+    } catch (err) {
+      logUiError("Could not disconnect Google", err);
+      toast.error("We couldn't disconnect Google. Please try again.");
+    } finally {
+      setIsDisconnectingGoogle(false);
+    }
+  }, [loadImports]);
+
+  const syncIcloud = useCallback(async () => {
+    setIsSyncingIcloud(true);
+    try {
+      const result = await syncContacts("ICLOUD");
+      toast.success(`Synced ${result.processedCount} iCloud contacts.`);
+      await loadImports();
+    } catch (err) {
+      logUiError("Could not sync iCloud contacts", err);
+      toast.error(friendlyErrorMessages.sync);
+    } finally {
+      setIsSyncingIcloud(false);
+    }
+  }, [loadImports]);
 
   const connectGoogle = useCallback(async () => {
     setIsConnectingGoogle(true);
@@ -179,6 +223,31 @@ export default function ImportPage() {
       setIsUploadingVcf(false);
     }
   }, [loadImports]);
+
+  const importIcloud = useCallback(
+    async (input: { appleId: string; appSpecificPassword: string }) => {
+      setIsImportingIcloud(true);
+      try {
+        const result = await importIcloudContacts(input);
+        const importedCount = getContactImportCount(result);
+        toast.success(
+          importedCount === null || importedCount === 0
+            ? "iCloud import completed."
+            : `Imported ${importedCount} contacts from iCloud.`,
+        );
+        await loadImports();
+      } catch (err) {
+        logUiError("Could not import iCloud contacts", err);
+        toast.error(
+          "We couldn't import your iCloud contacts. Check your credentials and try again.",
+        );
+        throw err;
+      } finally {
+        setIsImportingIcloud(false);
+      }
+    },
+    [loadImports],
+  );
 
   useEffect(() => {
     void loadImports();
@@ -242,9 +311,15 @@ export default function ImportPage() {
   const totalContacts = summary?.totalActive ?? imports.length;
   const googleCount = googleSummary?.activeCount ?? 0;
   const vcfCount = vcfSummary?.activeCount ?? 0;
+  const icloudSummary = summary?.bySource.find((item) => item.source === "ICLOUD");
+  const icloudCount = icloudSummary?.activeCount ?? 0;
+  const hasConnectedIcloud = icloudSummaryHasConnection(summary);
   const lastActivity = formatDate(getLastImportActivity(summary));
   const googleLastSync = formatDate(
     googleSummary?.lastSync?.at ?? googleSummary?.lastSyncAt ?? null,
+  );
+  const icloudLastSync = formatDate(
+    icloudSummary?.lastSync?.at ?? icloudSummary?.lastSyncAt ?? null,
   );
 
   return (
@@ -253,15 +328,10 @@ export default function ImportPage() {
         <PageHeader
           title="Import"
           subtitle={
-            <span className="inline-flex flex-wrap items-center gap-2">
-              <span>
-                {hasConnectedGoogle
-                  ? "Sync Google or upload a VCF to add contacts."
-                  : "Connect a source to bring contacts into ContactBook."}
-              </span>
-              {isMockData ? (
-                <StatusBadge variant="neutral">Sample data</StatusBadge>
-              ) : null}
+            <span>
+              {hasConnectedGoogle
+                ? "Sync Google or upload a VCF to add contacts."
+                : "Connect a source to bring contacts into ContactBook."}
             </span>
           }
           actions={
@@ -329,6 +399,10 @@ export default function ImportPage() {
         googleConnected={hasConnectedGoogle}
         onSyncGoogle={() => void syncGoogle()}
         isSyncingGoogle={isSyncing}
+        onFullImportGoogle={() => void fullImportGoogle()}
+        isFullImportingGoogle={isFullImportingGoogle}
+        onDisconnectGoogle={() => void disconnectGoogleAccount()}
+        isDisconnectingGoogle={isDisconnectingGoogle}
         googleMeta={
           hasConnectedGoogle
             ? `${googleCount} contacts · Last sync ${googleLastSync}`
@@ -336,6 +410,16 @@ export default function ImportPage() {
         }
         onUploadVcf={uploadVcf}
         isUploadingVcf={isUploadingVcf}
+        onImportIcloud={importIcloud}
+        isImportingIcloud={isImportingIcloud}
+        onSyncIcloud={() => void syncIcloud()}
+        isSyncingIcloud={isSyncingIcloud}
+        icloudConnected={hasConnectedIcloud}
+        icloudMeta={
+          hasConnectedIcloud
+            ? `${icloudCount} contacts · Last sync ${icloudLastSync}`
+            : undefined
+        }
         vcfMeta={
           vcfCount > 0
             ? `${vcfCount} contacts · Last activity ${formatDate(

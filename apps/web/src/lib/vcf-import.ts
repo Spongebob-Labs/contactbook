@@ -36,6 +36,10 @@ export async function uploadVcfContacts(
 }
 
 export function getContactImportCount(result: ContactImportResult): number | null {
+  if (typeof result.created === "number" || typeof result.updated === "number") {
+    return (result.created ?? 0) + (result.updated ?? 0);
+  }
+
   const directCount =
     result.importedCount ??
     result.processedCount ??

@@ -1,5 +1,26 @@
 # Decision Context
 
+## 2026-07-27 - Partial API Gaps Closed (Import + Cards)
+
+- Decision: Close previously partial integrations: Import summary normalizer (flat + bySource); Google Sync + Full import + Disconnect; iCloud Sync after connect; Cards PATCH UI (name/type/isSensitive); financial field-mappings UI on create/detail. Card types stay `PERSONAL|BUSINESS|PAYMENT|CUSTOM` (live Prisma enum; markdown `WORK` is not used).
+- Reason: Partial helpers without UI left Sync/disconnect/field-mappings/PATCH unused.
+- Files: `contacts-api.ts`, `contact-import-options.tsx`, `import-page.tsx`, `cards-api.ts`, `card-field-options.ts`, `card-detail-page.tsx`, `card-onboarding-page.tsx`, `types.ts`, `decision-context.md`.
+- Alternatives considered: Wait for full profile fieldId catalog before any mappings — rejected; ship financial mappings now.
+
+## 2026-07-27 - API Integration Implemented (Host A Waves)
+
+- Decision: Ship FE API integration per `docs/api-integration-plan.md`: Vite proxy to `http://34.147.177.94:8080`, `VITE_API_URL=/api`, real auth restored, fail-loud (mocks removed), Profile/Contacts/Import/Cards wired to live endpoints. Cards: server CRUD + client presentation store; field-mappings helpers ready (live profile exposes `fieldId` on financial rows only). Connections/Travel still out of product scope.
+- Reason: Delivery requires real session + dashboard surfaces without silent sample data.
+- Files: `apps/web/vite.config.ts`, `.env`, `.env.example`, `api.ts`, `auth-context.tsx`, `protected-route.tsx`, `App.tsx`, `profile-api.ts`, `cards-api.ts`, `card-presentation.ts`, `contacts-api.ts`, dashboard/profile/contacts/import/cards pages; deleted `mock-data.ts` / `sample-data-notice.tsx`; `docs/api-integration-plan.md`, `decision-context.md`.
+- Alternatives considered: Keep auth bypass for UI viewing; silent mock fallbacks; local-only cards.
+
+## 2026-07-27 - API Integration Plan (Host A, Domain Waves)
+
+- Decision: Integrate dashboard APIs against `http://34.147.177.94:8080` using Approach 1 (shared API spine → Auth → Profile → Contacts → Import → Cards). Vite proxy for cookies; fail loud (no silent mocks); scope limited to Dashboard/Profile/Cards/Contacts/Import. Cards: server name/type + field-mappings; theme/template client-only keyed by `cardId`. Field IDs: probe live profile then request BE if missing. Import includes Google + VCF + iCloud. Google OAuth path locked only after OpenAPI probe. Connections/Travel/Health out of this push.
+- Reason: Backend docs and live host may diverge; auth bypass + mocks hide breakage; Cards FE shape ≠ API. Need a prioritized, fail-safe integration plan before coding.
+- Files: `docs/api-integration-plan.md`, `decision-context.md`; upcoming: `apps/web` api/auth/proxy/env and domain pages.
+- Alternatives considered: UAT/prod as target; auth bypass + Bearer; Cards-first order; silent mock toggle; full API catalog including Connections/Travel; wait on BE for card themes; parallel domain owners after auth.
+
 ## 2026-07-27 - Contact Detail Layout DS Align
 
 - Decision: Rebuild contact detail chrome to match Contacts/Profile DS: page `space-y-6`, `Panel` sections, no nested `rounded-[24px]` / pill inputs, Tags & Groups as bordered columns with add-row separator + Save in a bordered footer. Detail tiles and list rows use `rounded-lg` borders-only.

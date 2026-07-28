@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   AlertCircle,
   ArrowLeft,
@@ -18,6 +18,7 @@ import {
   Phone,
   Share2,
   Smartphone,
+  Trash2,
   UserRound,
   Wallet,
   type LucideIcon,
@@ -28,12 +29,12 @@ import { LiveCardPreview } from "@/components/cards/live-card-preview";
 import { MobileCardPreview } from "@/components/cards/mobile-card-preview";
 import { Alert } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
 import { ShareSheet, type ShareSheetOptionId } from "@/components/ui/share-sheet";
 import { Skeleton } from "@/components/ui/skeleton";
-import { StatusBadge } from "@/components/ui/status-badge";
-import { apiFetch } from "@/lib/api";
 import { getCardDisplayDetails } from "@/lib/card-display";
+import { listMappableFinancialFields } from "@/lib/card-field-options";
 import {
   CARD_TEMPLATE_OPTIONS,
   DEFAULT_CARD_THEME,
@@ -42,9 +43,15 @@ import {
   normalizeDialCode,
   resolveTemplate,
 } from "@/lib/card-maker";
+import {
+  addCardFieldMapping,
+  deleteCard,
+  getCard,
+  removeCardFieldMapping,
+  updateCard,
+} from "@/lib/cards-api";
 import { friendlyErrorMessages, logUiError } from "@/lib/friendly-errors";
-import { getLocalCard, listLocalCards, USE_LOCAL_CARDS } from "@/lib/local-cards";
-import { mockProfile } from "@/lib/mock-data";
+import { fetchProfileMe } from "@/lib/profile-api";
 import type {
   ContactCard,
   ContactCardFields,
@@ -55,10 +62,17 @@ import type {
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
+const CARD_TYPE_OPTIONS: Array<{ value: ContactCardType; label: string }> = [
+  { value: "PERSONAL", label: "Personal" },
+  { value: "BUSINESS", label: "Business" },
+  { value: "PAYMENT", label: "Payment" },
+  { value: "CUSTOM", label: "Custom" },
+];
+
 const cardTypeLabels: Record<ContactCardType, string> = {
   BUSINESS: "Business",
   PERSONAL: "Personal",
-  PAYMENT: "Custom",
+  PAYMENT: "Payment",
   CUSTOM: "Custom",
 };
 
@@ -441,14 +455,21 @@ function downloadContactStub(card: ContactCard, fields: ContactCardFields) {
 
 export default function CardDetailPage() {
   const { cardId } = useParams();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const templateParam = templateFromQuery(searchParams.get("template"));
   const [card, setCard] = useState<ContactCard | null>(null);
   const [profile, setProfile] = useState<ProfileMeResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isSavingMeta, setIsSavingMeta] = useState(false);
+  const [mappingBusyId, setMappingBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [isMockData, setIsMockData] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editType, setEditType] = useState<ContactCardType>("PERSONAL");
+  const [editSensitive, setEditSensitive] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -462,45 +483,37 @@ export default function CardDetailPage() {
 
       setIsLoading(true);
       setError(null);
-      let usedMockData = false;
+      setProfileError(null);
 
       try {
-        if (USE_LOCAL_CARDS) {
-          const localCard = getLocalCard(cardId) ?? listLocalCards()[0] ?? null;
-          if (isMounted) {
-            setCard(localCard);
-            setError(localCard ? null : "Card not found.");
-          }
-          usedMockData = true;
-        } else {
-          const data = await apiFetch<ContactCard>(`/v1/cards/${cardId}`);
-          if (isMounted) {
-            setCard(data);
-          }
+        const data = await getCard(cardId);
+        if (isMounted) {
+          setCard(data);
+          setEditName(data.name);
+          setEditType(data.type);
+          setEditSensitive(Boolean(data.isSensitive));
         }
       } catch (err) {
         if (isMounted) {
           logUiError("Could not load card", err);
-          setCard(getLocalCard(cardId) ?? listLocalCards()[0] ?? null);
-          setError(null);
+          setCard(null);
+          setError(friendlyErrorMessages.load);
         }
-        usedMockData = true;
       }
 
       try {
-        const profileData = await apiFetch<ProfileMeResponse>("/v1/profile/me");
+        const profileData = await fetchProfileMe();
         if (isMounted) {
           setProfile(profileData);
         }
       } catch (err) {
         if (isMounted) {
           logUiError("Could not load profile for card detail", err);
-          setProfile(mockProfile);
+          setProfile(null);
+          setProfileError(friendlyErrorMessages.load);
         }
-        usedMockData = true;
       } finally {
         if (isMounted) {
-          setIsMockData(usedMockData);
           setIsLoading(false);
         }
       }
@@ -511,6 +524,104 @@ export default function CardDetailPage() {
       isMounted = false;
     };
   }, [cardId]);
+
+  const mappableFields = useMemo(
+    () => listMappableFinancialFields(profile),
+    [profile],
+  );
+
+  const mappedFieldIds = useMemo(
+    () => new Set(card?.mappedFieldIds ?? []),
+    [card?.mappedFieldIds],
+  );
+
+  const handleSaveMeta = async () => {
+    if (!cardId || !card) {
+      return;
+    }
+    const nextName = editName.trim();
+    if (!nextName) {
+      toast.error("Enter a card name.");
+      return;
+    }
+    setIsSavingMeta(true);
+    try {
+      const updated = await updateCard(cardId, {
+        name: nextName,
+        type: editType,
+        isSensitive: editSensitive,
+        fields: card.fields,
+        theme: card.theme,
+        template: card.template,
+      });
+      setCard({
+        ...updated,
+        mappedFieldIds: card.mappedFieldIds,
+      });
+      toast.success("Card updated.");
+    } catch (err) {
+      logUiError("Could not update card", err);
+      toast.error(friendlyErrorMessages.save);
+    } finally {
+      setIsSavingMeta(false);
+    }
+  };
+
+  const handleToggleMapping = async (fieldId: string, enabled: boolean) => {
+    if (!cardId || !card) {
+      return;
+    }
+    setMappingBusyId(fieldId);
+    try {
+      if (enabled) {
+        await addCardFieldMapping(cardId, fieldId);
+        setCard({
+          ...card,
+          mappedFieldIds: Array.from(
+            new Set([...(card.mappedFieldIds ?? []), fieldId]),
+          ),
+        });
+        toast.success("Field added to card.");
+      } else {
+        await removeCardFieldMapping(cardId, fieldId);
+        setCard({
+          ...card,
+          mappedFieldIds: (card.mappedFieldIds ?? []).filter(
+            (id) => id !== fieldId,
+          ),
+        });
+        toast.success("Field removed from card.");
+      }
+    } catch (err) {
+      logUiError("Could not update card field mapping", err);
+      toast.error(friendlyErrorMessages.save);
+    } finally {
+      setMappingBusyId(null);
+    }
+  };
+
+  const handleDeleteCard = async () => {
+    if (!cardId || !card) {
+      return;
+    }
+    const confirmed = window.confirm(
+      `Delete “${card.name}”? This cannot be undone.`,
+    );
+    if (!confirmed) {
+      return;
+    }
+    setIsDeleting(true);
+    try {
+      await deleteCard(cardId);
+      toast.success("Card deleted.");
+      navigate("/dashboard/cards", { replace: true });
+    } catch (err) {
+      logUiError("Could not delete card", err);
+      toast.error(friendlyErrorMessages.save);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   return (
     <AppShell>
@@ -523,19 +634,29 @@ export default function CardDetailPage() {
             <ArrowLeft className="h-4 w-4" aria-hidden="true" />
             Cards
           </Link>
-          {isMockData && <StatusBadge variant="neutral">Sample data</StatusBadge>}
         </div>
         {card && (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="self-start"
-            onClick={() => setShareOpen(true)}
-          >
-            <Share2 className="h-4 w-4" aria-hidden="true" />
-            Share
-          </Button>
+          <div className="flex flex-wrap items-center gap-2 self-start">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setShareOpen(true)}
+            >
+              <Share2 className="h-4 w-4" aria-hidden="true" />
+              Share
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={isDeleting}
+              onClick={() => void handleDeleteCard()}
+            >
+              <Trash2 className="h-4 w-4" aria-hidden="true" />
+              {isDeleting ? "Deleting…" : "Delete"}
+            </Button>
+          </div>
         )}
       </section>
 
@@ -544,6 +665,16 @@ export default function CardDetailPage() {
           <Skeleton className="h-[560px] w-full rounded-xl" />
           <Skeleton className="h-72 w-full rounded-xl" />
         </section>
+      )}
+
+      {!isLoading && profileError && !error && card && (
+        <Alert className="mb-4 flex items-start gap-3">
+          <AlertCircle className="mt-0.5 h-4 w-4 text-destructive" aria-hidden="true" />
+          <div>
+            <p className="font-medium">Could not load profile details</p>
+            <p className="mt-1 text-sm text-muted-foreground">{profileError}</p>
+          </div>
+        </Alert>
       )}
 
       {!isLoading && error && (
@@ -559,12 +690,135 @@ export default function CardDetailPage() {
       )}
 
       {!isLoading && !error && card && (
-        <CardDetailPreview
-          card={card}
-          profile={profile}
-          preferredTemplate={templateParam}
-          onShare={() => setShareOpen(true)}
-        />
+        <>
+          <CardDetailPreview
+            card={card}
+            profile={profile}
+            preferredTemplate={templateParam}
+            onShare={() => setShareOpen(true)}
+          />
+
+          <Panel className="mt-6 space-y-4 p-5">
+            <div>
+              <h2 className="text-base font-semibold text-foreground">
+                Card settings
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Updates name, type, and sensitivity on the server (
+                <code className="text-xs">PATCH /cards/:id</code>).
+              </p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="sm:col-span-2">
+                <label className="text-sm font-medium" htmlFor="card-name">
+                  Name
+                </label>
+                <Input
+                  id="card-name"
+                  className="mt-2"
+                  value={editName}
+                  onChange={(event) => setEditName(event.target.value)}
+                  disabled={isSavingMeta}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium" htmlFor="card-type">
+                  Type
+                </label>
+                <select
+                  id="card-type"
+                  className="mt-2 flex h-10 w-full rounded-md border border-border bg-surface px-3 text-sm"
+                  value={editType}
+                  onChange={(event) =>
+                    setEditType(event.target.value as ContactCardType)
+                  }
+                  disabled={isSavingMeta}
+                >
+                  {CARD_TYPE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-end">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={editSensitive}
+                    onChange={(event) => setEditSensitive(event.target.checked)}
+                    disabled={isSavingMeta}
+                  />
+                  Mark as sensitive
+                </label>
+              </div>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              disabled={isSavingMeta}
+              onClick={() => void handleSaveMeta()}
+            >
+              {isSavingMeta ? "Saving…" : "Save settings"}
+            </Button>
+          </Panel>
+
+          <Panel className="mt-4 space-y-4 p-5">
+            <div>
+              <h2 className="text-base font-semibold text-foreground">
+                Profile fields on this card
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Map financial profile fields that expose a{" "}
+                <code className="text-xs">fieldId</code>. Identity and work
+                mappings need a backend field catalog.
+              </p>
+            </div>
+            {mappableFields.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No mappable financial fields on your profile yet. Add bank,
+                wallet, or crypto details in Profile first.
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {mappableFields.map((field) => {
+                  const checked = mappedFieldIds.has(field.fieldId);
+                  const busy = mappingBusyId === field.fieldId;
+                  return (
+                    <li
+                      key={field.fieldId}
+                      className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-foreground">
+                          {field.label}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {field.kind}
+                          {field.isSensitive ? " · sensitive" : ""}
+                        </p>
+                      </div>
+                      <label className="flex shrink-0 items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={busy}
+                          onChange={(event) =>
+                            void handleToggleMapping(
+                              field.fieldId,
+                              event.target.checked,
+                            )
+                          }
+                        />
+                        {busy ? "Saving…" : "Include"}
+                      </label>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </Panel>
+        </>
       )}
 
       {card ? (

@@ -33,10 +33,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { apiFetch } from "@/lib/api";
 import {
   fetchContactGroups,
   fetchContactTags,
+  fetchContactsPage,
 } from "@/lib/contacts-api";
 import {
   formatContactDate,
@@ -48,12 +48,10 @@ import {
   getTitle,
 } from "@/lib/contact-display";
 import { friendlyErrorMessages, logUiError } from "@/lib/friendly-errors";
-import { mockContactListResponse } from "@/lib/mock-data";
 import type {
   ContactDetail,
   ContactGroup,
   ContactLabel,
-  ContactListResponse,
   ContactSource,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -105,56 +103,6 @@ function readSourceFilter(value: string | null): SourceFilter {
 
 function readSingleIdParam(value: string | null) {
   return value?.split(",").map((item) => item.trim()).filter(Boolean)[0] ?? "ALL";
-}
-
-function buildContactsPath({
-  groupFilter,
-  page,
-  pageSize,
-  query,
-  sortDirection,
-  sortKey,
-  sourceFilter,
-  tagFilter,
-}: {
-  groupFilter: string;
-  page: number;
-  pageSize: number;
-  query: string;
-  sortDirection: SortDirection;
-  sortKey: SortKey;
-  sourceFilter: SourceFilter;
-  tagFilter: string;
-}) {
-  const params = new URLSearchParams({
-    page: String(page),
-    limit: String(pageSize),
-    sort: sortKey,
-    sortOrder: sortDirection,
-  });
-  const search = query.trim();
-  if (search) {
-    params.set("search", search);
-  }
-  if (sourceFilter !== "ALL") {
-    params.set("source", sourceFilter);
-  }
-  if (tagFilter !== "ALL") {
-    params.set("tagIds", tagFilter);
-  }
-  if (groupFilter !== "ALL") {
-    params.set("groupIds", groupFilter);
-  }
-  return `/v1/contacts?${params.toString()}`;
-}
-
-function isContactListResponse(value: unknown): value is ContactListResponse {
-  return (
-    Boolean(value) &&
-    typeof value === "object" &&
-    Array.isArray((value as ContactListResponse).items) &&
-    typeof (value as ContactListResponse).total === "number"
-  );
 }
 
 function getSortTooltipText(
@@ -246,7 +194,6 @@ export default function ContactsPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isMockData, setIsMockData] = useState(false);
 
   const syncFilterUrl = (nextValues: {
     groupFilter?: string;
@@ -470,26 +417,20 @@ export default function ContactsPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const response = await apiFetch<unknown>(
-          buildContactsPath({
-            groupFilter,
-            page,
-            pageSize,
-            query: debouncedQuery,
-            sortDirection,
-            sortKey,
-            sourceFilter,
-            tagFilter,
-          }),
-        );
-        if (!isContactListResponse(response)) {
-          throw new Error("Contacts response was not usable.");
-        }
+        const response = await fetchContactsPage({
+          page: String(page),
+          limit: String(pageSize),
+          sort: sortKey,
+          sortOrder: sortDirection,
+          ...(debouncedQuery.trim() ? { search: debouncedQuery.trim() } : {}),
+          ...(sourceFilter !== "ALL" ? { source: sourceFilter } : {}),
+          ...(tagFilter !== "ALL" ? { tagIds: tagFilter } : {}),
+          ...(groupFilter !== "ALL" ? { groupIds: groupFilter } : {}),
+        });
         if (isMounted) {
           setContacts(response.items);
           setTotal(response.total);
           setTotalPages(Math.max(1, response.totalPages));
-          setIsMockData(false);
           if (response.totalPages > 0 && page > response.totalPages) {
             setPage(response.totalPages);
           }
@@ -497,11 +438,10 @@ export default function ContactsPage() {
       } catch (err) {
         if (isMounted) {
           logUiError("Could not load contacts", err);
-          setContacts(mockContactListResponse.items);
-          setTotal(mockContactListResponse.total);
-          setTotalPages(mockContactListResponse.totalPages);
-          setIsMockData(true);
-          setError(null);
+          setContacts([]);
+          setTotal(0);
+          setTotalPages(1);
+          setError(friendlyErrorMessages.load);
         }
       } finally {
         if (isMounted) {
@@ -564,13 +504,8 @@ export default function ContactsPage() {
         <PageHeader
           title="Contacts"
           subtitle={
-            <span className="inline-flex flex-wrap items-center gap-2">
-              <span>
-                {total} {total === 1 ? "contact" : "contacts"}
-              </span>
-              {isMockData ? (
-                <StatusBadge variant="neutral">Sample data</StatusBadge>
-              ) : null}
+            <span>
+              {total} {total === 1 ? "contact" : "contacts"}
             </span>
           }
           actions={

@@ -1,4 +1,5 @@
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8001/api";
+/** Same-origin `/api` in local/integration (Vite proxy); absolute URL in production builds. */
+const API_BASE = import.meta.env.VITE_API_URL ?? "/api";
 
 export type ApiErrorPayload = {
   message?: string | string[];

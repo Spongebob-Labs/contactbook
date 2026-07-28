@@ -1,5 +1,5 @@
 export type VerifyCodeResponse =
-  | { registered: true }
+  | { registered: true; isOnboarded?: boolean }
   | {
       registered: false;
       message: string;
@@ -91,10 +91,13 @@ export type ContactCard = {
   type: ContactCardType;
   createdAt: string;
   updatedAt: string;
-  /** Optional maker payload — present on locally created cards during UI pass. */
+  isSensitive?: boolean;
+  /** Optional maker payload — client presentation until field-mappings cover content. */
   fields?: ContactCardFields;
   theme?: ContactCardTheme;
   template?: ContactCardTemplate;
+  /** Profile field UUIDs mapped on the server when available. */
+  mappedFieldIds?: string[];
 };
 
 export type ContactImportSummary = {
@@ -186,6 +189,10 @@ export type GoogleSyncResponse = {
 };
 
 export type ContactImportResult = ContactImportSummary & {
+  completedAt?: string;
+  created?: number;
+  updated?: number;
+  skipped?: Array<{ reason: string; externalId?: string }>;
   importedCount?: number;
   processedCount?: number;
   createdCount?: number;

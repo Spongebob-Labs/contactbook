@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowRight,
@@ -22,7 +22,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { apiFetch } from "@/lib/api";
+import { listMappableFinancialFields } from "@/lib/card-field-options";
+import {
+  addCardFieldMapping,
+  createCard as createCardViaApi,
+} from "@/lib/cards-api";
 import {
   CARD_DIAL_OPTIONS,
   DEFAULT_CARD_TEMPLATE,
@@ -32,13 +36,14 @@ import {
   normalizeDialCode,
 } from "@/lib/card-maker";
 import { friendlyErrorMessages, logUiError } from "@/lib/friendly-errors";
-import { createLocalCard, USE_LOCAL_CARDS } from "@/lib/local-cards";
+import { fetchProfileMe } from "@/lib/profile-api";
 import type {
   ContactCard,
   ContactCardFields,
   ContactCardTemplate,
   ContactCardTheme,
   ContactCardType,
+  ProfileMeResponse,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -56,6 +61,11 @@ const cardTypeOptions: Array<{
     value: "BUSINESS",
     label: "Business",
     description: "Share work or business identity details.",
+  },
+  {
+    value: "PAYMENT",
+    label: "Payment",
+    description: "Share bank or wallet details when mapped.",
   },
   {
     value: "CUSTOM",
@@ -179,6 +189,29 @@ export function CardOnboardingModal({
   const [socialsOpen, setSocialsOpen] = useState(false);
   const [mobilePreviewOpen, setMobilePreviewOpen] = useState(false);
   const [fullMobilePreviewOpen, setFullMobilePreviewOpen] = useState(false);
+  const [profile, setProfile] = useState<ProfileMeResponse | null>(null);
+  const [selectedFieldIds, setSelectedFieldIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    let isMounted = true;
+    void fetchProfileMe()
+      .then((data) => {
+        if (isMounted) {
+          setProfile(data);
+        }
+      })
+      .catch((error) => {
+        logUiError("Could not load profile for card maker", error);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const mappableFields = useMemo(
+    () => listMappableFinancialFields(profile),
+    [profile],
+  );
 
   const updateField = <K extends keyof ContactCardFields>(
     key: K,
@@ -217,23 +250,27 @@ export function CardOnboardingModal({
 
     setIsSaving(true);
     try {
-      const card = USE_LOCAL_CARDS
-        ? createLocalCard({
-            name: cleanedName,
-            type,
-            fields: payloadFields,
-            theme,
-            template,
-          })
-        : await apiFetch<ContactCard>("/v1/cards", {
-            method: "POST",
-            body: {
-              name: cleanedName,
-              type,
-            },
-          });
+      const card = await createCardViaApi({
+        name: cleanedName,
+        type,
+        fields: payloadFields,
+        theme,
+        template,
+      });
+
+      for (const fieldId of selectedFieldIds) {
+        try {
+          await addCardFieldMapping(card.id, fieldId);
+        } catch (mappingError) {
+          logUiError("Could not map profile field to card", mappingError);
+        }
+      }
+
       toast.success(isSetupMode ? "Your first card is ready." : "Card created.");
-      onComplete(card);
+      onComplete({
+        ...card,
+        mappedFieldIds: selectedFieldIds,
+      });
     } catch (error) {
       logUiError("Could not create card", error);
       toast.error(friendlyErrorMessages.save);
@@ -352,6 +389,56 @@ export function CardOnboardingModal({
                   </Select>
                 </Field>
               </section>
+
+              {mappableFields.length > 0 ? (
+                <section className="mt-5 space-y-3 rounded-lg border border-border p-4">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">
+                      Include financial profile fields
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      These map via{" "}
+                      <code className="text-[11px]">field-mappings</code> on
+                      the server.
+                    </p>
+                  </div>
+                  <ul className="space-y-2">
+                    {mappableFields.map((field) => {
+                      const checked = selectedFieldIds.includes(field.fieldId);
+                      return (
+                        <li key={field.fieldId}>
+                          <label className="flex items-start gap-2 text-sm">
+                            <input
+                              type="checkbox"
+                              className="mt-0.5"
+                              checked={checked}
+                              onChange={(event) => {
+                                setSelectedFieldIds((current) =>
+                                  event.target.checked
+                                    ? [...current, field.fieldId]
+                                    : current.filter(
+                                        (id) => id !== field.fieldId,
+                                      ),
+                                );
+                              }}
+                            />
+                            <span>
+                              <span className="font-medium text-foreground">
+                                {field.label}
+                              </span>
+                              {field.isSensitive ? (
+                                <span className="ml-1 text-xs text-muted-foreground">
+                                  (sensitive)
+                                </span>
+                              ) : null}
+                            </span>
+                          </label>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </section>
+              ) : null}
 
               <CollapsibleSection
                 title="Main details"

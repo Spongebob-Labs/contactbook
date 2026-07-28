@@ -4,12 +4,14 @@ import {
   AlertCircle,
   Building2,
   Briefcase,
+  Camera,
+  Trash2,
   UserRound,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
 import { Alert } from "@/components/ui/alert";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   CompletionChecklist,
   CompletionRing,
@@ -23,10 +25,15 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { SegmentedTabs } from "@/components/ui/segmented-tabs";
 import { Skeleton } from "@/components/ui/skeleton";
-import { StatusBadge } from "@/components/ui/status-badge";
-import { apiFetch } from "@/lib/api";
 import { friendlyErrorMessages, logUiError } from "@/lib/friendly-errors";
-import { mockProfile } from "@/lib/mock-data";
+import {
+  deleteProfileGroup,
+  deleteProfilePhoto,
+  fetchProfileMe,
+  patchProfileMe,
+  uploadProfilePhoto,
+  type ProfileGroupCategory,
+} from "@/lib/profile-api";
 import {
   getProfileCompletion,
   getProfileCompletionItems,
@@ -48,6 +55,13 @@ const profileTabs: Array<{
   { key: "work", label: "Work", icon: Briefcase },
   { key: "business", label: "Business", icon: Building2 },
 ];
+
+const MAX_PROFILE_PHOTO_BYTES = 1_048_576;
+const ALLOWED_PROFILE_PHOTO_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
 
 function isProfileTab(value: string | null): value is ProfileTab {
   return profileTabs.some((tab) => tab.key === value);
@@ -139,7 +153,8 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<ProfileMeResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isMockData, setIsMockData] = useState(false);
+  const [isMutatingPhoto, setIsMutatingPhoto] = useState(false);
+  const [deletingGroupId, setDeletingGroupId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ProfileTab>(() => {
     if (typeof window === "undefined") return "personal";
     const stored = window.localStorage.getItem(PROFILE_TAB_STORAGE_KEY);
@@ -157,17 +172,15 @@ export default function ProfilePage() {
       setIsLoading(true);
       setError(null);
       try {
-        const data = await apiFetch<ProfileMeResponse>("/v1/profile/me");
+        const data = await fetchProfileMe();
         if (isMounted) {
           setProfile(data);
-          setIsMockData(false);
         }
       } catch (err) {
         if (isMounted) {
           logUiError("Could not load profile", err);
-          setProfile(mockProfile);
-          setIsMockData(true);
-          setError(null);
+          setProfile(null);
+          setError(friendlyErrorMessages.load);
         }
       } finally {
         if (isMounted) setIsLoading(false);
@@ -241,16 +254,13 @@ export default function ProfilePage() {
               : next.personal.postalAddress,
           },
         };
-        await apiFetch("/v1/profile/me", {
-          method: "PATCH",
-          body: {
-            identity: next.identity,
-            personal: {
-              mobile: next.personal.mobile,
-              email: next.personal.email,
-              dateOfBirth: next.personal.dateOfBirth,
-              postalAddress: next.personal.postalAddress,
-            },
+        await patchProfileMe({
+          identity: next.identity,
+          personal: {
+            mobile: next.personal.mobile,
+            email: next.personal.email,
+            dateOfBirth: next.personal.dateOfBirth,
+            postalAddress: next.personal.postalAddress,
           },
         });
       }
@@ -278,10 +288,7 @@ export default function ProfilePage() {
               )
             : [updatedSocial],
         };
-        await apiFetch("/v1/profile/me", {
-          method: "PATCH",
-          body: { socials: next.socials },
-        });
+        await patchProfileMe({ socials: next.socials });
       }
 
       if (key === "work" && workDraft) {
@@ -305,10 +312,7 @@ export default function ProfilePage() {
             ? next.work.map((item, index) => (index === 0 ? updatedWork : item))
             : [updatedWork],
         };
-        await apiFetch("/v1/profile/me", {
-          method: "PATCH",
-          body: { work: next.work },
-        });
+        await patchProfileMe({ work: next.work });
       }
 
       setProfile(next);
@@ -316,52 +320,86 @@ export default function ProfilePage() {
       cancelEdit();
     } catch (err) {
       logUiError("Could not save profile section", err);
-      if (isMockData && profile) {
-        // Keep local edits visible when API is unavailable (sample mode).
-        let next = structuredClone(profile);
-        if (key === "personal" && personalDraft) {
-          next.identity.firstName = personalDraft.firstName.trim();
-          next.identity.lastName = personalDraft.lastName.trim();
-          next.identity.primaryPhone = personalDraft.phone.trim();
-          next.identity.primaryEmail = personalDraft.email.trim();
-          next.personal.mobile = personalDraft.phone.trim();
-          next.personal.email = personalDraft.email.trim();
-          next.personal.dateOfBirth = personalDraft.dateOfBirth.trim() || null;
-        }
-        if (key === "social" && socialDraft) {
-          const social = next.socials[0] ?? { groupId: "social-local", tag: "Social" };
-          const updated = {
-            ...social,
-            linkedin: socialDraft.linkedin.trim() || null,
-            twitter: socialDraft.twitter.trim() || null,
-            website: socialDraft.website.trim() || null,
-            custom: { ...(social.custom ?? {}), instagram: socialDraft.instagram.trim() },
-          };
-          next.socials = next.socials.length
-            ? next.socials.map((item, i) => (i === 0 ? updated : item))
-            : [updated];
-        }
-        if (key === "work" && workDraft) {
-          const work = next.work[0] ?? { groupId: "work-local", tag: "Work" };
-          const updated = {
-            ...work,
-            companyName: workDraft.company.trim() || null,
-            workTitle: workDraft.title.trim() || null,
-            workEmail: workDraft.workEmail.trim() || null,
-            custom: { ...(work.custom ?? {}), industry: workDraft.industry.trim() },
-          };
-          next.work = next.work.length
-            ? next.work.map((item, i) => (i === 0 ? updated : item))
-            : [updated];
-        }
-        setProfile(next);
-        toast.success("Profile saved");
-        cancelEdit();
-      } else {
-        toast.error("Couldn't save — check your connection");
-      }
+      toast.error("Couldn't save — check your connection");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handlePhotoUpload = async (file: File | undefined) => {
+    if (!file || !profile) {
+      return;
+    }
+
+    if (!ALLOWED_PROFILE_PHOTO_TYPES.has(file.type)) {
+      toast.error("Choose a JPEG, PNG, or WebP image.");
+      return;
+    }
+
+    if (file.size > MAX_PROFILE_PHOTO_BYTES) {
+      toast.error("Choose an image under 1 MB.");
+      return;
+    }
+
+    setIsMutatingPhoto(true);
+    try {
+      const previousPhotoUrl = profile.identity.profilePhoto;
+      const { url } = await uploadProfilePhoto(file);
+      const updated = await patchProfileMe({
+        identity: {
+          ...profile.identity,
+          profilePhoto: url,
+        },
+      });
+      if (previousPhotoUrl) {
+        await deleteProfilePhoto(previousPhotoUrl).catch(() => undefined);
+      }
+      setProfile(updated);
+      toast.success("Profile photo updated.");
+    } catch (err) {
+      logUiError("Could not upload profile photo", err);
+      toast.error("We couldn't update your profile photo. Please try again.");
+    } finally {
+      setIsMutatingPhoto(false);
+    }
+  };
+
+  const handlePhotoDelete = async () => {
+    if (!profile?.identity.profilePhoto) {
+      return;
+    }
+
+    setIsMutatingPhoto(true);
+    try {
+      const previousPhotoUrl = profile.identity.profilePhoto;
+      await deleteProfilePhoto(previousPhotoUrl);
+      const updated = await patchProfileMe({
+        identity: {
+          ...profile.identity,
+          profilePhoto: null,
+        },
+      });
+      setProfile(updated);
+      toast.success("Profile photo removed.");
+    } catch (err) {
+      logUiError("Could not delete profile photo", err);
+      toast.error("We couldn't remove your profile photo. Please try again.");
+    } finally {
+      setIsMutatingPhoto(false);
+    }
+  };
+
+  const handleDeleteGroup = async (groupId: string, category: ProfileGroupCategory) => {
+    setDeletingGroupId(groupId);
+    try {
+      const updated = await deleteProfileGroup(groupId, category);
+      setProfile(updated);
+      toast.success("Profile section removed.");
+    } catch (err) {
+      logUiError("Could not delete profile group", err);
+      toast.error("We couldn't remove that section right now.");
+    } finally {
+      setDeletingGroupId(null);
     }
   };
 
@@ -370,14 +408,7 @@ export default function ProfilePage() {
       <div className="space-y-6">
         <PageHeader
           title="Your profile"
-          subtitle={
-            <span className="inline-flex flex-wrap items-center gap-2">
-              <span>This info appears on your cards</span>
-              {isMockData ? (
-                <StatusBadge variant="neutral">Sample data</StatusBadge>
-              ) : null}
-            </span>
-          }
+          subtitle="This info appears on your cards"
         />
 
         {isLoading && (
@@ -436,7 +467,7 @@ export default function ProfilePage() {
                       onCancel={cancelEdit}
                       onSave={() => void saveSection("personal")}
                     >
-                      <div className="mb-5 flex items-center gap-4">
+                      <div className="mb-5 flex flex-wrap items-center gap-4">
                         <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-full border border-border bg-secondary text-xl font-semibold">
                           {profile.identity.profilePhoto ? (
                             <img
@@ -448,9 +479,46 @@ export default function ProfilePage() {
                             initialsFromText(fullName(profile))
                           )}
                         </div>
-                        <p className="text-sm text-muted-foreground">
-                          Photo is managed from card maker and onboarding.
-                        </p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <label className="inline-flex">
+                            <input
+                              type="file"
+                              accept="image/jpeg,image/png,image/webp"
+                              className="sr-only"
+                              disabled={isMutatingPhoto}
+                              onChange={(event) => {
+                                void handlePhotoUpload(event.target.files?.[0]);
+                                event.target.value = "";
+                              }}
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              disabled={isMutatingPhoto}
+                              onClick={(event) => {
+                                const input = event.currentTarget
+                                  .previousElementSibling as HTMLInputElement | null;
+                                input?.click();
+                              }}
+                            >
+                              <Camera className="h-4 w-4" aria-hidden="true" />
+                              {isMutatingPhoto ? "Updating…" : "Upload photo"}
+                            </Button>
+                          </label>
+                          {profile.identity.profilePhoto ? (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              disabled={isMutatingPhoto}
+                              onClick={() => void handlePhotoDelete()}
+                            >
+                              <Trash2 className="h-4 w-4" aria-hidden="true" />
+                              Remove
+                            </Button>
+                          ) : null}
+                        </div>
                       </div>
                       {editing === "personal" && personalDraft ? (
                         <div className="grid gap-4 sm:grid-cols-2">
@@ -658,6 +726,8 @@ export default function ProfilePage() {
                       title: item.companyName || item.tag || "Work",
                       subtitle: item.workTitle || item.workEmail || null,
                     }))}
+                    deletingId={deletingGroupId}
+                    onDelete={(groupId) => void handleDeleteGroup(groupId, "WORK")}
                   />
                 )}
 
@@ -669,6 +739,8 @@ export default function ProfilePage() {
                       title: item.businessName || item.tag || "Business",
                       subtitle: item.businessTitle || item.businessEmail || null,
                     }))}
+                    deletingId={deletingGroupId}
+                    onDelete={(groupId) => void handleDeleteGroup(groupId, "BUSINESS")}
                   />
                 )}
               </div>
@@ -700,9 +772,13 @@ export default function ProfilePage() {
 function ProfileListPanel({
   empty,
   items,
+  onDelete,
+  deletingId,
 }: {
   empty: string;
   items: Array<{ id: string; title: string; subtitle: string | null }>;
+  onDelete?: (groupId: string) => void;
+  deletingId?: string | null;
 }) {
   if (items.length === 0) {
     return (
@@ -725,10 +801,27 @@ function ProfileListPanel({
     <div className="space-y-3">
       {items.map((item) => (
         <Panel key={item.id} className="!p-4">
-          <p className="text-sm font-semibold text-foreground">{item.title}</p>
-          {item.subtitle ? (
-            <p className="mt-1 text-sm text-muted-foreground">{item.subtitle}</p>
-          ) : null}
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-foreground">{item.title}</p>
+              {item.subtitle ? (
+                <p className="mt-1 text-sm text-muted-foreground">{item.subtitle}</p>
+              ) : null}
+            </div>
+            {onDelete ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="shrink-0 text-destructive hover:text-destructive"
+                disabled={deletingId === item.id}
+                onClick={() => onDelete(item.id)}
+              >
+                <Trash2 className="h-4 w-4" aria-hidden="true" />
+                {deletingId === item.id ? "Removing" : "Remove"}
+              </Button>
+            ) : null}
+          </div>
         </Panel>
       ))}
     </div>

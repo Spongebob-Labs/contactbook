@@ -152,7 +152,12 @@ export default function AuthPage() {
       if (result.registered) {
         markAuthenticated();
         toast.success("Signed in.");
-        navigate(locationRedirectTo, { replace: true });
+        const nextPath =
+          result.isOnboarded === false
+            ? "/dashboard?onboarding=profile&flow=setup"
+            : locationRedirectTo;
+        setPostAuthRedirect(nextPath);
+        navigate(nextPath, { replace: true });
         return;
       }
       setPhoneVerificationToken(result.phoneVerificationToken);

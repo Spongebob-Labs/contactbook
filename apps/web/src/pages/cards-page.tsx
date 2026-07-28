@@ -9,21 +9,11 @@ import { FilterTabBar } from "@/components/ui/filter-tab-bar";
 import { SearchInput } from "@/components/ui/search-input";
 import { Panel } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
-import { StatusBadge } from "@/components/ui/status-badge";
-import { apiFetch } from "@/lib/api";
+import { listCards } from "@/lib/cards-api";
 import { resolveTemplate } from "@/lib/card-maker";
 import { friendlyErrorMessages, logUiError } from "@/lib/friendly-errors";
-import { listLocalCards, USE_LOCAL_CARDS } from "@/lib/local-cards";
 import type { ContactCard, ContactCardType } from "@/lib/types";
 import { cn } from "@/lib/utils";
-
-type CardFilter =
-  | "ALL"
-  | "CONNECT"
-  | "SCAN"
-  | "PERSONAL"
-  | "BUSINESS"
-  | "CUSTOM";
 
 const filterTabs: Array<{ key: CardFilter; label: string }> = [
   { key: "ALL", label: "All" },
@@ -33,6 +23,14 @@ const filterTabs: Array<{ key: CardFilter; label: string }> = [
   { key: "BUSINESS", label: "Business" },
   { key: "CUSTOM", label: "Custom" },
 ];
+
+type CardFilter =
+  | "ALL"
+  | "CONNECT"
+  | "SCAN"
+  | "PERSONAL"
+  | "BUSINESS"
+  | "CUSTOM";
 
 function matchesFilter(card: ContactCard, filter: CardFilter) {
   if (filter === "ALL") return true;
@@ -68,7 +66,6 @@ export default function CardsPage() {
   const [cards, setCards] = useState<ContactCard[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isMockData, setIsMockData] = useState(false);
   const [filter, setFilter] = useState<CardFilter>("ALL");
   const [query, setQuery] = useState("");
 
@@ -78,31 +75,20 @@ export default function CardsPage() {
     const loadPageData = async () => {
       setIsLoading(true);
       setError(null);
-      let usedMockData = false;
 
       try {
-        if (USE_LOCAL_CARDS) {
-          if (isMounted) {
-            setCards(listLocalCards());
-            setError(null);
-          }
-          usedMockData = true;
-        } else {
-          const data = await apiFetch<ContactCard[]>("/v1/cards");
-          if (isMounted) {
-            setCards(data);
-          }
+        const data = await listCards();
+        if (isMounted) {
+          setCards(data);
         }
       } catch (err) {
         if (isMounted) {
           logUiError("Could not load cards", err);
-          setCards(listLocalCards());
-          setError(null);
+          setCards([]);
+          setError(friendlyErrorMessages.load);
         }
-        usedMockData = true;
       } finally {
         if (isMounted) {
-          setIsMockData(usedMockData);
           setIsLoading(false);
         }
       }
@@ -135,11 +121,6 @@ export default function CardsPage() {
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
               Create, manage and share your digital cards.
-              {isMockData ? (
-                <StatusBadge variant="neutral" className="ml-2 align-middle">
-                  Sample data
-                </StatusBadge>
-              ) : null}
             </p>
           </div>
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">

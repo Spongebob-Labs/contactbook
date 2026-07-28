@@ -8,26 +8,32 @@ import {
   Globe,
   Mail,
   MapPin,
+  Pencil,
   Phone,
   Plus,
   Tags,
+  Trash2,
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
-import { SampleDataNotice } from "@/components/sample-data-notice";
 import { Alert } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Panel, PanelHeader } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { apiFetch } from "@/lib/api";
 import {
   createContactGroup,
   createContactTag,
+  deleteContactGroup,
+  deleteContactTag,
+  fetchContact,
   fetchContactGroups,
   fetchContactTags,
+  patchContact,
+  renameContactGroup,
+  renameContactTag,
   setContactGroups,
   setContactTags,
 } from "@/lib/contacts-api";
@@ -42,7 +48,6 @@ import {
   getTitle,
 } from "@/lib/contact-display";
 import { friendlyErrorMessages, logUiError } from "@/lib/friendly-errors";
-import { mockContactDetail } from "@/lib/mock-data";
 import type { ContactDetail, ContactGroup, ContactLabel } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -142,12 +147,68 @@ function AssignmentRow({
   onChange,
   label,
   meta,
+  onRename,
+  onDelete,
+  isRenaming,
+  renameValue,
+  onRenameValueChange,
+  onRenameSubmit,
+  onRenameCancel,
+  isMutating,
 }: {
   checked: boolean;
   onChange: () => void;
   label: string;
   meta?: ReactNode;
+  onRename?: () => void;
+  onDelete?: () => void;
+  isRenaming?: boolean;
+  renameValue?: string;
+  onRenameValueChange?: (value: string) => void;
+  onRenameSubmit?: () => void;
+  onRenameCancel?: () => void;
+  isMutating?: boolean;
 }) {
+  if (isRenaming) {
+    return (
+      <div className="flex items-center gap-2 rounded-md px-2.5 py-2">
+        <Input
+          value={renameValue ?? ""}
+          onChange={(event) => onRenameValueChange?.(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              onRenameSubmit?.();
+            }
+            if (event.key === "Escape") {
+              event.preventDefault();
+              onRenameCancel?.();
+            }
+          }}
+          disabled={isMutating}
+          aria-label="Rename label"
+        />
+        <Button
+          type="button"
+          size="sm"
+          disabled={isMutating || !renameValue?.trim()}
+          onClick={() => onRenameSubmit?.()}
+        >
+          Save
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          disabled={isMutating}
+          onClick={() => onRenameCancel?.()}
+        >
+          Cancel
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <label className="flex cursor-pointer items-center justify-between gap-3 rounded-md px-2.5 py-2 text-sm transition-colors duration-150 hover:bg-bg-hover">
       <span className="flex min-w-0 items-center gap-3">
@@ -155,11 +216,46 @@ function AssignmentRow({
           type="checkbox"
           checked={checked}
           onChange={onChange}
+          disabled={isMutating}
           className="h-4 w-4 accent-foreground"
         />
         <span className="truncate text-foreground">{label}</span>
       </span>
-      {meta}
+      <span className="flex shrink-0 items-center gap-1">
+        {meta}
+        {onRename ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            disabled={isMutating}
+            onClick={(event) => {
+              event.preventDefault();
+              onRename();
+            }}
+            aria-label={`Rename ${label}`}
+          >
+            <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+          </Button>
+        ) : null}
+        {onDelete ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-destructive hover:text-destructive"
+            disabled={isMutating}
+            onClick={(event) => {
+              event.preventDefault();
+              onDelete();
+            }}
+            aria-label={`Delete ${label}`}
+          >
+            <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+          </Button>
+        ) : null}
+      </span>
     </label>
   );
 }
@@ -199,8 +295,15 @@ export default function ContactDetailPage() {
   const [isSavingAssignments, setIsSavingAssignments] = useState(false);
   const [isCreatingTag, setIsCreatingTag] = useState(false);
   const [isCreatingGroup, setIsCreatingGroup] = useState(false);
+  const [isSavingNotes, setIsSavingNotes] = useState(false);
+  const [notesDraft, setNotesDraft] = useState("");
+  const [editingLabel, setEditingLabel] = useState<{
+    kind: "tag" | "group";
+    id: string;
+  } | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
+  const [mutatingLabelId, setMutatingLabelId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [isMockData, setIsMockData] = useState(false);
 
   const hasAssignmentChanges = useMemo(() => {
     if (!contact) {
@@ -226,7 +329,7 @@ export default function ContactDetailPage() {
       setError(null);
       try {
         const [data, tagData, groupData] = await Promise.all([
-          apiFetch<ContactDetail>(`/v1/contacts/${contactId}`),
+          fetchContact(contactId),
           fetchContactTags(),
           fetchContactGroups(),
         ]);
@@ -236,19 +339,13 @@ export default function ContactDetailPage() {
           setAvailableGroups(groupData);
           setSelectedTagIds(labelIds(data.tags));
           setSelectedGroupIds(labelIds(data.groups));
-          setIsMockData(false);
+          setNotesDraft(data.notes ?? "");
         }
       } catch (err) {
         if (isMounted) {
           logUiError("Could not load contact", err);
-          const mockContact = mockContactDetail(contactId);
-          setContact(mockContact);
-          setAvailableTags(mockContact.tags);
-          setAvailableGroups(mockContact.groups);
-          setSelectedTagIds(labelIds(mockContact.tags));
-          setSelectedGroupIds(labelIds(mockContact.groups));
-          setIsMockData(true);
-          setError(null);
+          setContact(null);
+          setError(friendlyErrorMessages.load);
         }
       } finally {
         if (isMounted) {
@@ -290,7 +387,7 @@ export default function ContactDetailPage() {
   };
 
   const createAndAssignTag = async () => {
-    if (!contact || isMockData) {
+    if (!contact) {
       return;
     }
 
@@ -326,7 +423,7 @@ export default function ContactDetailPage() {
   };
 
   const createAndAssignGroup = async () => {
-    if (!contact || isMockData) {
+    if (!contact) {
       return;
     }
 
@@ -361,6 +458,121 @@ export default function ContactDetailPage() {
     }
   };
 
+  const saveNotes = async () => {
+    if (!contact) {
+      return;
+    }
+
+    const trimmedNotes = notesDraft.trim();
+    const nextNotes = trimmedNotes || null;
+    if ((contact.notes ?? null) === nextNotes) {
+      return;
+    }
+
+    setIsSavingNotes(true);
+    try {
+      const updatedContact = await patchContact(contact.id, { notes: nextNotes });
+      setContact(updatedContact);
+      setNotesDraft(updatedContact.notes ?? "");
+      toast.success("Notes saved.");
+    } catch (err) {
+      logUiError("Could not save contact notes", err);
+      toast.error("We couldn't save notes right now.");
+    } finally {
+      setIsSavingNotes(false);
+    }
+  };
+
+  const startRenameLabel = (kind: "tag" | "group", id: string, name: string) => {
+    setEditingLabel({ kind, id });
+    setRenameDraft(name);
+  };
+
+  const cancelRenameLabel = () => {
+    setEditingLabel(null);
+    setRenameDraft("");
+  };
+
+  const submitRenameLabel = async () => {
+    if (!editingLabel) {
+      return;
+    }
+
+    const name = renameDraft.trim();
+    if (!name) {
+      return;
+    }
+
+    setMutatingLabelId(editingLabel.id);
+    try {
+      if (editingLabel.kind === "tag") {
+        const updatedTag = await renameContactTag(editingLabel.id, name);
+        setAvailableTags((current) =>
+          current
+            .map((tag) => (tag.id === updatedTag.id ? updatedTag : tag))
+            .sort((first, second) =>
+              first.name.localeCompare(second.name, undefined, {
+                sensitivity: "base",
+              }),
+            ),
+        );
+      } else {
+        const updatedGroup = await renameContactGroup(editingLabel.id, name);
+        setAvailableGroups((current) =>
+          current
+            .map((group) => (group.id === updatedGroup.id ? updatedGroup : group))
+            .sort((first, second) =>
+              first.name.localeCompare(second.name, undefined, {
+                sensitivity: "base",
+              }),
+            ),
+        );
+      }
+      toast.success("Label renamed.");
+      cancelRenameLabel();
+    } catch (err) {
+      logUiError("Could not rename contact label", err);
+      toast.error("We couldn't rename that label right now.");
+    } finally {
+      setMutatingLabelId(null);
+    }
+  };
+
+  const deleteLabel = async (kind: "tag" | "group", id: string) => {
+    setMutatingLabelId(id);
+    try {
+      if (kind === "tag") {
+        await deleteContactTag(id);
+        setAvailableTags((current) => current.filter((tag) => tag.id !== id));
+        setSelectedTagIds((current) => current.filter((tagId) => tagId !== id));
+        if (contact) {
+          setContact({
+            ...contact,
+            tags: contact.tags.filter((tag) => tag.id !== id),
+          });
+        }
+      } else {
+        await deleteContactGroup(id);
+        setAvailableGroups((current) => current.filter((group) => group.id !== id));
+        setSelectedGroupIds((current) =>
+          current.filter((groupId) => groupId !== id),
+        );
+        if (contact) {
+          setContact({
+            ...contact,
+            groups: contact.groups.filter((group) => group.id !== id),
+          });
+        }
+      }
+      toast.success("Label deleted.");
+    } catch (err) {
+      logUiError("Could not delete contact label", err);
+      toast.error("We couldn't delete that label right now.");
+    } finally {
+      setMutatingLabelId(null);
+    }
+  };
+
   return (
     <AppShell>
       <div className="space-y-6">
@@ -388,8 +600,6 @@ export default function ContactDetailPage() {
             </div>
           </Alert>
         ) : null}
-
-        {isMockData ? <SampleDataNotice /> : null}
 
         {isLoading ? (
           <Panel className="space-y-4">
@@ -465,7 +675,7 @@ export default function ContactDetailPage() {
                           }
                         }}
                         placeholder="Add new tag"
-                        disabled={isCreatingTag || isMockData}
+                        disabled={isCreatingTag}
                         aria-label="New tag name"
                       />
                       <Button
@@ -473,9 +683,7 @@ export default function ContactDetailPage() {
                         variant="outline"
                         size="sm"
                         className="shrink-0"
-                        disabled={
-                          !newTagName.trim() || isCreatingTag || isMockData
-                        }
+                        disabled={!newTagName.trim() || isCreatingTag}
                         onClick={() => void createAndAssignTag()}
                       >
                         <Plus className="h-4 w-4" aria-hidden="true" />
@@ -495,6 +703,17 @@ export default function ContactDetailPage() {
                             )
                           }
                           label={tag.name}
+                          isMutating={mutatingLabelId === tag.id}
+                          isRenaming={
+                            editingLabel?.kind === "tag" &&
+                            editingLabel.id === tag.id
+                          }
+                          renameValue={renameDraft}
+                          onRenameValueChange={setRenameDraft}
+                          onRenameSubmit={() => void submitRenameLabel()}
+                          onRenameCancel={cancelRenameLabel}
+                          onRename={() => startRenameLabel("tag", tag.id, tag.name)}
+                          onDelete={() => void deleteLabel("tag", tag.id)}
                         />
                       ))
                     : null}
@@ -518,7 +737,7 @@ export default function ContactDetailPage() {
                           }
                         }}
                         placeholder="Add new group"
-                        disabled={isCreatingGroup || isMockData}
+                        disabled={isCreatingGroup}
                         aria-label="New group name"
                       />
                       <Button
@@ -528,8 +747,7 @@ export default function ContactDetailPage() {
                         className="shrink-0"
                         disabled={
                           !newGroupName.trim() ||
-                          isCreatingGroup ||
-                          isMockData
+                          isCreatingGroup
                         }
                         onClick={() => void createAndAssignGroup()}
                       >
@@ -557,6 +775,19 @@ export default function ContactDetailPage() {
                               </StatusBadge>
                             ) : null
                           }
+                          isMutating={mutatingLabelId === group.id}
+                          isRenaming={
+                            editingLabel?.kind === "group" &&
+                            editingLabel.id === group.id
+                          }
+                          renameValue={renameDraft}
+                          onRenameValueChange={setRenameDraft}
+                          onRenameSubmit={() => void submitRenameLabel()}
+                          onRenameCancel={cancelRenameLabel}
+                          onRename={() =>
+                            startRenameLabel("group", group.id, group.name)
+                          }
+                          onDelete={() => void deleteLabel("group", group.id)}
                         />
                       ))
                     : null}
@@ -566,11 +797,7 @@ export default function ContactDetailPage() {
               <div className="mt-5 flex justify-end border-t border-border pt-4">
                 <Button
                   type="button"
-                  disabled={
-                    !hasAssignmentChanges ||
-                    isSavingAssignments ||
-                    isMockData
-                  }
+                  disabled={!hasAssignmentChanges || isSavingAssignments}
                   onClick={() => void saveAssignments()}
                 >
                   {isSavingAssignments ? "Saving" : "Save assignments"}
@@ -707,14 +934,30 @@ export default function ContactDetailPage() {
               ) : null}
             </ListSection>
 
-            {contact.notes ? (
-              <Panel className="p-5 md:p-6">
-                <PanelHeader title="Notes" className="mb-3" />
-                <p className="whitespace-pre-wrap text-sm text-muted-foreground">
-                  {contact.notes}
-                </p>
-              </Panel>
-            ) : null}
+            <Panel className="p-5 md:p-6">
+              <PanelHeader title="Notes" className="mb-3" />
+              <textarea
+                value={notesDraft}
+                onChange={(event) => setNotesDraft(event.target.value)}
+                rows={4}
+                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+                placeholder="Add notes about this contact"
+                aria-label="Contact notes"
+              />
+              <div className="mt-3 flex justify-end">
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={
+                    isSavingNotes ||
+                    (contact.notes ?? "") === notesDraft.trim()
+                  }
+                  onClick={() => void saveNotes()}
+                >
+                  {isSavingNotes ? "Saving" : "Save notes"}
+                </Button>
+              </div>
+            </Panel>
           </>
         ) : null}
       </div>
