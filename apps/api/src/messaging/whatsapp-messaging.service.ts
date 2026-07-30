@@ -30,6 +30,11 @@ export type WhatsappDelivery = {
   status: WhatsappSendResult["status"];
 };
 
+export type WhatsappDeliveryRecordResult = {
+  count: number;
+  ids: string[];
+};
+
 @Injectable()
 export class WhatsappMessagingService {
   constructor(
@@ -69,6 +74,22 @@ export class WhatsappMessagingService {
     );
   }
 
+  /**
+   * Tracked send for callers with their own provider (e.g. Twilio-based sends), as opposed to
+   * the OpenWA `this.provider` used by sendText/sendOtp/sendConnectionInvite above. Public so
+   * those callers can reuse the ledger/dedup/delivery-reconciliation logic in `sendTracked`
+   * instead of duplicating it.
+   */
+  sendTrackedWithProvider(
+    phoneE164: string,
+    purpose: WhatsappMessagePurpose,
+    correlationId: string | undefined,
+    provider: WhatsappProviderName,
+    send: () => Promise<WhatsappSendResult>,
+  ): Promise<WhatsappDelivery> {
+    return this.sendTracked(phoneE164, purpose, correlationId, send, provider);
+  }
+
   normalizeProviderEvent(payload: unknown): WhatsappProviderEvent | null {
     return this.provider.handleInboundMessage(payload);
   }
@@ -77,14 +98,26 @@ export class WhatsappMessagingService {
     return this.provider.getReadiness();
   }
 
-  async recordDelivery(event: WhatsappDeliveryEvent): Promise<number> {
+  async recordDelivery(
+    event: WhatsappDeliveryEvent,
+    provider: WhatsappProviderName = WhatsappProviderName.OPENWA,
+  ): Promise<WhatsappDeliveryRecordResult> {
     const now = new Date();
+    const where = {
+      provider,
+      providerMessageId: event.providerMessageId,
+      status: { in: allowedPriorStatuses(event.status) },
+    };
+    const affected = await this.prisma.whatsappMessage.findMany({
+      where,
+      select: { id: true },
+    });
+    if (affected.length === 0) {
+      return { count: 0, ids: [] };
+    }
+    const ids = affected.map((row) => row.id);
     const result = await this.prisma.whatsappMessage.updateMany({
-      where: {
-        provider: WhatsappProviderName.OPENWA,
-        providerMessageId: event.providerMessageId,
-        status: { in: allowedPriorStatuses(event.status) },
-      },
+      where: { id: { in: ids } },
       data: {
         status: toStoredStatus(event.status),
         ...(event.errorCode ? { providerErrorCode: event.errorCode } : {}),
@@ -93,7 +126,7 @@ export class WhatsappMessagingService {
         ...(event.status === "failed" ? { failedAt: now } : {}),
       },
     });
-    return result.count;
+    return { count: result.count, ids };
   }
 
   async claimInbound(event: WhatsappInboundEvent): Promise<string | null> {
@@ -154,10 +187,11 @@ export class WhatsappMessagingService {
     purpose: WhatsappMessagePurpose,
     correlationId: string | undefined,
     send: () => Promise<WhatsappSendResult>,
+    provider: WhatsappProviderName = WhatsappProviderName.OPENWA,
   ): Promise<WhatsappDelivery> {
     const ledger = await this.prisma.whatsappMessage.create({
       data: {
-        provider: WhatsappProviderName.OPENWA,
+        provider,
         direction: WhatsappMessageDirection.OUTBOUND,
         purpose,
         phoneE164,
@@ -171,7 +205,7 @@ export class WhatsappMessagingService {
         where: { id: ledger.id },
         data: {
           providerMessageId: result.providerMessageId,
-          deduplicationKey: `OPENWA:OUTBOUND:${result.providerMessageId}`,
+          deduplicationKey: `${provider}:OUTBOUND:${result.providerMessageId}`,
           status: toStoredStatus(result.status),
           sentAt: new Date(),
           ...(result.status === "delivered" ? { deliveredAt: new Date() } : {}),
@@ -198,7 +232,7 @@ export class WhatsappMessagingService {
           providerMessageId: providerError?.details.providerMessageId,
           ...(providerError?.details.providerMessageId
             ? {
-                deduplicationKey: `OPENWA:OUTBOUND:${providerError.details.providerMessageId}`,
+                deduplicationKey: `${provider}:OUTBOUND:${providerError.details.providerMessageId}`,
               }
             : {}),
           status: WhatsappMessageStatus.FAILED,
@@ -339,7 +373,7 @@ function nonNegativeInteger(value: string, fallback: number): number {
   return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
-function toStoredStatus(
+export function toStoredStatus(
   status: WhatsappSendResult["status"],
 ): WhatsappMessageStatus {
   switch (status) {

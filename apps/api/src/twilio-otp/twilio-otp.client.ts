@@ -1,23 +1,12 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import {
+  CLIENT_ERROR_TWILIO_CODES,
+  mapHttpStatus,
+  TwilioSendError,
+} from "./twilio-error-mapping";
 
-/**
- * Transport-level failure talking to Twilio. `httpStatus` is the status the API
- * should surface to the caller (already mapped from the Twilio error code), and
- * `twilioCode` is Twilio's numeric error code when one was returned.
- * See https://www.twilio.com/docs/api/errors for code meanings.
- */
-export class TwilioSendError extends Error {
-  constructor(
-    message: string,
-    readonly httpStatus: number,
-    readonly twilioCode: number | null = null,
-    readonly moreInfo?: string,
-  ) {
-    super(message);
-    this.name = "TwilioSendError";
-  }
-}
+export { TwilioSendError };
 
 export interface TwilioMessageResult {
   sid: string;
@@ -37,23 +26,6 @@ const MESSAGES_ENDPOINT = (accountSid: string) =>
   `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(
     accountSid,
   )}/Messages.json`;
-
-/**
- * Twilio error codes that mean the request/recipient is at fault (bad number,
- * not a WhatsApp user, unverified trial recipient, opted out). These map to a
- * 4xx so the client can correct them; everything else is treated as an upstream
- * failure (502/503) since it is our configuration or Twilio's availability.
- */
-const CLIENT_ERROR_TWILIO_CODES = new Set<number>([
-  21211, // Invalid 'To' phone number
-  21408, // Permission to send to this region not enabled
-  21608, // Recipient not verified (trial account)
-  21610, // Recipient has opted out / unsubscribed
-  21614, // 'To' number is not a valid mobile number
-  63003, // Channel could not find the 'To' address (not on WhatsApp)
-  63013, // Message blocked by WhatsApp policy
-  63024, // Invalid message recipient
-]);
 
 @Injectable()
 export class TwilioOtpClient {
@@ -167,18 +139,6 @@ export class TwilioOtpClient {
       : `whatsapp:${whatsappFromRaw}`;
     return { accountSid, authToken, whatsappFrom, otpContentSid };
   }
-}
-
-/** Maps a Twilio HTTP status + error code to the status we surface to callers. */
-function mapHttpStatus(httpStatus: number, twilioCode: number | null): number {
-  if (twilioCode !== null && CLIENT_ERROR_TWILIO_CODES.has(twilioCode)) {
-    return 400;
-  }
-  // 401/403 mean OUR credentials/permissions are wrong — never blame the client.
-  if (httpStatus === 401 || httpStatus === 403) {
-    return 502;
-  }
-  return 502;
 }
 
 /** Client-safe message; hides internal detail for non-client errors. */

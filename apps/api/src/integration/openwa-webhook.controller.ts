@@ -43,7 +43,7 @@ export class OpenWaWebhookController {
     if (!event) return { ok: true };
     if (event.type !== "message.received") {
       const updated = await this.messaging.recordDelivery(event);
-      if (updated === 0) {
+      if (updated.count === 0) {
         throw new Error(
           `Delivery arrived before outbound message ${event.providerMessageId} was persisted`,
         );

@@ -97,6 +97,7 @@ enum ConnectionInviteStatus {
 
 enum WhatsappProvider {
   OPENWA
+  TWILIO
 }
 
 enum WhatsappMessageDirection {
@@ -113,6 +114,20 @@ enum WhatsappMessagePurpose {
   TRAVEL_NOTIFICATION
   LOGIN_BROADCAST
   CONVERSATION
+  CARD_SHARE
+}
+
+enum WhatsappTemplateUseCase {
+  CARD_SHARE
+  OTP
+  CONNECTION_INVITE
+}
+
+enum CardShareDispatchStatus {
+  PENDING
+  RETRYING
+  DISPATCHED
+  FAILED
 }
 
 enum WhatsappMessageStatus {
@@ -163,6 +178,7 @@ model User {
   otpSessions      OtpSession[]
   whatsappSessions WhatsappSession[]
   refreshTokens    RefreshToken[]
+  cardShareBatches CardShareBatch[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -235,6 +251,8 @@ model ContactCard {
   fieldMappings CardFieldMapping[]
   requesterSharedConnections Connection[] @relation("RequesterSharedCard")
   receiverSharedConnections  Connection[] @relation("ReceiverSharedCard")
+  shareBatches  CardShareBatch[]
+  vcardAssets   VCardAsset[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -421,6 +439,7 @@ model Contact {
   groups                 ContactGroup[]              @relation("ContactGroups")
   travelNotifyForUsers   TravelNotificationContact[]
   providerLinks          ContactProviderLink[]
+  cardShareRecipients    CardShareRecipient[]
 
   @@unique([userId, source, externalId])
   @@index([userId, source, deletedAt])
@@ -657,6 +676,8 @@ model WhatsappMessage {
   createdAt            DateTime                 @default(now())
   updatedAt            DateTime                 @updatedAt
 
+  cardShareRecipient CardShareRecipient?
+
   @@index([status, createdAt])
   @@index([phoneE164, createdAt])
   @@index([correlationId])
@@ -680,6 +701,128 @@ model WhatsappSession {
 
   @@index([phoneE164, state])
   @@map("whatsapp_sessions")
+}
+
+// ==========================================
+// WHATSAPP CARD SHARE
+// ==========================================
+
+/// Registry of approved Twilio WhatsApp Content Templates. DB-backed (not env vars) so
+/// multiple approved templates can be added/rotated/deactivated without a deploy.
+model WhatsappTemplate {
+  id      String                  @id @default(uuid())
+  /// Stable lookup key the app code references, e.g. "card_share_default_en".
+  key     String                  @unique
+  useCase WhatsappTemplateUseCase
+  /// Twilio-approved Content Template SID (HX...).
+  contentSid  String
+  locale      String  @default("en")
+  /// Human-readable copy of the approved body, for admin/support debugging only.
+  bodyPreview String
+  isActive    Boolean @default(true)
+  /// Tie-break when a caller doesn't specify a templateKey and multiple active
+  /// templates exist for the same useCase/locale.
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  batches CardShareBatch[]
+
+  @@index([useCase, isActive, isDefault])
+  @@map("whatsapp_templates")
+}
+
+/// A generated .vcf file for a card, uploaded once to GCS and reused across shares as long
+/// as the card's mapped fields haven't changed (content-addressed by contentHash).
+model VCardAsset {
+  id    String       @id @default(uuid())
+  /// Nullable + SetNull: if the source card is later deleted, we keep the asset and the
+  /// share history that references it around for audit.
+  cardId      String?
+  card        ContactCard? @relation(fields: [cardId], references: [id], onDelete: SetNull)
+  /// sha256 of the serialized vCard bytes; dedupes re-shares of an unedited card.
+  contentHash String
+  storageUrl  String
+  objectKey   String
+  sizeBytes   Int
+  /// text/x-vcard, not text/vcard — WhatsApp only accepts the former (Twilio's MMS-only
+  /// vs MMS+WhatsApp MIME type distinction); see gcs-vcard.service.ts for the full note.
+  mimeType    String   @default("text/x-vcard")
+  createdAt   DateTime @default(now())
+
+  batches CardShareBatch[]
+
+  @@unique([cardId, contentHash])
+  @@index([cardId])
+  @@map("vcard_assets")
+}
+
+/// One "share" action: a card, a sender, a chosen template, and the recipients it went to.
+model CardShareBatch {
+  id     String @id @default(uuid())
+  /// SetNull, not Cascade: a share is a historical record of something that happened.
+  /// Deleting the card later shouldn't erase that it was sent. Snapshots below keep the
+  /// batch displayable even if the live card is gone.
+  cardId           String?
+  card             ContactCard? @relation(fields: [cardId], references: [id], onDelete: SetNull)
+  cardNameSnapshot String
+  cardTypeSnapshot CardType
+  senderId         String
+  sender           User             @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  templateId       String
+  template         WhatsappTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  vcardAssetId     String
+  vcardAsset       VCardAsset       @relation(fields: [vcardAssetId], references: [id], onDelete: Restrict)
+  /// Optional free-text injected into the template's personalization variable, if it has one.
+  note      String?
+  createdAt DateTime @default(now())
+
+  recipients CardShareRecipient[]
+
+  @@index([cardId])
+  @@index([senderId, createdAt])
+  @@map("card_share_batches")
+}
+
+/// One target phone number within a batch. dispatchStatus tracks whether *we* have managed
+/// to hand the send to Twilio yet (our own retry loop); deliveryStatus tracks what happened
+/// to the message on WhatsApp once Twilio has accepted it (from the status callback webhook).
+model CardShareRecipient {
+  id      String         @id @default(uuid())
+  batchId String
+  batch   CardShareBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  /// Split the same way ConnectionInvite is — a raw user-entered number, not necessarily
+  /// tied to any Contact/User record.
+  recipientCountryCode String @db.VarChar(8)
+  recipientPhone       String
+  /// Optional: set when the user picked an existing synced Contact rather than typing a
+  /// raw number. SetNull if that contact is later deleted/merged away.
+  recipientContactId String?
+  recipientContact   Contact? @relation(fields: [recipientContactId], references: [id], onDelete: SetNull)
+
+  dispatchStatus    CardShareDispatchStatus @default(PENDING)
+  dispatchAttempts  Int                     @default(0)
+  nextAttemptAt     DateTime                @default(now())
+  lastDispatchError String?
+
+  /// Set once we've successfully handed the send to Twilio.
+  whatsappMessageId String?          @unique
+  whatsappMessage   WhatsappMessage? @relation(fields: [whatsappMessageId], references: [id], onDelete: SetNull)
+  deliveryStatus    WhatsappMessageStatus?
+
+  sentAt      DateTime?
+  deliveredAt DateTime?
+  readAt      DateTime?
+  failedAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([batchId, recipientCountryCode, recipientPhone])
+  @@index([dispatchStatus, nextAttemptAt])
+  @@index([recipientCountryCode, recipientPhone])
+  @@map("card_share_recipients")
 }
 
 /**
