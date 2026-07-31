@@ -16,6 +16,8 @@ export type CreateTemplateInput = {
   body: string;
   buttonTitle: string;
   category: string;
+  /** Optional static image URL baked into the template header (not a per-send variable). */
+  headerImageUrl?: string;
 };
 
 export type TwilioTemplateApproval = {
@@ -61,6 +63,21 @@ export class TwilioContentApiService {
       );
     }
 
+    // twilio/call-to-action supports body + URL button but has NO image header support.
+    // whatsapp/card supports body + media (image banner) + URL button — use it when
+    // a headerImageUrl is provided, otherwise stick with the simpler CTA type.
+    const templateType = input.headerImageUrl ? "whatsapp/card" : "twilio/call-to-action";
+    const typePayload = input.headerImageUrl
+      ? {
+          body: input.body,
+          media: [input.headerImageUrl],
+          actions: [{ type: "URL", title: input.buttonTitle, url: `${baseUrl}/{{4}}` }],
+        }
+      : {
+          body: input.body,
+          actions: [{ type: "URL", title: input.buttonTitle, url: `${baseUrl}/{{4}}` }],
+        };
+
     const payload = {
       friendly_name: input.name,
       language: "en",
@@ -70,18 +87,7 @@ export class TwilioContentApiService {
         "3": " Great meeting you!",
         "4": "sample/contact.vcf",
       },
-      types: {
-        "twilio/call-to-action": {
-          body: input.body,
-          actions: [
-            {
-              type: "URL",
-              title: input.buttonTitle,
-              url: `${baseUrl}/{{4}}`,
-            },
-          ],
-        },
-      },
+      types: { [templateType]: typePayload },
     };
 
     const res = await fetch(CONTENT_API_BASE, {

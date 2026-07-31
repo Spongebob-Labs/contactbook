@@ -4,6 +4,7 @@ import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
+  IsIn,
   IsOptional,
   IsString,
   IsUUID,
@@ -11,7 +12,9 @@ import {
   MaxLength,
   ValidateNested,
 } from "class-validator";
+import type { FieldType } from "@prisma/client";
 import { normalizeDialCode } from "../../common/phone.util";
+import { SHAREABLE_FIELD_TYPES } from "../vcard-generator.service";
 
 export const MAX_SHARE_CARD_RECIPIENTS = 50;
 
@@ -65,6 +68,19 @@ export class ShareCardDto {
   @IsString()
   @MaxLength(300)
   note?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "Field types to include in the shared VCF. Omit to share all shareable fields. " +
+      "Allows the sender to choose e.g. phone-only or phone+email.",
+    type: [String],
+    enum: SHAREABLE_FIELD_TYPES,
+    example: ["PHONE", "EMAIL"],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsIn(SHAREABLE_FIELD_TYPES, { each: true })
+  fieldTypes?: FieldType[];
 
   @ApiProperty({
     type: () => [ShareCardRecipientDto],

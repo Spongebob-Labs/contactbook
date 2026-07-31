@@ -22,6 +22,8 @@ import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { ApiExceptionFilter } from "../common/filters/api-exception.filter";
 import { CardShareService } from "./card-share.service";
 import { ShareCardDto } from "./dto/share-card.dto";
+import { GenerateVcardDto } from "./dto/generate-vcard.dto";
+import { VcardAssetResponseDto } from "./dto/vcard-asset-response.dto";
 import { ListCardSharesQueryDto } from "./dto/list-card-shares-query.dto";
 import { CardShareBatchResponseDto } from "./dto/card-share-batch-response.dto";
 import { CardShareBatchListResponseDto } from "./dto/card-share-batch-list-response.dto";
@@ -33,6 +35,26 @@ import { CardShareBatchListResponseDto } from "./dto/card-share-batch-list-respo
 @Controller({ path: "cards", version: "1" })
 export class CardShareController {
   constructor(private readonly cardShare: CardShareService) {}
+
+  @Post(":cardId/vcard")
+  @ApiOperation({
+    summary:
+      "Generate (or retrieve a cached) VCF asset for a card with optional field selection",
+    description:
+      "Produces a content-addressed VCF in GCS. Pass `fieldTypes` to limit which fields are included " +
+      "(e.g. phone-only). The same field selection on the same card reuses the existing upload.",
+  })
+  @ApiCreatedResponse({
+    description: "VCF asset details including GCS object key and public URL",
+    type: VcardAssetResponseDto,
+  })
+  generateVcard(
+    @CurrentUser() user: JwtUserPayload,
+    @Param("cardId", ParseUUIDPipe) cardId: string,
+    @Body() dto: GenerateVcardDto,
+  ) {
+    return this.cardShare.generateVcard(user.sub, cardId, dto);
+  }
 
   @Post(":cardId/share")
   @ApiOperation({

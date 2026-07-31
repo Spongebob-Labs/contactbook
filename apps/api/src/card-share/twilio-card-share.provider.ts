@@ -15,10 +15,11 @@ const MESSAGES_ENDPOINT = (accountSid: string) =>
   )}/Messages.json`;
 
 // NestJS applies both app.setGlobalPrefix("api") and URI versioning (main.ts), so the
-// real route is /api/v1/... — this constant must match exactly, since it's used both to
-// build the StatusCallback URL sent to Twilio and to reconstruct the signed URL when
-// verifying that callback (see twilio-signature.util.ts).
+// real route is /api/v1/... — these constants must match exactly, since they're used both
+// to build URLs sent to Twilio and to reconstruct signed URLs for webhook verification
+// (see twilio-signature.util.ts).
 export const TWILIO_STATUS_CALLBACK_PATH = "/api/v1/webhooks/twilio/status";
+export const TWILIO_INCOMING_MESSAGE_PATH = "/api/v1/webhooks/twilio/incoming";
 
 interface TwilioConfig {
   accountSid: string;
@@ -36,8 +37,8 @@ export type CardShareSendInput = {
   cardName: string;
   note: string | null;
   /** GCS object key (e.g. "cardId/hash.vcf") — appended to the GCS base URL baked into
-   *  the template's URL button. Do NOT pass the full storageUrl here. */
-  vcardObjectKey: string;
+   *  the template's URL button. Omit for quick-reply templates that have no URL button. */
+  vcardObjectKey?: string;
 };
 
 /** Client-safe message; hides internal detail for non-client errors. */
@@ -97,9 +98,9 @@ export class TwilioCardShareProvider {
         // WhatsApp rejects empty-string template variables (Twilio error 21656), so an
         // absent note falls back to a single space rather than "".
         "3": input.note?.trim() ? input.note : " ",
-        // Variable 4 is the object key (path only) — the GCS base URL is baked into the
-        // template's URL button, so only the suffix is dynamic per send.
-        "4": input.vcardObjectKey,
+        // Variable 4 is only included for URL-button templates (the GCS base URL is baked
+        // into the button; we only send the path suffix). Quick-reply templates omit {{4}}.
+        ...(input.vcardObjectKey ? { "4": input.vcardObjectKey } : {}),
       }),
       StatusCallback: `${cfg.apiPublicBaseUrl}${TWILIO_STATUS_CALLBACK_PATH}`,
     });
@@ -158,6 +159,71 @@ export class TwilioCardShareProvider {
       providerMessageId,
       status: mapTwilioSendStatus(rawStatus),
     };
+  }
+
+  /**
+   * Sends a raw VCF document (no template) to an already-open 24-hour WhatsApp session.
+   * WhatsApp renders VCF files as a native contact card with an "Add to Contacts" button.
+   *
+   * Must only be called after the recipient has sent a message to our number first (e.g. via
+   * a quick-reply button tap), which opens the session window required to send non-template
+   * messages.
+   *
+   * @returns The Twilio message SID.
+   */
+  async sendVcfDocument(input: {
+    toE164: string;
+    vcfUrl: string;
+  }): Promise<string> {
+    const cfg = this.readConfigOrThrow();
+    const body = new URLSearchParams({
+      To: `whatsapp:${input.toE164}`,
+      From: cfg.whatsappFrom,
+      MediaUrl: input.vcfUrl,
+    });
+
+    let res: Response;
+    try {
+      res = await fetch(MESSAGES_ENDPOINT(cfg.accountSid), {
+        method: "POST",
+        headers: {
+          Authorization: `Basic ${Buffer.from(
+            `${cfg.accountSid}:${cfg.authToken}`,
+          ).toString("base64")}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body,
+        signal: AbortSignal.timeout(this.requestTimeoutMs()),
+      });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new TwilioSendError(`Could not reach Twilio: ${reason}`, 502);
+    }
+
+    const payload = (await res.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    >;
+
+    if (!res.ok) {
+      const twilioCode =
+        typeof payload["code"] === "number" ? payload["code"] : null;
+      const message =
+        typeof payload["message"] === "string"
+          ? payload["message"]
+          : `Twilio returned HTTP ${res.status}`;
+      this.logger.warn(
+        `Twilio VCF document send failed: http=${res.status} code=${twilioCode ?? "?"} message=${message}`,
+      );
+      throw new TwilioSendError(
+        mapClientMessage(twilioCode),
+        mapHttpStatus(res.status, twilioCode),
+        twilioCode,
+      );
+    }
+
+    const sid = typeof payload["sid"] === "string" ? payload["sid"] : "";
+    return sid;
   }
 
   private requestTimeoutMs(): number {

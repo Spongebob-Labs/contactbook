@@ -101,6 +101,7 @@ export class WhatsappTemplateService {
       body: dto.body,
       buttonTitle,
       category,
+      headerImageUrl: dto.headerImageUrl,
     });
 
     const approvalStatus = await this.twilioContent.submitForApproval(

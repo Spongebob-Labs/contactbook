@@ -16,6 +16,8 @@ import { PrismaService } from "../prisma/prisma.service";
 import { VCardGeneratorService } from "./vcard-generator.service";
 import { WhatsappTemplateService } from "./whatsapp-template.service";
 import { ShareCardDto, ShareCardRecipientDto } from "./dto/share-card.dto";
+import { GenerateVcardDto } from "./dto/generate-vcard.dto";
+import { VcardAssetResponseDto } from "./dto/vcard-asset-response.dto";
 import { ListCardSharesQueryDto } from "./dto/list-card-shares-query.dto";
 import { CardShareBatchResponseDto } from "./dto/card-share-batch-response.dto";
 import { CardShareBatchListResponseDto } from "./dto/card-share-batch-list-response.dto";
@@ -64,7 +66,11 @@ export class CardShareService {
       WhatsappTemplateUseCase.CARD_SHARE,
       dto.templateKey,
     );
-    const asset = await this.vcardGenerator.getOrCreateAsset(userId, card);
+    const asset = await this.vcardGenerator.getOrCreateAsset(
+      userId,
+      card,
+      dto.fieldTypes,
+    );
 
     const batch = await this.prisma.$transaction(async (tx) => {
       const created = await tx.cardShareBatch.create({
@@ -90,6 +96,29 @@ export class CardShareService {
     });
 
     return this.getBatch(userId, batch.id);
+  }
+
+  async generateVcard(
+    userId: string,
+    cardId: string,
+    dto: GenerateVcardDto,
+  ): Promise<VcardAssetResponseDto> {
+    const card = await this.prisma.contactCard.findFirst({
+      where: { id: cardId, userId },
+    });
+    if (!card) throw new NotFoundException("Card not found");
+
+    const asset = await this.vcardGenerator.getOrCreateAsset(
+      userId,
+      card,
+      dto.fieldTypes,
+    );
+    return {
+      objectKey: asset.objectKey,
+      url: asset.storageUrl,
+      fieldTypes: dto.fieldTypes,
+      sizeBytes: asset.sizeBytes,
+    };
   }
 
   async listBatchesForCard(

@@ -141,6 +141,7 @@ describe("CardShareService", () => {
       expect(vcardGenerator.getOrCreateAsset).toHaveBeenCalledWith(
         USER_ID,
         CARD,
+        undefined,
       );
       expect(tx.cardShareBatch.create).toHaveBeenCalledWith({
         data: expect.objectContaining({

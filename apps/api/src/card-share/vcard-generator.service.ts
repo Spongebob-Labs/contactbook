@@ -17,6 +17,22 @@ const EXCLUDED_FIELD_TYPES = new Set<FieldType>([
   "CUSTOM",
 ]);
 
+/** Field types that have a vCard equivalent and can be selectively included by the user. */
+export const SHAREABLE_FIELD_TYPES: FieldType[] = [
+  "PHONE",
+  "LANDLINE",
+  "FAX",
+  "EMAIL",
+  "ADDRESS",
+  "URL",
+  "SOCIAL_LINK",
+  "PHOTO",
+  "JOB_TITLE",
+  "COMPANY",
+  "DEPARTMENT",
+  "DATE",
+];
+
 export type VCardOwnerInput = {
   firstName: string;
   lastName: string;
@@ -193,9 +209,15 @@ export class VCardGeneratorService {
     private readonly gcsVcard: GcsVcardService,
   ) {}
 
+  /**
+   * Generates (or reuses a cached) VCardAsset for a card. When `fieldTypes` is provided
+   * only those field types are included — the resulting VCF is content-addressed so a new
+   * VCardAsset row is created only when the serialized output differs from any existing one.
+   */
   async getOrCreateAsset(
     userId: string,
     card: ContactCard,
+    fieldTypes?: FieldType[],
   ): Promise<VCardAsset> {
     const [owner, mappings] = await Promise.all([
       this.prisma.user.findUniqueOrThrow({
@@ -208,14 +230,17 @@ export class VCardGeneratorService {
       }),
     ]);
 
-    const fields: VCardFieldInput[] = mappings.map(({ field }) => ({
-      groupId: field.groupId,
-      type: field.type,
-      label: field.label,
-      isSensitive: field.isSensitive,
-      value: field.value,
-      address: field.address,
-    }));
+    const allowedTypes = fieldTypes ? new Set(fieldTypes) : null;
+    const fields: VCardFieldInput[] = mappings
+      .filter(({ field }) => !allowedTypes || allowedTypes.has(field.type))
+      .map(({ field }) => ({
+        groupId: field.groupId,
+        type: field.type,
+        label: field.label,
+        isSensitive: field.isSensitive,
+        value: field.value,
+        address: field.address,
+      }));
 
     const { buffer, contentHash } = serializeCard(owner, fields);
 

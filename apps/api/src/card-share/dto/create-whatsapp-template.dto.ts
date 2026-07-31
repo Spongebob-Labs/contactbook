@@ -5,6 +5,7 @@ import {
   IsEnum,
   IsOptional,
   IsString,
+  IsUrl,
   Matches,
   MaxLength,
   MinLength,
@@ -70,6 +71,17 @@ export class CreateWhatsappTemplateDto {
   @IsString()
   @MaxLength(10)
   locale?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "Static image URL to use as the WhatsApp message header. Must be a publicly accessible " +
+      "HTTPS URL (JPEG or PNG). Baked into the template at creation — not a per-send variable. " +
+      "Omit for a text-only header.",
+    example: "https://storage.googleapis.com/contactbook-assets/contact-card-header.png",
+  })
+  @IsOptional()
+  @IsUrl({ protocols: ["https"], require_tld: true })
+  headerImageUrl?: string;
 
   @ApiPropertyOptional({
     description:

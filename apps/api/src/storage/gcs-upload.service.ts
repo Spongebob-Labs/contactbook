@@ -15,6 +15,7 @@ export function normalizePublicBaseUrl(raw: string): string {
 
 export type GcsUploadOptions = {
   cacheControl?: string;
+  contentDisposition?: string;
 };
 
 /**
@@ -55,6 +56,9 @@ export class GcsUploadService {
         contentType: mimeType,
         cacheControl:
           options?.cacheControl ?? "public, max-age=31536000, immutable",
+        ...(options?.contentDisposition
+          ? { contentDisposition: options.contentDisposition }
+          : {}),
       },
     });
   }

@@ -816,6 +816,11 @@ model CardShareRecipient {
   readAt      DateTime?
   failedAt    DateTime?
 
+  /// Set once the VCF document is dispatched as a follow-up WhatsApp message (two-message flow).
+  vcfSentAt     DateTime? @map("vcf_sent_at")
+  /// Twilio SID of the VCF document message; null until the send succeeds.
+  vcfMessageSid String?   @map("vcf_message_sid")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

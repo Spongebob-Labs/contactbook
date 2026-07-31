@@ -10,8 +10,11 @@ import { VCardGeneratorService } from "./vcard-generator.service";
 import { WhatsappTemplateService } from "./whatsapp-template.service";
 import { TwilioCardShareProvider } from "./twilio-card-share.provider";
 import { CardShareDispatchService } from "./card-share-dispatch.service";
+import { CardShareVcfReplyService } from "./card-share-vcf-reply.service";
 import { TwilioStatusCallbackController } from "./twilio-status-callback.controller";
+import { TwilioIncomingMessageController } from "./twilio-incoming-message.controller";
 import { TwilioContentApiService } from "./twilio-content-api.service";
+import { VcardDownloadController } from "./vcard-download.controller";
 
 @Module({
   imports: [PrismaModule, StorageModule, WhatsappModule],
@@ -20,6 +23,8 @@ import { TwilioContentApiService } from "./twilio-content-api.service";
     CardShareBatchController,
     WhatsappTemplateController,
     TwilioStatusCallbackController,
+    TwilioIncomingMessageController,
+    VcardDownloadController,
   ],
   providers: [
     CardShareService,
@@ -28,6 +33,7 @@ import { TwilioContentApiService } from "./twilio-content-api.service";
     TwilioCardShareProvider,
     TwilioContentApiService,
     CardShareDispatchService,
+    CardShareVcfReplyService,
   ],
 })
 export class CardShareModule {}

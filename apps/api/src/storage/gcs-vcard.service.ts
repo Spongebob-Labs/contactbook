@@ -44,6 +44,10 @@ export class GcsVcardService {
     }
     await this.gcsUpload.upload(this.bucketName, objectKey, buffer, VCARD_MIME_TYPE, {
       cacheControl: "public, max-age=31536000, immutable",
+      // Forces iOS/Android to download the file rather than render it as text in the
+      // WhatsApp in-app browser. Without this, iOS shows raw VCF text instead of
+      // presenting the native "Add to Contacts" import sheet.
+      contentDisposition: 'attachment; filename="contact.vcf"',
     });
     return this.buildPublicUrl(objectKey);
   }
