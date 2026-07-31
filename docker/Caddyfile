@@ -1,3 +1,3 @@
-api.contactbook.com {
+api.getcontactbook.com {
     reverse_proxy contactbook-api:8080
 }
