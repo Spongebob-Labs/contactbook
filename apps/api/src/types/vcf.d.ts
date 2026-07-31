@@ -1,24 +1,37 @@
 declare module "vcf" {
-  export interface VCardProperty {
-    valueOf(): string;
-    isEmpty?(): boolean;
+  export class VCardProperty {
     type?: string | string[];
+    value?: string;
+    group?: string;
     [key: string]: unknown;
+    valueOf(): string;
+    isEmpty(): boolean;
+    clone(): VCardProperty;
+    toString(version?: string): string;
   }
 
-  export interface VCard {
+  export class VCard {
+    constructor();
     version: string;
     data: Record<string, VCardProperty | VCardProperty[] | undefined>;
     get(field: string): VCardProperty | VCardProperty[] | undefined;
+    set(
+      field: string,
+      value: string | string[],
+      params?: Record<string, unknown>,
+    ): VCard;
+    add(
+      field: string,
+      value: string | string[],
+      params?: Record<string, unknown>,
+    ): VCard;
+    parse(value: string | Buffer): VCard;
+    toString(version?: string): string;
+
+    static parse(value: string | Buffer): VCard[];
+    static normalize(input: string): string;
   }
 
-  export function parse(value: string | Buffer): VCard[];
-  export function normalize(input: string): string;
-
-  const vcf: {
-    parse: typeof parse;
-    normalize: typeof normalize;
-  };
-
+  const vcf: typeof VCard;
   export default vcf;
 }

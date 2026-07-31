@@ -3,6 +3,7 @@ import { ConfigModule } from "@nestjs/config";
 import { ScheduleModule } from "@nestjs/schedule";
 import { AuthModule } from "./auth/auth.module";
 import { CardModule } from "./card/card.module";
+import { CardShareModule } from "./card-share/card-share.module";
 import { ContactsModule } from "./contacts/contacts.module";
 import { GroupsModule } from "./groups/groups.module";
 import { TagsModule } from "./tags/tags.module";
@@ -36,6 +37,7 @@ import { LoggerModule } from "./common/logger/logger.module";
     TagsModule,
     ContactsModule,
     CardModule,
+    CardShareModule,
     SyncModule,
     IntegrationModule,
     ConnectionModule,

@@ -17,6 +17,7 @@ describe("WhatsappMessagingService", () => {
       update: jest.fn(),
       updateMany: jest.fn(),
       findUnique: jest.fn(),
+      findMany: jest.fn(),
     },
   };
   const provider = {
@@ -51,6 +52,7 @@ describe("WhatsappMessagingService", () => {
       status: WhatsappMessageStatus.SENT,
       providerErrorCode: null,
     });
+    prisma.whatsappMessage.findMany.mockResolvedValue([{ id: "ledger-1" }]);
     provider.getDeliveryStatus.mockResolvedValue({
       type: "message.ack",
       providerMessageId: "wa-1",
@@ -147,18 +149,106 @@ describe("WhatsappMessagingService", () => {
       status: "delivered" as const,
     };
 
-    await service.recordDelivery(event);
-    await service.recordDelivery(event);
+    const first = await service.recordDelivery(event);
+    const second = await service.recordDelivery(event);
 
     expect(prisma.whatsappMessage.updateMany).toHaveBeenCalledTimes(2);
-    expect(prisma.whatsappMessage.updateMany).toHaveBeenLastCalledWith({
+    expect(prisma.whatsappMessage.findMany).toHaveBeenLastCalledWith({
       where: expect.objectContaining({
         provider: WhatsappProviderName.OPENWA,
         providerMessageId: "wa-1",
       }) as unknown,
+      select: { id: true },
+    });
+    expect(prisma.whatsappMessage.updateMany).toHaveBeenLastCalledWith({
+      where: { id: { in: ["ledger-1"] } },
       data: expect.objectContaining({
         status: WhatsappMessageStatus.DELIVERED,
         deliveredAt: expect.any(Date) as unknown,
+      }) as unknown,
+    });
+    expect(first).toEqual({ count: 1, ids: ["ledger-1"] });
+    expect(second).toEqual({ count: 1, ids: ["ledger-1"] });
+  });
+
+  it("scopes recordDelivery to the given provider and returns no-op when nothing matches", async () => {
+    prisma.whatsappMessage.findMany.mockResolvedValue([]);
+
+    const result = await service.recordDelivery(
+      {
+        type: "message.ack",
+        providerMessageId: "twilio-sid-1",
+        status: "delivered",
+      },
+      WhatsappProviderName.TWILIO,
+    );
+
+    expect(prisma.whatsappMessage.findMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        provider: WhatsappProviderName.TWILIO,
+        providerMessageId: "twilio-sid-1",
+      }) as unknown,
+      select: { id: true },
+    });
+    expect(prisma.whatsappMessage.updateMany).not.toHaveBeenCalled();
+    expect(result).toEqual({ count: 0, ids: [] });
+  });
+
+  it("sendTrackedWithProvider tags the ledger and dedup key with the given provider", async () => {
+    const send = jest.fn().mockResolvedValue({
+      providerMessageId: "SM123",
+      status: "sent",
+    });
+
+    const result = await service.sendTrackedWithProvider(
+      "+917069567007",
+      WhatsappMessagePurpose.CARD_SHARE,
+      "recipient-1",
+      WhatsappProviderName.TWILIO,
+      send,
+    );
+
+    const createCall = prisma.whatsappMessage.create.mock
+      .calls[0] as unknown as [{ data: Record<string, unknown> }];
+    expect(createCall[0].data).toMatchObject({
+      provider: WhatsappProviderName.TWILIO,
+      purpose: WhatsappMessagePurpose.CARD_SHARE,
+      correlationId: "recipient-1",
+    });
+    expect(prisma.whatsappMessage.update).toHaveBeenCalledWith({
+      where: { id: "ledger-1" },
+      data: expect.objectContaining({
+        deduplicationKey: "TWILIO:OUTBOUND:SM123",
+      }) as unknown,
+    });
+    expect(result).toEqual({
+      ledgerId: "ledger-1",
+      providerMessageId: "SM123",
+      status: "sent",
+    });
+  });
+
+  it("defaults sendText/sendOtp/sendConnectionInvite to the OPENWA provider unchanged", async () => {
+    provider.sendText.mockResolvedValue({
+      providerMessageId: "wa-9",
+      status: "sent",
+    });
+
+    await service.sendText({
+      toE164: "+917069567007",
+      text: "hi",
+      purpose: WhatsappMessagePurpose.CONVERSATION,
+    });
+
+    const createCall = prisma.whatsappMessage.create.mock
+      .calls[0] as unknown as [{ data: Record<string, unknown> }];
+    expect(createCall[0].data).toMatchObject({
+      provider: WhatsappProviderName.OPENWA,
+    });
+    expect(prisma.whatsappMessage.update).toHaveBeenCalledWith({
+      where: { id: "ledger-1" },
+      data: expect.objectContaining({
+        deduplicationKey: "OPENWA:OUTBOUND:wa-9",
       }) as unknown,
     });
   });

@@ -45,6 +45,7 @@ describe("OpenWaWebhookController", () => {
     };
     const req = requestFor(payload);
     messaging.normalizeProviderEvent.mockReturnValue(event);
+    messaging.recordDelivery.mockResolvedValue({ count: 1, ids: ["ledger-1"] });
 
     await expect(
       controller.whatsapp(req as never, signature(req.rawBody)),
