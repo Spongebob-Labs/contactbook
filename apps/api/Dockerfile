@@ -82,9 +82,13 @@ RUN --mount=type=secret,id=api_env \
     cp /run/secrets/api_env /deploy/.env \
     && PRISMA_VERSION=$(node -p "require('./node_modules/@prisma/client/package.json').version") \
     && pnpm dlx prisma@${PRISMA_VERSION} generate \
-    && npm install --no-save --no-package-lock prisma@${PRISMA_VERSION} \
     && rm -f /deploy/.env \
     && rm -rf /root/.cache /root/.npm /root/.local /tmp/*
+
+# Copy the prisma CLI from the builder stage so `prisma migrate deploy` works at
+# startup. prisma is a devDep so pnpm deploy --prod omits it from the bundle.
+COPY --from=builder /workspace/node_modules/prisma /deploy/node_modules/prisma
+COPY --from=builder /workspace/node_modules/.bin/prisma /deploy/node_modules/.bin/prisma
 
 # Drop files not needed at runtime to keep the image lean.
 RUN rm -rf src test eslint.config.mjs nest-cli.json \
