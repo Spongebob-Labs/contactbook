@@ -229,6 +229,10 @@ export class AuthService {
     });
   }
 
+  generatePhoneVerificationToken(identity: PhoneIdentity): string {
+    return this.signPhoneVerificationJwt(identity);
+  }
+
   private signPhoneVerificationJwt(identity: PhoneIdentity): string {
     return this.jwt.sign(
       {

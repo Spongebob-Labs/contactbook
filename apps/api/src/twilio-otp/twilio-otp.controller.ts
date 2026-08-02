@@ -37,7 +37,7 @@ type VerifyResponse =
       accessToken: string;
       refreshToken: string;
     }
-  | { verified: true; registered: false };
+  | { verified: true; registered: false; phoneVerificationToken: string };
 
 @ApiTags("Auth")
 @UseFilters(ApiExceptionFilter)
@@ -90,7 +90,7 @@ export class TwilioOtpController {
   })
   @ApiOkResponse({
     description:
-      "Code accepted. When the phone is registered: `{ verified, registered: true, isOnboarded, userId, accessToken, refreshToken }` plus `Set-Cookie` (`cb_access_token`, `cb_refresh_token`, `cb_user_id`). Otherwise `{ verified: true, registered: false }`.",
+      "Code accepted. When the phone is registered: `{ verified, registered: true, isOnboarded, userId, accessToken, refreshToken }` plus `Set-Cookie` (`cb_access_token`, `cb_refresh_token`, `cb_user_id`). Otherwise `{ verified: true, registered: false, phoneVerificationToken }` — pass the token to `POST /auth/register` to complete sign-up.",
     schema: {
       type: "object",
       properties: {
@@ -100,6 +100,11 @@ export class TwilioOtpController {
         userId: { type: "string" },
         accessToken: { type: "string" },
         refreshToken: { type: "string" },
+        phoneVerificationToken: {
+          type: "string",
+          description:
+            "Present only when registered=false. Pass to POST /auth/register.",
+        },
       },
     },
   })
@@ -120,7 +125,11 @@ export class TwilioOtpController {
       dto.countryCode,
     );
     if (!session) {
-      return { verified: true, registered: false };
+      const phoneVerificationToken = this.auth.generatePhoneVerificationToken({
+        phone: dto.phone,
+        countryCode: dto.countryCode,
+      });
+      return { verified: true, registered: false, phoneVerificationToken };
     }
 
     setSessionCookies(res, session, resolveSessionCookieRuntime(this.config));
