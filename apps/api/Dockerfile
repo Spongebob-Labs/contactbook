@@ -82,6 +82,7 @@ RUN --mount=type=secret,id=api_env \
     cp /run/secrets/api_env /deploy/.env \
     && PRISMA_VERSION=$(node -p "require('./node_modules/@prisma/client/package.json').version") \
     && pnpm dlx prisma@${PRISMA_VERSION} generate \
+    && npm install --no-save --no-package-lock prisma@${PRISMA_VERSION} \
     && rm -f /deploy/.env \
     && rm -rf /root/.cache /root/.npm /root/.local /tmp/*
 
