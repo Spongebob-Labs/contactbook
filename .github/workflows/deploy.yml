@@ -134,6 +134,8 @@ jobs:
       GCS_PROFILE_PHOTOS_BUCKET: ${{ secrets.GCS_PROFILE_PHOTOS_BUCKET }}
       GCS_PUBLIC_BASE_URL: ${{ secrets.GCS_PUBLIC_BASE_URL }}
       GCS_PROJECT_ID: ${{ secrets.GCS_PROJECT_ID }}
+      GCS_CARD_SHARES_BUCKET: ${{ secrets.GCS_CARD_SHARES_BUCKET }}
+      GCS_CARD_SHARES_PUBLIC_BASE_URL: ${{ secrets.GCS_CARD_SHARES_PUBLIC_BASE_URL }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
