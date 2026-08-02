@@ -12,4 +12,11 @@ export function clearContactBookSessionState() {
   sessionStorage.removeItem(IMPORT_ONBOARDING_GOOGLE_DONE_KEY);
   sessionStorage.removeItem(IMPORT_ONBOARDING_VCF_DONE_KEY);
   localStorage.removeItem(GOOGLE_CONNECTED_KEY);
+  // Dynamic import avoided — keep sync clear for logout paths.
+  try {
+    sessionStorage.removeItem("cb_client_access_token");
+    sessionStorage.removeItem("cb_client_refresh_token");
+  } catch {
+    // ignore
+  }
 }

@@ -129,7 +129,10 @@ export function normalizeDialCode(value: string): string {
 /** Display phone as "+971 50 123 4567". */
 export function formatCardPhone(countryCode: string, phone: string): string {
   const dial = normalizeDialCode(countryCode);
-  const national = phone.trim() || "555 0100";
+  const national = phone.trim();
+  if (!national) {
+    return "";
+  }
   return `${dial} ${national}`;
 }
 

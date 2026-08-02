@@ -1,5 +1,124 @@
 # Decision Context
 
+## 2026-08-02 - Contacts list page is 1-based (not 0)
+
+- Decision: `GET /contacts` sends `page` as UI page (`>= 1`), no longer `uiPage - 1`. Matches live validation (`page must not be less than 1`).
+- Reason: Same 400 as card shares — FE assumed 0-indexed from older docs.
+- Files: `apps/web/src/lib/contacts-api.ts`, `decision-context.md`.
+
+## 2026-08-02 - Card shares list uses 1-based page
+
+- Decision: `GET /cards/:id/shares` query `page` defaults to `1` and is clamped to `>= 1`. Call site on card detail uses `page: 1`.
+- Reason: Live API returns 400 `"page must not be less than 1"` for `page=0` (docs previously showed 0-indexed).
+- Files: `apps/web/src/lib/cards-api.ts`, `apps/web/src/pages/card-detail-page.tsx`, `decision-context.md`.
+
+## 2026-08-02 - Audit follow-up: no dummy card copy, drop PAYMENT / local-cards
+
+- Decision: Remove fake phone/email/location fallbacks from card display/preview. Drop `PAYMENT` from `ContactCardType` (legacy API values coerce to `CUSTOM` in `mergeCard`). Delete unused `local-cards.ts`. Card onboarding `onComplete` uses re-fetched server card only (successful mappings from API). Trim auth credential path for outdated `/auth/whatsapp/*`.
+- Reason: Follow-up from FE API audits — no dummy SoT in UI; contract types only.
+- Files: `card-display.ts`, `card-maker.ts`, `live-card-preview.tsx`, `card-thumbs.tsx`, `types.ts`, `cards-api.ts`, `card-styles.ts`, `cards-page.tsx`, `card-detail-page.tsx`, `card-pair-tile.tsx`, `card-onboarding-page.tsx`, `api.ts`, `decision-context.md`.
+
+## 2026-08-02 - Full API audit: Bearer session + live-only cards/register
+
+- Decision: Persist verify `accessToken`/`refreshToken` in sessionStorage and send `Authorization: Bearer` on all `apiFetch` calls (still `credentials: include`). Register body matches docs: `phoneVerificationToken` + `firstName` + `lastName` + `email` only. Card create always `POST /cards` with `PERSONAL|BUSINESS|CUSTOM`; re-fetch via `GET /cards/:id` before UI success; theme/fields stay presentation-only. Connections UI supports phone + `recipientContactId`. No OpenWA request-code/verify-code.
+- Reason: Absolute live API + cookie-only auth was fragile; user reported card create appearing UI-only; latest register contract drops phone fields.
+- Files: `session-tokens.ts`, `api.ts`, `auth-api.ts`, `auth-page.tsx`, `auth-context.tsx`, `cards-api.ts`, `card-onboarding-page.tsx`, `connections-page.tsx`, `health-api.ts`, `decision-context.md`, `docs/api-integration-plan.md`.
+
+## 2026-08-02 - Drop outdated request-code / verify-code from FE auth
+
+- Decision: Web auth no longer calls `POST /auth/whatsapp/request-code` or `POST /auth/whatsapp/verify-code` (outdated). Current channel is Twilio `POST /auth/otp/whatsapp/send` → `POST /auth/otp/whatsapp/verify` → `POST /auth/register` for new users only. Registered verify → dashboard; never re-run Create account for existing phones.
+- Reason: User marked OpenWA request-code / verify-code as outdated in API docs.
+- Files: `apps/web/src/lib/auth-api.ts`, `apps/web/src/pages/auth-page.tsx`, `apps/web/src/lib/types.ts`, `docs/api-integration-plan.md`, `decision-context.md`.
+
+## 2026-08-02 - FE always calls absolute live API (no localhost /api)
+
+- Decision: `VITE_API_URL=https://api.getcontactbook.com/api` in `.env` / `.env.example`. `api.ts` resolves only absolute `http(s)` bases; relative `/api` is ignored and replaced with the live base so DevTools never shows `localhost:5173/api/...`.
+- Reason: User priority — all FE traffic must hit the given live base URL, including photo and auth.
+- Risk: Cross-origin cookies need CORS `Access-Control-Allow-Credentials` for `http://localhost:5173`. Session may break if API only sets cookies for same-origin proxy mode.
+- Files: `apps/web/src/lib/api.ts`, `apps/web/.env`, `apps/web/.env.example`, `decision-context.md`.
+
+## 2026-08-02 - Register body includes phone + countryCode
+
+- Decision: `POST /auth/register` sends `phoneVerificationToken`, `firstName`, `lastName`, `email`, `phone` (national digits), and `countryCode` (`+…`) from the verified phone context. Supersedes the earlier “token-only identity” FE assumption for live API validation.
+- Reason: Live API returns 400 when `phone` / `countryCode` are missing (`must be a string` + regex). Matches monorepo `CompleteRegisterDto` and JWT claim match checks.
+- Files: `apps/web/src/lib/auth-api.ts`, `apps/web/src/pages/auth-page.tsx`, `docs/api-integration-plan.md`, `decision-context.md`.
+
+## 2026-08-02 - Auth: Twilio send → verify-code → register
+
+- Decision: Frontend auth uses `POST /auth/otp/whatsapp/send` for OTP delivery, then `POST /auth/whatsapp/verify-code` (not Twilio `/otp/.../verify`). Registered → session cookies → dashboard/onboarding. Unregistered → `phoneVerificationToken` → Finish profile → `POST /auth/register` → dashboard. Do not call Twilio `/verify` for this web flow.
+- Reason: Twilio `/verify` is oriented at registered phones; `verify-code` is the dual-path contract that issues `phoneVerificationToken` for signup. User chose keep `/send` as the send step.
+- Risk: If live API stores Twilio Authentication-template OTPs separately from `verify-code`, verification may fail until backend unifies OTP storage. FE cannot mix `/send` with `/verify` for new users without losing the registration token path.
+- Files: `apps/web/src/lib/auth-api.ts`, `apps/web/src/pages/auth-page.tsx`, `apps/web/src/lib/types.ts`, `docs/api-integration-plan.md`, `decision-context.md`.
+
+## 2026-08-02 - Auth signup flow: verify → register form always (new users)
+
+- Decision: After OTP verify `registered: false`, always open Finish profile (register UI) with fields for `POST /auth/register` body: `firstName`, `lastName`, `email` (plus verified phone context). `phoneVerificationToken` comes from verify (not typed). Do not bounce back to phone on missing token — show form + banner. Create account stays disabled until token exists. Local `VITE_API_URL=/api` + proxy to `https://api.getcontactbook.com` so session cookies work after register.
+- Reason: User flow is phone → OTP → register form → create account → dashboard. Live verify often omits token; blocking the form felt like a dead end.
+- Files: `apps/web/src/pages/auth-page.tsx`, `apps/web/.env`, `apps/web/src/lib/api.ts`, `decision-context.md`.
+- Follow-up: Backend must return `phoneVerificationToken` on unregistered verify for Create account to succeed.
+
+## 2026-08-02 - Local FE calls live API URL directly (not localhost proxy path)
+
+- Decision: Set `VITE_API_URL=https://api.getcontactbook.com/api` in local `.env` so browser Network shows `https://api.getcontactbook.com/api/v1/auth/otp/whatsapp/send|verify` (not `localhost:5173/api/...`). Default in `api.ts` matches that live base.
+- Reason: `VITE_API_URL=/api` made DevTools show localhost even when Vite proxied upstream; user requires the live URL as the request target.
+- Risk: Cross-origin cookies need CORS `Access-Control-Allow-Credentials` for `http://localhost:5173`. If session cookies fail after OTP, revert to `/api` + proxy.
+- Files: `apps/web/.env`, `apps/web/.env.example`, `apps/web/src/lib/api.ts`, `decision-context.md`.
+
+## 2026-08-02 - Lock OTP + API traffic to live getcontactbook.com
+
+- Decision: Superseded same day — local now uses absolute live `VITE_API_URL` (see entry above). Proxy target kept for optional `/api` mode.
+- Reason: Historical.
+- Files: `vite.config.ts`, `.env`, `api.ts`.
+
+## 2026-08-02 - Wave D: Connections UI + WhatsApp template create/delete
+
+- Decision: Frontend-only. Add `/dashboard/connections` — list connections/invites, send request by phone with optional `requesterSharedCardId`, resend pending. Extend Templates page with create (Twilio submit) and delete. Accept/decline/share-back stay WhatsApp-only (no REST UI). Travel remains out (removed from API docs).
+- Reason: Remaining lined-up new-API surfaces after Waves A–C.
+- Files: `connections-api.ts`, `connections-page.tsx`, `whatsapp-templates-api.ts`, `whatsapp-templates-page.tsx`, `App.tsx`, `app-shell.tsx`, `docs/api-integration-plan.md`, `decision-context.md`.
+
+## 2026-08-02 - Waves B/C: card share, VCF, contacts shapes, WhatsApp templates
+
+- Decision: Frontend-only. Wire new card APIs (`POST /cards/:id/vcard`, `POST /cards/:id/share`, list shares, resend) on card detail (WhatsApp share dialog + recent batches). Prefer server VCF with local fallback. Normalize contacts list (`contacts` + 0-based page → UI 1-based/`items`) and import summary (`sources[]`). Add `/dashboard/whatsapp-templates` list/activate/default UI. Card type edit options aligned to `PERSONAL|BUSINESS|CUSTOM`.
+- Reason: New API reference added share/VCF/templates and changed contacts/import response shapes; keep FE fail-loud and production-contract aligned after Wave A.
+- Files: `cards-api.ts`, `card-detail-page.tsx`, `contacts-api.ts`, `vcf-import.ts`, `types.ts`, `whatsapp-templates-api.ts`, `whatsapp-templates-page.tsx`, `App.tsx`, `app-shell.tsx`, `docs/api-integration-plan.md`, `decision-context.md`.
+
+## 2026-08-02 - Wave A: auth register contract + prod API host
+
+- Decision: Frontend-only. `POST /auth/register` body is `phoneVerificationToken` + `firstName` + `lastName` + `email` (no `phone` / `countryCode`; phone is bound in the JWT). Vite proxy default and `.env.example` point at `https://api.getcontactbook.com`. Keep token guard (no register without JWT ≥ 20 chars). Card share / VCF / templates / contacts shape sync deferred to later waves.
+- Reason: New ContactBook API docs lock this register shape and prod base; local proxy was still on host A (`34.147…`).
+- Files: `apps/web/src/lib/auth-api.ts`, `apps/web/src/pages/auth-page.tsx`, `apps/web/vite.config.ts`, `apps/web/.env.example`, `decision-context.md`.
+
+## 2026-07-29 - Production auth channel: frontend-only register token guard
+
+- Decision: Frontend-only. Channelize web auth through `auth-api.ts` (Twilio send → verify → register). Never call `POST /auth/register` without a real `phoneVerificationToken` (≥ 20 chars). If verify returns `registered: false` without that JWT, return the user to phone entry with a clear error (do not open Create account / do not hit register). **No backend code changes** — backend team must make Twilio `POST /auth/otp/whatsapp/verify` return `phoneVerificationToken` for unregistered phones (same contract as OpenWA `verify-code`).
+- Reason: Live host returned Twilio verify `200` without token while register still requires the JWT → FE 400 / blocked dashboard. Omitting the field was not production-safe against the documented contract. Backend owns the missing field.
+- Files: `apps/web/src/lib/auth-api.ts`, `apps/web/src/pages/auth-page.tsx`, `apps/web/src/lib/types.ts`, `decision-context.md`.
+
+## 2026-07-28 - New-user signup after OTP without blocking on missing token
+
+- Decision: Superseded on 2026-07-29 — FE no longer attempts register without token; backend must issue `phoneVerificationToken` on Twilio verify for new phones.
+- Reason: Historical note; see 2026-07-29 entry.
+- Files: (historical) `auth-page.tsx`.
+
+## 2026-07-28 - OTP verify must leave OTP step (registered false → register)
+
+- Decision: On Twilio verify `200` with `registered: false`, immediately leave the OTP step and open the registration form (OTP is single-use). Never stay on OTP after a successful verify. Block double-submit with an in-flight guard. `registered: true` → refresh session and navigate to dashboard/onboarding. Require `phoneVerificationToken` for `POST /auth/register`; monorepo API `POST /auth/otp/whatsapp/verify` already returns that token for new phones — host A must match or new-user registration cannot finish.
+- Reason: Host returned `{ verified: true, registered: false }` without advancing UI; second Verify reused the consumed OTP → 401. Users thought login failed.
+- Files: `apps/web/src/pages/auth-page.tsx`, `apps/api/src/auth/auth.controller.ts` (otp send/verify already present), `decision-context.md`.
+
+## 2026-07-28 - Auth OTP 401 must not trigger session refresh
+
+- Decision: `apiFetch` never auto-calls `POST /auth/refresh` on auth credential routes (`/auth/otp/*`, `/auth/whatsapp/*`, register, refresh, logout). Refresh only runs on 401 when a session cookie hint exists (`cb_refresh_token` / `cb_user_id`). Auth page passes `retry: false` on send/verify/register.
+- Reason: OTP verify 401 ("Invalid or expired code") was incorrectly treated as an expired access token, causing a useless `/auth/refresh` 400 and confusing the sign-in flow.
+- Files: `apps/web/src/lib/api.ts`, `apps/web/src/pages/auth-page.tsx`, `decision-context.md`.
+
+## 2026-07-28 - Auth switched to Twilio OTP endpoints
+
+- Decision: Replace OpenWA `POST /auth/whatsapp/request-code` + `verify-code` in the web auth UI with Twilio `POST /auth/otp/whatsapp/send` + `verify`. Keep `POST /auth/register` for first-time users when `phoneVerificationToken` is returned. Restore `VITE_API_URL=/api` + Vite proxy (`cookieDomainRewrite`) so requests are same-origin and session cookies work (raw IP in `.env` caused cross-origin calls and OpenWA 503).
+- Reason: Host A OpenWA `request-code` returns 503; Twilio `otp/whatsapp/send` returns 200 on the same host. Auth must use the working provider.
+- Files: `apps/web/src/pages/auth-page.tsx`, `apps/web/src/lib/types.ts`, `apps/web/.env`, `apps/web/vite.config.ts`, `decision-context.md`.
+- Alternatives considered: Keep OpenWA and wait for provider recovery — rejected (blocks sign-in). Point FE at absolute host IP — rejected (cookie/CORS friction).
+
 ## 2026-07-27 - Partial API Gaps Closed (Import + Cards)
 
 - Decision: Close previously partial integrations: Import summary normalizer (flat + bySource); Google Sync + Full import + Disconnect; iCloud Sync after connect; Cards PATCH UI (name/type/isSensitive); financial field-mappings UI on create/detail. Card types stay `PERSONAL|BUSINESS|PAYMENT|CUSTOM` (live Prisma enum; markdown `WORK` is not used).

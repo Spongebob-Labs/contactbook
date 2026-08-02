@@ -29,7 +29,7 @@ export function CardPairTile({
 }: CardPairTileProps) {
   const fields = { ...EMPTY_CARD_FIELDS, ...card.fields };
   const typeLabel =
-    card.type === "PAYMENT" || card.type === "CUSTOM"
+    card.type === "CUSTOM"
       ? "Custom"
       : card.type === "BUSINESS"
         ? "Business"

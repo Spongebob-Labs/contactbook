@@ -33,11 +33,55 @@ export type ContactSyncResult = {
 
 export type { ContactImportResult };
 
+/**
+ * UI and live API both use 1-based `page` (`page >= 1`).
+ * Response may use `contacts` instead of `items`.
+ */
+export function normalizeContactListResponse(
+  raw: unknown,
+  uiPage: number,
+  limit: number,
+): ContactListResponse {
+  if (!raw || typeof raw !== "object") {
+    return { items: [], page: uiPage, limit, total: 0, totalPages: 1 };
+  }
+
+  const record = raw as Record<string, unknown>;
+  const items = (
+    Array.isArray(record.contacts)
+      ? record.contacts
+      : Array.isArray(record.items)
+        ? record.items
+        : []
+  ) as ContactDetail[];
+  const total = typeof record.total === "number" ? record.total : items.length;
+  const totalPages =
+    typeof record.totalPages === "number"
+      ? Math.max(1, record.totalPages)
+      : Math.max(1, Math.ceil(total / Math.max(1, limit)) || 1);
+
+  return {
+    items,
+    page: uiPage,
+    limit: typeof record.limit === "number" ? record.limit : limit,
+    total,
+    totalPages,
+  };
+}
+
 export async function fetchContactsPage(
   query: Record<string, string> = {},
 ): Promise<ContactListResponse> {
-  const params = new URLSearchParams(query);
-  return apiFetch<ContactListResponse>(`/v1/contacts?${params.toString()}`);
+  const uiPage = Math.max(1, Number(query.page ?? "1") || 1);
+  const limit = Math.max(1, Number(query.limit ?? "25") || 25);
+  const params = new URLSearchParams({
+    ...query,
+    // Live API validates page >= 1 (same as UI).
+    page: String(uiPage),
+    limit: String(limit),
+  });
+  const raw = await apiFetch<unknown>(`/v1/contacts?${params.toString()}`);
+  return normalizeContactListResponse(raw, uiPage, limit);
 }
 
 export async function fetchAllContacts(
@@ -108,6 +152,38 @@ export function normalizeImportSummary(raw: unknown): ContactImportSummary {
           : bySource.reduce((sum, row) => sum + (row.activeCount ?? 0), 0),
       totalDeleted:
         typeof record.totalDeleted === "number" ? record.totalDeleted : 0,
+      bySource,
+    };
+  }
+
+  // New docs: `{ sources: [{ source, count, lastSyncAt }] }`
+  if (Array.isArray(record.sources)) {
+    const bySource: ContactImportSummary["bySource"] = [];
+    for (const entry of record.sources) {
+      if (!entry || typeof entry !== "object") {
+        continue;
+      }
+      const row = entry as {
+        source?: ContactSource;
+        count?: number;
+        total?: number;
+        lastSyncAt?: string | null;
+      };
+      if (!row.source) {
+        continue;
+      }
+      const activeCount = row.count ?? row.total ?? 0;
+      bySource.push({
+        source: row.source,
+        activeCount,
+        deletedCount: 0,
+        lastSyncAt: row.lastSyncAt ?? null,
+        lastSync: { at: row.lastSyncAt ?? null },
+      });
+    }
+    return {
+      totalActive: bySource.reduce((sum, row) => sum + row.activeCount, 0),
+      totalDeleted: 0,
       bySource,
     };
   }

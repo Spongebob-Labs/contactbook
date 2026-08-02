@@ -26,6 +26,7 @@ import { listMappableFinancialFields } from "@/lib/card-field-options";
 import {
   addCardFieldMapping,
   createCard as createCardViaApi,
+  getCard,
 } from "@/lib/cards-api";
 import {
   CARD_DIAL_OPTIONS,
@@ -61,11 +62,6 @@ const cardTypeOptions: Array<{
     value: "BUSINESS",
     label: "Business",
     description: "Share work or business identity details.",
-  },
-  {
-    value: "PAYMENT",
-    label: "Payment",
-    description: "Share bank or wallet details when mapped.",
   },
   {
     value: "CUSTOM",
@@ -258,6 +254,10 @@ export function CardOnboardingModal({
         template,
       });
 
+      if (!card.id) {
+        throw new Error("Card create did not return a server id.");
+      }
+
       for (const fieldId of selectedFieldIds) {
         try {
           await addCardFieldMapping(card.id, fieldId);
@@ -266,11 +266,11 @@ export function CardOnboardingModal({
         }
       }
 
+      // Re-load from API so the UI never treats a local-only object as persisted.
+      const persisted = await getCard(card.id);
+
       toast.success(isSetupMode ? "Your first card is ready." : "Card created.");
-      onComplete({
-        ...card,
-        mappedFieldIds: selectedFieldIds,
-      });
+      onComplete(persisted);
     } catch (error) {
       logUiError("Could not create card", error);
       toast.error(friendlyErrorMessages.save);
@@ -509,7 +509,7 @@ export function CardOnboardingModal({
                           onChange={(event) =>
                             updateField("phone", event.target.value)
                           }
-                          placeholder="555 0100"
+                          placeholder="Phone number"
                           inputMode="tel"
                           autoComplete="tel-national"
                         />

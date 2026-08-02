@@ -1,10 +1,29 @@
+/** Twilio OTP verify (`POST /auth/otp/whatsapp/verify`). */
 export type VerifyCodeResponse =
-  | { registered: true; isOnboarded?: boolean }
   | {
+      verified?: true;
+      registered: true;
+      isOnboarded?: boolean;
+      userId?: string;
+      accessToken?: string;
+      refreshToken?: string;
+    }
+  | {
+      verified?: true;
       registered: false;
-      message: string;
-      phoneVerificationToken: string;
+      message?: string;
+      /**
+       * Required for POST /auth/register. Issued by OTP verify for
+       * unregistered phones.
+       */
+      phoneVerificationToken?: string;
     };
+
+export type SendOtpResponse = {
+  message: string;
+  expiresInSeconds?: number;
+  resendAfterSeconds?: number;
+};
 
 export type ContactSource =
   | "GOOGLE"
@@ -46,7 +65,7 @@ export type ContactUrl = {
   label?: string | null;
 };
 
-export type ContactCardType = "BUSINESS" | "PERSONAL" | "PAYMENT" | "CUSTOM";
+export type ContactCardType = "BUSINESS" | "PERSONAL" | "CUSTOM";
 
 /** Fields entered in the live card maker (UI / local store). */
 export type ContactCardFields = {
@@ -192,6 +211,9 @@ export type ContactImportResult = ContactImportSummary & {
   completedAt?: string;
   created?: number;
   updated?: number;
+  /** New API import counters */
+  imported?: number;
+  merged?: number;
   skipped?: Array<{ reason: string; externalId?: string }>;
   importedCount?: number;
   processedCount?: number;
@@ -199,6 +221,7 @@ export type ContactImportResult = ContactImportSummary & {
   updatedCount?: number;
   skippedCount?: number;
   totalContacts?: number;
+  lastSyncAt?: string | null;
   message?: string;
   summary?: ContactImportSummary;
 };

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ArrowLeft, Check, ChevronsUpDown, MessageCircle } from "lucide-react";
@@ -10,11 +10,18 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/context/auth-context";
-import { apiFetch } from "@/lib/api";
+import { ApiError } from "@/lib/api";
+import {
+  completeRegistration,
+  isPhoneVerificationToken,
+  isRegisteredAuthResult,
+  sendWhatsappOtp,
+  verifyWhatsappOtp,
+} from "@/lib/auth-api";
+import { setSessionTokens } from "@/lib/session-tokens";
 import { DIAL_COUNTRIES } from "@/lib/dial-countries";
 import { friendlyErrorMessages, logUiError } from "@/lib/friendly-errors";
 import { buildE164, nationalDigits } from "@/lib/phone";
-import type { VerifyCodeResponse } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const COUNTRY_CODE_PATTERN = /^\+\d{1,4}$/;
@@ -71,6 +78,7 @@ function phoneNumberInput(value: string) {
 export default function AuthPage() {
   const [step, setStep] = useState<Step>("phone");
   const [isBusy, setIsBusy] = useState(false);
+  const verifyInFlight = useRef(false);
   const [phoneVerificationToken, setPhoneVerificationToken] = useState("");
   const [phoneContext, setPhoneContext] = useState({
     countryCode: "+1",
@@ -79,7 +87,8 @@ export default function AuthPage() {
   const [postAuthRedirect, setPostAuthRedirect] = useState<string | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
-  const { isAuthenticated, isLoading, markAuthenticated } = useAuth();
+  const { isAuthenticated, isLoading, markAuthenticated, refreshUser } =
+    useAuth();
   const locationRedirectTo =
     typeof location.state === "object" &&
     location.state !== null &&
@@ -123,80 +132,149 @@ export default function AuthPage() {
     }
     setIsBusy(true);
     try {
-      await apiFetch<{ message: string }>("/v1/auth/whatsapp/request-code", {
-        method: "POST",
-        body: { phone, countryCode },
-      });
+      const result = await sendWhatsappOtp({ phone, countryCode });
       setPhoneContext({ countryCode, phone });
+      setPhoneVerificationToken("");
       setStep("otp");
-      toast.success("Verification code sent.");
+      toast.success(
+        result.message ||
+          "Verification code sent to your WhatsApp number.",
+      );
     } catch (error) {
       logUiError("Could not send code", error);
-      toast.error("We couldn't send the code. Please try again.");
+      if (error instanceof ApiError && error.status === 429) {
+        toast.error(
+          error.message ||
+            "Please wait before requesting another code.",
+        );
+      } else {
+        toast.error(
+          error instanceof ApiError && error.message
+            ? error.message
+            : "We couldn't send the code. Please try again.",
+        );
+      }
     } finally {
       setIsBusy(false);
     }
   };
 
   const onVerifyCode = async (values: OtpForm) => {
+    // OTP is single-use: ignore double-clicks after the first verify succeeds.
+    if (verifyInFlight.current || isBusy) {
+      return;
+    }
+    verifyInFlight.current = true;
     setIsBusy(true);
     try {
-      const result = await apiFetch<VerifyCodeResponse>("/v1/auth/whatsapp/verify-code", {
-        method: "POST",
-        body: {
-          phone: phoneContext.phone,
-          countryCode: phoneContext.countryCode,
-          code: values.code,
-        },
-      });
-      if (result.registered) {
+      // Twilio OTP verify: session when registered; else registration token.
+      const result = await verifyWhatsappOtp(phoneContext, values.code);
+
+      // Existing account → dashboard (never Create account again).
+      if (isRegisteredAuthResult(result)) {
+        const payload = result as {
+          accessToken?: string;
+          refreshToken?: string;
+        };
+        setSessionTokens({
+          accessToken: payload.accessToken,
+          refreshToken: payload.refreshToken,
+        });
         markAuthenticated();
+        await refreshUser().catch(() => undefined);
         toast.success("Signed in.");
-        const nextPath =
-          result.isOnboarded === false
-            ? "/dashboard?onboarding=profile&flow=setup"
-            : locationRedirectTo;
+        const nextPath = locationRedirectTo;
         setPostAuthRedirect(nextPath);
+        otpForm.reset({ code: "" });
+        setPhoneVerificationToken("");
+        setStep("phone");
         navigate(nextPath, { replace: true });
         return;
       }
-      setPhoneVerificationToken(result.phoneVerificationToken);
+
+      // New user only: Finish profile → POST /auth/register (OTP is single-use).
+      otpForm.reset({ code: "" });
+      const token =
+        "phoneVerificationToken" in result
+          ? (result.phoneVerificationToken?.trim() ?? "")
+          : "";
+      setPhoneVerificationToken(token);
       setStep("register");
-      toast.info("Complete your profile to continue.");
+      if (isPhoneVerificationToken(token)) {
+        toast.success(
+          ("message" in result && result.message) ||
+            "Phone verified. Complete your details to create your account.",
+        );
+      } else {
+        toast.message(
+          "Phone verified. Complete your details — if Create account fails, the API did not return a registration token.",
+        );
+      }
     } catch (error) {
       logUiError("Could not verify code", error);
-      toast.error(friendlyErrorMessages.auth);
+      if (error instanceof ApiError && error.status === 401) {
+        toast.error(
+          error.message ||
+            "Invalid or expired code. Request a new WhatsApp code and try again.",
+        );
+        return;
+      }
+      toast.error(
+        error instanceof ApiError && error.message
+          ? error.message
+          : friendlyErrorMessages.auth,
+      );
     } finally {
+      verifyInFlight.current = false;
       setIsBusy(false);
     }
   };
 
   const onRegister = async (values: RegisterForm) => {
+    if (!isPhoneVerificationToken(phoneVerificationToken)) {
+      toast.error(
+        "Registration token missing from OTP verify. Request a new WhatsApp code and try again.",
+      );
+      return;
+    }
+
     setIsBusy(true);
     try {
-      await apiFetch<Record<string, never>>("/v1/auth/register", {
-        method: "POST",
-        body: {
-          phoneVerificationToken,
-          firstName: values.firstName,
-          lastName: values.lastName,
-          email: values.email,
-          phone: phoneContext.phone,
-          countryCode: phoneContext.countryCode,
-        },
+      await completeRegistration({
+        phoneVerificationToken,
+        firstName: values.firstName,
+        lastName: values.lastName,
+        email: values.email,
       });
       const onboardingPath = "/dashboard?onboarding=profile&flow=setup";
       setPostAuthRedirect(onboardingPath);
       markAuthenticated();
+      await refreshUser().catch(() => undefined);
       toast.success("Account created.");
       navigate(onboardingPath, { replace: true });
     } catch (error) {
       logUiError("Could not create account", error);
-      toast.error("We couldn't create your account. Please try again.");
+      if (error instanceof ApiError && error.status === 409) {
+        toast.error(
+          error.message ||
+            "This phone number is already registered. Request a new code to sign in.",
+        );
+        setPhoneVerificationToken("");
+        setStep("phone");
+        otpForm.reset({ code: "" });
+        return;
+      }
+      toast.error(
+        error instanceof ApiError && error.message
+          ? error.message
+          : "We couldn't create your account. Please try again.",
+      );
     } finally {
       setIsBusy(false);
     }
   };
+
+  const canSubmitRegister = isPhoneVerificationToken(phoneVerificationToken);
 
   return (
     <main className="grid min-h-screen bg-background lg:grid-cols-[minmax(0,1fr)_480px]">
@@ -339,19 +417,49 @@ export default function AuthPage() {
 
             {step === "register" && (
               <form className="space-y-5" onSubmit={registerForm.handleSubmit(onRegister)}>
+                <p className="rounded-md border border-border bg-secondary/40 px-3 py-2 text-sm text-muted-foreground">
+                  Verified phone{" "}
+                  <span className="font-medium text-foreground">
+                    {phoneContext.countryCode} {phoneContext.phone}
+                  </span>
+                  . Next:{" "}
+                  <code className="text-xs">POST /api/v1/auth/register</code>
+                </p>
+                {!canSubmitRegister ? (
+                  <p className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                    OTP verify did not include{" "}
+                    <code className="text-xs">phoneVerificationToken</code>. The
+                    form is open, but Create account needs that token (request a
+                    new OTP).
+                  </p>
+                ) : (
+                  <p className="rounded-md border border-border bg-secondary/40 px-3 py-2 text-sm text-muted-foreground">
+                    Registration token received from OTP verify. Fill the fields
+                    below to create your account.
+                  </p>
+                )}
                 <label className="flex flex-col gap-2 text-sm font-medium">
                   <span>First name</span>
-                  <Input autoComplete="given-name" {...registerForm.register("firstName")} />
+                  <Input
+                    autoComplete="given-name"
+                    placeholder="Aayush"
+                    {...registerForm.register("firstName")}
+                  />
                 </label>
                 <label className="flex flex-col gap-2 text-sm font-medium">
                   <span>Last name</span>
-                  <Input autoComplete="family-name" {...registerForm.register("lastName")} />
+                  <Input
+                    autoComplete="family-name"
+                    placeholder="Sharma"
+                    {...registerForm.register("lastName")}
+                  />
                 </label>
                 <label className="flex flex-col gap-2 text-sm font-medium">
                   <span>Email</span>
                   <Input
                     type="email"
                     autoComplete="email"
+                    placeholder="you@example.com"
                     {...registerForm.register("email")}
                   />
                 </label>
@@ -368,13 +476,21 @@ export default function AuthPage() {
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => setStep("otp")}
+                    onClick={() => {
+                      setPhoneVerificationToken("");
+                      setStep("phone");
+                      otpForm.reset({ code: "" });
+                    }}
                     disabled={isBusy}
                   >
                     <ArrowLeft className="h-4 w-4" aria-hidden="true" />
                     Back
                   </Button>
-                  <Button type="submit" className="flex-1" disabled={isBusy}>
+                  <Button
+                    type="submit"
+                    className="flex-1"
+                    disabled={isBusy || !canSubmitRegister}
+                  >
                     Create account
                   </Button>
                 </div>

@@ -80,20 +80,14 @@ function getProfileComposedDetails(
   const personalTitle = firstText(
     customValue(personal, "title"),
     customValue(personal, "nickname"),
-    "Personal contact",
   );
   const personalLocation = firstText(
     personal?.currentLocation,
     addressLine(personal?.postalAddress),
-    "New York, NY",
   );
-  const workCompany = firstText(work?.companyName, business?.businessName, "ContactBook");
-  const businessCompany = firstText(business?.businessName, work?.companyName, "ContactBook");
-  const businessRole = firstText(
-    business?.businessTitle,
-    work?.workTitle,
-    "Business contact",
-  );
+  const workCompany = firstText(work?.companyName, business?.businessName);
+  const businessCompany = firstText(business?.businessName, work?.companyName);
+  const businessRole = firstText(business?.businessTitle, work?.workTitle);
   const socialExtras = emptySocials();
 
   if (card.type === "BUSINESS") {
@@ -103,45 +97,42 @@ function getProfileComposedDetails(
         business?.businessEmail,
         work?.workEmail,
         profile?.identity.primaryEmail,
-        "hello@example.com",
       ),
       initials: initialsFor(firstText(card.name, personName)),
       location: firstText(
         addressLine(business?.businessPostalAddress),
         addressLine(work?.workPostalAddress),
-        "San Francisco, CA",
       ),
-      name: firstText(card.name, personName, "Contact card"),
+      name: firstText(card.name, personName),
       phone: firstText(
         business?.businessMobile,
         business?.businessLandline,
         work?.workMobile,
         work?.workLandline,
         profile?.identity.primaryPhone,
-        "+1 555 0102",
       ),
       role: businessRole,
-      social: firstText(social?.linkedin, social?.website, "contactbook.app"),
+      social: firstText(social?.linkedin, social?.website),
       ...socialExtras,
-      website: firstText(social?.website, "contactbook.app"),
+      website: firstText(social?.website),
       linkedin: firstText(social?.linkedin),
       facebook: firstText(social?.facebook),
       themePrimary: card.theme?.primary ?? null,
     };
   }
 
-  if (card.type === "CUSTOM" || card.type === "PAYMENT") {
+  if (card.type === "CUSTOM") {
     return {
-      company: firstText(workCompany, "ContactBook"),
-      email: firstText(profile?.identity.primaryEmail, "hello@example.com"),
+      company: workCompany,
+      email: firstText(profile?.identity.primaryEmail),
       initials: initialsFor(firstText(card.name, personName)),
       location: personalLocation,
-      name: firstText(card.name, personName, "Contact card"),
-      phone: firstText(profile?.identity.primaryPhone, "+1 555 0103"),
-      role: "Custom contact card",
-      social: firstText(social?.website, social?.linkedin, "contactbook.app"),
+      name: firstText(card.name, personName),
+      phone: firstText(profile?.identity.primaryPhone),
+      role: "",
+      social: firstText(social?.website, social?.linkedin),
       ...socialExtras,
-      website: firstText(social?.website, "contactbook.app"),
+      website: firstText(social?.website),
       linkedin: firstText(social?.linkedin),
       facebook: firstText(social?.facebook),
       themePrimary: card.theme?.primary ?? null,
@@ -150,24 +141,19 @@ function getProfileComposedDetails(
 
   return {
     company: workCompany,
-    email: firstText(
-      personal?.email,
-      profile?.identity.primaryEmail,
-      "hello@example.com",
-    ),
+    email: firstText(personal?.email, profile?.identity.primaryEmail),
     initials: initialsFor(personName),
     location: personalLocation,
-    name: firstText(card.name, personName, "Contact card"),
-    phone: firstText(personal?.mobile, profile?.identity.primaryPhone, "+1 555 0101"),
+    name: firstText(card.name, personName),
+    phone: firstText(personal?.mobile, profile?.identity.primaryPhone),
     role: personalTitle,
     social: firstText(
       customValue(social, "instagram"),
       social?.facebook,
       social?.linkedin,
-      "contactbook.app",
     ),
     ...socialExtras,
-    website: firstText(social?.website, "contactbook.app"),
+    website: firstText(social?.website),
     linkedin: firstText(social?.linkedin),
     facebook: firstText(social?.facebook),
     instagram: firstText(customValue(social, "instagram")),
@@ -177,7 +163,7 @@ function getProfileComposedDetails(
 
 /**
  * Display details for gallery/detail surfaces.
- * Maker fields overlay the profile baseline so incomplete creates never leave empty slots.
+ * Maker fields overlay the profile baseline — empty slots stay empty (no dummy data).
  */
 export function getCardDisplayDetails(
   card: ContactCard,

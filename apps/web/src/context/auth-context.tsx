@@ -12,6 +12,7 @@ import {
   clearContactBookSessionState,
   GOOGLE_CONNECTED_KEY,
 } from "@/lib/session-storage";
+import { clearSessionTokens, hasClientSessionHint } from "@/lib/session-tokens";
 import { supabase } from "@/lib/supabase";
 import type { ProfileMeResponse } from "@/lib/types";
 
@@ -53,7 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         currentPath === "/auth/callback";
       const cookieUserId = getCookie("cb_user_id");
 
-      if (isPublicRoute && !cookieUserId) {
+      if (isPublicRoute && !cookieUserId && !hasClientSessionHint()) {
         if (!isMounted) {
           return;
         }
@@ -137,6 +138,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         retry: false,
       });
     } finally {
+      clearSessionTokens();
       clearContactBookSessionState();
       await supabase?.auth.signOut().catch(() => undefined);
       setUserId(null);

@@ -43,14 +43,22 @@ import {
   normalizeDialCode,
   resolveTemplate,
 } from "@/lib/card-maker";
+import { ApiError } from "@/lib/api";
 import {
   addCardFieldMapping,
   deleteCard,
+  generateCardVcard,
   getCard,
+  listCardShares,
   removeCardFieldMapping,
+  resendCardShareRecipient,
+  shareCardBatch,
   updateCard,
+  type CardShareBatch,
 } from "@/lib/cards-api";
+import { DIAL_COUNTRIES } from "@/lib/dial-countries";
 import { friendlyErrorMessages, logUiError } from "@/lib/friendly-errors";
+import { nationalDigits } from "@/lib/phone";
 import { fetchProfileMe } from "@/lib/profile-api";
 import type {
   ContactCard,
@@ -65,14 +73,12 @@ import { cn } from "@/lib/utils";
 const CARD_TYPE_OPTIONS: Array<{ value: ContactCardType; label: string }> = [
   { value: "PERSONAL", label: "Personal" },
   { value: "BUSINESS", label: "Business" },
-  { value: "PAYMENT", label: "Payment" },
   { value: "CUSTOM", label: "Custom" },
 ];
 
 const cardTypeLabels: Record<ContactCardType, string> = {
   BUSINESS: "Business",
   PERSONAL: "Personal",
-  PAYMENT: "Payment",
   CUSTOM: "Custom",
 };
 
@@ -406,27 +412,7 @@ async function copyCardLink(card: ContactCard) {
   }
 }
 
-async function handleShareOption(card: ContactCard, option: ShareSheetOptionId) {
-  switch (option) {
-    case "copy":
-      await copyCardLink(card);
-      return;
-    case "native":
-      await shareCard(card);
-      return;
-    case "whatsapp":
-      toast.message("WhatsApp sharing is coming soon.");
-      return;
-    case "messages":
-      toast.message("Messages sharing is coming soon.");
-      return;
-    case "qr":
-      toast.message("QR sharing is coming soon.");
-      return;
-  }
-}
-
-function downloadContactStub(card: ContactCard, fields: ContactCardFields) {
+function downloadLocalVcardStub(card: ContactCard, fields: ContactCardFields) {
   const lines = [
     "BEGIN:VCARD",
     "VERSION:3.0",
@@ -453,6 +439,24 @@ function downloadContactStub(card: ContactCard, fields: ContactCardFields) {
   toast.success("Contact file downloaded.");
 }
 
+async function downloadCardVcard(card: ContactCard, fields: ContactCardFields) {
+  try {
+    const asset = await generateCardVcard(card.id);
+    const anchor = document.createElement("a");
+    anchor.href = asset.url;
+    anchor.download = `${(fields.displayName || card.name || "contact")
+      .replace(/\s+/g, "-")
+      .toLowerCase()}.vcf`;
+    anchor.target = "_blank";
+    anchor.rel = "noopener noreferrer";
+    anchor.click();
+    toast.success("Contact file ready.");
+  } catch (error) {
+    logUiError("Server VCF unavailable, using local fallback", error);
+    downloadLocalVcardStub(card, fields);
+  }
+}
+
 export default function CardDetailPage() {
   const { cardId } = useParams();
   const navigate = useNavigate();
@@ -467,9 +471,33 @@ export default function CardDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
+  const [whatsappShareOpen, setWhatsappShareOpen] = useState(false);
+  const [shareCountryCode, setShareCountryCode] = useState("+91");
+  const [sharePhone, setSharePhone] = useState("");
+  const [shareNote, setShareNote] = useState("");
+  const [isSharingWhatsapp, setIsSharingWhatsapp] = useState(false);
+  const [shareBatches, setShareBatches] = useState<CardShareBatch[]>([]);
+  const [sharesError, setSharesError] = useState<string | null>(null);
+  const [resendBusyId, setResendBusyId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editType, setEditType] = useState<ContactCardType>("PERSONAL");
   const [editSensitive, setEditSensitive] = useState(false);
+
+  const refreshShares = async (id: string) => {
+    try {
+      const response = await listCardShares(id, { page: 1, limit: 10 });
+      setShareBatches(response.batches ?? []);
+      setSharesError(null);
+    } catch (err) {
+      logUiError("Could not load card shares", err);
+      setShareBatches([]);
+      setSharesError(
+        err instanceof ApiError && err.message
+          ? err.message
+          : "Could not load recent WhatsApp shares.",
+      );
+    }
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -493,6 +521,7 @@ export default function CardDetailPage() {
           setEditType(data.type);
           setEditSensitive(Boolean(data.isSensitive));
         }
+        await refreshShares(cardId);
       } catch (err) {
         if (isMounted) {
           logUiError("Could not load card", err);
@@ -620,6 +649,91 @@ export default function CardDetailPage() {
       toast.error(friendlyErrorMessages.save);
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const handleShareOption = async (option: ShareSheetOptionId) => {
+    if (!card) {
+      return;
+    }
+    switch (option) {
+      case "copy":
+        await copyCardLink(card);
+        return;
+      case "native":
+        await shareCard(card);
+        return;
+      case "whatsapp":
+        setWhatsappShareOpen(true);
+        return;
+      case "messages":
+        toast.message("Messages sharing is coming soon.");
+        return;
+      case "qr":
+        toast.message("QR sharing is coming soon.");
+        return;
+    }
+  };
+
+  const handleWhatsappShare = async () => {
+    if (!cardId || !card) {
+      return;
+    }
+    const phone = nationalDigits(sharePhone);
+    if (!/^\+\d{1,4}$/.test(shareCountryCode.trim())) {
+      toast.error("Enter a valid country code.");
+      return;
+    }
+    if (!/^\d{4,15}$/.test(phone)) {
+      toast.error("Enter a valid phone number.");
+      return;
+    }
+    setIsSharingWhatsapp(true);
+    try {
+      const batch = await shareCardBatch(cardId, {
+        recipients: [{ countryCode: shareCountryCode.trim(), phone }],
+        note: shareNote,
+      });
+      toast.success(
+        `WhatsApp share queued for ${shareCountryCode} ${phone}.`,
+      );
+      setWhatsappShareOpen(false);
+      setSharePhone("");
+      setShareNote("");
+      setShareBatches((current) => [batch, ...current].slice(0, 10));
+      await refreshShares(cardId);
+    } catch (err) {
+      logUiError("Could not share card via WhatsApp", err);
+      toast.error(
+        err instanceof ApiError && err.message
+          ? err.message
+          : "We couldn't share this card right now.",
+      );
+    } finally {
+      setIsSharingWhatsapp(false);
+    }
+  };
+
+  const handleResendRecipient = async (
+    batchId: string,
+    recipientId: string,
+  ) => {
+    setResendBusyId(recipientId);
+    try {
+      await resendCardShareRecipient(batchId, recipientId);
+      toast.success("Resend queued.");
+      if (cardId) {
+        await refreshShares(cardId);
+      }
+    } catch (err) {
+      logUiError("Could not resend card share", err);
+      toast.error(
+        err instanceof ApiError && err.message
+          ? err.message
+          : "Could not resend this share.",
+      );
+    } finally {
+      setResendBusyId(null);
     }
   };
 
@@ -764,6 +878,96 @@ export default function CardDetailPage() {
           </Panel>
 
           <Panel className="mt-4 space-y-4 p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-base font-semibold text-foreground">
+                  WhatsApp shares
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Recent share batches for this card (
+                  <code className="text-xs">GET /cards/:id/shares</code>).
+                </p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  if (cardId) {
+                    void refreshShares(cardId);
+                  }
+                }}
+              >
+                Refresh
+              </Button>
+            </div>
+            {sharesError ? (
+              <p className="text-sm text-muted-foreground">{sharesError}</p>
+            ) : null}
+            {shareBatches.length === 0 && !sharesError ? (
+              <p className="text-sm text-muted-foreground">
+                No WhatsApp shares yet. Use Share → WhatsApp to send this card.
+              </p>
+            ) : (
+              <ul className="space-y-3">
+                {shareBatches.map((batch) => (
+                  <li
+                    key={batch.id}
+                    className="rounded-lg border border-border px-3 py-3"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-sm font-medium text-foreground">
+                        {formatDate(batch.createdAt)}
+                        {batch.note ? ` · ${batch.note}` : ""}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {batch.recipients.length} recipient
+                        {batch.recipients.length === 1 ? "" : "s"}
+                      </p>
+                    </div>
+                    <ul className="mt-2 space-y-2">
+                      {batch.recipients.map((recipient) => (
+                        <li
+                          key={recipient.id}
+                          className="flex flex-wrap items-center justify-between gap-2 text-sm"
+                        >
+                          <span className="text-foreground">
+                            {recipient.countryCode} {recipient.phone}
+                            <span className="ml-2 text-xs text-muted-foreground">
+                              {recipient.dispatchStatus}
+                              {recipient.deliveryStatus
+                                ? ` · ${recipient.deliveryStatus}`
+                                : ""}
+                            </span>
+                          </span>
+                          {recipient.dispatchStatus === "FAILED" ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={resendBusyId === recipient.id}
+                              onClick={() =>
+                                void handleResendRecipient(
+                                  batch.id,
+                                  recipient.id,
+                                )
+                              }
+                            >
+                              {resendBusyId === recipient.id
+                                ? "Resending…"
+                                : "Resend"}
+                            </Button>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Panel>
+
+          <Panel className="mt-4 space-y-4 p-5">
             <div>
               <h2 className="text-base font-semibold text-foreground">
                 Profile fields on this card
@@ -827,9 +1031,92 @@ export default function CardDetailPage() {
           onClose={() => setShareOpen(false)}
           onSelect={(id) => {
             setShareOpen(false);
-            void handleShareOption(card, id);
+            void handleShareOption(id);
           }}
         />
+      ) : null}
+
+      {whatsappShareOpen && card ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
+          <button
+            type="button"
+            aria-label="Close WhatsApp share"
+            className="absolute inset-0 bg-foreground/40 backdrop-blur-sm"
+            onClick={() => setWhatsappShareOpen(false)}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Share card on WhatsApp"
+            className="relative z-10 w-full max-w-md space-y-4 rounded-t-xl border border-border bg-surface p-5 sm:rounded-xl"
+          >
+            <div>
+              <h2 className="text-base font-semibold text-foreground">
+                Share via WhatsApp
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Sends an approved WhatsApp template, then the contact file when
+                the recipient taps Get Contact.
+              </p>
+            </div>
+            <label className="flex flex-col gap-2 text-sm font-medium">
+              <span>Country code</span>
+              <select
+                className="flex h-10 w-full rounded-md border border-border bg-surface px-3 text-sm"
+                value={shareCountryCode}
+                onChange={(event) => setShareCountryCode(event.target.value)}
+                disabled={isSharingWhatsapp}
+              >
+                {DIAL_COUNTRIES.map((country) => (
+                  <option key={`${country.iso2}-${country.dial}`} value={country.dial}>
+                    {country.name} ({country.dial})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-2 text-sm font-medium">
+              <span>Phone number</span>
+              <Input
+                inputMode="numeric"
+                placeholder="9347243575"
+                value={sharePhone}
+                onChange={(event) =>
+                  setSharePhone(nationalDigits(event.target.value).slice(0, 15))
+                }
+                disabled={isSharingWhatsapp}
+              />
+            </label>
+            <label className="flex flex-col gap-2 text-sm font-medium">
+              <span>Note (optional)</span>
+              <Input
+                maxLength={300}
+                placeholder="Great meeting you!"
+                value={shareNote}
+                onChange={(event) => setShareNote(event.target.value)}
+                disabled={isSharingWhatsapp}
+              />
+            </label>
+            <div className="flex gap-3 pt-1">
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1"
+                disabled={isSharingWhatsapp}
+                onClick={() => setWhatsappShareOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                className="flex-1"
+                disabled={isSharingWhatsapp}
+                onClick={() => void handleWhatsappShare()}
+              >
+                {isSharingWhatsapp ? "Sending…" : "Send"}
+              </Button>
+            </div>
+          </div>
+        </div>
       ) : null}
     </AppShell>
   );
@@ -879,7 +1166,7 @@ function CardDetailPreview({
               fields={fields}
               theme={theme}
               template={template}
-              onSaveContact={() => downloadContactStub(card, fields)}
+              onSaveContact={() => void downloadCardVcard(card, fields)}
               onShareCard={onShare}
             />
           </div>
@@ -954,7 +1241,7 @@ function CardDetailPreview({
               size="sm"
               variant="outline"
               className="justify-center"
-              onClick={() => downloadContactStub(card, fields)}
+              onClick={() => void downloadCardVcard(card, fields)}
             >
               <Download className="h-4 w-4" aria-hidden="true" />
               Save contact
@@ -1051,7 +1338,7 @@ function CardDetailPreview({
         theme={theme}
         template={template}
         title={card.name}
-        onSaveContact={() => downloadContactStub(card, fields)}
+        onSaveContact={() => void downloadCardVcard(card, fields)}
         onShareCard={() => {
           setMobilePreviewOpen(false);
           onShare();

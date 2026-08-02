@@ -19,6 +19,10 @@ const PrivacyPage = lazy(() => import("@/pages/privacy-page"));
 const ProfilePage = lazy(() => import("@/pages/profile-page"));
 const TermsPage = lazy(() => import("@/pages/terms-page"));
 const ThemePreviewPage = lazy(() => import("@/pages/theme-preview-page"));
+const WhatsappTemplatesPage = lazy(
+  () => import("@/pages/whatsapp-templates-page"),
+);
+const ConnectionsPage = lazy(() => import("@/pages/connections-page"));
 
 function pageTitleForPath(pathname: string) {
   if (pathname === "/") {
@@ -65,6 +69,12 @@ function pageTitleForPath(pathname: string) {
   }
   if (pathname === "/dashboard/import") {
     return "Import Contacts | ContactBook";
+  }
+  if (pathname === "/dashboard/whatsapp-templates") {
+    return "WhatsApp Templates | ContactBook";
+  }
+  if (pathname === "/dashboard/connections") {
+    return "Connections | ContactBook";
   }
   if (pathname === "/onboarding/profile") {
     return "Profile Setup | ContactBook";
@@ -202,6 +212,22 @@ export default function App() {
             element={
               <Protected>
                 <ImportPage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/dashboard/whatsapp-templates"
+            element={
+              <Protected>
+                <WhatsappTemplatesPage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/dashboard/connections"
+            element={
+              <Protected>
+                <ConnectionsPage />
               </Protected>
             }
           />

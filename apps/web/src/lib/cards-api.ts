@@ -15,9 +15,9 @@ import type {
 
 export type ApiContactCard = {
   id: string;
-  userId: string;
+  userId?: string;
   name: string;
-  type: ContactCardType;
+  type: string;
   isSensitive?: boolean;
   createdAt: string;
   updatedAt: string;
@@ -28,6 +28,23 @@ export type CardFieldMapping = {
   fieldId: string;
 };
 
+/** Live API card types only. Unknown/legacy values (e.g. PAYMENT) → CUSTOM. */
+export function toApiCardType(
+  type: string,
+): "PERSONAL" | "BUSINESS" | "CUSTOM" {
+  if (type === "PERSONAL" || type === "BUSINESS" || type === "CUSTOM") {
+    return type;
+  }
+  return "CUSTOM";
+}
+
+function assertServerCard(card: ApiContactCard, action: string): ApiContactCard {
+  if (!card?.id || typeof card.id !== "string") {
+    throw new Error(`Card ${action} did not return a server id.`);
+  }
+  return card;
+}
+
 function mergeCard(
   apiCard: ApiContactCard,
   presentation?: CardPresentation | null,
@@ -35,9 +52,9 @@ function mergeCard(
   const local = presentation ?? getCardPresentation(apiCard.id);
   return {
     id: apiCard.id,
-    userId: apiCard.userId,
+    userId: apiCard.userId ?? "",
     name: apiCard.name,
-    type: apiCard.type,
+    type: toApiCardType(apiCard.type),
     createdAt: apiCard.createdAt,
     updatedAt: apiCard.updatedAt,
     ...(apiCard.isSensitive !== undefined
@@ -77,13 +94,18 @@ export async function createCard(input: {
   theme?: ContactCardTheme;
   template?: ContactCardTemplate;
 }): Promise<ContactCard> {
-  const created = await apiFetch<ApiContactCard>("/v1/cards", {
-    method: "POST",
-    body: {
-      name: input.name.trim(),
-      type: input.type,
-    },
-  });
+  const created = assertServerCard(
+    await apiFetch<ApiContactCard>("/v1/cards", {
+      method: "POST",
+      body: {
+        name: input.name.trim(),
+        type: toApiCardType(input.type),
+      },
+    }),
+    "create",
+  );
+  // Theme/template/preview fields are client presentation only (no API).
+  // The shareable card on the server is name + type + field-mappings.
   setCardPresentation(created.id, {
     fields: input.fields,
     theme: input.theme,
@@ -103,16 +125,19 @@ export async function updateCard(
     template?: ContactCardTemplate;
   },
 ): Promise<ContactCard> {
-  const patched = await apiFetch<ApiContactCard>(`/v1/cards/${cardId}`, {
-    method: "PATCH",
-    body: {
-      ...(input.name !== undefined ? { name: input.name.trim() } : {}),
-      ...(input.type !== undefined ? { type: input.type } : {}),
-      ...(input.isSensitive !== undefined
-        ? { isSensitive: input.isSensitive }
-        : {}),
-    },
-  });
+  const patched = assertServerCard(
+    await apiFetch<ApiContactCard>(`/v1/cards/${cardId}`, {
+      method: "PATCH",
+      body: {
+        ...(input.name !== undefined ? { name: input.name.trim() } : {}),
+        ...(input.type !== undefined ? { type: toApiCardType(input.type) } : {}),
+        ...(input.isSensitive !== undefined
+          ? { isSensitive: input.isSensitive }
+          : {}),
+      },
+    }),
+    "update",
+  );
   const existing = getCardPresentation(cardId);
   setCardPresentation(cardId, {
     fields: input.fields ?? existing?.fields,
@@ -171,4 +196,106 @@ export async function removeCardFieldMapping(
     ...existing,
     mappedFieldIds: (existing.mappedFieldIds ?? []).filter((id) => id !== fieldId),
   });
+}
+
+/** Server-generated VCF asset for a card (`POST /cards/:cardId/vcard`). */
+export type CardVcardAsset = {
+  url: string;
+  key: string;
+  mimeType: string;
+  contentHash: string;
+};
+
+export type CardShareRecipientInput = {
+  countryCode: string;
+  phone: string;
+};
+
+export type CardShareRecipient = {
+  id: string;
+  countryCode: string;
+  phone: string;
+  dispatchStatus: "PENDING" | "DISPATCHED" | "FAILED" | string;
+  deliveryStatus?: "SENT" | "DELIVERED" | "READ" | "FAILED" | string | null;
+  sentAt?: string | null;
+  vcfSentAt?: string | null;
+  vcfMessageSid?: string | null;
+};
+
+export type CardShareBatch = {
+  id: string;
+  cardId: string;
+  cardName?: string;
+  note?: string | null;
+  createdAt: string;
+  recipients: CardShareRecipient[];
+};
+
+export type CardShareListResponse = {
+  batches: CardShareBatch[];
+  total: number;
+  page: number;
+  limit: number;
+};
+
+export async function generateCardVcard(
+  cardId: string,
+  fieldTypes?: string[],
+): Promise<CardVcardAsset> {
+  return apiFetch<CardVcardAsset>(`/v1/cards/${cardId}/vcard`, {
+    method: "POST",
+    body: fieldTypes?.length ? { fieldTypes } : {},
+  });
+}
+
+export async function shareCardBatch(
+  cardId: string,
+  input: {
+    recipients: CardShareRecipientInput[];
+    note?: string;
+    templateKey?: string;
+    fieldTypes?: string[];
+  },
+): Promise<CardShareBatch> {
+  return apiFetch<CardShareBatch>(`/v1/cards/${cardId}/share`, {
+    method: "POST",
+    body: {
+      recipients: input.recipients,
+      ...(input.note?.trim() ? { note: input.note.trim() } : {}),
+      ...(input.templateKey ? { templateKey: input.templateKey } : {}),
+      ...(input.fieldTypes?.length ? { fieldTypes: input.fieldTypes } : {}),
+    },
+  });
+}
+
+export async function listCardShares(
+  cardId: string,
+  query: { page?: number; limit?: number } = {},
+): Promise<CardShareListResponse> {
+  // Live API validates `page >= 1` (1-indexed), not 0-indexed.
+  const page = Math.max(1, query.page ?? 1);
+  const limit = Math.max(1, query.limit ?? 20);
+  const params = new URLSearchParams({
+    page: String(page),
+    limit: String(limit),
+  });
+  return apiFetch<CardShareListResponse>(
+    `/v1/cards/${cardId}/shares?${params.toString()}`,
+  );
+}
+
+export async function getCardShareBatch(
+  batchId: string,
+): Promise<CardShareBatch> {
+  return apiFetch<CardShareBatch>(`/v1/card-shares/${batchId}`);
+}
+
+export async function resendCardShareRecipient(
+  batchId: string,
+  recipientId: string,
+): Promise<CardShareRecipient> {
+  return apiFetch<CardShareRecipient>(
+    `/v1/card-shares/${batchId}/recipients/${recipientId}/resend`,
+    { method: "POST" },
+  );
 }

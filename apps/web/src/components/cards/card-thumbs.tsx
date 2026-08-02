@@ -24,16 +24,16 @@ function thumbCopy(fields: ContactCardFields, theme?: ContactCardTheme) {
   const company = fields.company.trim() || "Company";
   const phone = fields.phone.trim()
     ? `${fields.countryCode || "+1"} ${fields.phone}`.trim()
-    : "+1 555 0100";
-  const email = fields.email.trim() || "you@example.com";
+    : "Phone";
+  const email = fields.email.trim() || "Email";
   const website = fields.website.trim()
     ? fields.website.trim().replace(/^https?:\/\//i, "")
-    : "companywebsite.com";
+    : "Website";
   const brand =
-    (fields.company.trim() || "ContactBook")
+    (fields.company.trim() || "CB")
       .split(/\s+/)[0]
       ?.slice(0, 10)
-      .toUpperCase() || "CONTACTBOOK";
+      .toUpperCase() || "CB";
   const initials = initialsFromName(name);
   const qrSeed = cardQrSeed({ name, email, phone, company, website });
   return {

@@ -4,7 +4,9 @@ import {
   CreditCard,
   Home,
   Import,
+  Link2,
   LogOut,
+  MessageCircle,
   UserRound,
   UsersRound,
 } from "lucide-react";
@@ -18,7 +20,13 @@ const desktopNav = [
   { to: "/profile", label: "Profile", icon: UserRound },
   { to: "/dashboard/cards", label: "Cards", icon: CreditCard },
   { to: "/dashboard/contacts", label: "Contacts", icon: UsersRound },
+  { to: "/dashboard/connections", label: "Connections", icon: Link2 },
   { to: "/dashboard/import", label: "Import", icon: Import },
+  {
+    to: "/dashboard/whatsapp-templates",
+    label: "Templates",
+    icon: MessageCircle,
+  },
 ] as const;
 
 const mobileTabs = [

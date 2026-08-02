@@ -41,7 +41,7 @@ function matchesFilter(card: ContactCard, filter: CardFilter) {
     return resolveTemplate(card.template) === "scan";
   }
   if (filter === "CUSTOM") {
-    return card.type === "CUSTOM" || card.type === "PAYMENT";
+    return card.type === "CUSTOM";
   }
   return card.type === (filter as ContactCardType);
 }

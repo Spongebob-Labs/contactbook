@@ -41,16 +41,6 @@ export const cardTypeStyles: Record<
     watermarkClassName: "text-primary/5",
     featuredBorderClassName: "border-accent-border border-t-2 border-t-primary",
   },
-  PAYMENT: {
-    accentClassName: "bg-primary",
-    badgeClassName: brassBadge,
-    faceClassName: "bg-card border-border",
-    foilClassName: "bg-primary",
-    initialsClassName: brassInitialsFeatured,
-    initialsMutedClassName: brassInitialsMuted,
-    watermarkClassName: "text-primary/5",
-    featuredBorderClassName: "border-accent-border border-t-2 border-t-primary",
-  },
   CUSTOM: {
     accentClassName: "bg-primary",
     badgeClassName: brassBadge,

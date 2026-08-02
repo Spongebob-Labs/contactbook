@@ -62,16 +62,16 @@ function resolveCopy(
   const surface = resolveCardSurface(resolved.primary);
   const name = displayOrPlaceholder(fields.displayName, "Your Name");
   const title = displayOrPlaceholder(fields.title, "Job Title");
-  const phone = formatCardPhone(
-    fields.countryCode || "+1",
-    fields.phone || "555 0100",
-  );
-  const email = displayOrPlaceholder(fields.email, "you@example.com");
-  const company = displayOrPlaceholder(fields.company, "Company Name");
+  const phoneRaw = fields.phone.trim();
+  const phone = phoneRaw
+    ? formatCardPhone(fields.countryCode || "+1", phoneRaw)
+    : "Phone";
+  const email = displayOrPlaceholder(fields.email, "Email");
+  const company = displayOrPlaceholder(fields.company, "Company");
   const websiteRaw = fields.website.trim();
   const website = websiteRaw
     ? websiteRaw.replace(/^https?:\/\//i, "")
-    : "companywebsite.com";
+    : "Website";
 
   return {
     name: name.text,

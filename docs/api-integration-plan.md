@@ -1,8 +1,20 @@
 # ContactBook API Integration Plan
 
-**Date:** 2026-07-27  
-**Status:** Implementation landed (Wave 0–4 for in-scope surfaces)  
+**Date:** 2026-07-27 (updated 2026-08-02)  
+**Status:** Waves A–D landed (auth, card share/VCF, contacts shapes, templates CRUD, connections)  
 **Approach:** Domain waves with a shared API spine (Approach 1)
+
+### Waves A–C (2026-08-02) — current runtime
+
+- API host: `https://api.getcontactbook.com` — FE uses absolute `VITE_API_URL=https://api.getcontactbook.com/api` (never relative `/api` / localhost in Network)
+- Register body: `phoneVerificationToken` + `firstName` + `lastName` + `email` only (phone bound in JWT)
+- Auth session: Bearer from verify/refresh + cookies; absolute live API base
+- Cards: always `POST /cards` then re-fetch; field-mappings API; theme/template client presentation only
+- Card share: WhatsApp share dialog → `POST /cards/:id/share`; shares list + resend; server `POST /cards/:id/vcard` with local fallback
+- Contacts: list normalizer for `contacts` + 0-based `page`; import summary accepts `sources[]`
+- WhatsApp templates: `/dashboard/whatsapp-templates` (list / create / activate / default / delete)
+- Connections: `/dashboard/connections` (list / send by phone / optional card / resend pending)
+- Still deferred: accept/decline/share-back REST (409 by design), Travel (removed from API docs), Connections-by-contact picker
 
 ---
 
@@ -12,7 +24,7 @@
 - **Why:** Delivery depends on correct API wiring; auth bypass and silent mock fallbacks currently hide breakage.
 - **Who:** Authenticated ContactBook users on the web app (demo/delivery against integration host).
 - **Key constraints:**
-  - API host: `http://34.147.177.94:8080` (compose FE base as `…/api` + `/v1/...`)
+  - API host: `https://api.getcontactbook.com` (compose FE base as `…/api` + `/v1/...`; earlier push used host A `34.147…`)
   - Real WhatsApp OTP auth before other domains
   - Vite dev proxy for cookie sessions
   - Fail loud — no silent mock fallbacks on dashboard surfaces
@@ -26,7 +38,7 @@
 
 1. Host A is the contract and runtime for this push (not prod/UAT unless later promoted).
 2. Client paths stay `/v1/...` against base `…/api`.
-3. FE auth uses OpenWA WhatsApp routes (`/auth/whatsapp/*`); Twilio OTP is backend-internal unless live OpenAPI says otherwise.
+3. FE auth: Twilio `POST /auth/otp/whatsapp/send` → `POST /auth/otp/whatsapp/verify` → `/auth/register` when unregistered. Outdated OpenWA `request-code` / `verify-code` are not used by the web app.
 4. Product scope = Dashboard + Profile + Cards + Contacts + Import only.
 5. Cards presentation (theme/template) stays in client storage keyed by server `cardId`.
 6. Google OAuth path is locked only after probing host A OpenAPI (expect Supabase → `link-provider`).
@@ -83,7 +95,7 @@
 - Keep `credentials: "include"` and existing 401 → refresh → retry.
 - Re-enable `/auth` (and `/auth/callback` when Google path confirmed).
 - Restore real `AuthProvider` + `ProtectedRoute` (remove fake viewer).
-- OpenWA: request-code → verify-code → register; honor `isOnboarded` when present.
+- Auth: `/otp/whatsapp/send` → `/otp/whatsapp/verify` → dashboard when registered; `/register` only when unregistered. Do not use outdated `request-code` / `verify-code`.
 - Remove silent mock fallbacks from authenticated dashboard surfaces.
 
 **Exit:** Login/logout + authenticated `GET /profile/me` work (or real errors); no silent mocks.
