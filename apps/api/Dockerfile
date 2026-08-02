@@ -112,4 +112,5 @@ EXPOSE 8080
 
 # tini reaps zombies and forwards signals (SIGTERM from Cloud Run -> Node).
 ENTRYPOINT ["/sbin/tini", "--"]
-CMD ["node", "dist/main.js"]
+# Run pending DB migrations before starting the server so schema is always in sync.
+CMD ["sh", "-c", "node_modules/.bin/prisma migrate deploy && node dist/main.js"]
