@@ -117,5 +117,8 @@ EXPOSE 8080
 
 # tini reaps zombies and forwards signals (SIGTERM from Cloud Run -> Node).
 ENTRYPOINT ["/sbin/tini", "--"]
-# Run pending DB migrations before starting the server so schema is always in sync.
-CMD ["sh", "-c", "node_modules/.bin/prisma migrate deploy && node dist/main.js"]
+# Start the API only. Do NOT run `prisma migrate deploy` here: the prod image is
+# built with `pnpm deploy --prod`, which omits the prisma CLI (devDependency).
+# A missing binary makes the container exit immediately → Caddy returns 502.
+# Run migrations separately via `pnpm migrate:api` / scripts/migrate-api.sh.
+CMD ["node", "dist/main.js"]
