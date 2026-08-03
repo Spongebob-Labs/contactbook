@@ -74,21 +74,13 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm --filter=api deploy --legacy --prod /deploy
 
 # pnpm deploy reinstalls @prisma/client fresh, which discards the previously
-# generated client. Regenerate it inside /deploy by pulling the matching prisma
-# CLI on the fly (only @prisma/client needs to be present at runtime).
+# generated client. prisma is a prod dep so pnpm deploy --prod includes the CLI;
+# use it directly to regenerate the client inside /deploy.
 WORKDIR /deploy
 RUN --mount=type=secret,id=api_env \
-    --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     cp /run/secrets/api_env /deploy/.env \
-    && PRISMA_VERSION=$(node -p "require('./node_modules/@prisma/client/package.json').version") \
-    && pnpm dlx prisma@${PRISMA_VERSION} generate \
-    && rm -f /deploy/.env \
-    && rm -rf /root/.cache /root/.npm /root/.local /tmp/*
-
-# Copy the prisma CLI from the builder stage so `prisma migrate deploy` works at
-# startup. prisma is a devDep so pnpm deploy --prod omits it from the bundle.
-COPY --from=builder /workspace/node_modules/prisma /deploy/node_modules/prisma
-COPY --from=builder /workspace/node_modules/.bin/prisma /deploy/node_modules/.bin/prisma
+    && ./node_modules/.bin/prisma generate \
+    && rm -f /deploy/.env
 
 # Drop files not needed at runtime to keep the image lean.
 RUN rm -rf src test eslint.config.mjs nest-cli.json \
