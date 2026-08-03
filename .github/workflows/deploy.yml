@@ -137,6 +137,8 @@ jobs:
       GCS_CARD_SHARES_BUCKET: ${{ secrets.GCS_CARD_SHARES_BUCKET }}
       GCS_CARD_SHARES_PUBLIC_BASE_URL: ${{ secrets.GCS_CARD_SHARES_PUBLIC_BASE_URL }}
       GCS_SERVICE_ACCOUNT_KEY_BASE64: ${{ secrets.GCS_SERVICE_ACCOUNT_KEY_BASE64 }}
+      GCS_HMAC_ACCESS_KEY_ID: ${{ secrets.GCS_HMAC_ACCESS_KEY_ID }}
+      GCS_HMAC_SECRET: ${{ secrets.GCS_HMAC_SECRET }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
