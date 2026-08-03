@@ -30,7 +30,14 @@ export class GcsUploadService {
 
   constructor(private readonly config: ConfigService) {
     const projectId = this.config.get<string>("GCS_PROJECT_ID");
-    this.storage = new Storage(projectId ? { projectId } : undefined);
+    const keyBase64 = this.config.get<string>("GCS_SERVICE_ACCOUNT_KEY_BASE64");
+    const credentials = keyBase64
+      ? JSON.parse(Buffer.from(keyBase64, "base64").toString("utf-8"))
+      : undefined;
+    this.storage = new Storage({
+      ...(projectId ? { projectId } : {}),
+      ...(credentials ? { credentials } : {}),
+    });
   }
 
   extensionForMime(mimeType: string): string | null {
