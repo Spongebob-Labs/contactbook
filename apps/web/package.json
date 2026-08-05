@@ -7,7 +7,12 @@
     "dev": "vite --host 0.0.0.0 --port 5173",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 0.0.0.0 --port 5173",
-    "lint": "tsc --noEmit --pretty false"
+    "lint": "tsc --noEmit --pretty false",
+    "test": "vitest run",
+    "test:unit": "vitest run src/lib/__tests__/unit",
+    "test:integration": "vitest run src/lib/__tests__/integration",
+    "test:watch": "vitest",
+    "test:live": "vitest run --config vitest.live.config.ts"
   },
   "dependencies": {
     "@fontsource/inter": "^5.2.8",
@@ -36,8 +41,10 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^5.1.1",
+    "jsdom": "^26.1.0",
     "tailwindcss": "^4",
     "typescript": "^5",
-    "vite": "^7.2.7"
+    "vite": "^7.2.7",
+    "vitest": "^3.2.7"
   }
 }

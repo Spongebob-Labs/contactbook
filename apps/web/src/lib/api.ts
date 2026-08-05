@@ -15,7 +15,8 @@ import {
 
 const LIVE_API_BASE = "https://api.getcontactbook.com/api";
 
-function resolveApiBase(raw: string | undefined): string {
+/** Resolve absolute API base; relative values fall back to production. */
+export function resolveApiBase(raw: string | undefined): string {
   const value = (raw ?? LIVE_API_BASE).trim().replace(/\/$/, "");
   if (value.startsWith("https://") || value.startsWith("http://")) {
     return value;
@@ -51,7 +52,7 @@ type ApiOptions = Omit<RequestInit, "body" | "credentials"> & {
 const getCache = new Map<string, Promise<unknown>>();
 
 /** Auth routes where 401 means bad credentials/OTP — never treat as expired session. */
-function isAuthCredentialPath(path: string): boolean {
+export function isAuthCredentialPath(path: string): boolean {
   const normalized = path.split("?")[0] ?? path;
   return (
     normalized.startsWith("/v1/auth/otp/") ||
@@ -61,7 +62,7 @@ function isAuthCredentialPath(path: string): boolean {
   );
 }
 
-function formatError(payload: unknown, fallback: string): string {
+export function formatError(payload: unknown, fallback: string): string {
   if (payload && typeof payload === "object" && "message" in payload) {
     const message = (payload as ApiErrorPayload).message;
     if (typeof message === "string") {
@@ -144,7 +145,7 @@ function getCacheKey(path: string, options: ApiOptions): string {
   });
 }
 
-function clearGetCache() {
+export function clearGetCache() {
   getCache.clear();
 }
 

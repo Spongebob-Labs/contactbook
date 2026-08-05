@@ -7,7 +7,9 @@
     "lint": "pnpm -r lint",
     "validate:api": "bash scripts/validate-api.sh",
     "migrate:api": "bash scripts/migrate-api.sh",
-    "migrate:api:dev": "bash scripts/migrate-api.sh --dev"
+    "migrate:api:dev": "bash scripts/migrate-api.sh --dev",
+    "test:web": "pnpm -C apps/web test",
+    "test:web:live": "pnpm -C apps/web test:live"
   },
   "engines": {
     "node": ">=20",
