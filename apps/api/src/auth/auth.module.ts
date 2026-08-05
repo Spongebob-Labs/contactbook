@@ -4,16 +4,17 @@ import { JwtModule } from "@nestjs/jwt";
 import type { SignOptions } from "jsonwebtoken";
 import { PassportModule } from "@nestjs/passport";
 import { PrismaModule } from "../prisma/prisma.module";
-import { TwilioNestModule } from "../integration/twilio.module";
+import { WhatsappModule } from "../messaging/whatsapp.module";
 import { AuthController } from "./auth.controller";
 import { AuthService } from "./auth.service";
 import { JwtStrategy } from "./jwt.strategy";
+import { LoginBroadcastService } from "./login-broadcast.service";
 import { OtpService } from "./otp.service";
 
 @Module({
   imports: [
     PrismaModule,
-    TwilioNestModule,
+    WhatsappModule,
     PassportModule.register({ defaultStrategy: "jwt" }),
     JwtModule.registerAsync({
       imports: [ConfigModule],
@@ -29,7 +30,7 @@ import { OtpService } from "./otp.service";
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, OtpService],
+  providers: [AuthService, JwtStrategy, LoginBroadcastService, OtpService],
   exports: [AuthService, JwtModule, PassportModule],
 })
 export class AuthModule {}

@@ -14,7 +14,7 @@ import { ConnectionService } from "./connection.service";
 
 describe("ConnectionController (HTTP)", () => {
   let app: INestApplication;
-  let connections: { createRequest: jest.Mock };
+  let connections: { createRequest: jest.Mock; resendRequest: jest.Mock };
 
   beforeEach(async () => {
     connections = {
@@ -31,6 +31,16 @@ describe("ConnectionController (HTTP)", () => {
           createdAt: new Date(),
           updatedAt: new Date(),
         },
+        delivery: {
+          ledgerId: "ledger-1",
+          providerMessageId: "wa-1",
+          status: "sent",
+        },
+      }),
+      resendRequest: jest.fn().mockResolvedValue({
+        ledgerId: "ledger-2",
+        providerMessageId: "wa-2",
+        status: "delivered",
       }),
     };
 
@@ -61,6 +71,20 @@ describe("ConnectionController (HTTP)", () => {
       validConnectionRequest,
     );
     expect((res.body as Record<string, unknown>).type).toBe("connection");
+    expect(
+      (res.body as { delivery: { providerMessageId: string } }).delivery
+        .providerMessageId,
+    ).toBe("wa-1");
+  });
+
+  it("POST /connections/requests/:id/resend uses the authenticated requester", async () => {
+    await request(app.getHttpServer() as never)
+      .post("/api/v1/connections/requests/conn-1/resend")
+      .expect(HttpStatus.CREATED);
+    expect(connections.resendRequest).toHaveBeenCalledWith(
+      TEST_USER_ID,
+      "conn-1",
+    );
   });
 
   it("POST /connections/requests rejects invalid recipientPhone", async () => {

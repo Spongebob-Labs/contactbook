@@ -1,0 +1,1 @@
+ALTER TYPE "WhatsappMessagePurpose" ADD VALUE 'LOGIN_BROADCAST';

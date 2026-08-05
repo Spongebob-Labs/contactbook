@@ -8,6 +8,11 @@ import {
   ExecutionContext,
 } from "@nestjs/common";
 import { Request, Response } from "express";
+import {
+  RECIPIENT_INITIATION_REQUIRED,
+  WHATSAPP_GATEWAY_SESSION_NOT_READY,
+  WhatsappProviderError,
+} from "../../messaging/whatsapp-errors";
 
 @Catch()
 export class ApiExceptionFilter implements ExceptionFilter {
@@ -40,7 +45,13 @@ export class ApiExceptionFilter implements ExceptionFilter {
     const status =
       exception instanceof HttpException
         ? exception.getStatus()
-        : HttpStatus.INTERNAL_SERVER_ERROR;
+        : exception instanceof WhatsappProviderError
+          ? exception.code === RECIPIENT_INITIATION_REQUIRED
+            ? HttpStatus.CONFLICT
+            : exception.code === WHATSAPP_GATEWAY_SESSION_NOT_READY
+              ? HttpStatus.SERVICE_UNAVAILABLE
+              : HttpStatus.BAD_GATEWAY
+          : HttpStatus.INTERNAL_SERVER_ERROR;
 
     const message =
       exception instanceof Error ? exception.message : "Unknown error";
@@ -49,6 +60,13 @@ export class ApiExceptionFilter implements ExceptionFilter {
     let responseBody: unknown;
     if (exception instanceof HttpException) {
       responseBody = exception.getResponse();
+    } else if (exception instanceof WhatsappProviderError) {
+      responseBody = {
+        statusCode: status,
+        code: exception.code,
+        message: exception.message,
+        ...exception.details,
+      };
     } else {
       responseBody = {
         statusCode: status,

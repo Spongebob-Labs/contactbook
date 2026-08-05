@@ -28,3 +28,11 @@ profile_photos_cors_origins = [
 ]
 
 custom_domain = "api.getcontactbook.com"
+
+# Stateful OpenWA gateway. Point openwa.getcontactbook.com at the output IP.
+enable_openwa_vm        = true
+openwa_zone             = "europe-west1-b"
+openwa_instance_name    = "contactbook-openwa"
+openwa_machine_type     = "e2-small"
+openwa_boot_disk_size_gb = 20
+openwa_data_disk_size_gb = 30

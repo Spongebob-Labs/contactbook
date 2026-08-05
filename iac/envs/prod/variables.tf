@@ -66,3 +66,34 @@ variable "custom_domain" {
   type    = string
   default = null
 }
+
+variable "enable_openwa_vm" {
+  description = "Create the stateful OpenWA Compute Engine gateway."
+  type        = bool
+  default     = false
+}
+
+variable "openwa_zone" {
+  type    = string
+  default = "europe-west1-b"
+}
+
+variable "openwa_instance_name" {
+  type    = string
+  default = "contactbook-openwa"
+}
+
+variable "openwa_machine_type" {
+  type    = string
+  default = "e2-small"
+}
+
+variable "openwa_boot_disk_size_gb" {
+  type    = number
+  default = 20
+}
+
+variable "openwa_data_disk_size_gb" {
+  type    = number
+  default = 30
+}

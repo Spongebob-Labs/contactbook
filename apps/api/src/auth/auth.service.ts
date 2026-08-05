@@ -17,6 +17,7 @@ import {
 import { PrismaService } from "../prisma/prisma.service";
 import { PHONE_VERIFICATION_JWT_TYP } from "./auth.constants";
 import type { CompleteRegisterDto } from "./dto/complete-register.dto";
+import { LoginBroadcastService } from "./login-broadcast.service";
 import { OtpService } from "./otp.service";
 import { parseRelativeMs } from "./parse-relative-ms";
 
@@ -51,11 +52,11 @@ export class AuthService {
     private readonly jwt: JwtService,
     private readonly otp: OtpService,
     private readonly config: ConfigService,
+    private readonly loginBroadcast: LoginBroadcastService,
   ) {}
 
   /**
-   * Sends a WhatsApp OTP for any phone (registered or not). Twilio errors surface as
-   * 400 when WhatsApp cannot receive the message.
+   * Sends a WhatsApp OTP for any phone (registered or not).
    */
   async requestWhatsappCode(
     phoneRaw: string,
@@ -89,6 +90,7 @@ export class AuthService {
         throw new UnauthorizedException();
       }
       const tokens = await this.issueTokenPair(user.id);
+      await this.loginBroadcast.sendForUser(user.id);
       return {
         registered: true,
         isOnboarded: user.profileOnboardingCompletedAt != null,
@@ -104,6 +106,48 @@ export class AuthService {
         phone,
         countryCode,
       }),
+    };
+  }
+
+  /**
+   * Issues the same session (identical access-token claims + refresh token) as
+   * WhatsApp login for a phone whose ownership has ALREADY been proven
+   * out-of-band — e.g. a verified Twilio OTP. Activates the account (OTP proves
+   * control of the number) and mirrors the login broadcast.
+   *
+   * Returns `null` when no account exists for the phone, so the caller can
+   * respond with a "verified but not registered" result instead of a session.
+   */
+  async issueSessionForVerifiedPhone(
+    phoneRaw: string,
+    countryCallingPrefix: string,
+  ): Promise<{
+    isOnboarded: boolean;
+    userId: string;
+    accessToken: string;
+    refreshToken: string;
+  } | null> {
+    const phone = normalizeNationalPhone(phoneRaw);
+    const countryCode = normalizeDialCode(countryCallingPrefix);
+    const user = await this.prisma.user.findUnique({
+      where: { countryCode_phone: { countryCode, phone } },
+      select: { id: true, isActive: true, profileOnboardingCompletedAt: true },
+    });
+    if (!user) {
+      return null;
+    }
+    if (!user.isActive) {
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { isActive: true },
+      });
+    }
+    const tokens = await this.issueTokenPair(user.id);
+    await this.loginBroadcast.sendForUser(user.id);
+    return {
+      isOnboarded: user.profileOnboardingCompletedAt != null,
+      userId: user.id,
+      ...tokens,
     };
   }
 
@@ -183,6 +227,10 @@ export class AuthService {
       phone: user.phone,
       countryCode: user.countryCode,
     });
+  }
+
+  generatePhoneVerificationToken(identity: PhoneIdentity): string {
+    return this.signPhoneVerificationJwt(identity);
   }
 
   private signPhoneVerificationJwt(identity: PhoneIdentity): string {

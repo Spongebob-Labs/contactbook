@@ -54,7 +54,7 @@ export class AuthController {
       "Send WhatsApp OTP to the given phone (registered or not). Requires WhatsApp on the device.",
   })
   @ApiOkResponse({
-    description: "OTP dispatched (or dry-run when Twilio is unset).",
+    description: "OTP dispatched through the configured WhatsApp provider.",
     schema: {
       type: "object",
       properties: {

@@ -19,3 +19,21 @@ module "environment" {
   profile_photos_cors_origins  = var.profile_photos_cors_origins
   custom_domain                = var.custom_domain
 }
+
+module "openwa" {
+  count  = var.enable_openwa_vm ? 1 : 0
+  source = "../../modules/openwa-vm"
+
+  project_id = var.project_id
+  region     = var.region
+  zone       = var.openwa_zone
+
+  name              = var.openwa_instance_name
+  machine_type      = var.openwa_machine_type
+  boot_disk_size_gb = var.openwa_boot_disk_size_gb
+  data_disk_size_gb = var.openwa_data_disk_size_gb
+
+  labels = {
+    environment = "prod"
+  }
+}

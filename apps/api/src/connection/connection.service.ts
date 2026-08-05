@@ -19,20 +19,23 @@ import {
   normalizeNationalPhone,
 } from "../common/phone.util";
 import { PrismaService } from "../prisma/prisma.service";
-import { TwilioService } from "../integration/twilio.service";
+import {
+  WhatsappMessagingService,
+  type WhatsappDelivery,
+} from "../messaging/whatsapp-messaging.service";
 import { ConnectionInviteService } from "./connection-invite.service";
 import { connectionSessionExpiresAt } from "./connection-flow.types";
 import { CreateConnectionRequestDto } from "./dto/create-connection-request.dto";
 
 export type CreateConnectionResult =
-  | { type: "connection"; connection: Connection }
-  | { type: "invite"; invite: ConnectionInvite };
+  | { type: "connection"; connection: Connection; delivery: WhatsappDelivery }
+  | { type: "invite"; invite: ConnectionInvite; delivery: WhatsappDelivery };
 
 @Injectable()
 export class ConnectionService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly twilio: TwilioService,
+    private readonly messaging: WhatsappMessagingService,
     private readonly invites: ConnectionInviteService,
   ) {}
 
@@ -142,7 +145,7 @@ export class ConnectionService {
         );
       }
 
-      const invite = await this.invites.createInvite({
+      const result = await this.invites.createInvite({
         requesterId,
         requesterDisplayName: who,
         recipientKind: kind,
@@ -150,7 +153,7 @@ export class ConnectionService {
         recipientCountryCode: recipientDial,
         recipientPhone,
       });
-      return { type: "invite", invite };
+      return { type: "invite", ...result };
     }
 
     const existing = await this.prisma.connection.findFirst({
@@ -183,8 +186,12 @@ export class ConnectionService {
             hasSharedBack: false,
           },
         });
-        await this.setupRecipientSessionAndInvite(connection, recipient, who);
-        return { type: "connection", connection };
+        const delivery = await this.setupRecipientSessionAndInvite(
+          connection,
+          recipient,
+          who,
+        );
+        return { type: "connection", connection, delivery };
       }
     }
 
@@ -196,15 +203,19 @@ export class ConnectionService {
       },
     });
 
-    await this.setupRecipientSessionAndInvite(connection, recipient, who);
-    return { type: "connection", connection };
+    const delivery = await this.setupRecipientSessionAndInvite(
+      connection,
+      recipient,
+      who,
+    );
+    return { type: "connection", connection, delivery };
   }
 
   private async setupRecipientSessionAndInvite(
     connection: Connection,
     recipient: { id: string; countryCode: string; phone: string },
     requesterDisplayName: string,
-  ): Promise<void> {
+  ): Promise<WhatsappDelivery> {
     await this.prisma.whatsappSession.updateMany({
       where: {
         userId: recipient.id,
@@ -224,11 +235,35 @@ export class ConnectionService {
       },
     });
 
-    await this.twilio.sendConnectionInvite(
-      e164FromStoredUser(recipient),
+    return this.messaging.sendConnectionInvite({
+      toE164: e164FromStoredUser(recipient),
       requesterDisplayName,
-      connection.id,
-    );
+      connectionId: connection.id,
+      correlationId: connection.id,
+    });
+  }
+
+  async resendRequest(
+    requesterId: string,
+    id: string,
+  ): Promise<WhatsappDelivery> {
+    const connection = await this.prisma.connection.findFirst({
+      where: { id, requesterId, status: ConnectionStatus.PENDING },
+      include: { requester: true, receiver: true },
+    });
+    if (connection) {
+      const who =
+        `${connection.requester.firstName} ${connection.requester.lastName}`.trim() ||
+        connection.requester.email ||
+        "Someone";
+      return this.messaging.sendConnectionInvite({
+        toE164: e164FromStoredUser(connection.receiver),
+        requesterDisplayName: who,
+        connectionId: connection.id,
+        correlationId: connection.id,
+      });
+    }
+    return this.invites.resendInvite(requesterId, id);
   }
 
   private parsePhoneValue(value: string): {

@@ -51,6 +51,36 @@ resource "google_artifact_registry_repository" "docker" {
   description   = var.artifact_registry_description
   format        = "DOCKER"
 
+  cleanup_policy_dry_run = false
+
+  # Delete untagged images (created when tags are overwritten or orphaned)
+  cleanup_policies {
+    id     = "delete-untagged"
+    action = "DELETE"
+    condition {
+      tag_state = "UNTAGGED"
+    }
+  }
+
+  # Delete all image versions older than 7 days
+  cleanup_policies {
+    id     = "delete-older-than-7days"
+    action = "DELETE"
+    condition {
+      tag_state  = "ANY"
+      older_than = "604800s" # 7 days in seconds
+    }
+  }
+
+  # Always keep the 5 most recent versions of each image (takes precedence over DELETE)
+  cleanup_policies {
+    id     = "keep-latest-5"
+    action = "KEEP"
+    most_recent_versions {
+      keep_count = 5
+    }
+  }
+
   depends_on = [google_project_service.enabled]
 }
 

@@ -13,6 +13,7 @@ apis = [
   "artifactregistry.googleapis.com",
   "run.googleapis.com",
   "cloudbuild.googleapis.com",
+  "compute.googleapis.com",
   "iam.googleapis.com",
   "storage.googleapis.com",
 ]

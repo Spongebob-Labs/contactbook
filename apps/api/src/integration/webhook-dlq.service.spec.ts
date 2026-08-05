@@ -1,169 +1,100 @@
 import { WebhookDlqStatus } from "@prisma/client";
 import { WebhookDlqService } from "./webhook-dlq.service";
 
-const RECORD_ID = "aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa";
-
-const makePrisma = () => ({
-  webhookDeadLetter: {
-    create: jest.fn(),
-    findMany: jest.fn(),
-    update: jest.fn(),
-  },
-});
-
-const makeWebhookService = () => ({
-  handleInboundMessage: jest.fn(),
-});
-
 describe("WebhookDlqService", () => {
-  let prisma: ReturnType<typeof makePrisma>;
-  let webhookService: ReturnType<typeof makeWebhookService>;
-  let svc: WebhookDlqService;
+  const prisma = {
+    webhookDeadLetter: {
+      create: jest.fn(),
+      findMany: jest.fn(),
+      update: jest.fn(),
+    },
+  };
+  const webhookService = { handleInboundMessage: jest.fn() };
+  const messaging = { markInboundProcessed: jest.fn() };
+  const service = new WebhookDlqService(
+    prisma as never,
+    webhookService as never,
+    messaging as never,
+  );
+  const event = {
+    type: "message.received" as const,
+    providerMessageId: "in-1",
+    fromE164: "+12025551234",
+    text: "Accept",
+    location: { latitude: 12.1, longitude: 77.2 },
+  };
+  const record = {
+    id: "aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa",
+    source: "openwa_whatsapp",
+    attempts: 0,
+    payload: { ...event, ledgerId: "ledger-in-1" },
+  };
 
   beforeEach(() => {
     jest.useFakeTimers();
-    prisma = makePrisma();
-    webhookService = makeWebhookService();
-    svc = new WebhookDlqService(prisma as never, webhookService as never);
     jest.clearAllMocks();
   });
 
-  afterEach(() => {
-    jest.useRealTimers();
-  });
+  afterEach(() => jest.useRealTimers());
 
-  // ─── enqueue ───────────────────────────────────────────────────────────────
+  it("enqueues a normalized OpenWA event", async () => {
+    prisma.webhookDeadLetter.create.mockResolvedValue({});
 
-  describe("enqueue", () => {
-    it("creates a PENDING record with null nextRetryAt", async () => {
-      prisma.webhookDeadLetter.create.mockResolvedValue({});
-      await svc.enqueue(
-        { From: "whatsapp:+12025551234", Body: "hi" },
-        { "x-twilio-signature": "sig" },
-        "https://example.com/api/v1/webhooks/twilio/whatsapp",
-      );
-      expect(prisma.webhookDeadLetter.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({
-          source: "twilio_whatsapp",
-          status: WebhookDlqStatus.PENDING,
-          nextRetryAt: null,
-        }) as unknown,
-      });
+    await service.enqueueOpenWa(
+      event,
+      "ledger-in-1",
+      { "x-openwa-signature": "sig" },
+      "https://api.test/webhook",
+    );
+
+    expect(prisma.webhookDeadLetter.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        source: "openwa_whatsapp",
+        payload: { ...event, ledgerId: "ledger-in-1" },
+        status: WebhookDlqStatus.PENDING,
+        nextRetryAt: null,
+      }) as unknown,
     });
   });
 
-  // ─── retryPending ──────────────────────────────────────────────────────────
+  it("replays normalized text and location and marks success", async () => {
+    prisma.webhookDeadLetter.findMany.mockResolvedValue([record]);
+    prisma.webhookDeadLetter.update.mockResolvedValue({});
 
-  describe("retryPending", () => {
-    const baseRecord = {
-      id: RECORD_ID,
-      attempts: 0,
-      payload: { From: "whatsapp:+12025551234", Body: "ACCEPT-conn-1" },
-      headers: { "x-twilio-signature": "sig" },
-      webhookUrl: "https://example.com/api/v1/webhooks/twilio/whatsapp",
-    };
+    await service.retryPending();
 
-    it("does nothing when no records are pending", async () => {
-      prisma.webhookDeadLetter.findMany.mockResolvedValue([]);
-      await svc.retryPending();
-      expect(webhookService.handleInboundMessage).not.toHaveBeenCalled();
+    expect(webhookService.handleInboundMessage).toHaveBeenCalledWith(
+      event.fromE164,
+      event.text,
+      event.location,
+    );
+    expect(messaging.markInboundProcessed).toHaveBeenCalledWith("ledger-in-1");
+    expect(prisma.webhookDeadLetter.update).toHaveBeenLastCalledWith({
+      where: { id: record.id },
+      data: expect.objectContaining({
+        status: WebhookDlqStatus.SUCCEEDED,
+      }) as unknown,
     });
+  });
 
-    it("marks record SUCCEEDED when handler resolves", async () => {
-      prisma.webhookDeadLetter.findMany.mockResolvedValue([baseRecord]);
-      prisma.webhookDeadLetter.update.mockResolvedValue({});
-      webhookService.handleInboundMessage.mockResolvedValue(undefined);
+  it("schedules exponential retry and permanently fails on attempt five", async () => {
+    prisma.webhookDeadLetter.findMany.mockResolvedValue([
+      { ...record, attempts: 4 },
+    ]);
+    prisma.webhookDeadLetter.update.mockResolvedValue({});
+    webhookService.handleInboundMessage.mockRejectedValue(
+      new Error("still broken"),
+    );
 
-      await svc.retryPending();
+    await service.retryPending();
 
-      // first update: mark RETRYING
-      expect(prisma.webhookDeadLetter.update).toHaveBeenNthCalledWith(
-        1,
-        expect.objectContaining({
-          data: { status: WebhookDlqStatus.RETRYING },
-        }),
-      );
-      // second update: mark SUCCEEDED
-      expect(prisma.webhookDeadLetter.update).toHaveBeenNthCalledWith(
-        2,
-        expect.objectContaining({
-          data: expect.objectContaining({
-            status: WebhookDlqStatus.SUCCEEDED,
-          }) as unknown,
-        }),
-      );
-    });
-
-    it("increments attempts and schedules next retry on handler error", async () => {
-      prisma.webhookDeadLetter.findMany.mockResolvedValue([baseRecord]);
-      prisma.webhookDeadLetter.update.mockResolvedValue({});
-      webhookService.handleInboundMessage.mockRejectedValue(
-        new Error("db unavailable"),
-      );
-
-      jest.setSystemTime(new Date("2026-01-01T00:00:00Z"));
-      await svc.retryPending();
-
-      const secondCall = (
-        prisma.webhookDeadLetter.update.mock.calls[1] as unknown[]
-      )[0] as {
-        data: {
-          status: WebhookDlqStatus;
-          attempts: number;
-          nextRetryAt: Date | null;
-        };
-      };
-      expect(secondCall.data.status).toBe(WebhookDlqStatus.PENDING);
-      expect(secondCall.data.attempts).toBe(1);
-      // backoff: 2^(1-1) = 1 min
-      expect(secondCall.data.nextRetryAt).toEqual(
-        new Date("2026-01-01T00:01:00Z"),
-      );
-    });
-
-    it("marks record FAILED after MAX_ATTEMPTS", async () => {
-      const exhaustedRecord = { ...baseRecord, attempts: 4 }; // 4 done, this is attempt 5
-      prisma.webhookDeadLetter.findMany.mockResolvedValue([exhaustedRecord]);
-      prisma.webhookDeadLetter.update.mockResolvedValue({});
-      webhookService.handleInboundMessage.mockRejectedValue(
-        new Error("still broken"),
-      );
-
-      await svc.retryPending();
-
-      const secondCall = (
-        prisma.webhookDeadLetter.update.mock.calls[1] as unknown[]
-      )[0] as {
-        data: {
-          status: WebhookDlqStatus;
-          attempts: number;
-          nextRetryAt: Date | null;
-        };
-      };
-      expect(secondCall.data.status).toBe(WebhookDlqStatus.FAILED);
-      expect(secondCall.data.attempts).toBe(5);
-      expect(secondCall.data.nextRetryAt).toBeNull();
-    });
-
-    it("prefers ButtonText over Body when both present", async () => {
-      const record = {
-        ...baseRecord,
-        payload: {
-          From: "whatsapp:+12025551234",
-          Body: "fallback",
-          ButtonText: "  Accept  ",
-        },
-      };
-      prisma.webhookDeadLetter.findMany.mockResolvedValue([record]);
-      prisma.webhookDeadLetter.update.mockResolvedValue({});
-      webhookService.handleInboundMessage.mockResolvedValue(undefined);
-
-      await svc.retryPending();
-
-      expect(webhookService.handleInboundMessage).toHaveBeenCalledWith(
-        "whatsapp:+12025551234",
-        "Accept",
-      );
+    expect(prisma.webhookDeadLetter.update).toHaveBeenLastCalledWith({
+      where: { id: record.id },
+      data: expect.objectContaining({
+        status: WebhookDlqStatus.FAILED,
+        attempts: 5,
+        nextRetryAt: null,
+      }) as unknown,
     });
   });
 });

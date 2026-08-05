@@ -3,6 +3,7 @@ import {
   GcsProfilePhotoService,
   normalizePublicBaseUrl,
 } from "./gcs-profile-photo.service";
+import { GcsUploadService } from "./gcs-upload.service";
 
 const mockSave = jest.fn().mockResolvedValue(undefined);
 const mockDelete = jest.fn().mockResolvedValue(undefined);
@@ -22,7 +23,7 @@ function createService(env: Record<string, string | undefined>) {
   const config = {
     get: (key: string) => env[key],
   } as ConfigService;
-  return new GcsProfilePhotoService(config);
+  return new GcsProfilePhotoService(config, new GcsUploadService(config));
 }
 
 describe("normalizePublicBaseUrl", () => {

@@ -36,4 +36,9 @@ graphify-out/
 # OpenTofu / Terraform — local backend config (bucket name is not secret but often per-env)
 iac/opentofu/backend.hcl
 scripts/**
+!scripts/deploy-openwa.sh
+!scripts/render-api-env.sh
 temp/**
+OpenWA/
+pocs/**
+docs/**

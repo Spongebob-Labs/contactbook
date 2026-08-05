@@ -13,15 +13,12 @@ describe("ConnectionShareService", () => {
     whatsappSession: { updateMany: jest.fn(), create: jest.fn() },
   };
   const contactUpsert = { upsert: jest.fn() };
-  const twilio = {
-    sendCardSelectionPrompt: jest.fn(),
-    sendWhatsApp: jest.fn(),
-  };
+  const messaging = { sendText: jest.fn() };
 
   const svc = new ConnectionShareService(
     prisma as never,
     contactUpsert as never,
-    twilio as never,
+    messaging as never,
   );
 
   const requester = {
@@ -90,5 +87,28 @@ describe("ConnectionShareService", () => {
       expect.objectContaining({ source: "CONTACTBOOK" }),
     );
     expect(result.completed).toBe(false);
+  });
+
+  it("sends card selection as plain provider text", async () => {
+    prisma.connection.findFirst.mockResolvedValue({
+      id: "conn-1",
+      status: ConnectionStatus.PENDING,
+      requester,
+      receiver,
+    });
+    prisma.contactCard.findMany.mockResolvedValue([
+      { id: "card-1", name: "Personal" },
+    ]);
+    prisma.whatsappSession.updateMany.mockResolvedValue({ count: 1 });
+
+    await svc.beginRecipientCardSelection("conn-1", receiver.id);
+
+    expect(messaging.sendText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        toE164: "+12025552222",
+        text: expect.stringContaining("1. Personal") as unknown,
+        correlationId: "conn-1",
+      }),
+    );
   });
 });

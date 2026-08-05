@@ -43,7 +43,8 @@ async function bootstrap(): Promise<void> {
       "HTTP API for ContactBook: sync professional and personal contacts via web and WhatsApp.",
     )
     .setVersion("1.0")
-    .addServer("http://localhost:8001", "Local")
+    .addServer("http://localhost:8080", "Local")
+    .addServer("http://34.147.177.94:8080", "VM Dev")
     .addServer("https://uat.api.getcontactbook.com", "UAT")
     .addServer("https://api.getcontactbook.com", "Production")
     .addBearerAuth(
