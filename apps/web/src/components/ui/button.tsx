@@ -3,23 +3,26 @@ import type { ButtonHTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 
 export const buttonVariants = cva(
-  "inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md px-4 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
+  "inline-flex shrink-0 items-center justify-center gap-2 text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground disabled:pointer-events-none disabled:opacity-40",
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/90",
-        secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+        default:
+          "rounded-xl bg-primary px-4 py-2 text-primary-foreground hover:bg-[#1F2937]",
+        secondary:
+          "rounded-xl border border-border bg-transparent px-4 py-2 text-foreground hover:bg-bg-hover",
         outline:
-          "border border-border bg-background text-foreground hover:bg-muted",
-        ghost: "text-foreground hover:bg-muted",
+          "rounded-xl border border-border bg-transparent px-4 py-2 text-foreground hover:bg-bg-hover",
+        ghost:
+          "rounded-md bg-transparent px-3 py-2 text-muted-foreground hover:bg-bg-hover hover:text-foreground",
         destructive:
-          "bg-destructive text-white hover:bg-destructive/90 dark:text-foreground",
+          "rounded-xl bg-destructive px-4 py-2 text-white hover:bg-destructive/90",
       },
       size: {
-        default: "h-10 px-4",
-        sm: "h-8 px-3 text-xs",
-        lg: "h-11 px-5",
-        icon: "h-10 w-10 px-0",
+        default: "h-9 px-4",
+        sm: "h-8 rounded-xl px-3 text-sm",
+        lg: "h-12 rounded-xl px-5 text-sm",
+        icon: "h-8 w-8 rounded-md border border-border bg-surface p-0",
       },
     },
     defaultVariants: {

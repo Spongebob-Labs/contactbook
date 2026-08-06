@@ -1,48 +1,91 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { AlertCircle, ArrowRight, CreditCard, IdCard, Plus } from "lucide-react";
+import { AlertCircle, IdCard, Plus } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
+import { CardPairTile } from "@/components/cards/card-pair-tile";
 import { Alert } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { FilterTabBar } from "@/components/ui/filter-tab-bar";
+import { SearchInput } from "@/components/ui/search-input";
+import { Panel } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
-import { apiFetch } from "@/lib/api";
+import { listCards } from "@/lib/cards-api";
+import { resolveTemplate } from "@/lib/card-maker";
+import { friendlyErrorMessages, logUiError } from "@/lib/friendly-errors";
 import type { ContactCard, ContactCardType } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-const cardTypeLabels: Record<ContactCardType, string> = {
-  BUSINESS: "Business",
-  PERSONAL: "Personal",
-  PAYMENT: "Payment",
-  CUSTOM: "Custom",
-};
+const filterTabs: Array<{ key: CardFilter; label: string }> = [
+  { key: "ALL", label: "All" },
+  { key: "CONNECT", label: "Connect" },
+  { key: "SCAN", label: "Scan" },
+  { key: "PERSONAL", label: "Personal" },
+  { key: "BUSINESS", label: "Business" },
+  { key: "CUSTOM", label: "Custom" },
+];
 
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-  }).format(new Date(value));
+type CardFilter =
+  | "ALL"
+  | "CONNECT"
+  | "SCAN"
+  | "PERSONAL"
+  | "BUSINESS"
+  | "CUSTOM";
+
+function matchesFilter(card: ContactCard, filter: CardFilter) {
+  if (filter === "ALL") return true;
+  if (filter === "CONNECT") {
+    return resolveTemplate(card.template) === "connect";
+  }
+  if (filter === "SCAN") {
+    return resolveTemplate(card.template) === "scan";
+  }
+  if (filter === "CUSTOM") {
+    return card.type === "CUSTOM";
+  }
+  return card.type === (filter as ContactCardType);
+}
+
+function matchesQuery(card: ContactCard, query: string) {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const haystack = [
+    card.name,
+    card.fields?.displayName,
+    card.fields?.title,
+    card.fields?.company,
+    card.fields?.email,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return haystack.includes(q);
 }
 
 export default function CardsPage() {
   const [cards, setCards] = useState<ContactCard[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<CardFilter>("ALL");
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     let isMounted = true;
 
-    const loadCards = async () => {
+    const loadPageData = async () => {
       setIsLoading(true);
       setError(null);
+
       try {
-        const data = await apiFetch<ContactCard[]>("/v1/cards");
+        const data = await listCards();
         if (isMounted) {
           setCards(data);
         }
       } catch (err) {
         if (isMounted) {
-          setError(err instanceof Error ? err.message : "Could not load cards.");
+          logUiError("Could not load cards", err);
+          setCards([]);
+          setError(friendlyErrorMessages.load);
         }
       } finally {
         if (isMounted) {
@@ -51,117 +94,128 @@ export default function CardsPage() {
       }
     };
 
-    void loadCards();
+    void loadPageData();
     return () => {
       isMounted = false;
     };
   }, []);
 
+  const filteredCards = useMemo(
+    () =>
+      cards.filter(
+        (card) => matchesFilter(card, filter) && matchesQuery(card, query),
+      ),
+    [cards, filter, query],
+  );
+
   return (
     <AppShell>
-      <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <Badge variant="secondary">Cards</Badge>
-          <h1 className="mt-3 text-3xl font-semibold tracking-normal">
-            ContactBook cards
-          </h1>
-          <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-            Manage the shareable cards created from your saved profile details.
-          </p>
-        </div>
-        <Link
-          to="/dashboard?onboarding=card"
-          className={buttonVariants({ variant: "default" })}
-        >
-          <Plus className="h-4 w-4" aria-hidden="true" />
-          Create card
-        </Link>
-      </section>
-
-      {isLoading && (
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, index) => (
-            <Skeleton key={index} className="h-52 w-full" />
-          ))}
-        </section>
-      )}
-
-      {!isLoading && error && (
-        <Alert className="flex items-start gap-3">
-          <AlertCircle className="mt-0.5 h-4 w-4 text-destructive" aria-hidden="true" />
-          <div>
-            <p className="font-medium">Could not load cards</p>
-            <p className="mt-1 text-sm text-muted-foreground">{error}</p>
-          </div>
-        </Alert>
-      )}
-
-      {!isLoading && !error && cards.length === 0 && (
-        <Card>
-          <CardContent className="flex min-h-72 flex-col items-center justify-center p-6 text-center">
-            <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-md bg-secondary text-secondary-foreground">
-              <IdCard className="h-5 w-5" aria-hidden="true" />
-            </div>
-            <h2 className="font-semibold">Create your first ContactBook card</h2>
-            <p className="mt-2 max-w-md text-sm text-muted-foreground">
-              Build a personal, business, payment, or custom card from the profile
-              information you want to share.
+      <div className="space-y-6">
+        <div className="flex flex-col gap-3 border-b border-border pb-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <h1 className="text-xl font-semibold tracking-[-0.01em] text-foreground">
+              My cards
+              <span className="ml-2 text-base font-medium text-muted-foreground">
+                {cards.length}
+              </span>
+            </h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Create, manage and share your digital cards.
             </p>
+          </div>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+            <SearchInput
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search cards..."
+              containerClassName="w-full sm:w-56"
+              aria-label="Search cards"
+            />
             <Link
-              to="/dashboard?onboarding=card"
-              className={cn(buttonVariants({ variant: "default" }), "mt-5")}
+              to="/dashboard?onboarding=card&returnTo=/dashboard/cards"
+              className={cn(buttonVariants(), "shrink-0 justify-center")}
             >
-              <Plus className="h-4 w-4" aria-hidden="true" />
+              <Plus className="h-3.5 w-3.5" aria-hidden="true" />
               Create card
             </Link>
-          </CardContent>
-        </Card>
-      )}
+          </div>
+        </div>
 
-      {!isLoading && !error && cards.length > 0 && (
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {cards.map((card) => (
-            <Card key={card.id} className="overflow-hidden">
-              <CardHeader>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
-                      <CreditCard className="h-5 w-5" aria-hidden="true" />
-                    </div>
-                    <div className="min-w-0">
-                      <CardTitle className="truncate">{card.name}</CardTitle>
-                      <CardDescription>
-                        Updated {formatDate(card.updatedAt)}
-                      </CardDescription>
-                    </div>
-                  </div>
-                  <Badge variant="secondary" className="shrink-0">
-                    {cardTypeLabels[card.type]}
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="rounded-md border border-border bg-muted/40 p-4">
-                  <p className="truncate text-sm font-medium">{card.name}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Created {formatDate(card.createdAt)}
-                  </p>
-                </div>
-                <Link
-                  to={`/dashboard/cards/${card.id}`}
-                  className={cn(
-                    buttonVariants({ variant: "outline" }),
-                    "mt-4 w-full",
-                  )}
-                >
-                  View details
-                  <ArrowRight className="h-4 w-4" aria-hidden="true" />
-                </Link>
-              </CardContent>
-            </Card>
-          ))}
-        </section>
-      )}
+        {isLoading && (
+          <section className="grid gap-4 md:grid-cols-2">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <Skeleton key={index} className="h-72 w-full rounded-lg" />
+            ))}
+          </section>
+        )}
+
+        {!isLoading && error && (
+          <Alert className="flex items-start gap-3">
+            <AlertCircle
+              className="mt-0.5 h-4 w-4 text-destructive"
+              aria-hidden="true"
+            />
+            <div>
+              <p className="font-medium">Could not load cards</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {friendlyErrorMessages.load}
+              </p>
+            </div>
+          </Alert>
+        )}
+
+        {!isLoading && !error && cards.length > 0 && (
+          <FilterTabBar tabs={filterTabs} value={filter} onChange={setFilter} />
+        )}
+
+        {!isLoading && !error && cards.length === 0 && (
+          <Panel className="border-dashed">
+            <div className="flex min-h-56 flex-col items-center justify-center px-2 py-6 text-center">
+              <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-full border border-border bg-surface text-foreground">
+                <IdCard className="h-5 w-5" aria-hidden="true" />
+              </div>
+              <h2 className="text-base font-semibold text-foreground">
+                Create your first card
+              </h2>
+              <p className="mt-2 max-w-md text-sm text-muted-foreground">
+                Build a personal, business, or custom card from the profile
+                information you want to share.
+              </p>
+              <Link
+                to="/dashboard?onboarding=card&returnTo=/dashboard/cards"
+                className={cn(buttonVariants(), "mt-5")}
+              >
+                <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                Create card
+              </Link>
+            </div>
+          </Panel>
+        )}
+
+        {!isLoading &&
+          !error &&
+          cards.length > 0 &&
+          filteredCards.length === 0 && (
+            <Panel className="border-dashed">
+              <div className="px-2 py-8 text-center">
+                <p className="text-sm font-semibold text-foreground">
+                  No cards match
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Try another filter or search term.
+                </p>
+              </div>
+            </Panel>
+          )}
+
+        {!isLoading && !error && filteredCards.length > 0 && (
+          <section className="grid gap-4 md:grid-cols-2">
+            {filteredCards.map((card) => (
+              <CardPairTile key={card.id} card={card} showName />
+            ))}
+          </section>
+        )}
+      </div>
     </AppShell>
   );
 }

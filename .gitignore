@@ -30,6 +30,9 @@ yarn-error.log*
 .secrets
 .pnpm-store/
 
+# Graphify knowledge graph (local AST cache / reports)
+graphify-out/
+
 # OpenTofu / Terraform — local backend config (bucket name is not secret but often per-env)
 iac/opentofu/backend.hcl
 scripts/**

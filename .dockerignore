@@ -58,3 +58,5 @@ docker/docker-compose.yml
 **/.secrets
 **/Dockerfile.*
 !apps/api/Dockerfile
+
+**/graphify-out

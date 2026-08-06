@@ -3,193 +3,421 @@ import { Link } from "react-router-dom";
 import {
   AlertCircle,
   Building2,
-  CircleDollarSign,
-  Edit3,
-  ExternalLink,
-  Landmark,
-  Mail,
-  Phone,
-  ShieldCheck,
+  Briefcase,
+  Camera,
+  Trash2,
   UserRound,
 } from "lucide-react";
+import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
 import { Alert } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  CompletionChecklist,
+  CompletionRing,
+} from "@/components/ui/completion-ring";
+import {
+  EditField,
+  EditableSection,
+  ViewField,
+} from "@/components/ui/editable-section";
+import { PageHeader } from "@/components/ui/page-header";
+import { Panel } from "@/components/ui/panel";
+import { SegmentedTabs } from "@/components/ui/segmented-tabs";
 import { Skeleton } from "@/components/ui/skeleton";
-import { apiFetch } from "@/lib/api";
+import { friendlyErrorMessages, logUiError } from "@/lib/friendly-errors";
+import {
+  deleteProfileGroup,
+  deleteProfilePhoto,
+  fetchProfileMe,
+  patchProfileMe,
+  uploadProfilePhoto,
+  type ProfileGroupCategory,
+} from "@/lib/profile-api";
+import {
+  getProfileCompletion,
+  getProfileCompletionItems,
+} from "@/lib/profile-completion";
 import type { PostalAddress, ProfileMeResponse } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
-type AddressLike = Partial<PostalAddress>;
-type CustomRecord = Record<string, string | null | undefined>;
+type ProfileTab = "personal" | "work" | "business";
+type EditableKey = "personal" | "social" | "work";
+
+const PROFILE_TAB_STORAGE_KEY = "contactbook:profile-page-tab";
+
+const profileTabs: Array<{
+  key: ProfileTab;
+  label: string;
+  icon: typeof Building2;
+}> = [
+  { key: "personal", label: "Personal", icon: UserRound },
+  { key: "work", label: "Work", icon: Briefcase },
+  { key: "business", label: "Business", icon: Building2 },
+];
+
+const MAX_PROFILE_PHOTO_BYTES = 1_048_576;
+const ALLOWED_PROFILE_PHOTO_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
+
+function isProfileTab(value: string | null): value is ProfileTab {
+  return profileTabs.some((tab) => tab.key === value);
+}
 
 function fullName(profile: ProfileMeResponse): string {
   return `${profile.identity.firstName} ${profile.identity.lastName}`.trim();
 }
 
-function formatAddress(address: AddressLike | undefined): string | null {
-  if (!address) {
-    return null;
-  }
-  return [
-    address.street,
-    address.city,
-    address.state,
-    address.pincode,
-    address.country,
-  ]
+function formatAddress(address: Partial<PostalAddress> | undefined): string {
+  if (!address) return "";
+  return [address.street, address.city, address.state, address.pincode, address.country]
     .filter(Boolean)
     .join(", ");
 }
 
 function valueOrNull(value: unknown): string | null {
-  if (value === null || value === undefined) {
-    return null;
-  }
+  if (value === null || value === undefined) return null;
   const next = String(value).trim();
   return next || null;
 }
 
-function labelFromCamelKey(key: string): string {
-  return key
-    .replace(/([A-Z])/g, " $1")
-    .replace(/^./, (char) => char.toUpperCase())
-    .trim();
+function initialsFromText(value: string | null | undefined): string {
+  const words = valueOrNull(value)?.split(/\s+/).filter(Boolean) ?? [];
+  return words.slice(0, 2).map((word) => word[0]?.toUpperCase()).join("") || "CB";
 }
 
-function displayLabel(label: string): string {
-  return /[A-Z]/.test(label) && !label.includes(" ")
-    ? labelFromCamelKey(label)
-    : label;
+type PersonalDraft = {
+  firstName: string;
+  lastName: string;
+  phone: string;
+  email: string;
+  dateOfBirth: string;
+  address: string;
+};
+
+type SocialDraft = {
+  linkedin: string;
+  twitter: string;
+  instagram: string;
+  website: string;
+};
+
+type WorkDraft = {
+  company: string;
+  title: string;
+  industry: string;
+  workEmail: string;
+};
+
+function personalDraftFrom(profile: ProfileMeResponse): PersonalDraft {
+  return {
+    firstName: profile.identity.firstName ?? "",
+    lastName: profile.identity.lastName ?? "",
+    phone:
+      profile.identity.primaryPhone ||
+      profile.personal.mobile ||
+      "",
+    email:
+      profile.identity.primaryEmail ||
+      profile.personal.email ||
+      "",
+    dateOfBirth: profile.personal.dateOfBirth ?? "",
+    address: formatAddress(profile.personal.postalAddress),
+  };
 }
 
-function customValue(
-  custom: CustomRecord | undefined,
-  ...keys: string[]
-): string | null {
-  const expandedKeys = keys.flatMap((key) => [key, labelFromCamelKey(key)]);
-  for (const key of expandedKeys) {
-    const value = valueOrNull(custom?.[key]);
-    if (value) {
-      return value;
-    }
-  }
-  return null;
+function socialDraftFrom(profile: ProfileMeResponse): SocialDraft {
+  const social = profile.socials[0];
+  return {
+    linkedin: social?.linkedin ?? "",
+    twitter: social?.twitter ?? "",
+    instagram: social?.custom?.instagram ?? "",
+    website: social?.website ?? "",
+  };
 }
 
-function profileValue(
-  source: object,
-  key: string,
-  ...customKeys: string[]
-): string | null {
-  const record = source as Record<string, unknown>;
-  return (
-    valueOrNull(record[key]) ??
-    customValue(record.custom as CustomRecord | undefined, key, ...customKeys)
-  );
-}
-
-function addressValue(
-  address: AddressLike | undefined,
-  custom: CustomRecord | undefined,
-  prefix: string,
-): string | null {
-  const direct = formatAddress(address);
-  if (direct) {
-    return direct;
-  }
-
-  return formatAddress({
-    street: customValue(custom, `${prefix}Street`) ?? undefined,
-    city: customValue(custom, `${prefix}City`) ?? undefined,
-    state: customValue(custom, `${prefix}State`) ?? undefined,
-    pincode: customValue(custom, `${prefix}Pincode`) ?? undefined,
-    country: customValue(custom, `${prefix}Country`) ?? undefined,
-  });
-}
-
-function expandedCustomKeys(keys: string[]): Set<string> {
-  return new Set(keys.flatMap((key) => [key, labelFromCamelKey(key)]));
-}
-
-function customEntries(custom: CustomRecord | undefined, exclude: string[] = []) {
-  const excluded = expandedCustomKeys(exclude);
-  return Object.entries(custom ?? {}).filter(
-    ([label, value]) => !excluded.has(label) && Boolean(valueOrNull(value)),
-  );
-}
-
-function maskMiddle(value: string | null | undefined): string | null {
-  if (!value) {
-    return null;
-  }
-  if (value.length <= 8) {
-    return value;
-  }
-  return `${value.slice(0, 4)}...${value.slice(-4)}`;
-}
-
-function isLinkable(value: string | null): value is string {
-  return Boolean(value && /^(https?:|data:image\/)/i.test(value));
+function workDraftFrom(profile: ProfileMeResponse): WorkDraft {
+  const work = profile.work[0];
+  return {
+    company: work?.companyName ?? "",
+    title: work?.workTitle ?? "",
+    industry: work?.custom?.industry ?? "",
+    workEmail: work?.workEmail ?? "",
+  };
 }
 
 export default function ProfilePage() {
   const [profile, setProfile] = useState<ProfileMeResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isMutatingPhoto, setIsMutatingPhoto] = useState(false);
+  const [deletingGroupId, setDeletingGroupId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<ProfileTab>(() => {
+    if (typeof window === "undefined") return "personal";
+    const stored = window.localStorage.getItem(PROFILE_TAB_STORAGE_KEY);
+    return isProfileTab(stored) ? stored : "personal";
+  });
+  const [editing, setEditing] = useState<EditableKey | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [personalDraft, setPersonalDraft] = useState<PersonalDraft | null>(null);
+  const [socialDraft, setSocialDraft] = useState<SocialDraft | null>(null);
+  const [workDraft, setWorkDraft] = useState<WorkDraft | null>(null);
 
   useEffect(() => {
     let isMounted = true;
-
     const loadProfile = async () => {
       setIsLoading(true);
       setError(null);
       try {
-        const data = await apiFetch<ProfileMeResponse>("/v1/profile/me");
+        const data = await fetchProfileMe();
         if (isMounted) {
           setProfile(data);
         }
       } catch (err) {
         if (isMounted) {
-          setError(err instanceof Error ? err.message : "Could not load profile.");
+          logUiError("Could not load profile", err);
+          setProfile(null);
+          setError(friendlyErrorMessages.load);
         }
       } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
+        if (isMounted) setIsLoading(false);
       }
     };
-
     void loadProfile();
     return () => {
       isMounted = false;
     };
   }, []);
 
+  useEffect(() => {
+    window.localStorage.setItem(PROFILE_TAB_STORAGE_KEY, activeTab);
+  }, [activeTab]);
+
+  const completion = getProfileCompletion(profile);
+  const checklist = getProfileCompletionItems(profile);
   const totals = useMemo(() => {
-    if (!profile) {
-      return { work: 0, business: 0, socials: 0, financial: 0 };
-    }
-    return {
-      work: profile.work.length,
-      business: profile.business.length,
-      socials: profile.socials.length,
-      financial:
-        profile.financial.bankAccounts.length +
-        profile.financial.digitalWallets.length +
-        profile.financial.cryptoWallets.length,
-    };
+    if (!profile) return { work: 0, business: 0 };
+    return { work: profile.work.length, business: profile.business.length };
   }, [profile]);
+
+  const startEdit = (key: EditableKey) => {
+    if (!profile) return;
+    if (key === "personal") setPersonalDraft(personalDraftFrom(profile));
+    if (key === "social") setSocialDraft(socialDraftFrom(profile));
+    if (key === "work") setWorkDraft(workDraftFrom(profile));
+    setEditing(key);
+  };
+
+  const cancelEdit = () => {
+    setEditing(null);
+    setPersonalDraft(null);
+    setSocialDraft(null);
+    setWorkDraft(null);
+  };
+
+  const saveSection = async (key: EditableKey) => {
+    if (!profile) return;
+    setSaving(true);
+    try {
+      let next = structuredClone(profile);
+
+      if (key === "personal" && personalDraft) {
+        const [street, city, ...rest] = personalDraft.address
+          .split(",")
+          .map((part) => part.trim())
+          .filter(Boolean);
+        next = {
+          ...next,
+          identity: {
+            ...next.identity,
+            firstName: personalDraft.firstName.trim(),
+            lastName: personalDraft.lastName.trim(),
+            primaryPhone: personalDraft.phone.trim(),
+            primaryEmail: personalDraft.email.trim(),
+          },
+          personal: {
+            ...next.personal,
+            mobile: personalDraft.phone.trim(),
+            email: personalDraft.email.trim(),
+            dateOfBirth: personalDraft.dateOfBirth.trim() || null,
+            postalAddress: personalDraft.address.trim()
+              ? {
+                  street: street || personalDraft.address.trim(),
+                  city: city || "",
+                  state: rest[0] ?? null,
+                  pincode: rest[1] ?? null,
+                  country: rest[2] || "US",
+                }
+              : next.personal.postalAddress,
+          },
+        };
+        await patchProfileMe({
+          identity: next.identity,
+          personal: {
+            mobile: next.personal.mobile,
+            email: next.personal.email,
+            dateOfBirth: next.personal.dateOfBirth,
+            postalAddress: next.personal.postalAddress,
+          },
+        });
+      }
+
+      if (key === "social" && socialDraft) {
+        const social = next.socials[0] ?? {
+          groupId: "social-local",
+          tag: "Social",
+        };
+        const updatedSocial = {
+          ...social,
+          linkedin: socialDraft.linkedin.trim() || null,
+          twitter: socialDraft.twitter.trim() || null,
+          website: socialDraft.website.trim() || null,
+          custom: {
+            ...(social.custom ?? {}),
+            instagram: socialDraft.instagram.trim(),
+          },
+        };
+        next = {
+          ...next,
+          socials: next.socials.length
+            ? next.socials.map((item, index) =>
+                index === 0 ? updatedSocial : item,
+              )
+            : [updatedSocial],
+        };
+        await patchProfileMe({ socials: next.socials });
+      }
+
+      if (key === "work" && workDraft) {
+        const work = next.work[0] ?? {
+          groupId: "work-local",
+          tag: "Work",
+        };
+        const updatedWork = {
+          ...work,
+          companyName: workDraft.company.trim() || null,
+          workTitle: workDraft.title.trim() || null,
+          workEmail: workDraft.workEmail.trim() || null,
+          custom: {
+            ...(work.custom ?? {}),
+            industry: workDraft.industry.trim(),
+          },
+        };
+        next = {
+          ...next,
+          work: next.work.length
+            ? next.work.map((item, index) => (index === 0 ? updatedWork : item))
+            : [updatedWork],
+        };
+        await patchProfileMe({ work: next.work });
+      }
+
+      setProfile(next);
+      toast.success("Profile saved");
+      cancelEdit();
+    } catch (err) {
+      logUiError("Could not save profile section", err);
+      toast.error("Couldn't save — check your connection");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handlePhotoUpload = async (file: File | undefined) => {
+    if (!file || !profile) {
+      return;
+    }
+
+    if (!ALLOWED_PROFILE_PHOTO_TYPES.has(file.type)) {
+      toast.error("Choose a JPEG, PNG, or WebP image.");
+      return;
+    }
+
+    if (file.size > MAX_PROFILE_PHOTO_BYTES) {
+      toast.error("Choose an image under 1 MB.");
+      return;
+    }
+
+    setIsMutatingPhoto(true);
+    try {
+      const previousPhotoUrl = profile.identity.profilePhoto;
+      const { url } = await uploadProfilePhoto(file);
+      const updated = await patchProfileMe({
+        identity: {
+          ...profile.identity,
+          profilePhoto: url,
+        },
+      });
+      if (previousPhotoUrl) {
+        await deleteProfilePhoto(previousPhotoUrl).catch(() => undefined);
+      }
+      setProfile(updated);
+      toast.success("Profile photo updated.");
+    } catch (err) {
+      logUiError("Could not upload profile photo", err);
+      toast.error("We couldn't update your profile photo. Please try again.");
+    } finally {
+      setIsMutatingPhoto(false);
+    }
+  };
+
+  const handlePhotoDelete = async () => {
+    if (!profile?.identity.profilePhoto) {
+      return;
+    }
+
+    setIsMutatingPhoto(true);
+    try {
+      const previousPhotoUrl = profile.identity.profilePhoto;
+      await deleteProfilePhoto(previousPhotoUrl);
+      const updated = await patchProfileMe({
+        identity: {
+          ...profile.identity,
+          profilePhoto: null,
+        },
+      });
+      setProfile(updated);
+      toast.success("Profile photo removed.");
+    } catch (err) {
+      logUiError("Could not delete profile photo", err);
+      toast.error("We couldn't remove your profile photo. Please try again.");
+    } finally {
+      setIsMutatingPhoto(false);
+    }
+  };
+
+  const handleDeleteGroup = async (groupId: string, category: ProfileGroupCategory) => {
+    setDeletingGroupId(groupId);
+    try {
+      const updated = await deleteProfileGroup(groupId, category);
+      setProfile(updated);
+      toast.success("Profile section removed.");
+    } catch (err) {
+      logUiError("Could not delete profile group", err);
+      toast.error("We couldn't remove that section right now.");
+    } finally {
+      setDeletingGroupId(null);
+    }
+  };
 
   return (
     <AppShell>
-      <section className="rounded-lg border border-border bg-card p-6 md:p-8">
+      <div className="space-y-6">
+        <PageHeader
+          title="Your profile"
+          subtitle="This info appears on your cards"
+        />
+
         {isLoading && (
-          <div className="space-y-4">
-            <Skeleton className="h-8 w-48" />
-            <Skeleton className="h-12 w-full max-w-2xl" />
-            <Skeleton className="h-10 w-40" />
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
+            <Panel className="space-y-4">
+              <Skeleton className="h-20 w-20 rounded-full" />
+              <Skeleton className="h-40 w-full rounded-lg" />
+            </Panel>
+            <Skeleton className="h-64 w-full rounded-lg" />
           </div>
         )}
 
@@ -198,590 +426,404 @@ export default function ProfilePage() {
             <AlertCircle className="mt-0.5 h-4 w-4 text-destructive" />
             <div>
               <p className="font-medium">Could not load profile</p>
-              <p className="mt-1 text-sm text-muted-foreground">{error}</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {friendlyErrorMessages.load}
+              </p>
             </div>
           </Alert>
         )}
 
         {!isLoading && profile && (
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-            <div className="flex flex-col gap-5 md:flex-row md:items-center">
-              <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-muted">
-                {profile.identity.profilePhoto ? (
-                  <img
-                    src={profile.identity.profilePhoto}
-                    alt=""
-                    className="h-full w-full object-cover"
+          <>
+            <SegmentedTabs
+              aria-label="Profile sections"
+              items={profileTabs.map((tab) => ({
+                key: tab.key,
+                label: tab.label,
+                icon: tab.icon,
+                count:
+                  tab.key === "work"
+                    ? totals.work
+                    : tab.key === "business"
+                      ? totals.business
+                      : null,
+              }))}
+              value={activeTab}
+              onChange={(tab) => {
+                cancelEdit();
+                setActiveTab(tab);
+              }}
+            />
+
+            <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
+              <div className="space-y-4">
+                {activeTab === "personal" && (
+                  <>
+                    <EditableSection
+                      title="Personal information"
+                      editing={editing === "personal"}
+                      saving={saving}
+                      onEdit={() => startEdit("personal")}
+                      onCancel={cancelEdit}
+                      onSave={() => void saveSection("personal")}
+                    >
+                      <div className="mb-5 flex flex-wrap items-center gap-4">
+                        <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-full border border-border bg-secondary text-xl font-semibold">
+                          {profile.identity.profilePhoto ? (
+                            <img
+                              src={profile.identity.profilePhoto}
+                              alt=""
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            initialsFromText(fullName(profile))
+                          )}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <label className="inline-flex">
+                            <input
+                              type="file"
+                              accept="image/jpeg,image/png,image/webp"
+                              className="sr-only"
+                              disabled={isMutatingPhoto}
+                              onChange={(event) => {
+                                void handlePhotoUpload(event.target.files?.[0]);
+                                event.target.value = "";
+                              }}
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              disabled={isMutatingPhoto}
+                              onClick={(event) => {
+                                const input = event.currentTarget
+                                  .previousElementSibling as HTMLInputElement | null;
+                                input?.click();
+                              }}
+                            >
+                              <Camera className="h-4 w-4" aria-hidden="true" />
+                              {isMutatingPhoto ? "Updating…" : "Upload photo"}
+                            </Button>
+                          </label>
+                          {profile.identity.profilePhoto ? (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              disabled={isMutatingPhoto}
+                              onClick={() => void handlePhotoDelete()}
+                            >
+                              <Trash2 className="h-4 w-4" aria-hidden="true" />
+                              Remove
+                            </Button>
+                          ) : null}
+                        </div>
+                      </div>
+                      {editing === "personal" && personalDraft ? (
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <EditField
+                            label="First name"
+                            value={personalDraft.firstName}
+                            onChange={(value) =>
+                              setPersonalDraft({ ...personalDraft, firstName: value })
+                            }
+                          />
+                          <EditField
+                            label="Last name"
+                            value={personalDraft.lastName}
+                            onChange={(value) =>
+                              setPersonalDraft({ ...personalDraft, lastName: value })
+                            }
+                          />
+                          <EditField
+                            label="Phone"
+                            value={personalDraft.phone}
+                            onChange={(value) =>
+                              setPersonalDraft({ ...personalDraft, phone: value })
+                            }
+                          />
+                          <EditField
+                            label="Email"
+                            type="email"
+                            value={personalDraft.email}
+                            onChange={(value) =>
+                              setPersonalDraft({ ...personalDraft, email: value })
+                            }
+                          />
+                          <EditField
+                            label="Date of birth"
+                            value={personalDraft.dateOfBirth}
+                            onChange={(value) =>
+                              setPersonalDraft({ ...personalDraft, dateOfBirth: value })
+                            }
+                          />
+                          <EditField
+                            label="Address"
+                            value={personalDraft.address}
+                            onChange={(value) =>
+                              setPersonalDraft({ ...personalDraft, address: value })
+                            }
+                          />
+                        </div>
+                      ) : (
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <ViewField label="Full name" value={fullName(profile)} />
+                          <ViewField
+                            label="Phone"
+                            value={
+                              profile.identity.primaryPhone || profile.personal.mobile
+                            }
+                          />
+                          <ViewField
+                            label="Email"
+                            value={
+                              profile.identity.primaryEmail || profile.personal.email
+                            }
+                          />
+                          <ViewField
+                            label="Date of birth"
+                            value={profile.personal.dateOfBirth}
+                          />
+                          <ViewField
+                            label="Address"
+                            value={formatAddress(profile.personal.postalAddress)}
+                          />
+                        </div>
+                      )}
+                    </EditableSection>
+
+                    <EditableSection
+                      title="Social profiles"
+                      editing={editing === "social"}
+                      saving={saving}
+                      onEdit={() => startEdit("social")}
+                      onCancel={cancelEdit}
+                      onSave={() => void saveSection("social")}
+                    >
+                      {editing === "social" && socialDraft ? (
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <EditField
+                            label="LinkedIn"
+                            value={socialDraft.linkedin}
+                            onChange={(value) =>
+                              setSocialDraft({ ...socialDraft, linkedin: value })
+                            }
+                          />
+                          <EditField
+                            label="Twitter"
+                            value={socialDraft.twitter}
+                            onChange={(value) =>
+                              setSocialDraft({ ...socialDraft, twitter: value })
+                            }
+                          />
+                          <EditField
+                            label="Instagram"
+                            value={socialDraft.instagram}
+                            onChange={(value) =>
+                              setSocialDraft({ ...socialDraft, instagram: value })
+                            }
+                          />
+                          <EditField
+                            label="Website"
+                            value={socialDraft.website}
+                            onChange={(value) =>
+                              setSocialDraft({ ...socialDraft, website: value })
+                            }
+                          />
+                        </div>
+                      ) : (
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <ViewField
+                            label="LinkedIn"
+                            value={profile.socials[0]?.linkedin}
+                          />
+                          <ViewField
+                            label="Twitter"
+                            value={profile.socials[0]?.twitter}
+                          />
+                          <ViewField
+                            label="Instagram"
+                            value={profile.socials[0]?.custom?.instagram}
+                          />
+                          <ViewField
+                            label="Website"
+                            value={profile.socials[0]?.website}
+                          />
+                        </div>
+                      )}
+                    </EditableSection>
+
+                    <EditableSection
+                      title="Work"
+                      editing={editing === "work"}
+                      saving={saving}
+                      onEdit={() => startEdit("work")}
+                      onCancel={cancelEdit}
+                      onSave={() => void saveSection("work")}
+                    >
+                      {editing === "work" && workDraft ? (
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <EditField
+                            label="Company"
+                            value={workDraft.company}
+                            onChange={(value) =>
+                              setWorkDraft({ ...workDraft, company: value })
+                            }
+                          />
+                          <EditField
+                            label="Position"
+                            value={workDraft.title}
+                            onChange={(value) =>
+                              setWorkDraft({ ...workDraft, title: value })
+                            }
+                          />
+                          <EditField
+                            label="Industry"
+                            value={workDraft.industry}
+                            onChange={(value) =>
+                              setWorkDraft({ ...workDraft, industry: value })
+                            }
+                          />
+                          <EditField
+                            label="Work email"
+                            type="email"
+                            value={workDraft.workEmail}
+                            onChange={(value) =>
+                              setWorkDraft({ ...workDraft, workEmail: value })
+                            }
+                          />
+                        </div>
+                      ) : (
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <ViewField
+                            label="Company"
+                            value={profile.work[0]?.companyName}
+                          />
+                          <ViewField
+                            label="Position"
+                            value={profile.work[0]?.workTitle}
+                          />
+                          <ViewField
+                            label="Industry"
+                            value={profile.work[0]?.custom?.industry}
+                          />
+                          <ViewField
+                            label="Work email"
+                            value={profile.work[0]?.workEmail}
+                          />
+                        </div>
+                      )}
+                    </EditableSection>
+                  </>
+                )}
+
+                {activeTab === "work" && (
+                  <ProfileListPanel
+                    empty="No work profiles yet"
+                    items={profile.work.map((item) => ({
+                      id: item.groupId,
+                      title: item.companyName || item.tag || "Work",
+                      subtitle: item.workTitle || item.workEmail || null,
+                    }))}
+                    deletingId={deletingGroupId}
+                    onDelete={(groupId) => void handleDeleteGroup(groupId, "WORK")}
                   />
-                ) : (
-                  <UserRound className="h-9 w-9 text-muted-foreground" aria-hidden="true" />
+                )}
+
+                {activeTab === "business" && (
+                  <ProfileListPanel
+                    empty="No business profiles yet"
+                    items={profile.business.map((item) => ({
+                      id: item.groupId,
+                      title: item.businessName || item.tag || "Business",
+                      subtitle: item.businessTitle || item.businessEmail || null,
+                    }))}
+                    deletingId={deletingGroupId}
+                    onDelete={(groupId) => void handleDeleteGroup(groupId, "BUSINESS")}
+                  />
                 )}
               </div>
-              <div>
-                <Badge variant="success">Profile</Badge>
-                <h1 className="mt-3 text-3xl font-semibold tracking-normal md:text-4xl">
-                  {fullName(profile)}
-                </h1>
-                <div className="mt-3 flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:flex-wrap">
-                  <span className="inline-flex items-center gap-2">
-                    <Phone className="h-4 w-4" aria-hidden="true" />
-                    {profile.identity.primaryPhone}
-                  </span>
-                  <span className="inline-flex items-center gap-2">
-                    <Mail className="h-4 w-4" aria-hidden="true" />
-                    {profile.identity.primaryEmail}
-                  </span>
-                </div>
-              </div>
+
+              <aside className="lg:sticky lg:top-6">
+                <Panel className="space-y-5">
+                  <div className="flex flex-col items-center text-center">
+                    <CompletionRing percent={completion.percent} />
+                    <p className="mt-3 text-sm text-muted-foreground">
+                      This info appears on your cards
+                    </p>
+                  </div>
+                  <div className="border-t border-border pt-4">
+                    <p className="mb-3 text-sm font-semibold text-foreground">
+                      Checklist
+                    </p>
+                    <CompletionChecklist items={checklist} />
+                  </div>
+                </Panel>
+              </aside>
             </div>
-            <Link
-              to="/dashboard?onboarding=profile&returnTo=/profile"
-              className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-                <Edit3 className="h-4 w-4" aria-hidden="true" />
-                Edit profile
-            </Link>
-          </div>
+          </>
         )}
-      </section>
-
-      {profile && (
-        <>
-          <section className="grid gap-4 md:grid-cols-4">
-            <SummaryCard label="Work profiles" value={totals.work} />
-            <SummaryCard label="Businesses" value={totals.business} />
-            <SummaryCard label="Social groups" value={totals.socials} />
-            <SummaryCard label="Financial rows" value={totals.financial} />
-          </section>
-
-          <section className="grid gap-4 xl:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <ShieldCheck className="h-4 w-4 text-primary" aria-hidden="true" />
-                  Personal
-                </CardTitle>
-                <CardDescription>{profile.personal.tag}</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <PersonalDetails personal={profile.personal} />
-              </CardContent>
-            </Card>
-
-            <ProfileCollection
-              title="Work"
-              icon={Building2}
-              empty="No work profiles added yet."
-              items={profile.work}
-              render={(item) => <WorkDetails item={item} />}
-            />
-
-            <ProfileCollection
-              title="Business"
-              icon={Building2}
-              empty="No business profiles added yet."
-              items={profile.business}
-              render={(item) => <BusinessDetails item={item} />}
-            />
-
-            <ProfileCollection
-              title="Socials"
-              icon={ExternalLink}
-              empty="No social profiles added yet."
-              items={profile.socials}
-              render={(item) => <SocialDetails item={item} />}
-            />
-          </section>
-
-          <section className="grid gap-4 xl:grid-cols-3">
-            <FinancialCard title="Bank accounts" icon={Landmark}>
-              {profile.financial.bankAccounts.length === 0 && (
-                <EmptyState label="No bank accounts added yet." />
-              )}
-              {profile.financial.bankAccounts.map((item) => (
-                <FinancialItem
-                  key={item.fieldId ?? item.groupId}
-                  tag={item.tag}
-                  sensitive={item.isSensitive}
-                >
-                  <DetailRow label="Bank" value={item.bankName} />
-                  <DetailRow label="Holder" value={item.accountHolder} />
-                  <DetailRow label="Account" value={maskMiddle(item.accountNumber)} />
-                  <DetailRow label="IBAN" value={maskMiddle(item.iban)} />
-                  <DetailRow label="SWIFT/BIC" value={item.swiftBic} />
-                  <DetailRow label="Routing number" value={item.routingNumber} />
-                  <DetailRow label="IFSC" value={item.ifsc} />
-                  <DetailRow label="Currency" value={item.currency} />
-                </FinancialItem>
-              ))}
-            </FinancialCard>
-
-            <FinancialCard title="Digital wallets" icon={CircleDollarSign}>
-              {profile.financial.digitalWallets.length === 0 && (
-                <EmptyState label="No digital wallets added yet." />
-              )}
-              {profile.financial.digitalWallets.map((item) => (
-                <FinancialItem
-                  key={item.fieldId ?? item.groupId}
-                  tag={item.tag}
-                  sensitive={item.isSensitive}
-                >
-                  <DetailRow label="Platform" value={item.platform} />
-                  <DetailRow label="Handle or link" value={item.handleOrLink} />
-                </FinancialItem>
-              ))}
-            </FinancialCard>
-
-            <FinancialCard title="Crypto wallets" icon={CircleDollarSign}>
-              {profile.financial.cryptoWallets.length === 0 && (
-                <EmptyState label="No crypto wallets added yet." />
-              )}
-              {profile.financial.cryptoWallets.map((item) => (
-                <FinancialItem
-                  key={item.fieldId ?? item.groupId}
-                  tag={item.tag}
-                  sensitive={item.isSensitive}
-                >
-                  <DetailRow label="Network" value={item.network} />
-                  <DetailRow label="Address" value={maskMiddle(item.address)} />
-                </FinancialItem>
-              ))}
-            </FinancialCard>
-          </section>
-        </>
-      )}
+      </div>
     </AppShell>
   );
 }
 
-function SummaryCard({ label, value }: { label: string; value: number }) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardDescription>{label}</CardDescription>
-        <CardTitle className="text-2xl">{value}</CardTitle>
-      </CardHeader>
-    </Card>
-  );
-}
-
-function PersonalDetails({
-  personal,
-}: {
-  personal: ProfileMeResponse["personal"];
-}) {
-  const custom = personal.custom;
-  const knownKeys = [
-    "postalStreet",
-    "postalCity",
-    "postalState",
-    "postalPincode",
-    "postalCountry",
-    "title",
-    "nickname",
-    "mobile",
-    "landline",
-    "email",
-    "dateOfBirth",
-    "yearOfBirth",
-    "currentLocation",
-    "relationshipStatus",
-    "kidsNames",
-    "partnerName",
-    "petNames",
-    "bloodGroup",
-  ];
-  const values = [
-    addressValue(personal.postalAddress, custom, "postal"),
-    profileValue(personal, "title"),
-    profileValue(personal, "nickname"),
-    profileValue(personal, "mobile"),
-    profileValue(personal, "landline"),
-    profileValue(personal, "email"),
-    profileValue(personal, "dateOfBirth"),
-    profileValue(personal, "yearOfBirth"),
-    profileValue(personal, "currentLocation"),
-    profileValue(personal, "relationshipStatus"),
-    profileValue(personal, "kidsNames"),
-    profileValue(personal, "partnerName"),
-    profileValue(personal, "petNames"),
-    profileValue(personal, "bloodGroup"),
-  ];
-
-  if (
-    !values.some(Boolean) &&
-    customEntries(custom, knownKeys).length === 0
-  ) {
-    return <EmptyState label="No personal details added yet." />;
-  }
-
-  return (
-    <>
-      <DetailGrid>
-        <DetailRow label="Title" value={profileValue(personal, "title")} />
-        <DetailRow label="Nickname" value={profileValue(personal, "nickname")} />
-        <DetailRow label="Mobile" value={profileValue(personal, "mobile")} />
-        <DetailRow label="Landline" value={profileValue(personal, "landline")} />
-        <DetailRow label="Email" value={profileValue(personal, "email")} />
-        <DetailRow label="Date of birth" value={profileValue(personal, "dateOfBirth")} />
-        <DetailRow label="Year of birth" value={profileValue(personal, "yearOfBirth")} />
-        <DetailRow
-          label="Current location"
-          value={profileValue(personal, "currentLocation")}
-        />
-        <DetailRow
-          label="Relationship status"
-          value={profileValue(personal, "relationshipStatus")}
-        />
-        <DetailRow label="Kids names" value={profileValue(personal, "kidsNames")} />
-        <DetailRow
-          label="Partner name"
-          value={profileValue(personal, "partnerName")}
-        />
-        <DetailRow label="Pet names" value={profileValue(personal, "petNames")} />
-        <DetailRow label="Blood group" value={profileValue(personal, "bloodGroup")} />
-        <DetailRow
-          label="Postal address"
-          value={addressValue(personal.postalAddress, custom, "postal")}
-        />
-      </DetailGrid>
-      <CustomDetails custom={custom} exclude={knownKeys} />
-    </>
-  );
-}
-
-function WorkDetails({ item }: { item: ProfileMeResponse["work"][number] }) {
-  const custom = item.custom;
-  const companyLogo = profileValue(item, "companyLogo");
-  const knownKeys = [
-    "companyName",
-    "companyLogo",
-    "companyRegNumber",
-    "workTitle",
-    "workMobile",
-    "workLandline",
-    "workFax",
-    "workEmail",
-    "workPostalStreet",
-    "workPostalCity",
-    "workPostalState",
-    "workPostalPincode",
-    "workPostalCountry",
-    "employeeId",
-  ];
-  const values = [
-    profileValue(item, "companyName"),
-    companyLogo,
-    profileValue(item, "companyRegNumber"),
-    profileValue(item, "workTitle"),
-    profileValue(item, "workMobile"),
-    profileValue(item, "workLandline"),
-    profileValue(item, "workFax"),
-    profileValue(item, "workEmail"),
-    addressValue(item.workPostalAddress, custom, "workPostal"),
-    profileValue(item, "employeeId"),
-  ];
-
-  if (
-    !values.some(Boolean) &&
-    customEntries(custom, knownKeys).length === 0
-  ) {
-    return <EmptyState label="No details saved in this work group." />;
-  }
-
-  return (
-    <>
-      <DetailGrid>
-        <DetailRow label="Company" value={profileValue(item, "companyName")} />
-        <LinkedDetailRow label="Company logo" value={companyLogo} />
-        <DetailRow
-          label="Registration number"
-          value={profileValue(item, "companyRegNumber")}
-        />
-        <DetailRow label="Title" value={profileValue(item, "workTitle")} />
-        <DetailRow label="Mobile" value={profileValue(item, "workMobile")} />
-        <DetailRow label="Landline" value={profileValue(item, "workLandline")} />
-        <DetailRow label="Fax" value={profileValue(item, "workFax")} />
-        <DetailRow label="Email" value={profileValue(item, "workEmail")} />
-        <DetailRow
-          label="Address"
-          value={addressValue(item.workPostalAddress, custom, "workPostal")}
-        />
-        <DetailRow label="Employee ID" value={profileValue(item, "employeeId")} />
-      </DetailGrid>
-      <CustomDetails custom={custom} exclude={knownKeys} />
-    </>
-  );
-}
-
-function BusinessDetails({
-  item,
-}: {
-  item: ProfileMeResponse["business"][number];
-}) {
-  const custom = item.custom;
-  const businessLogo = profileValue(item, "businessLogo");
-  const knownKeys = [
-    "businessName",
-    "businessLogo",
-    "businessRegNumber",
-    "businessTitle",
-    "businessMobile",
-    "businessLandline",
-    "businessFax",
-    "businessEmail",
-    "businessPostalStreet",
-    "businessPostalCity",
-    "businessPostalState",
-    "businessPostalPincode",
-    "businessPostalCountry",
-    "businessType",
-    "gstin",
-  ];
-  const values = [
-    profileValue(item, "businessName"),
-    businessLogo,
-    profileValue(item, "businessRegNumber"),
-    profileValue(item, "businessTitle"),
-    profileValue(item, "businessMobile"),
-    profileValue(item, "businessLandline"),
-    profileValue(item, "businessFax"),
-    profileValue(item, "businessEmail"),
-    addressValue(item.businessPostalAddress, custom, "businessPostal"),
-    profileValue(item, "businessType"),
-    profileValue(item, "gstin"),
-  ];
-
-  if (
-    !values.some(Boolean) &&
-    customEntries(custom, knownKeys).length === 0
-  ) {
-    return <EmptyState label="No details saved in this business group." />;
-  }
-
-  return (
-    <>
-      <DetailGrid>
-        <DetailRow label="Business" value={profileValue(item, "businessName")} />
-        <LinkedDetailRow label="Business logo" value={businessLogo} />
-        <DetailRow
-          label="Registration number"
-          value={profileValue(item, "businessRegNumber")}
-        />
-        <DetailRow label="Title" value={profileValue(item, "businessTitle")} />
-        <DetailRow label="Mobile" value={profileValue(item, "businessMobile")} />
-        <DetailRow
-          label="Landline"
-          value={profileValue(item, "businessLandline")}
-        />
-        <DetailRow label="Fax" value={profileValue(item, "businessFax")} />
-        <DetailRow label="Email" value={profileValue(item, "businessEmail")} />
-        <DetailRow
-          label="Address"
-          value={addressValue(item.businessPostalAddress, custom, "businessPostal")}
-        />
-        <DetailRow label="Business type" value={profileValue(item, "businessType")} />
-        <DetailRow label="GSTIN" value={profileValue(item, "gstin")} />
-      </DetailGrid>
-      <CustomDetails custom={custom} exclude={knownKeys} />
-    </>
-  );
-}
-
-function SocialDetails({ item }: { item: ProfileMeResponse["socials"][number] }) {
-  const custom = item.custom;
-  const knownKeys = [
-    "skype",
-    "facebook",
-    "twitter",
-    "whatsApp",
-    "whatsapp",
-    "blog",
-    "website",
-    "linkedin",
-    "github",
-  ];
-  const values = [
-    profileValue(item, "skype"),
-    profileValue(item, "facebook"),
-    profileValue(item, "twitter"),
-    profileValue(item, "whatsApp", "whatsapp"),
-    profileValue(item, "blog"),
-    profileValue(item, "website"),
-    profileValue(item, "linkedin"),
-    profileValue(item, "github"),
-  ];
-
-  if (
-    !values.some(Boolean) &&
-    customEntries(custom, knownKeys).length === 0
-  ) {
-    return <EmptyState label="No details saved in this social group." />;
-  }
-
-  return (
-    <>
-      <DetailGrid>
-        <DetailRow label="Skype" value={profileValue(item, "skype")} />
-        <DetailRow label="Facebook" value={profileValue(item, "facebook")} />
-        <DetailRow label="Twitter" value={profileValue(item, "twitter")} />
-        <DetailRow label="WhatsApp" value={profileValue(item, "whatsApp", "whatsapp")} />
-        <DetailRow label="Blog" value={profileValue(item, "blog")} />
-        <LinkedDetailRow label="Website" value={profileValue(item, "website")} />
-        <LinkedDetailRow label="LinkedIn" value={profileValue(item, "linkedin")} />
-        <LinkedDetailRow label="GitHub" value={profileValue(item, "github")} />
-      </DetailGrid>
-      <CustomDetails custom={custom} exclude={knownKeys} />
-    </>
-  );
-}
-
-function DetailGrid({ children }: { children: React.ReactNode }) {
-  return <div className="grid gap-3 sm:grid-cols-2">{children}</div>;
-}
-
-function DetailRow({ label, value }: { label: string; value?: string | null }) {
-  if (!value) {
-    return null;
-  }
-  return (
-    <div className="grid gap-1 text-sm">
-      <span className="text-xs font-medium uppercase text-muted-foreground">{label}</span>
-      <span className="break-words text-foreground">{value}</span>
-    </div>
-  );
-}
-
-function LinkedDetailRow({
-  label,
-  value,
-}: {
-  label: string;
-  value?: string | null;
-}) {
-  if (!value) {
-    return null;
-  }
-  if (!isLinkable(value)) {
-    return <DetailRow label={label} value={value} />;
-  }
-  return (
-    <div className="grid gap-1 text-sm">
-      <span className="text-xs font-medium uppercase text-muted-foreground">{label}</span>
-      <a
-        href={value}
-        target="_blank"
-        rel="noreferrer"
-        className="inline-flex min-w-0 items-center gap-2 break-all font-medium text-primary"
-      >
-        <span className="min-w-0 break-all">{value}</span>
-        <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-      </a>
-    </div>
-  );
-}
-
-function EmptyState({ label }: { label: string }) {
-  return (
-    <div className="rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">
-      {label}
-    </div>
-  );
-}
-
-function CustomDetails({
-  custom,
-  exclude = [],
-}: {
-  custom?: CustomRecord;
-  exclude?: string[];
-}) {
-  const entries = customEntries(custom, exclude);
-  if (entries.length === 0) {
-    return null;
-  }
-  return (
-    <div className="grid gap-3 sm:grid-cols-2">
-      {entries.map(([label, value]) => (
-        <DetailRow key={label} label={displayLabel(label)} value={valueOrNull(value)} />
-      ))}
-    </div>
-  );
-}
-
-function ProfileCollection<T extends { groupId: string; tag: string }>({
-  title,
-  icon: Icon,
+function ProfileListPanel({
   empty,
   items,
-  render,
+  onDelete,
+  deletingId,
 }: {
-  title: string;
-  icon: typeof Building2;
   empty: string;
-  items: T[];
-  render: (item: T) => React.ReactNode;
+  items: Array<{ id: string; title: string; subtitle: string | null }>;
+  onDelete?: (groupId: string) => void;
+  deletingId?: string | null;
 }) {
+  if (items.length === 0) {
+    return (
+      <Panel className="border-dashed text-center">
+        <p className="text-sm font-semibold text-foreground">{empty}</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Use Edit on the Personal tab Work section, or open full onboarding.
+        </p>
+        <Link
+          to="/dashboard?onboarding=profile&returnTo=/profile"
+          className={cn(buttonVariants({ variant: "secondary" }), "mt-4")}
+        >
+          Open profile editor
+        </Link>
+      </Panel>
+    );
+  }
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Icon className="h-4 w-4 text-primary" aria-hidden="true" />
-          {title}
-        </CardTitle>
-        <CardDescription>{items.length} saved group{items.length === 1 ? "" : "s"}</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {items.length === 0 && <EmptyState label={empty} />}
-        {items.map((item) => (
-          <div key={item.groupId} className="space-y-3 rounded-md border border-border p-4">
-            <Badge variant="secondary">{item.tag}</Badge>
-            {render(item)}
+    <div className="space-y-3">
+      {items.map((item) => (
+        <Panel key={item.id} className="!p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-foreground">{item.title}</p>
+              {item.subtitle ? (
+                <p className="mt-1 text-sm text-muted-foreground">{item.subtitle}</p>
+              ) : null}
+            </div>
+            {onDelete ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="shrink-0 text-destructive hover:text-destructive"
+                disabled={deletingId === item.id}
+                onClick={() => onDelete(item.id)}
+              >
+                <Trash2 className="h-4 w-4" aria-hidden="true" />
+                {deletingId === item.id ? "Removing" : "Remove"}
+              </Button>
+            ) : null}
           </div>
-        ))}
-      </CardContent>
-    </Card>
-  );
-}
-
-function FinancialCard({
-  title,
-  icon: Icon,
-  children,
-}: {
-  title: string;
-  icon: typeof Landmark;
-  children: React.ReactNode;
-}) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Icon className="h-4 w-4 text-primary" aria-hidden="true" />
-          {title}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">{children}</CardContent>
-    </Card>
-  );
-}
-
-function FinancialItem({
-  tag,
-  sensitive,
-  children,
-}: {
-  tag: string;
-  sensitive: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="space-y-3 rounded-md border border-border p-4">
-      <div className="flex items-center justify-between gap-3">
-        <Badge variant="secondary">{tag}</Badge>
-        {sensitive && <Badge variant="warning">Sensitive</Badge>}
-      </div>
-      {children}
+        </Panel>
+      ))}
     </div>
   );
 }

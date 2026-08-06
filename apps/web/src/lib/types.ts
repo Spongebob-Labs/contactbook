@@ -1,16 +1,35 @@
+/** Twilio OTP verify (`POST /auth/otp/whatsapp/verify`). */
 export type VerifyCodeResponse =
-  | { registered: true }
   | {
+      verified?: true;
+      registered: true;
+      isOnboarded?: boolean;
+      userId?: string;
+      accessToken?: string;
+      refreshToken?: string;
+    }
+  | {
+      verified?: true;
       registered: false;
-      message: string;
-      phoneVerificationToken: string;
+      message?: string;
+      /**
+       * Required for POST /auth/register. Issued by OTP verify for
+       * unregistered phones.
+       */
+      phoneVerificationToken?: string;
     };
+
+export type SendOtpResponse = {
+  message: string;
+  expiresInSeconds?: number;
+  resendAfterSeconds?: number;
+};
 
 export type ContactSource =
   | "GOOGLE"
   | "ICLOUD"
   | "VCARD"
-  | "MANUAL";
+  | "CONTACTBOOK";
 
 export type ContactPhone = {
   value: string;
@@ -46,7 +65,43 @@ export type ContactUrl = {
   label?: string | null;
 };
 
-export type ContactCardType = "BUSINESS" | "PERSONAL" | "PAYMENT" | "CUSTOM";
+export type ContactCardType = "BUSINESS" | "PERSONAL" | "CUSTOM";
+
+/** Fields entered in the live card maker (UI / local store). */
+export type ContactCardFields = {
+  displayName: string;
+  title: string;
+  /** E.164-style dial prefix, e.g. "+971". */
+  countryCode: string;
+  /** National / local phone digits (no country code). */
+  phone: string;
+  email: string;
+  company: string;
+  address: string;
+  website: string;
+  linkedin: string;
+  twitter: string;
+  facebook: string;
+  instagram: string;
+  /**
+   * Compressed data-URL headshot for the live card avatar.
+   * Local UI pass only until media upload API exists.
+   */
+  photoDataUrl: string;
+};
+
+/** Theme for shareable card chrome (preset id or custom hex). */
+export type ContactCardTheme = {
+  presetId: string;
+  primary: string;
+};
+
+/**
+ * Mobile portrait layout templates.
+ * - connect: white identity panel, CTAs, socials (share page)
+ * - scan: solid theme card with brand pill, details, and QR
+ */
+export type ContactCardTemplate = "connect" | "scan";
 
 export type ContactCard = {
   id: string;
@@ -55,6 +110,13 @@ export type ContactCard = {
   type: ContactCardType;
   createdAt: string;
   updatedAt: string;
+  isSensitive?: boolean;
+  /** Optional maker payload — client presentation until field-mappings cover content. */
+  fields?: ContactCardFields;
+  theme?: ContactCardTheme;
+  template?: ContactCardTemplate;
+  /** Profile field UUIDs mapped on the server when available. */
+  mappedFieldIds?: string[];
 };
 
 export type ContactImportSummary = {
@@ -81,6 +143,16 @@ export type ContactImportSummary = {
   }>;
 };
 
+export type ContactLabel = {
+  id: string;
+  name: string;
+};
+
+export type ContactGroup = ContactLabel & {
+  source?: ContactSource | null;
+  externalId?: string | null;
+};
+
 export type ContactProviderLink = {
   source: ContactSource;
   externalId: string;
@@ -100,6 +172,9 @@ export type ContactImport = {
   lastName?: string | null;
   primaryPhone?: ContactPhone | null;
   primaryEmail?: ContactEmail | null;
+  tags: ContactLabel[];
+  groups: ContactGroup[];
+  providerLinks?: ContactProviderLink[];
   createdAt: string;
   updatedAt: string;
 };
@@ -114,8 +189,15 @@ export type ContactDetail = ContactImport & {
   organizations: ContactOrganization[];
   addresses: ContactAddress[];
   urls: ContactUrl[];
-  providerLinks?: ContactProviderLink[];
   deletedAt?: string | null;
+};
+
+export type ContactListResponse = {
+  items: ContactDetail[];
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
 };
 
 export type GoogleSyncResponse = {
@@ -123,6 +205,25 @@ export type GoogleSyncResponse = {
   processedCount: number;
   totalContacts: number;
   lastSyncAt: string | null;
+};
+
+export type ContactImportResult = ContactImportSummary & {
+  completedAt?: string;
+  created?: number;
+  updated?: number;
+  /** New API import counters */
+  imported?: number;
+  merged?: number;
+  skipped?: Array<{ reason: string; externalId?: string }>;
+  importedCount?: number;
+  processedCount?: number;
+  createdCount?: number;
+  updatedCount?: number;
+  skippedCount?: number;
+  totalContacts?: number;
+  lastSyncAt?: string | null;
+  message?: string;
+  summary?: ContactImportSummary;
 };
 
 export type PostalAddress = {

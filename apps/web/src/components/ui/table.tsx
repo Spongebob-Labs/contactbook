@@ -27,7 +27,7 @@ export function TableRow({ className, ...props }: HTMLAttributes<HTMLTableRowEle
   return (
     <tr
       className={cn(
-        "border-b border-border transition-colors hover:bg-muted/50",
+        "border-b border-border/50 transition-colors hover:bg-foreground/[0.03]",
         className,
       )}
       {...props}
@@ -42,7 +42,7 @@ export function TableHead({
   return (
     <th
       className={cn(
-        "h-11 px-4 text-left align-middle text-xs font-medium uppercase text-muted-foreground",
+        "h-10 px-4 text-left align-middle text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground",
         className,
       )}
       {...props}

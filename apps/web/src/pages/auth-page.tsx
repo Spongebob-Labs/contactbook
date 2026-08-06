@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ArrowLeft, Check, ChevronsUpDown, MessageCircle } from "lucide-react";
@@ -9,12 +9,20 @@ import { PageLoader } from "@/components/page-loader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { useAuth } from "@/context/auth-context";
-import { apiFetch } from "@/lib/api";
+import { ApiError } from "@/lib/api";
+import {
+  completeRegistration,
+  isPhoneVerificationToken,
+  isRegisteredAuthResult,
+  sendWhatsappOtp,
+  verifyWhatsappOtp,
+} from "@/lib/auth-api";
+import { setSessionTokens } from "@/lib/session-tokens";
 import { DIAL_COUNTRIES } from "@/lib/dial-countries";
+import { friendlyErrorMessages, logUiError } from "@/lib/friendly-errors";
 import { buildE164, nationalDigits } from "@/lib/phone";
-import type { VerifyCodeResponse } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 const COUNTRY_CODE_PATTERN = /^\+\d{1,4}$/;
 const NATIONAL_PHONE_PATTERN = /^\d{4,15}$/;
@@ -59,9 +67,18 @@ const COUNTRY_CODE_OPTIONS = [...DIAL_COUNTRIES].sort((current, next) => {
   return current.name.localeCompare(next.name);
 });
 
+function countryCodeInput(value: string) {
+  return `+${value.replace(/\D/g, "").slice(0, 4)}`;
+}
+
+function phoneNumberInput(value: string) {
+  return value.replace(/\D/g, "").slice(0, 15);
+}
+
 export default function AuthPage() {
   const [step, setStep] = useState<Step>("phone");
   const [isBusy, setIsBusy] = useState(false);
+  const verifyInFlight = useRef(false);
   const [phoneVerificationToken, setPhoneVerificationToken] = useState("");
   const [phoneContext, setPhoneContext] = useState({
     countryCode: "+1",
@@ -70,7 +87,8 @@ export default function AuthPage() {
   const [postAuthRedirect, setPostAuthRedirect] = useState<string | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
-  const { isAuthenticated, isLoading, markAuthenticated } = useAuth();
+  const { isAuthenticated, isLoading, markAuthenticated, refreshUser } =
+    useAuth();
   const locationRedirectTo =
     typeof location.state === "object" &&
     location.state !== null &&
@@ -108,77 +126,155 @@ export default function AuthPage() {
     try {
       buildE164(countryCode, values.national);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Enter a valid phone number.");
+      logUiError("Invalid phone number", error);
+      toast.error("Enter a valid phone number.");
       return;
     }
     setIsBusy(true);
     try {
-      await apiFetch<{ message: string }>("/v1/auth/whatsapp/request-code", {
-        method: "POST",
-        body: { phone, countryCode },
-      });
+      const result = await sendWhatsappOtp({ phone, countryCode });
       setPhoneContext({ countryCode, phone });
+      setPhoneVerificationToken("");
       setStep("otp");
-      toast.success("Verification code sent.");
+      toast.success(
+        result.message ||
+          "Verification code sent to your WhatsApp number.",
+      );
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not send code.");
+      logUiError("Could not send code", error);
+      if (error instanceof ApiError && error.status === 429) {
+        toast.error(
+          error.message ||
+            "Please wait before requesting another code.",
+        );
+      } else {
+        toast.error(
+          error instanceof ApiError && error.message
+            ? error.message
+            : "We couldn't send the code. Please try again.",
+        );
+      }
     } finally {
       setIsBusy(false);
     }
   };
 
   const onVerifyCode = async (values: OtpForm) => {
+    // OTP is single-use: ignore double-clicks after the first verify succeeds.
+    if (verifyInFlight.current || isBusy) {
+      return;
+    }
+    verifyInFlight.current = true;
     setIsBusy(true);
     try {
-      const result = await apiFetch<VerifyCodeResponse>("/v1/auth/whatsapp/verify-code", {
-        method: "POST",
-        body: {
-          phone: phoneContext.phone,
-          countryCode: phoneContext.countryCode,
-          code: values.code,
-        },
-      });
-      if (result.registered) {
+      // Twilio OTP verify: session when registered; else registration token.
+      const result = await verifyWhatsappOtp(phoneContext, values.code);
+
+      // Existing account → dashboard (never Create account again).
+      if (isRegisteredAuthResult(result)) {
+        const payload = result as {
+          accessToken?: string;
+          refreshToken?: string;
+        };
+        setSessionTokens({
+          accessToken: payload.accessToken,
+          refreshToken: payload.refreshToken,
+        });
         markAuthenticated();
+        await refreshUser().catch(() => undefined);
         toast.success("Signed in.");
-        navigate(locationRedirectTo, { replace: true });
+        const nextPath = locationRedirectTo;
+        setPostAuthRedirect(nextPath);
+        otpForm.reset({ code: "" });
+        setPhoneVerificationToken("");
+        setStep("phone");
+        navigate(nextPath, { replace: true });
         return;
       }
-      setPhoneVerificationToken(result.phoneVerificationToken);
+
+      // New user only: Finish profile → POST /auth/register (OTP is single-use).
+      otpForm.reset({ code: "" });
+      const token =
+        "phoneVerificationToken" in result
+          ? (result.phoneVerificationToken?.trim() ?? "")
+          : "";
+      setPhoneVerificationToken(token);
       setStep("register");
-      toast.info("Complete your profile to continue.");
+      if (isPhoneVerificationToken(token)) {
+        toast.success(
+          ("message" in result && result.message) ||
+            "Phone verified. Complete your details to create your account.",
+        );
+      } else {
+        toast.message(
+          "Phone verified. Complete your details — if Create account fails, the API did not return a registration token.",
+        );
+      }
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not verify code.");
+      logUiError("Could not verify code", error);
+      if (error instanceof ApiError && error.status === 401) {
+        toast.error(
+          error.message ||
+            "Invalid or expired code. Request a new WhatsApp code and try again.",
+        );
+        return;
+      }
+      toast.error(
+        error instanceof ApiError && error.message
+          ? error.message
+          : friendlyErrorMessages.auth,
+      );
     } finally {
+      verifyInFlight.current = false;
       setIsBusy(false);
     }
   };
 
   const onRegister = async (values: RegisterForm) => {
+    if (!isPhoneVerificationToken(phoneVerificationToken)) {
+      toast.error(
+        "Registration token missing from OTP verify. Request a new WhatsApp code and try again.",
+      );
+      return;
+    }
+
     setIsBusy(true);
     try {
-      await apiFetch<Record<string, never>>("/v1/auth/register", {
-        method: "POST",
-        body: {
-          phoneVerificationToken,
-          firstName: values.firstName,
-          lastName: values.lastName,
-          email: values.email,
-          phone: phoneContext.phone,
-          countryCode: phoneContext.countryCode,
-        },
+      await completeRegistration({
+        phoneVerificationToken,
+        firstName: values.firstName,
+        lastName: values.lastName,
+        email: values.email,
       });
       const onboardingPath = "/dashboard?onboarding=profile&flow=setup";
       setPostAuthRedirect(onboardingPath);
       markAuthenticated();
+      await refreshUser().catch(() => undefined);
       toast.success("Account created.");
       navigate(onboardingPath, { replace: true });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not create account.");
+      logUiError("Could not create account", error);
+      if (error instanceof ApiError && error.status === 409) {
+        toast.error(
+          error.message ||
+            "This phone number is already registered. Request a new code to sign in.",
+        );
+        setPhoneVerificationToken("");
+        setStep("phone");
+        otpForm.reset({ code: "" });
+        return;
+      }
+      toast.error(
+        error instanceof ApiError && error.message
+          ? error.message
+          : "We couldn't create your account. Please try again.",
+      );
     } finally {
       setIsBusy(false);
     }
   };
+
+  const canSubmitRegister = isPhoneVerificationToken(phoneVerificationToken);
 
   return (
     <main className="grid min-h-screen bg-background lg:grid-cols-[minmax(0,1fr)_480px]">
@@ -190,17 +286,17 @@ export default function AuthPage() {
           <span className="font-semibold">ContactBook</span>
         </div>
         <div className="max-w-xl space-y-5">
-          <p className="text-sm font-medium text-primary">Private by design</p>
+          <p className="text-sm font-medium text-primary">Never lose contact</p>
           <h1 className="text-5xl font-semibold tracking-normal text-foreground">
-            Build a contact profile people can actually keep up to date.
+            Create the address book profile that updates itself.
           </h1>
           <p className="max-w-lg text-base text-muted-foreground">
-            Sign in with WhatsApp, create your profile, and bring your Google
-            contacts into one focused workspace.
+            Sign in with WhatsApp, create your personal ContactBook, and choose
+            the details family, friends, and new connections can keep current.
           </p>
         </div>
         <div className="grid max-w-lg grid-cols-3 gap-3">
-          {["OTP login", "Google import", "Dark mode"].map((item) => (
+          {["Connect", "Control", "Current"].map((item) => (
             <div key={item} className="rounded-lg border border-border bg-card p-3 text-sm">
               <Check className="mb-3 h-4 w-4 text-primary" aria-hidden="true" />
               {item}
@@ -210,9 +306,6 @@ export default function AuthPage() {
       </section>
 
       <section className="flex min-h-screen items-center justify-center px-4 pb-16 pt-24 md:px-8 md:pb-20 md:pt-28 lg:pb-24 lg:pt-24">
-        <div className="absolute right-4 top-4">
-          <ThemeToggle />
-        </div>
         <Card className="w-full max-w-md">
           <CardHeader className="gap-2 p-6 pb-4">
             <CardTitle>
@@ -230,28 +323,41 @@ export default function AuthPage() {
             {step === "phone" && (
               <form className="space-y-5" onSubmit={phoneForm.handleSubmit(onRequestCode)}>
                 <label className="flex flex-col gap-2 text-sm font-medium">
-                  <span>Country code</span>
-                  <CountryCodeCombobox
-                    value={selectedCountryCode}
-                    options={COUNTRY_CODE_OPTIONS}
-                    disabled={isBusy}
-                    onChange={(countryCode) =>
-                      phoneForm.setValue("countryCode", countryCode, {
-                        shouldDirty: true,
-                        shouldTouch: true,
-                        shouldValidate: true,
-                      })
-                    }
-                  />
-                </label>
-                <label className="flex flex-col gap-2 text-sm font-medium">
                   <span>Phone number</span>
-                  <Input
-                    inputMode="tel"
-                    autoComplete="tel-national"
-                    placeholder="5551234567"
-                    {...phoneForm.register("national")}
-                  />
+                  <div className="flex h-11 rounded-md border border-input bg-background shadow-xs transition-colors focus-within:ring-2 focus-within:ring-ring">
+                    <CountryCodeCombobox
+                      embedded
+                      value={selectedCountryCode}
+                      options={COUNTRY_CODE_OPTIONS}
+                      disabled={isBusy}
+                      onChange={(countryCode) =>
+                        phoneForm.setValue("countryCode", countryCode, {
+                          shouldDirty: true,
+                          shouldTouch: true,
+                          shouldValidate: true,
+                        })
+                      }
+                    />
+                    <div className="my-2 w-px bg-border" aria-hidden="true" />
+                    <Input
+                      inputMode="tel"
+                      autoComplete="tel-national"
+                      placeholder="Enter phone number"
+                      className="h-full min-w-0 flex-1 border-0 shadow-none focus-visible:ring-0"
+                      {...phoneForm.register("national")}
+                      onChange={(event) =>
+                        phoneForm.setValue(
+                          "national",
+                          phoneNumberInput(event.target.value),
+                          {
+                            shouldDirty: true,
+                            shouldTouch: true,
+                            shouldValidate: true,
+                          },
+                        )
+                      }
+                    />
+                  </div>
                 </label>
                 {phoneForm.formState.errors.countryCode && (
                   <p className="text-sm text-destructive">
@@ -311,19 +417,49 @@ export default function AuthPage() {
 
             {step === "register" && (
               <form className="space-y-5" onSubmit={registerForm.handleSubmit(onRegister)}>
+                <p className="rounded-md border border-border bg-secondary/40 px-3 py-2 text-sm text-muted-foreground">
+                  Verified phone{" "}
+                  <span className="font-medium text-foreground">
+                    {phoneContext.countryCode} {phoneContext.phone}
+                  </span>
+                  . Next:{" "}
+                  <code className="text-xs">POST /api/v1/auth/register</code>
+                </p>
+                {!canSubmitRegister ? (
+                  <p className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                    OTP verify did not include{" "}
+                    <code className="text-xs">phoneVerificationToken</code>. The
+                    form is open, but Create account needs that token (request a
+                    new OTP).
+                  </p>
+                ) : (
+                  <p className="rounded-md border border-border bg-secondary/40 px-3 py-2 text-sm text-muted-foreground">
+                    Registration token received from OTP verify. Fill the fields
+                    below to create your account.
+                  </p>
+                )}
                 <label className="flex flex-col gap-2 text-sm font-medium">
                   <span>First name</span>
-                  <Input autoComplete="given-name" {...registerForm.register("firstName")} />
+                  <Input
+                    autoComplete="given-name"
+                    placeholder="Aayush"
+                    {...registerForm.register("firstName")}
+                  />
                 </label>
                 <label className="flex flex-col gap-2 text-sm font-medium">
                   <span>Last name</span>
-                  <Input autoComplete="family-name" {...registerForm.register("lastName")} />
+                  <Input
+                    autoComplete="family-name"
+                    placeholder="Sharma"
+                    {...registerForm.register("lastName")}
+                  />
                 </label>
                 <label className="flex flex-col gap-2 text-sm font-medium">
                   <span>Email</span>
                   <Input
                     type="email"
                     autoComplete="email"
+                    placeholder="you@example.com"
                     {...registerForm.register("email")}
                   />
                 </label>
@@ -340,13 +476,21 @@ export default function AuthPage() {
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => setStep("otp")}
+                    onClick={() => {
+                      setPhoneVerificationToken("");
+                      setStep("phone");
+                      otpForm.reset({ code: "" });
+                    }}
                     disabled={isBusy}
                   >
                     <ArrowLeft className="h-4 w-4" aria-hidden="true" />
                     Back
                   </Button>
-                  <Button type="submit" className="flex-1" disabled={isBusy}>
+                  <Button
+                    type="submit"
+                    className="flex-1"
+                    disabled={isBusy || !canSubmitRegister}
+                  >
                     Create account
                   </Button>
                 </div>
@@ -361,11 +505,13 @@ export default function AuthPage() {
 
 function CountryCodeCombobox({
   disabled,
+  embedded = false,
   onChange,
   options,
   value,
 }: {
   disabled?: boolean;
+  embedded?: boolean;
   onChange: (value: string) => void;
   options: CountryCodeOption[];
   value: string;
@@ -396,8 +542,13 @@ function CountryCodeCombobox({
   };
 
   return (
-    <div className="relative">
-      <div className="flex rounded-md border border-input bg-background shadow-xs transition-colors focus-within:ring-2 focus-within:ring-ring">
+    <div className={cn("relative", embedded && "w-28 shrink-0 sm:w-32")}>
+      <div
+        className={cn(
+          "flex rounded-md border border-input bg-background shadow-xs transition-colors focus-within:ring-2 focus-within:ring-ring",
+          embedded && "h-full rounded-none border-0 bg-transparent shadow-none focus-within:ring-0",
+        )}
+      >
         <Input
           inputMode="tel"
           autoComplete="tel-country-code"
@@ -420,15 +571,18 @@ function CountryCodeCombobox({
             setIsOpen(false);
           }}
           onChange={(event) => {
-            setQuery(event.target.value);
+            setQuery(countryCodeInput(event.target.value));
             setIsOpen(true);
           }}
           onFocus={() => {
-            setQuery(selectedOption ? `${selectedOption.name} ${selectedOption.dial}` : value);
+            setQuery(value);
             setIsOpen(true);
           }}
           placeholder="+1"
-          className="border-0 shadow-none focus-visible:ring-0"
+          className={cn(
+            "border-0 shadow-none focus-visible:ring-0",
+            embedded && "h-full rounded-none bg-transparent px-3",
+          )}
           role="combobox"
           aria-expanded={isOpen}
           aria-controls="country-code-options"
@@ -437,10 +591,13 @@ function CountryCodeCombobox({
           type="button"
           variant="outline"
           disabled={disabled}
-          className="rounded-l-none border-y-0 border-r-0 px-3 shadow-none focus-visible:ring-0"
+          className={cn(
+            "rounded-l-none border-y-0 border-r-0 px-3 shadow-none focus-visible:ring-0",
+            embedded && "h-full rounded-none border-0 bg-transparent px-2 hover:bg-muted",
+          )}
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => {
-            setQuery(selectedOption ? `${selectedOption.name} ${selectedOption.dial}` : value);
+            setQuery(value);
             setIsOpen((current) => !current);
           }}
           aria-label="Show country codes"
@@ -453,7 +610,10 @@ function CountryCodeCombobox({
         <div
           id="country-code-options"
           role="listbox"
-          className="absolute z-20 mt-2 max-h-60 w-full overflow-y-auto rounded-md border border-border bg-popover p-2 text-popover-foreground shadow-md"
+          className={cn(
+            "absolute z-20 mt-2 max-h-60 w-full overflow-y-auto rounded-md border border-border bg-popover p-2 text-popover-foreground shadow-md",
+            embedded && "w-72",
+          )}
         >
           {filteredOptions.length > 0 ? (
             filteredOptions.map((option) => (

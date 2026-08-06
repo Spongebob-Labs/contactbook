@@ -85,31 +85,31 @@ describe("Profile flow (integration, mocked persistence)", () => {
         category: FieldCategory.IDENTITY,
         name: "Identity",
         fields: [mockIdentityField],
-      } as unknown as GroupWithFields,
+      },
       {
         id: "g-pers",
         category: FieldCategory.PERSONAL,
         name: "Personal Details",
         fields: [mockPersonalField],
-      } as unknown as GroupWithFields,
+      },
       {
         id: "g-soc",
         category: FieldCategory.SOCIAL,
         name: "Social Profiles",
         fields: [mockSocialField],
-      } as unknown as GroupWithFields,
+      },
       {
         id: "g-work",
         category: FieldCategory.WORK,
         name: "My Company",
         fields: [mockWorkField],
-      } as unknown as GroupWithFields,
+      },
       {
         id: "g-biz",
         category: FieldCategory.BUSINESS,
         name: "My Business",
         fields: [mockBusinessField],
-      } as unknown as GroupWithFields,
+      },
     );
 
     await svc.completeOnboarding(

@@ -1,29 +1,31 @@
+import { cva, type VariantProps } from "class-variance-authority";
 import type { HTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 
-type BadgeVariant = "default" | "secondary" | "success" | "warning" | "outline";
+const badgeVariants = cva(
+  "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
+  {
+    variants: {
+      variant: {
+        default: "bg-secondary text-[#374151]",
+        secondary: "bg-secondary text-[#374151]",
+        outline: "border border-border bg-surface text-foreground",
+        success: "bg-success-bg text-success",
+        warning: "bg-secondary text-muted-foreground",
+        destructive: "bg-[var(--color-danger-bg)] text-destructive",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+    },
+  },
+);
 
-const variants: Record<BadgeVariant, string> = {
-  default: "bg-primary text-primary-foreground",
-  secondary: "bg-secondary text-secondary-foreground",
-  success: "bg-success/12 text-success ring-success/20",
-  warning: "bg-warning/15 text-warning ring-warning/25",
-  outline: "border border-border text-muted-foreground",
-};
+export type BadgeProps = HTMLAttributes<HTMLSpanElement> &
+  VariantProps<typeof badgeVariants>;
 
-export function Badge({
-  className,
-  variant = "default",
-  ...props
-}: HTMLAttributes<HTMLSpanElement> & { variant?: BadgeVariant }) {
+export function Badge({ className, variant, ...props }: BadgeProps) {
   return (
-    <span
-      className={cn(
-        "inline-flex h-6 items-center rounded-md px-2 text-xs font-medium ring-1 ring-inset ring-transparent",
-        variants[variant],
-        className,
-      )}
-      {...props}
-    />
+    <span className={cn(badgeVariants({ variant }), className)} {...props} />
   );
 }
