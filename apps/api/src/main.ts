@@ -15,6 +15,7 @@ async function bootstrap(): Promise<void> {
     process.env.CORS_ORIGIN ??
     [
       "https://contactbookten.vercel.app",
+      "https://contactbook-staging.vercel.app",
       "https://www.getcontactbook.com",
       "http://localhost:3000",
       "http://localhost:5173",
