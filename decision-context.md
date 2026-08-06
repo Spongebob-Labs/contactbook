@@ -1,5 +1,25 @@
 # Decision Context
 
+## 2026-08-05 - Card share picks recipients from vCard contacts (multi-select)
+
+- Decision: "Share via WhatsApp" no longer takes a typed phone number. Recipients are chosen in a new searchable multi-select (`components/ui/multi-select.tsx`) populated from `fetchAllContacts({ source: "VCARD" })`, one row per contact using its primary phone, capped at 50 (matches API `MAX_SHARE_CARD_RECIPIENTS`). Each recipient is sent with `contactId`, which `ShareCardRecipientDto` already accepts. The country-code select stays only as the fallback dial code for contacts saved without one; `parsePhoneParts()` in `lib/phone.ts` splits stored numbers and contacts that cannot be parsed are skipped with a warning toast.
+- Reason: User wants recipients selected from imported contacts instead of manual entry; backend already supported batch recipients + `contactId`, so this stayed frontend-only.
+- Files: `apps/web/src/components/ui/multi-select.tsx`, `apps/web/src/pages/card-detail-page.tsx`, `apps/web/src/lib/phone.ts`, `apps/web/src/lib/cards-api.ts`, `apps/web/src/lib/__tests__/unit/phone.unit.test.ts`, `decision-context.md`.
+- Alternatives: one row per phone number (rejected — primary phone keeps the list short); silently assuming `+91` for local numbers (rejected — fallback selector is explicit).
+- Follow-up (same day): the WhatsApp share dialog is now a scroll container (`max-h-[85vh] overflow-y-auto`) and the dropdown list is viewport-capped (`max-h-[min(14rem,40vh)]`, `overscroll-contain`), with the selected-chip row capped at `max-h-24`. Without this the taller form could extend past the viewport with nothing to scroll.
+
+## 2026-08-05 - Share sheet is WhatsApp-only
+
+- Decision: `ShareSheet` exposes only the WhatsApp option; Messages, Copy Link, Share QR, and native "More…" rows are removed, and `ShareSheetOptionId` narrows to `"whatsapp"`. Removed the now-unused `shareCard()` native-share helper from card detail (`copyCardLink()` stays for the card link button elsewhere on the page).
+- Reason: User asked to remove every share channel except WhatsApp; Messages/QR were "coming soon" stubs anyway.
+- Files: `apps/web/src/components/ui/share-sheet.tsx`, `apps/web/src/pages/card-detail-page.tsx`, `decision-context.md`.
+
+## 2026-08-05 - Repaired broken pnpm-lock.yaml after main merge
+
+- Decision: Regenerated `pnpm-lock.yaml` with `pnpm install --no-frozen-lockfile` so peer-dependency snapshots (`debug@4.4.3(supports-color@8.1.1)`, `tsdav@2.2.2(supports-color@8.1.1)`) match the importers block.
+- Reason: `Merge branch 'main' into feat/dynamic-ui` left importer versions pointing at snapshots that did not exist, so CI's `pnpm install --frozen-lockfile --filter api...` failed with `ERR_PNPM_LOCKFILE_MISSING_DEPENDENCY`.
+- Files: `pnpm-lock.yaml`, `decision-context.md`.
+
 ## 2026-08-02 - Contacts list page is 1-based (not 0)
 
 - Decision: `GET /contacts` sends `page` as UI page (`>= 1`), no longer `uiPage - 1`. Matches live validation (`page must not be less than 1`).

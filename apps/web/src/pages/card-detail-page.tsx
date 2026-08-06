@@ -30,6 +30,10 @@ import { MobileCardPreview } from "@/components/cards/mobile-card-preview";
 import { Alert } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  MultiSelect,
+  type MultiSelectOption,
+} from "@/components/ui/multi-select";
 import { Panel } from "@/components/ui/panel";
 import { ShareSheet, type ShareSheetOptionId } from "@/components/ui/share-sheet";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -55,10 +59,13 @@ import {
   shareCardBatch,
   updateCard,
   type CardShareBatch,
+  type CardShareRecipientInput,
 } from "@/lib/cards-api";
+import { getContactName, getPrimaryPhone } from "@/lib/contact-display";
+import { fetchAllContacts } from "@/lib/contacts-api";
 import { DIAL_COUNTRIES } from "@/lib/dial-countries";
 import { friendlyErrorMessages, logUiError } from "@/lib/friendly-errors";
-import { nationalDigits } from "@/lib/phone";
+import { parsePhoneParts } from "@/lib/phone";
 import { fetchProfileMe } from "@/lib/profile-api";
 import type {
   ContactCard,
@@ -66,6 +73,7 @@ import type {
   ContactCardTemplate,
   ContactCardTheme,
   ContactCardType,
+  ContactDetail,
   ProfileMeResponse,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -75,6 +83,9 @@ const CARD_TYPE_OPTIONS: Array<{ value: ContactCardType; label: string }> = [
   { value: "BUSINESS", label: "Business" },
   { value: "CUSTOM", label: "Custom" },
 ];
+
+/** Matches the API's `MAX_SHARE_CARD_RECIPIENTS`. */
+const MAX_SHARE_RECIPIENTS = 50;
 
 const cardTypeLabels: Record<ContactCardType, string> = {
   BUSINESS: "Business",
@@ -375,32 +386,6 @@ function getCardDetailPath(cardId: string) {
   return `/dashboard/cards/${cardId}`;
 }
 
-async function shareCard(card: ContactCard) {
-  const url = `${window.location.origin}${getCardDetailPath(card.id)}`;
-  const shareData = {
-    title: card.name,
-    text: `Open ${card.name} in ContactBook.`,
-    url,
-  };
-
-  try {
-    if (navigator.share) {
-      await navigator.share(shareData);
-      return;
-    }
-
-    await navigator.clipboard.writeText(url);
-    toast.success("Card link copied.");
-  } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") {
-      return;
-    }
-
-    logUiError("Could not share card", error);
-    toast.error("We couldn't share this card right now.");
-  }
-}
-
 async function copyCardLink(card: ContactCard) {
   const url = `${window.location.origin}${getCardDetailPath(card.id)}`;
   try {
@@ -473,9 +458,16 @@ export default function CardDetailPage() {
   const [shareOpen, setShareOpen] = useState(false);
   const [whatsappShareOpen, setWhatsappShareOpen] = useState(false);
   const [shareCountryCode, setShareCountryCode] = useState("+91");
-  const [sharePhone, setSharePhone] = useState("");
   const [shareNote, setShareNote] = useState("");
   const [isSharingWhatsapp, setIsSharingWhatsapp] = useState(false);
+  const [shareContacts, setShareContacts] = useState<ContactDetail[]>([]);
+  const [selectedShareContactIds, setSelectedShareContactIds] = useState<
+    string[]
+  >([]);
+  const [isLoadingShareContacts, setIsLoadingShareContacts] = useState(false);
+  const [shareContactsError, setShareContactsError] = useState<string | null>(
+    null,
+  );
   const [shareBatches, setShareBatches] = useState<CardShareBatch[]>([]);
   const [sharesError, setSharesError] = useState<string | null>(null);
   const [resendBusyId, setResendBusyId] = useState<string | null>(null);
@@ -553,6 +545,57 @@ export default function CardDetailPage() {
       isMounted = false;
     };
   }, [cardId]);
+
+  // Recipients come from the user's vCard-imported contacts; load lazily the
+  // first time the WhatsApp share dialog opens.
+  useEffect(() => {
+    if (!whatsappShareOpen || shareContacts.length > 0) {
+      return;
+    }
+
+    let isMounted = true;
+    const loadShareContacts = async () => {
+      setIsLoadingShareContacts(true);
+      setShareContactsError(null);
+      try {
+        const contacts = await fetchAllContacts({ source: "VCARD" });
+        if (isMounted) {
+          setShareContacts(contacts);
+        }
+      } catch (err) {
+        if (isMounted) {
+          logUiError("Could not load contacts for card share", err);
+          setShareContacts([]);
+          setShareContactsError(
+            err instanceof ApiError && err.message
+              ? err.message
+              : "Could not load your imported contacts.",
+          );
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingShareContacts(false);
+        }
+      }
+    };
+
+    void loadShareContacts();
+    return () => {
+      isMounted = false;
+    };
+  }, [shareContacts.length, whatsappShareOpen]);
+
+  const shareContactOptions = useMemo<MultiSelectOption[]>(
+    () =>
+      shareContacts
+        .filter((contact) => getPrimaryPhone(contact).trim())
+        .map((contact) => ({
+          value: contact.id,
+          label: getContactName(contact),
+          description: getPrimaryPhone(contact),
+        })),
+    [shareContacts],
+  );
 
   const mappableFields = useMemo(
     () => listMappableFinancialFields(profile),
@@ -652,26 +695,12 @@ export default function CardDetailPage() {
     }
   };
 
-  const handleShareOption = async (option: ShareSheetOptionId) => {
+  const handleShareOption = (option: ShareSheetOptionId) => {
     if (!card) {
       return;
     }
-    switch (option) {
-      case "copy":
-        await copyCardLink(card);
-        return;
-      case "native":
-        await shareCard(card);
-        return;
-      case "whatsapp":
-        setWhatsappShareOpen(true);
-        return;
-      case "messages":
-        toast.message("Messages sharing is coming soon.");
-        return;
-      case "qr":
-        toast.message("QR sharing is coming soon.");
-        return;
+    if (option === "whatsapp") {
+      setWhatsappShareOpen(true);
     }
   };
 
@@ -679,26 +708,57 @@ export default function CardDetailPage() {
     if (!cardId || !card) {
       return;
     }
-    const phone = nationalDigits(sharePhone);
-    if (!/^\+\d{1,4}$/.test(shareCountryCode.trim())) {
-      toast.error("Enter a valid country code.");
+    const fallbackDial = shareCountryCode.trim();
+    if (!/^\+\d{1,4}$/.test(fallbackDial)) {
+      toast.error("Select a valid country code.");
       return;
     }
-    if (!/^\d{4,15}$/.test(phone)) {
-      toast.error("Enter a valid phone number.");
+    if (selectedShareContactIds.length === 0) {
+      toast.error("Select at least one contact.");
       return;
     }
+
+    const recipients: CardShareRecipientInput[] = [];
+    const unusableContacts: string[] = [];
+
+    for (const contactId of selectedShareContactIds) {
+      const contact = shareContacts.find((item) => item.id === contactId);
+      if (!contact) {
+        continue;
+      }
+      const parts = parsePhoneParts(getPrimaryPhone(contact), fallbackDial);
+      if (!parts) {
+        unusableContacts.push(getContactName(contact));
+        continue;
+      }
+      recipients.push({ ...parts, contactId: contact.id });
+    }
+
+    if (recipients.length === 0) {
+      toast.error(
+        "None of the selected contacts have a valid phone number to share with.",
+      );
+      return;
+    }
+    if (unusableContacts.length > 0) {
+      toast.warning(
+        `Skipping ${unusableContacts.length} contact(s) without a valid phone number: ${unusableContacts.join(", ")}.`,
+      );
+    }
+
     setIsSharingWhatsapp(true);
     try {
       const batch = await shareCardBatch(cardId, {
-        recipients: [{ countryCode: shareCountryCode.trim(), phone }],
+        recipients,
         note: shareNote,
       });
       toast.success(
-        `WhatsApp share queued for ${shareCountryCode} ${phone}.`,
+        recipients.length === 1
+          ? `WhatsApp share queued for ${recipients[0].countryCode} ${recipients[0].phone}.`
+          : `WhatsApp share queued for ${recipients.length} contacts.`,
       );
       setWhatsappShareOpen(false);
-      setSharePhone("");
+      setSelectedShareContactIds([]);
       setShareNote("");
       setShareBatches((current) => [batch, ...current].slice(0, 10));
       await refreshShares(cardId);
@@ -1031,13 +1091,13 @@ export default function CardDetailPage() {
           onClose={() => setShareOpen(false)}
           onSelect={(id) => {
             setShareOpen(false);
-            void handleShareOption(id);
+            handleShareOption(id);
           }}
         />
       ) : null}
 
       {whatsappShareOpen && card ? (
-        <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
+        <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4">
           <button
             type="button"
             aria-label="Close WhatsApp share"
@@ -1048,7 +1108,7 @@ export default function CardDetailPage() {
             role="dialog"
             aria-modal="true"
             aria-label="Share card on WhatsApp"
-            className="relative z-10 w-full max-w-md space-y-4 rounded-t-xl border border-border bg-surface p-5 sm:rounded-xl"
+            className="relative z-10 max-h-[85vh] w-full max-w-md space-y-4 overflow-y-auto overscroll-contain rounded-t-xl border border-border bg-surface p-5 sm:max-h-[calc(100vh-2rem)] sm:rounded-xl"
           >
             <div>
               <h2 className="text-base font-semibold text-foreground">
@@ -1059,8 +1119,37 @@ export default function CardDetailPage() {
                 the recipient taps Get Contact.
               </p>
             </div>
+            <div className="flex flex-col gap-2 text-sm font-medium">
+              <span id="share-contacts-label">Contacts</span>
+              <MultiSelect
+                aria-labelledby="share-contacts-label"
+                options={shareContactOptions}
+                value={selectedShareContactIds}
+                onValueChange={setSelectedShareContactIds}
+                placeholder="Select imported contacts"
+                searchPlaceholder="Search contacts"
+                loadingMessage="Loading contacts…"
+                emptyMessage={
+                  shareContactsError
+                    ? "Contacts could not be loaded"
+                    : "No imported contacts with a phone number"
+                }
+                isLoading={isLoadingShareContacts}
+                disabled={isSharingWhatsapp}
+                maxSelected={MAX_SHARE_RECIPIENTS}
+              />
+              {shareContactsError ? (
+                <p className="text-xs font-normal text-destructive">
+                  {shareContactsError}
+                </p>
+              ) : (
+                <p className="text-xs font-normal text-muted-foreground">
+                  Numbers come from your imported vCard contacts.
+                </p>
+              )}
+            </div>
             <label className="flex flex-col gap-2 text-sm font-medium">
-              <span>Country code</span>
+              <span>Country code for numbers saved without one</span>
               <select
                 className="flex h-10 w-full rounded-md border border-border bg-surface px-3 text-sm"
                 value={shareCountryCode}
@@ -1073,18 +1162,6 @@ export default function CardDetailPage() {
                   </option>
                 ))}
               </select>
-            </label>
-            <label className="flex flex-col gap-2 text-sm font-medium">
-              <span>Phone number</span>
-              <Input
-                inputMode="numeric"
-                placeholder="9347243575"
-                value={sharePhone}
-                onChange={(event) =>
-                  setSharePhone(nationalDigits(event.target.value).slice(0, 15))
-                }
-                disabled={isSharingWhatsapp}
-              />
             </label>
             <label className="flex flex-col gap-2 text-sm font-medium">
               <span>Note (optional)</span>
@@ -1109,7 +1186,9 @@ export default function CardDetailPage() {
               <Button
                 type="button"
                 className="flex-1"
-                disabled={isSharingWhatsapp}
+                disabled={
+                  isSharingWhatsapp || selectedShareContactIds.length === 0
+                }
                 onClick={() => void handleWhatsappShare()}
               >
                 {isSharingWhatsapp ? "Sending…" : "Send"}

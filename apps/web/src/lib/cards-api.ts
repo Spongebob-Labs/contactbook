@@ -209,6 +209,8 @@ export type CardVcardAsset = {
 export type CardShareRecipientInput = {
   countryCode: string;
   phone: string;
+  /** Links the recipient to one of the user's synced contacts, when picked from the contact list. */
+  contactId?: string;
 };
 
 export type CardShareRecipient = {

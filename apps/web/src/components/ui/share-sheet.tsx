@@ -1,20 +1,8 @@
-import {
-  Copy,
-  Link2,
-  MessageCircle,
-  QrCode,
-  Share2,
-  X,
-} from "lucide-react";
+import { Link2, MessageCircle, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-export type ShareSheetOptionId =
-  | "whatsapp"
-  | "messages"
-  | "copy"
-  | "qr"
-  | "native";
+export type ShareSheetOptionId = "whatsapp";
 
 type ShareSheetProps = {
   open: boolean;
@@ -27,14 +15,8 @@ type ShareSheetProps = {
 const OPTIONS: Array<{
   id: ShareSheetOptionId;
   label: string;
-  icon: typeof Share2;
-}> = [
-  { id: "whatsapp", label: "WhatsApp", icon: MessageCircle },
-  { id: "messages", label: "Messages", icon: MessageCircle },
-  { id: "copy", label: "Copy Link", icon: Copy },
-  { id: "qr", label: "Share QR", icon: QrCode },
-  { id: "native", label: "More…", icon: Share2 },
-];
+  icon: typeof MessageCircle;
+}> = [{ id: "whatsapp", label: "WhatsApp", icon: MessageCircle }];
 
 export function ShareSheet({
   open,
