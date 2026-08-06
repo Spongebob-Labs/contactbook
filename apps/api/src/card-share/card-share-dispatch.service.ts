@@ -4,6 +4,8 @@ import {
   CardShareDispatchStatus,
   WhatsappMessagePurpose,
   WhatsappProvider as WhatsappProviderName,
+  WhatsappTemplateApprovalStatus,
+  WhatsappTemplateSyncStatus,
   type Prisma,
 } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
@@ -43,7 +45,10 @@ export class CardShareDispatchService {
     const due = await this.prisma.cardShareRecipient.findMany({
       where: {
         dispatchStatus: {
-          in: [CardShareDispatchStatus.PENDING, CardShareDispatchStatus.RETRYING],
+          in: [
+            CardShareDispatchStatus.PENDING,
+            CardShareDispatchStatus.RETRYING,
+          ],
         },
         nextAttemptAt: { lte: new Date() },
       },
@@ -61,6 +66,25 @@ export class CardShareDispatchService {
   }
 
   private async dispatchOne(recipient: DueRecipient): Promise<void> {
+    // A template can die between batch creation and dispatch (deactivated by an admin,
+    // deleted on Twilio, approval revoked). Fail the recipient terminally instead of
+    // burning retries against a dead ContentSid — resend works if it's later restored.
+    const template = recipient.batch.template;
+    if (
+      !template.isActive ||
+      template.approvalStatus !== WhatsappTemplateApprovalStatus.APPROVED ||
+      template.syncStatus === WhatsappTemplateSyncStatus.MISSING_ON_TWILIO
+    ) {
+      await this.prisma.cardShareRecipient.update({
+        where: { id: recipient.id },
+        data: {
+          dispatchStatus: CardShareDispatchStatus.FAILED,
+          lastDispatchError: `Template "${template.key}" is no longer available`,
+        },
+      });
+      return;
+    }
+
     try {
       const toE164 = composeE164(
         recipient.recipientCountryCode,

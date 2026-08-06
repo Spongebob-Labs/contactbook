@@ -21,7 +21,9 @@ import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { ApiExceptionFilter } from "../common/filters/api-exception.filter";
 import { CardShareService } from "./card-share.service";
+import { WhatsappTemplateService } from "./whatsapp-template.service";
 import { ShareCardDto } from "./dto/share-card.dto";
+import { ShareTemplateResponseDto } from "./dto/share-template-response.dto";
 import { GenerateVcardDto } from "./dto/generate-vcard.dto";
 import { VcardAssetResponseDto } from "./dto/vcard-asset-response.dto";
 import { ListCardSharesQueryDto } from "./dto/list-card-shares-query.dto";
@@ -34,7 +36,32 @@ import { CardShareBatchListResponseDto } from "./dto/card-share-batch-list-respo
 @UseFilters(ApiExceptionFilter)
 @Controller({ path: "cards", version: "1" })
 export class CardShareController {
-  constructor(private readonly cardShare: CardShareService) {}
+  constructor(
+    private readonly cardShare: CardShareService,
+    private readonly templates: WhatsappTemplateService,
+  ) {}
+
+  // Static segment — declared before the :cardId routes so it never matches as an id.
+  @Get("share-templates")
+  @ApiOperation({
+    summary: "List templates available in the share picker",
+    description:
+      "Active, WhatsApp-approved templates verified in sync with Twilio. The body/button " +
+      "content mirrors Twilio exactly, so a preview rendered from it matches the sent " +
+      "message character-for-character. Empty when no template is currently sendable.",
+  })
+  @ApiOkResponse({ type: [ShareTemplateResponseDto] })
+  async listShareTemplates(): Promise<ShareTemplateResponseDto[]> {
+    const templates = await this.templates.listForPicker();
+    return templates.map((t) => ({
+      key: t.key,
+      locale: t.locale,
+      body: t.bodyPreview,
+      buttonTitle: t.buttonTitle,
+      headerImageUrl: t.headerImageUrl,
+      syncedAt: t.syncedAt,
+    }));
+  }
 
   @Post(":cardId/vcard")
   @ApiOperation({

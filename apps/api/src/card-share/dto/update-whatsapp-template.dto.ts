@@ -1,12 +1,19 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
-import { IsBoolean, IsOptional, IsString, MaxLength, MinLength } from "class-validator";
+import {
+  IsBoolean,
+  IsOptional,
+  IsString,
+  IsUrl,
+  MaxLength,
+  MinLength,
+} from "class-validator";
 
 export class UpdateWhatsappTemplateDto {
   @ApiPropertyOptional({
     description:
-      "New template body text. If changed (along with buttonTitle), a new Twilio Content " +
-      "Template is created and submitted for WhatsApp re-approval. The DB entry's isActive " +
-      "is set to false until the new template is approved and you activate it via isActive: true.",
+      "New template body text. Any content change (body, buttonTitle, headerImageUrl) " +
+      "creates a new Twilio Content Template, submits it for WhatsApp re-approval, and " +
+      "swaps the contentSid. Sends are blocked by the approval gate until Meta approves.",
   })
   @IsOptional()
   @IsString()
@@ -15,8 +22,7 @@ export class UpdateWhatsappTemplateDto {
   body?: string;
 
   @ApiPropertyOptional({
-    description:
-      "New URL button label. Triggers a new Twilio template creation if body is also provided.",
+    description: "New URL button label. Content change — triggers re-approval.",
   })
   @IsOptional()
   @IsString()
@@ -26,19 +32,18 @@ export class UpdateWhatsappTemplateDto {
 
   @ApiPropertyOptional({
     description:
-      "Activate or deactivate this template. Set to true once WhatsApp approves a newly " +
-      "created or updated template.",
+      "New static header image URL (HTTPS). Content change — triggers re-approval.",
+  })
+  @IsOptional()
+  @IsUrl({ protocols: ["https"], require_tld: true })
+  headerImageUrl?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "Admin kill-switch. Deactivated templates are hidden from the picker and blocked " +
+      "at send time regardless of approval status.",
   })
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
-
-  @ApiPropertyOptional({
-    description:
-      "Make this the default template for its use case + locale. Clears isDefault on any " +
-      "existing default for the same use case + locale.",
-  })
-  @IsOptional()
-  @IsBoolean()
-  isDefault?: boolean;
 }

@@ -707,28 +707,62 @@ model WhatsappSession {
 // WHATSAPP CARD SHARE
 // ==========================================
 
+/// WhatsApp approval state mirrored from the Twilio Content API by the sync service.
+enum WhatsappTemplateApprovalStatus {
+  APPROVED
+  PENDING
+  RECEIVED
+  REJECTED
+  UNKNOWN
+}
+
+/// Outcome of the last DB<->Twilio reconciliation for a template.
+enum WhatsappTemplateSyncStatus {
+  NEVER_SYNCED
+  IN_SYNC
+  /// Content on Twilio differed from our copy; DB was repaired from Twilio (authoritative).
+  DRIFT_REPAIRED
+  /// The ContentSid no longer exists on Twilio; template is unusable.
+  MISSING_ON_TWILIO
+  /// Sync failed (Twilio unreachable or unrepairable mismatch, e.g. wrong button base URL).
+  SYNC_ERROR
+}
+
 /// Registry of approved Twilio WhatsApp Content Templates. DB-backed (not env vars) so
 /// multiple approved templates can be added/rotated/deactivated without a deploy.
+/// Strict 1:1 with Twilio: one row per ContentSid, content mirrored by the sync service
+/// so in-app previews always match what Twilio actually sends.
 model WhatsappTemplate {
   id      String                  @id @default(uuid())
   /// Stable lookup key the app code references, e.g. "card_share_default_en".
   key     String                  @unique
   useCase WhatsappTemplateUseCase
-  /// Twilio-approved Content Template SID (HX...).
-  contentSid  String
+  /// Twilio Content Template SID (HX...). Unique: each row maps to exactly one template.
+  contentSid  String  @unique
   locale      String  @default("en")
-  /// Human-readable copy of the approved body, for admin/support debugging only.
+  /// Mirror of the template body on Twilio; kept in sync so previews match sends exactly.
   bodyPreview String
+  /// Mirror of the URL button label on Twilio.
+  buttonTitle String  @default("Save Contact")
+  /// Mirror of the static header image baked into the template, if any.
+  headerImageUrl String?
   isActive    Boolean @default(true)
-  /// Tie-break when a caller doesn't specify a templateKey and multiple active
-  /// templates exist for the same useCase/locale.
+
+  approvalStatus  WhatsappTemplateApprovalStatus @default(UNKNOWN)
+  rejectionReason String?
+  syncStatus      WhatsappTemplateSyncStatus     @default(NEVER_SYNCED)
+  /// When the sync service last successfully reconciled this row against Twilio.
+  syncedAt        DateTime?
+
+  /// DEPRECATED: no longer read at send time (templateKey is required on shares).
+  /// Kept one release for rollback safety; drop in a follow-up migration.
   isDefault Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   batches CardShareBatch[]
 
-  @@index([useCase, isActive, isDefault])
+  @@index([useCase, isActive, approvalStatus])
   @@map("whatsapp_templates")
 }
 

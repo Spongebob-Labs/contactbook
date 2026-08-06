@@ -1,6 +1,9 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import type { WhatsappDeliveryStatus, WhatsappSendResult } from "../messaging/whatsapp-provider";
+import type {
+  WhatsappDeliveryStatus,
+  WhatsappSendResult,
+} from "../messaging/whatsapp-provider";
 import {
   CLIENT_ERROR_TWILIO_CODES,
   mapHttpStatus,
