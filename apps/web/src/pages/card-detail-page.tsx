@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { AlertCircle, ArrowLeft, CreditCard, IdCard } from "lucide-react";
+import { AlertCircle, ArrowLeft, CreditCard, IdCard, Send } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
+import { ShareCardDialog } from "@/components/card-share/share-card-dialog";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
@@ -30,6 +31,7 @@ export default function CardDetailPage() {
   const [card, setCard] = useState<ContactCard | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isShareOpen, setIsShareOpen] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -84,7 +86,21 @@ export default function CardDetailPage() {
             Basic card information from the current cards API.
           </p>
         </div>
+        {card && !card.isSensitive && (
+          <Button onClick={() => setIsShareOpen(true)}>
+            <Send className="h-4 w-4" aria-hidden="true" />
+            Share via WhatsApp
+          </Button>
+        )}
       </section>
+
+      {card && (
+        <ShareCardDialog
+          card={card}
+          open={isShareOpen}
+          onClose={() => setIsShareOpen(false)}
+        />
+      )}
 
       {isLoading && (
         <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">

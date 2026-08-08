@@ -69,8 +69,7 @@ export class TwilioStatusCallbackController {
     const deliveryStatus = mapTwilioSendStatus(messageStatus);
     const { ids } = await this.messaging.recordDelivery(
       {
-        type:
-          deliveryStatus === "failed" ? "message.failed" : "message.ack",
+        type: deliveryStatus === "failed" ? "message.failed" : "message.ack",
         providerMessageId: messageSid,
         status: deliveryStatus,
         errorCode: params.ErrorCode,

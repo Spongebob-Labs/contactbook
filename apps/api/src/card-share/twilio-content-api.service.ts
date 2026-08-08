@@ -18,12 +18,31 @@ export type CreateTemplateInput = {
   category: string;
   /** Optional static image URL baked into the template header (not a per-send variable). */
   headerImageUrl?: string;
+  /**
+   * URL (default): "Save Contact" button opening the vCard link ({{4}} = object key).
+   * QUICK_REPLY: "Get Contact" button — the tap opens a session and the incoming-message
+   * webhook sends the actual .vcf document. WhatsApp forbids mixing button kinds, so
+   * quick-reply templates have no URL button and no {{4}}.
+   */
+  buttonType?: "URL" | "QUICK_REPLY";
 };
 
 export type TwilioTemplateApproval = {
   contentSid: string;
   approvalStatus: TwilioApprovalStatus;
   rejectionReason?: string;
+};
+
+/** The actual template definition as it exists on Twilio right now. */
+export type TwilioContentDefinition = {
+  contentSid: string;
+  /** false when the ContentSid no longer exists on Twilio (deleted). */
+  exists: boolean;
+  body?: string;
+  buttonTitle?: string;
+  /** Full URL on the template's URL button, including the baked-in base + {{4}}. */
+  buttonUrl?: string;
+  headerImageUrl?: string;
 };
 
 @Injectable()
@@ -41,7 +60,8 @@ export class TwilioContentApiService {
     return `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`;
   }
 
-  private get vcardBaseUrl(): string {
+  /** Public: the sync service compares template button URLs against this base. */
+  get vcardBaseUrl(): string {
     return (
       this.config
         .get<string>("GCS_CARD_SHARES_PUBLIC_BASE_URL")
@@ -50,33 +70,48 @@ export class TwilioContentApiService {
   }
 
   /**
-   * Creates a twilio/call-to-action Content Template with a URL button pointing at the
-   * GCS vCard bucket. Variable {{4}} in the button URL is the per-send object key.
-   * Returns the new Content SID.
+   * Creates a Content Template. URL buttons point at the GCS vCard bucket with {{4}} as
+   * the per-send object key; QUICK_REPLY buttons carry no URL (the VCF follows via the
+   * incoming-message webhook). Returns the new Content SID.
    */
   async create(input: CreateTemplateInput): Promise<string> {
-    const baseUrl = this.vcardBaseUrl;
-    if (!baseUrl) {
-      throw new TwilioSendError(
-        "GCS_CARD_SHARES_PUBLIC_BASE_URL is not configured",
-        503,
-      );
+    const buttonType = input.buttonType ?? "URL";
+
+    let action: Record<string, string>;
+    if (buttonType === "QUICK_REPLY") {
+      action = {
+        type: "QUICK_REPLY",
+        title: input.buttonTitle,
+        id: "get_contact",
+      };
+    } else {
+      const baseUrl = this.vcardBaseUrl;
+      if (!baseUrl) {
+        throw new TwilioSendError(
+          "GCS_CARD_SHARES_PUBLIC_BASE_URL is not configured",
+          503,
+        );
+      }
+      action = {
+        type: "URL",
+        title: input.buttonTitle,
+        url: `${baseUrl}/{{4}}`,
+      };
     }
 
-    // twilio/call-to-action supports body + URL button but has NO image header support.
-    // whatsapp/card supports body + media (image banner) + URL button — use it when
-    // a headerImageUrl is provided, otherwise stick with the simpler CTA type.
-    const templateType = input.headerImageUrl ? "whatsapp/card" : "twilio/call-to-action";
-    const typePayload = input.headerImageUrl
-      ? {
-          body: input.body,
-          media: [input.headerImageUrl],
-          actions: [{ type: "URL", title: input.buttonTitle, url: `${baseUrl}/{{4}}` }],
-        }
-      : {
-          body: input.body,
-          actions: [{ type: "URL", title: input.buttonTitle, url: `${baseUrl}/{{4}}` }],
-        };
+    // twilio/call-to-action and twilio/quick-reply support body + button but NO image
+    // header. whatsapp/card supports body + media (image banner) + button — use it when
+    // a headerImageUrl is provided, otherwise stick with the simpler text-only type.
+    const templateType = input.headerImageUrl
+      ? "whatsapp/card"
+      : buttonType === "QUICK_REPLY"
+        ? "twilio/quick-reply"
+        : "twilio/call-to-action";
+    const typePayload = {
+      body: input.body,
+      ...(input.headerImageUrl ? { media: [input.headerImageUrl] } : {}),
+      actions: [action],
+    };
 
     const payload = {
       friendly_name: input.name,
@@ -85,7 +120,8 @@ export class TwilioContentApiService {
         "1": "Ada Lovelace",
         "2": "Business Card",
         "3": " Great meeting you!",
-        "4": "sample/contact.vcf",
+        // {{4}} exists only in URL-button templates (the button's dynamic URL suffix).
+        ...(buttonType === "URL" ? { "4": "sample/contact.vcf" } : {}),
       },
       types: { [templateType]: typePayload },
     };
@@ -99,7 +135,10 @@ export class TwilioContentApiService {
       body: JSON.stringify(payload),
     });
 
-    const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    const json = (await res.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    >;
     if (!res.ok) {
       this.logger.warn(
         `Twilio Content API create failed: ${res.status} ${JSON.stringify(json)}`,
@@ -131,7 +170,10 @@ export class TwilioContentApiService {
       },
     );
 
-    const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    const json = (await res.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    >;
     if (!res.ok) {
       this.logger.warn(
         `Twilio approval submission failed: ${res.status} ${JSON.stringify(json)}`,
@@ -145,6 +187,74 @@ export class TwilioContentApiService {
     return this.normalizeStatus(json["status"] as string | undefined);
   }
 
+  /**
+   * Fetches the live template definition from Twilio, for drift detection against our
+   * DB mirror. Returns exists: false on 404 (template deleted on Twilio); throws on
+   * other failures (network, auth) so callers can distinguish "gone" from "unknown".
+   */
+  async fetchContent(contentSid: string): Promise<TwilioContentDefinition> {
+    const res = await fetch(
+      `${CONTENT_API_BASE}/${encodeURIComponent(contentSid)}`,
+      {
+        headers: { Authorization: this.authHeader() },
+      },
+    );
+
+    if (res.status === 404) {
+      return { contentSid, exists: false };
+    }
+
+    const json = (await res.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    >;
+    if (!res.ok) {
+      this.logger.warn(
+        `Twilio Content API fetch failed: ${res.status} ${JSON.stringify(json)}`,
+      );
+      throw new TwilioSendError(
+        `Failed to fetch Twilio template: ${(json["message"] as string) ?? res.status}`,
+        res.status >= 500 ? 502 : 400,
+      );
+    }
+
+    // Prefer the two types create() can produce; fall back to whatever type the
+    // template has (e.g. whatsapp/authentication for OTP) — body/actions/media are
+    // read generically so any registered template can be mirrored.
+    const types = (json["types"] ?? {}) as Record<string, unknown>;
+    const card = types["whatsapp/card"] as Record<string, unknown> | undefined;
+    const cta = types["twilio/call-to-action"] as
+      | Record<string, unknown>
+      | undefined;
+    const firstType = Object.values(types)[0] as
+      | Record<string, unknown>
+      | undefined;
+    const definition = card ?? cta ?? firstType;
+    if (!definition) {
+      throw new TwilioSendError(
+        `Twilio template ${contentSid} has no content types`,
+        400,
+      );
+    }
+
+    const actions = (definition["actions"] ?? []) as Array<
+      Record<string, unknown>
+    >;
+    const urlAction = actions.find(
+      (a) => typeof a["type"] === "string" && a["type"].toUpperCase() === "URL",
+    );
+    const media = (card?.["media"] ?? []) as unknown[];
+
+    return {
+      contentSid,
+      exists: true,
+      body: definition["body"] as string | undefined,
+      buttonTitle: urlAction?.["title"] as string | undefined,
+      buttonUrl: urlAction?.["url"] as string | undefined,
+      headerImageUrl: typeof media[0] === "string" ? media[0] : undefined,
+    };
+  }
+
   /** Fetches the current WhatsApp approval status for a given Content SID. */
   async fetchApprovalStatus(
     contentSid: string,
@@ -156,7 +266,10 @@ export class TwilioContentApiService {
       },
     );
 
-    const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    const json = (await res.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    >;
     if (!res.ok) {
       this.logger.warn(
         `Twilio approval fetch failed: ${res.status} ${JSON.stringify(json)}`,
@@ -164,9 +277,7 @@ export class TwilioContentApiService {
       return { contentSid, approvalStatus: "unknown" };
     }
 
-    const whatsapp = (
-      json["whatsapp"] as Record<string, unknown> | undefined
-    );
+    const whatsapp = json["whatsapp"] as Record<string, unknown> | undefined;
     return {
       contentSid,
       approvalStatus: this.normalizeStatus(

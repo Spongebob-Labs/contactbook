@@ -8,6 +8,7 @@ import { WhatsappTemplateController } from "./whatsapp-template.controller";
 import { CardShareService } from "./card-share.service";
 import { VCardGeneratorService } from "./vcard-generator.service";
 import { WhatsappTemplateService } from "./whatsapp-template.service";
+import { WhatsappTemplateSyncService } from "./whatsapp-template-sync.service";
 import { TwilioCardShareProvider } from "./twilio-card-share.provider";
 import { CardShareDispatchService } from "./card-share-dispatch.service";
 import { CardShareVcfReplyService } from "./card-share-vcf-reply.service";
@@ -30,6 +31,7 @@ import { VcardDownloadController } from "./vcard-download.controller";
     CardShareService,
     VCardGeneratorService,
     WhatsappTemplateService,
+    WhatsappTemplateSyncService,
     TwilioCardShareProvider,
     TwilioContentApiService,
     CardShareDispatchService,

@@ -10,6 +10,7 @@ import {
   IsUUID,
   Matches,
   MaxLength,
+  MinLength,
   ValidateNested,
 } from "class-validator";
 import type { FieldType } from "@prisma/client";
@@ -51,13 +52,14 @@ export class ShareCardRecipientDto {
 }
 
 export class ShareCardDto {
-  @ApiPropertyOptional({
+  @ApiProperty({
     description:
-      "Which approved WhatsApp template to use (WhatsappTemplate.key). Defaults to the active default CARD_SHARE template if omitted.",
+      "The WhatsApp template the sender picked (WhatsappTemplate.key). Required — the " +
+      "picked template is exactly what gets sent; there is no default fallback.",
   })
-  @IsOptional()
   @IsString()
-  templateKey?: string;
+  @MinLength(1)
+  templateKey!: string;
 
   @ApiPropertyOptional({
     description:
