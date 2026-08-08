@@ -42,17 +42,26 @@ export class CardShareDispatchService {
 
   @Cron(CronExpression.EVERY_10_SECONDS)
   async run(): Promise<void> {
+    // Atomically claim rows before reading them — prevents two server instances (local +
+    // production) from both picking up the same PENDING recipient and double-sending.
+    const claimed = await this.prisma.$queryRaw<{ id: string }[]>`
+      UPDATE card_share_recipients
+      SET "dispatchStatus" = 'PROCESSING'
+      WHERE id IN (
+        SELECT id FROM card_share_recipients
+        WHERE "dispatchStatus" IN ('PENDING', 'RETRYING')
+          AND "nextAttemptAt" <= NOW()
+        ORDER BY "nextAttemptAt"
+        LIMIT ${BATCH_SIZE}
+        FOR UPDATE SKIP LOCKED
+      )
+      RETURNING id
+    `;
+
+    if (claimed.length === 0) return;
+
     const due = await this.prisma.cardShareRecipient.findMany({
-      where: {
-        dispatchStatus: {
-          in: [
-            CardShareDispatchStatus.PENDING,
-            CardShareDispatchStatus.RETRYING,
-          ],
-        },
-        nextAttemptAt: { lte: new Date() },
-      },
-      take: BATCH_SIZE,
+      where: { id: { in: claimed.map((r) => r.id) } },
       include: {
         batch: {
           include: { template: true, vcardAsset: true, sender: true },
