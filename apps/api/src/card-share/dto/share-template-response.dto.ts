@@ -35,4 +35,11 @@ export class ShareTemplateResponseDto {
     nullable: true,
   })
   syncedAt!: Date | null;
+
+  @ApiPropertyOptional({
+    description:
+      "Only on POST (creation) responses: WhatsApp approval state. The template joins " +
+      "the picker automatically once this reaches APPROVED (mirrored by the sync cron).",
+  })
+  approvalStatus?: string;
 }

@@ -179,6 +179,7 @@ model User {
   whatsappSessions WhatsappSession[]
   refreshTokens    RefreshToken[]
   cardShareBatches CardShareBatch[]
+  createdWhatsappTemplates WhatsappTemplate[] @relation("TemplateCreator")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -754,6 +755,12 @@ model WhatsappTemplate {
   /// When the sync service last successfully reconciled this row against Twilio.
   syncedAt        DateTime?
 
+  /// NULL = global template (visible to everyone in the picker). Set = user-created
+  /// template, visible/sendable only by its creator. Restrict: user deletion is blocked
+  /// while they own templates rather than silently promoting them to global.
+  createdByUserId String?
+  createdBy       User?   @relation("TemplateCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
   /// DEPRECATED: no longer read at send time (templateKey is required on shares).
   /// Kept one release for rollback safety; drop in a follow-up migration.
   isDefault Boolean  @default(false)
@@ -763,6 +770,7 @@ model WhatsappTemplate {
   batches CardShareBatch[]
 
   @@index([useCase, isActive, approvalStatus])
+  @@index([createdByUserId])
   @@map("whatsapp_templates")
 }
 

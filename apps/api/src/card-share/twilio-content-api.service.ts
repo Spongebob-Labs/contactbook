@@ -18,6 +18,13 @@ export type CreateTemplateInput = {
   category: string;
   /** Optional static image URL baked into the template header (not a per-send variable). */
   headerImageUrl?: string;
+  /**
+   * URL (default): "Save Contact" button opening the vCard link ({{4}} = object key).
+   * QUICK_REPLY: "Get Contact" button — the tap opens a session and the incoming-message
+   * webhook sends the actual .vcf document. WhatsApp forbids mixing button kinds, so
+   * quick-reply templates have no URL button and no {{4}}.
+   */
+  buttonType?: "URL" | "QUICK_REPLY";
 };
 
 export type TwilioTemplateApproval = {
@@ -63,39 +70,48 @@ export class TwilioContentApiService {
   }
 
   /**
-   * Creates a twilio/call-to-action Content Template with a URL button pointing at the
-   * GCS vCard bucket. Variable {{4}} in the button URL is the per-send object key.
-   * Returns the new Content SID.
+   * Creates a Content Template. URL buttons point at the GCS vCard bucket with {{4}} as
+   * the per-send object key; QUICK_REPLY buttons carry no URL (the VCF follows via the
+   * incoming-message webhook). Returns the new Content SID.
    */
   async create(input: CreateTemplateInput): Promise<string> {
-    const baseUrl = this.vcardBaseUrl;
-    if (!baseUrl) {
-      throw new TwilioSendError(
-        "GCS_CARD_SHARES_PUBLIC_BASE_URL is not configured",
-        503,
-      );
+    const buttonType = input.buttonType ?? "URL";
+
+    let action: Record<string, string>;
+    if (buttonType === "QUICK_REPLY") {
+      action = {
+        type: "QUICK_REPLY",
+        title: input.buttonTitle,
+        id: "get_contact",
+      };
+    } else {
+      const baseUrl = this.vcardBaseUrl;
+      if (!baseUrl) {
+        throw new TwilioSendError(
+          "GCS_CARD_SHARES_PUBLIC_BASE_URL is not configured",
+          503,
+        );
+      }
+      action = {
+        type: "URL",
+        title: input.buttonTitle,
+        url: `${baseUrl}/{{4}}`,
+      };
     }
 
-    // twilio/call-to-action supports body + URL button but has NO image header support.
-    // whatsapp/card supports body + media (image banner) + URL button — use it when
-    // a headerImageUrl is provided, otherwise stick with the simpler CTA type.
+    // twilio/call-to-action and twilio/quick-reply support body + button but NO image
+    // header. whatsapp/card supports body + media (image banner) + button — use it when
+    // a headerImageUrl is provided, otherwise stick with the simpler text-only type.
     const templateType = input.headerImageUrl
       ? "whatsapp/card"
-      : "twilio/call-to-action";
-    const typePayload = input.headerImageUrl
-      ? {
-          body: input.body,
-          media: [input.headerImageUrl],
-          actions: [
-            { type: "URL", title: input.buttonTitle, url: `${baseUrl}/{{4}}` },
-          ],
-        }
-      : {
-          body: input.body,
-          actions: [
-            { type: "URL", title: input.buttonTitle, url: `${baseUrl}/{{4}}` },
-          ],
-        };
+      : buttonType === "QUICK_REPLY"
+        ? "twilio/quick-reply"
+        : "twilio/call-to-action";
+    const typePayload = {
+      body: input.body,
+      ...(input.headerImageUrl ? { media: [input.headerImageUrl] } : {}),
+      actions: [action],
+    };
 
     const payload = {
       friendly_name: input.name,
@@ -104,7 +120,8 @@ export class TwilioContentApiService {
         "1": "Ada Lovelace",
         "2": "Business Card",
         "3": " Great meeting you!",
-        "4": "sample/contact.vcf",
+        // {{4}} exists only in URL-button templates (the button's dynamic URL suffix).
+        ...(buttonType === "URL" ? { "4": "sample/contact.vcf" } : {}),
       },
       types: { [templateType]: typePayload },
     };

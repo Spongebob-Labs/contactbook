@@ -65,6 +65,7 @@ export class CardShareService {
     const template = await this.templates.resolveForSend(
       WhatsappTemplateUseCase.CARD_SHARE,
       dto.templateKey,
+      userId,
     );
     const asset = await this.vcardGenerator.getOrCreateAsset(
       userId,

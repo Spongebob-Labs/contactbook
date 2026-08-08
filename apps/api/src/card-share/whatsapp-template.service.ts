@@ -11,11 +11,16 @@ import {
   type WhatsappTemplate,
 } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
+import { GcsTemplateImageService } from "../storage/gcs-template-image.service";
 import { TwilioContentApiService } from "./twilio-content-api.service";
 import {
   WhatsappTemplateSyncService,
   approvalStatusToEnum,
 } from "./whatsapp-template-sync.service";
+import {
+  SHARE_TEMPLATE_BUTTON_TITLE,
+  findShareTemplateVariant,
+} from "./share-template-variants";
 import type { CreateWhatsappTemplateDto } from "./dto/create-whatsapp-template.dto";
 import type { UpdateWhatsappTemplateDto } from "./dto/update-whatsapp-template.dto";
 import type { WhatsappTemplateResponseDto } from "./dto/whatsapp-template-response.dto";
@@ -25,12 +30,18 @@ const SENDABLE_SYNC_STATUSES: WhatsappTemplateSyncStatus[] = [
   WhatsappTemplateSyncStatus.DRIFT_REPAIRED,
 ];
 
+/** How many templates one user may create (global templates don't count). */
+export const MAX_USER_TEMPLATES = 3;
+
+const TEMPLATE_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+
 @Injectable()
 export class WhatsappTemplateService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly twilioContent: TwilioContentApiService,
     private readonly sync: WhatsappTemplateSyncService,
+    private readonly templateImages: GcsTemplateImageService,
   ) {}
 
   /**
@@ -41,11 +52,17 @@ export class WhatsappTemplateService {
   async resolveForSend(
     useCase: WhatsappTemplateUseCase,
     key: string,
+    userId?: string,
   ): Promise<WhatsappTemplate> {
     const row = await this.prisma.whatsappTemplate.findFirst({
       where: { key, useCase },
     });
-    if (!row) {
+    // User-created templates are private to their creator; report them as not found
+    // to other users rather than leaking their existence.
+    if (
+      !row ||
+      (row.createdByUserId !== null && row.createdByUserId !== userId)
+    ) {
       throw new BadRequestException(
         `No ${useCase} template found for key "${key}"`,
       );
@@ -80,9 +97,18 @@ export class WhatsappTemplateService {
    */
   async listForPicker(
     useCase: WhatsappTemplateUseCase = WhatsappTemplateUseCase.CARD_SHARE,
+    userId?: string,
   ): Promise<WhatsappTemplate[]> {
     const rows = await this.prisma.whatsappTemplate.findMany({
-      where: { useCase, isActive: true },
+      where: {
+        useCase,
+        isActive: true,
+        // Global templates for everyone + the caller's own creations.
+        OR: [
+          { createdByUserId: null },
+          ...(userId ? [{ createdByUserId: userId }] : []),
+        ],
+      },
       orderBy: { createdAt: "asc" },
     });
     const synced = [];
@@ -121,6 +147,83 @@ export class WhatsappTemplateService {
   /** Force an immediate Twilio reconciliation for one template. */
   async syncNow(key: string): Promise<WhatsappTemplateResponseDto> {
     return this.getOne(key);
+  }
+
+  /**
+   * User-created share template: a fixed body variant + optional header image, with the
+   * "Get Contact" QUICK_REPLY button (tap → VCF document follow-up). Capped per user;
+   * visible/sendable only by the creator until an admin promotes it (createdByUserId
+   * null). Joins the creator's picker automatically once Meta approves.
+   */
+  async createUserTemplate(
+    userId: string,
+    variantId: string,
+    image?: { buffer: Buffer; mimeType: string; sizeBytes: number },
+  ): Promise<WhatsappTemplate> {
+    const variant = findShareTemplateVariant(variantId);
+    if (!variant) {
+      throw new BadRequestException(`Unknown template variant "${variantId}"`);
+    }
+
+    const owned = await this.prisma.whatsappTemplate.count({
+      where: { createdByUserId: userId },
+    });
+    if (owned >= MAX_USER_TEMPLATES) {
+      throw new ConflictException(
+        `You can create at most ${MAX_USER_TEMPLATES} templates`,
+      );
+    }
+
+    if (image) {
+      if (image.sizeBytes > TEMPLATE_IMAGE_MAX_BYTES) {
+        throw new BadRequestException("Header image must be 5 MB or smaller");
+      }
+      if (!this.templateImages.extensionForMime(image.mimeType)) {
+        throw new BadRequestException(
+          "Header image must be image/jpeg, image/png, or image/webp",
+        );
+      }
+    }
+
+    // Key doubles as the Twilio friendly_name (lowercase alnum + underscores).
+    const key = `user_${userId.replace(/-/g, "").slice(0, 8)}_${variantId}_${Date.now().toString(36)}`;
+
+    const headerImageUrl = image
+      ? await this.templateImages.upload(key, image.buffer, image.mimeType)
+      : undefined;
+
+    const contentSid = await this.twilioContent.create({
+      name: key,
+      body: variant.body,
+      buttonTitle: SHARE_TEMPLATE_BUTTON_TITLE,
+      buttonType: "QUICK_REPLY",
+      category: "UTILITY",
+      headerImageUrl,
+    });
+
+    const approvalStatus = await this.twilioContent.submitForApproval(
+      contentSid,
+      key,
+      "UTILITY",
+    );
+
+    return this.prisma.whatsappTemplate.create({
+      data: {
+        key,
+        useCase: WhatsappTemplateUseCase.CARD_SHARE,
+        contentSid,
+        locale: "en",
+        bodyPreview: variant.body,
+        buttonTitle: SHARE_TEMPLATE_BUTTON_TITLE,
+        headerImageUrl: headerImageUrl ?? null,
+        isActive: true,
+        approvalStatus: approvalStatusToEnum(approvalStatus),
+        // Just pushed to Twilio, so in sync by construction.
+        syncStatus: WhatsappTemplateSyncStatus.IN_SYNC,
+        syncedAt: new Date(),
+        createdByUserId: userId,
+      },
+    });
   }
 
   /**
