@@ -98,12 +98,12 @@ export class WhatsappTemplateService {
   async listForPicker(
     useCase: WhatsappTemplateUseCase = WhatsappTemplateUseCase.CARD_SHARE,
     userId?: string,
+    includePending = false,
   ): Promise<WhatsappTemplate[]> {
     const rows = await this.prisma.whatsappTemplate.findMany({
       where: {
         useCase,
         isActive: true,
-        // Global templates for everyone + the caller's own creations.
         OR: [
           { createdByUserId: null },
           ...(userId ? [{ createdByUserId: userId }] : []),
@@ -115,12 +115,18 @@ export class WhatsappTemplateService {
     for (const row of rows) {
       synced.push(await this.sync.ensureFresh(row));
     }
-    return synced.filter(
-      (t) =>
-        t.isActive &&
-        t.approvalStatus === WhatsappTemplateApprovalStatus.APPROVED &&
-        SENDABLE_SYNC_STATUSES.includes(t.syncStatus),
-    );
+    return synced.filter((t) => {
+      if (!t.isActive) return false;
+      if (t.approvalStatus === WhatsappTemplateApprovalStatus.APPROVED &&
+          SENDABLE_SYNC_STATUSES.includes(t.syncStatus)) {
+        return true;
+      }
+      // Include the caller's own non-approved templates when requested.
+      if (includePending && userId && t.createdByUserId === userId) {
+        return true;
+      }
+      return false;
+    });
   }
 
   async listAll(

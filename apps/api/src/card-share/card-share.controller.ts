@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Param,
+  ParseBoolPipe,
   ParseUUIDPipe,
   Post,
   Query,
@@ -18,6 +19,7 @@ import {
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiQuery,
   ApiTags,
 } from "@nestjs/swagger";
 import type { JwtUserPayload } from "../common/decorators/current-user.decorator";
@@ -56,15 +58,26 @@ export class CardShareController {
     summary: "List templates available in the share picker",
     description:
       "Active, WhatsApp-approved templates verified in sync with Twilio: global ones " +
-      "plus the caller's own creations. The body/button content mirrors Twilio exactly, " +
-      "so a preview rendered from it matches the sent message character-for-character. " +
-      "Empty when no template is currently sendable.",
+      "plus the caller's own creations. Pass includePending=true to also return the " +
+      "caller's own templates that are still awaiting Meta approval (not sendable yet).",
+  })
+  @ApiQuery({
+    name: "includePending",
+    required: false,
+    type: Boolean,
+    description: "Include the caller's own PENDING/REJECTED templates in the response.",
   })
   @ApiOkResponse({ type: [ShareTemplateResponseDto] })
   async listShareTemplates(
     @CurrentUser() user: JwtUserPayload,
+    @Query("includePending", new ParseBoolPipe({ optional: true }))
+    includePending?: boolean,
   ): Promise<ShareTemplateResponseDto[]> {
-    const templates = await this.templates.listForPicker(undefined, user.sub);
+    const templates = await this.templates.listForPicker(
+      undefined,
+      user.sub,
+      includePending,
+    );
     return templates.map((t) => ({
       key: t.key,
       locale: t.locale,
@@ -72,6 +85,7 @@ export class CardShareController {
       buttonTitle: t.buttonTitle,
       headerImageUrl: t.headerImageUrl,
       syncedAt: t.syncedAt,
+      approvalStatus: t.approvalStatus,
     }));
   }
 
