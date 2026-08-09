@@ -38,8 +38,8 @@ export class ShareTemplateResponseDto {
 
   @ApiPropertyOptional({
     description:
-      "Only on POST (creation) responses: WhatsApp approval state. The template joins " +
-      "the picker automatically once this reaches APPROVED (mirrored by the sync cron).",
+      "WhatsApp approval state. APPROVED = sendable. PENDING/REJECTED = not yet sendable. " +
+      "Always present when includePending=true is passed to the list endpoint.",
   })
   approvalStatus?: string;
 }
