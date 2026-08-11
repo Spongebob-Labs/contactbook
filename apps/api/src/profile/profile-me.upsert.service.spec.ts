@@ -4,6 +4,10 @@ import { ProfileDeletableGroupCategory } from "./dto/profile-deletable-group-cat
 import { ProfileMeUpsertService } from "./profile-me.upsert.service";
 import { registrationIdentity } from "../../test/fixtures/profile-payloads";
 import {
+  addPersonalCard,
+  addPersonalGroupWithPhone,
+  addWorkCard,
+  addWorkGroup,
   createProfileUpsertMocks,
   type ProfileUpsertMocks,
 } from "../../test/helpers/profile-upsert-mocks";
@@ -207,6 +211,151 @@ describe("ProfileMeUpsertService", () => {
         FieldCategory.FINANCIAL,
         "Primary Bank",
       );
+    });
+  });
+
+  describe("card field mapping backfill", () => {
+    it("attaches a personal field added after onboarding to the personal card", async () => {
+      const cardId = addPersonalCard(mocks);
+      addPersonalGroupWithPhone(mocks, "phone-1", "land-1");
+      // The phone was mapped at onboarding; the landline is the new field.
+      mocks.prisma.cardFieldMapping.findMany.mockResolvedValue([
+        { cardId, fieldId: "phone-1" },
+      ]);
+
+      await svc().patch(mocks.userId, { personal: { landline: "1123456789" } });
+
+      expect(mocks.prisma.cardFieldMapping.createMany).toHaveBeenCalledWith({
+        data: [{ cardId, fieldId: "land-1" }],
+        skipDuplicates: true,
+      });
+    });
+
+    it("maps a brand-new personal group onto the personal card", async () => {
+      const cardId = addPersonalCard(mocks);
+      addPersonalGroupWithPhone(mocks, "phone-1", "land-1");
+      mocks.prisma.cardFieldMapping.findMany.mockResolvedValue([]);
+
+      await svc().patch(mocks.userId, { personal: { mobile: "9953266232" } });
+
+      expect(mocks.prisma.cardFieldMapping.createMany).toHaveBeenCalledWith({
+        data: [
+          { cardId, fieldId: "phone-1" },
+          { cardId, fieldId: "land-1" },
+        ],
+        skipDuplicates: true,
+      });
+    });
+
+    it("leaves an unreferenced work group alone rather than filling a personal card", async () => {
+      addPersonalCard(mocks);
+      const work = addWorkGroup(mocks);
+      work.fields = [
+        {
+          id: "work-phone",
+          type: FieldType.PHONE,
+          groupId: work.id,
+          label: null,
+        },
+      ] as typeof work.fields;
+      mocks.prisma.cardFieldMapping.findMany.mockResolvedValue([]);
+
+      await svc().patch(mocks.userId, { personal: { mobile: "9953266232" } });
+
+      expect(mocks.prisma.cardFieldMapping.createMany).not.toHaveBeenCalled();
+    });
+
+    it("writes nothing when every field is already mapped", async () => {
+      const cardId = addPersonalCard(mocks);
+      addPersonalGroupWithPhone(mocks, "phone-1", "land-1");
+      mocks.prisma.cardFieldMapping.findMany.mockResolvedValue([
+        { cardId, fieldId: "phone-1" },
+        { cardId, fieldId: "land-1" },
+      ]);
+
+      await svc().patch(mocks.userId, { personal: { mobile: "9953266232" } });
+
+      expect(mocks.prisma.cardFieldMapping.createMany).not.toHaveBeenCalled();
+    });
+
+    it("lets an empty work card adopt the current workplace", async () => {
+      const cardId = addWorkCard(mocks);
+      const work = addWorkGroup(mocks, "work-1", "kidan");
+      work.fields = [
+        {
+          id: "company-1",
+          type: FieldType.COMPANY,
+          groupId: work.id,
+          label: null,
+        },
+        {
+          id: "title-1",
+          type: FieldType.JOB_TITLE,
+          groupId: work.id,
+          label: null,
+        },
+      ] as typeof work.fields;
+      mocks.prisma.cardFieldMapping.findMany.mockResolvedValue([]);
+
+      await svc().patch(mocks.userId, {
+        work: [{ groupId: "work-1", tag: "kidan", companyName: "kidan" }],
+      });
+
+      expect(mocks.prisma.cardFieldMapping.createMany).toHaveBeenCalledWith({
+        data: [
+          { cardId, fieldId: "company-1" },
+          { cardId, fieldId: "title-1" },
+        ],
+        skipDuplicates: true,
+      });
+    });
+
+    /*
+      Onboarding builds one card per work group, so an adopting card takes one
+      group — not every workplace the user has ever held.
+    */
+    it("adopts only the newest work group onto an empty work card", async () => {
+      const cardId = addWorkCard(mocks);
+      const current = addWorkGroup(mocks, "work-new", "kidan");
+      current.fields = [
+        {
+          id: "company-new",
+          type: FieldType.COMPANY,
+          groupId: "work-new",
+          label: null,
+        },
+      ] as typeof current.fields;
+      const previous = addWorkGroup(mocks, "work-old", "Previous Co");
+      previous.fields = [
+        {
+          id: "company-old",
+          type: FieldType.COMPANY,
+          groupId: "work-old",
+          label: null,
+        },
+      ] as typeof previous.fields;
+      // `findMany` is ordered updatedAt-desc in the service; mirror that here.
+      mocks.prisma.fieldGroup.findMany.mockResolvedValue([current, previous]);
+      mocks.prisma.cardFieldMapping.findMany.mockResolvedValue([]);
+
+      await svc().patch(mocks.userId, {
+        work: [{ groupId: "work-new", tag: "kidan", companyName: "kidan" }],
+      });
+
+      expect(mocks.prisma.cardFieldMapping.createMany).toHaveBeenCalledWith({
+        data: [{ cardId, fieldId: "company-new" }],
+        skipDuplicates: true,
+      });
+    });
+
+    it("does not let an empty work card adopt personal details", async () => {
+      addWorkCard(mocks);
+      addPersonalGroupWithPhone(mocks, "phone-1", "land-1");
+      mocks.prisma.cardFieldMapping.findMany.mockResolvedValue([]);
+
+      await svc().patch(mocks.userId, { personal: { mobile: "9953266232" } });
+
+      expect(mocks.prisma.cardFieldMapping.createMany).not.toHaveBeenCalled();
     });
   });
 });
