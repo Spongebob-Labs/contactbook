@@ -1,5 +1,196 @@
 # Decision Context
 
+## 2026-08-09 - Card flow revamp: preset-driven wizard, tabbed card page, first-visit tour
+
+- Decision: The create-card wizard is now **Card → Start from → What it shares**. Step 2 picks an
+  existing card as a *preset*; step 3 renders only the field types that preset gives, ticked, with an
+  "Add more fields" disclosure. The profile editor and the WhatsApp message step are both gone from the
+  modal — the message step was never persisted, and editing values now belongs to the card page and the
+  profile. Plan: `docs/card-flow-revamp-plan.md`.
+- Reason: Step 2 previously embedded the whole 12-row profile editor inside a wizard, giving one screen
+  two competing commit affordances ("Save details" vs "Next"), and step 3 taught a template choice that
+  was thrown away on Create.
+- "Template" means an existing card. WhatsApp templates carry no field information (`ShareTemplate` is
+  `{key, locale, body, buttonTitle, headerImageUrl, syncedAt}`), and `VcardAssetResponseDto.fieldTypes`
+  only echoes the filter you sent, so the server cannot describe what a card holds. Per-card selections
+  therefore live in localStorage under `contactbook:card-fields:v1:<userId>` until the backend accepts
+  `fieldTypes` on the card. Both new stores are user-scoped and cleared in
+  `clearContactBookSessionState()` — a browser-wide key leaked across accounts once before.
+- Card page is now tabbed (Overview / What's shared / History) with the vCard preview pinned beside all
+  three, and it reads and writes the persisted field selection so a card is usable as a preset later.
+- Tour: `driver.js`, four steps, once per user (`contactbook:card-tour-seen:v1:<userId>`), armed only
+  once the card has loaded. Lands in the lazy card-page chunk, not the main bundle.
+- Share flow: templates now show whether tapping downloads the contact file immediately (URL button,
+  `{{4}}` = the VCF object key) or replies and receives it as a second message, and the default
+  selection prefers a direct-VCF-with-image template. `ShareTemplate` gained an optional `buttonType`;
+  the UI falls back to a `card_share_vcf*` key heuristic while the list endpoint omits it.
+- Two defects found during integration that the per-file tests could not see: (1) the share dialog set
+  the template list and then chose a default in a *follow-up effect*, leaving one render with nothing
+  selected and a placeholder preview — folded into one commit with a functional `setTemplateKey`;
+  (2) the tour anchor for "what's shared" sat on a tab panel that only exists while that tab is active,
+  so the tour would have polled for 3s and silently never appeared — moved onto the tab trigger via a
+  new optional `dataTour` on `SegmentedTabItem`.
+- Hooks live in `src/lib/` (matching `use-public-reveal.ts`), not a new `src/hooks/` directory.
+- Files: added `lib/card-field-selection.ts`, `lib/card-presets.ts`, `lib/share-template-capabilities.ts`,
+  `lib/product-tour.ts`, `lib/use-card-tour.ts` and 8 test files. Rewrote `components/cards/card-create-modal.tsx`,
+  `pages/card-detail-page.tsx`. Edited `share-card-dialog.tsx`, `share-template-picker.tsx`,
+  `whatsapp-message-preview.tsx`, `ui/segmented-tabs.tsx`, `lib/session-storage.ts`, `lib/card-share-types.ts`,
+  `lib/card-share-api.ts`, `test/setup.ts`.
+- Dependencies (approved): `@testing-library/react`, `@testing-library/user-event` (dev), `driver.js`.
+  `setup.ts` now calls `cleanup()` explicitly — `globals: false` means Testing Library never registers
+  its own — and clears `localStorage`.
+- Checks: `tsc --noEmit` clean; 230 tests / 25 files green on three consecutive runs; `vite build` passes.
+- Alternatives: deriving a preset's field set by parsing the card's generated `.vcf` (rejected — all
+  cards copy the same onboarding mappings so presets would look identical, and it depends on GCS CORS);
+  blocking on a backend `fieldTypes` column (rejected — would not have shipped today).
+- Open backend asks are listed in `docs/card-flow-revamp-plan.md` §6, unchanged by this work.
+
+### Follow-up (same day) — shared contacts arrived empty: presets were ranked by recency, not content
+
+- Diagnosed against production with a user-supplied token. Card `5a286f9e` had **0** field mappings,
+  and its generated `.vcf` was 73 bytes: `FN`/`N` only. Of six cards on the account, only the original
+  onboarding card (`adf1c578`, 8 Aug) had any fields — three: phone, email, address.
+- Root cause, frontend, two compounding faults:
+  1. `listCards()` never fetched mapping counts, so the wizard could not distinguish a card that
+     carries details from an empty one. `CardPreset.isEmpty` was therefore always false and the
+     "this card has no details" warning could never fire.
+  2. `listCardPresets` ranked by `updatedAt` desc and the first preset is preselected — so the newest
+     card won, which is invariably a freshly created empty one. Copying it copied nothing.
+- Fixes: new `listCardsWithFieldCounts()` in `cards-api.ts` (one mapping lookup per card; a failed
+  lookup leaves `mappedFieldIds` undefined = "unknown", never "empty"); `listCardPresets` now sorts
+  known-empty cards last, recency within each group, with unknown treated as usable; the wizard and
+  the card page's copy-details rescue flow both use the new loader, and the rescue picker labels an
+  empty source "— no details".
+- `fieldTypes` is a *filter over attached fields*, not a data source: sending
+  `["PHONE","EMAIL",…]` for a card with no mappings yields a name-only file. The API echoes the
+  requested `fieldTypes` back regardless, which makes an empty card look correctly configured.
+- Checks: `tsc --noEmit` clean; 246 tests / 25 files green on three consecutive runs; build passes.
+
+### Follow-up (same day) — contact-file preview moved into the share dialog
+
+- The share dialog let the user narrow `fieldTypes` at step 2 but previewed nothing, so the file shown
+  on the card page could differ from the file actually sent. The VCF is content-addressed by
+  card + selection, so a different selection is a *different file* — this is exactly how a PHOTO gets
+  silently dropped. `VcardPreview` now renders beside the picker, driven by the same `fieldTypes`
+  state the share call sends, making preview and payload the same object by construction.
+- Confirmed the four-call flow is already fully integrated: `POST /cards/:id/vcard` (preview),
+  `POST /cards/:id/share`, `GET /card-shares/:batchId` (polling). Step 1 (GCS upload) has no public
+  endpoint and is server-side.
+
+### Follow-up (same day) — the VCF second message never arrives: server-side, not frontend
+
+- Symptom: recipient taps "Get Contact", the quick-reply is delivered (✓✓), no VCF follows.
+- The frontend has no part in this leg — its job ends at `POST /cards/:cardId/share`, which succeeded.
+- Ruled out by probing production and reading the deployed source:
+  - The webhook route **is** deployed: `POST /api/v1/webhooks/twilio/incoming` → 403, a bogus sibling
+    path → 404.
+  - It answers `"Invalid Twilio signature"`, not `"Twilio webhook is not configured"`, so
+    `TWILIO_AUTH_TOKEN` and `APP_PUBLIC_URL` are both set in production.
+  - `inboundE164ToIdentity` parses `+91…` correctly via libphonenumber into `+91` + national number.
+  - `CardShareBatch.vcardAsset` is a **required** relation, so it cannot be null at send time.
+  - `sentAt` is written alongside `DISPATCHED` (`card-share-dispatch.service.ts:91`), so the 23h
+    lookup window can match.
+- Remaining causes, all server-side: (a) Twilio's "A MESSAGE COMES IN" is not pointed at the endpoint
+  for that sender, (b) it is, but the console URL differs from `APP_PUBLIC_URL` + the path so the
+  signature is computed over a different URL and 403s, or (c) `sendVcfDocument` fails at Twilio.
+- **Latent bug that will mask any fix:** `vcfSentAt` is claimed *before* the send and deliberately left
+  set on failure (`card-share-vcf-reply.service.ts:70-104`), so a recipient whose first attempt failed
+  can never receive the VCF — every later tap is filtered out by `vcfSentAt: null` and silently
+  ignored. Rows tapped during testing are already poisoned and must be cleared before re-testing.
+- **Why this stayed invisible:** `vcfSentAt`/`vcfMessageSid` are not in the recipient response DTO, so
+  no screen can show whether the contact file actually went. Share history shows delivery of the
+  *template*, which was fine. It took a WhatsApp screenshot to find.
+
+### Follow-up (same day) — `card_share_vcf_en` is a QUICK_REPLY; the key heuristic is deleted
+
+- Settled empirically from a delivered WhatsApp message: the `card_share_vcf_en` button renders with
+  the reply arrow, and the template body reads "Tap the button below and **I'll send you** the contact
+  file" — copy written for the two-message flow. The backend note claiming it is a URL button was
+  wrong; the integration guide's webhook diagram was right.
+- Consequence: `classifyShareTemplate` had been reading the `card_share_vcf*` key prefix as proof of a
+  URL button, so the UI showed "Downloads the contact instantly" for a template that does no such
+  thing. That guess is **removed** — only an explicit `buttonType === "URL"` counts, and unknown now
+  means "not a download", never the reverse. Pinned by a test naming the production evidence.
+- No template in production can put the VCF in the button today, so the app no longer claims any can.
+  The send step describes the real experience instead of warning about it, since there is nothing to
+  switch to.
+- Getting the VCF into the button is a backend change, not a frontend one: seed/recreate a URL-button
+  (or `whatsapp/card`) template — `twilio-content-api.service.ts` already builds exactly that — with
+  body copy written for one tap, and return `buttonType` from `GET /cards/share-templates`.
+
+### Follow-up (same day) — VCF-in-button: what the app can and cannot guarantee
+
+- The frontend cannot attach a VCF to a WhatsApp message. A template's button type is fixed at
+  creation time by the Twilio Content API, and `{{4}}` is filled server-side by the share endpoint.
+  The app's only lever is **which `templateKey` it sends**, so that is what was made reliable.
+- Decision: preselect a direct-VCF template, label every option's behaviour, and state on the send
+  step what the recipient will actually get — but still allow sending a quick-reply template. Forcing
+  the system template would kill the Templates page; blocking would strand users who already made one.
+- Wording hedges on purpose ("should open") because `GET /cards/share-templates` does **not** return
+  `buttonType`. Behaviour is inferred from the `card_share_vcf` key prefix. Once the API returns
+  `buttonType` the optional field on `ShareTemplate` already carries it and the labels become exact.
+- Unresolved contradiction, flagged to the team: the official integration guide documents the
+  two-message webhook flow as *the* flow, while the backend note says `card_share_vcf_en` carries the
+  VCF in a URL button, and `twilio-content-api.service.ts` builds URL buttons for user templates too.
+- Doc error caught: the guide lists card types as `PERSONAL, WORK, BUSINESS`. The Prisma enum is
+  `BUSINESS | PERSONAL | PAYMENT | CUSTOM` — there is no `WORK`. `toApiCardType` is correct as written.
+- Still blocked: "VCF with image" needs a PHOTO field *mapped to the card*, and the guide documents
+  `POST /cards/:cardId/field-mappings { fieldId }` while still exposing no endpoint that returns
+  profile field ids. Photos therefore only reach a vCard when the PHOTO field existed at onboarding.
+
+### Follow-up (same day) — step 2 stuck on skeletons
+
+- Reported: "Start from" sat on three skeletons with Next disabled and no error.
+- Not reproduced from the code. Rendering the modal against the real api layer with a mocked
+  transport reaches the preset list, and both mount sites toggle `open` on a persistent instance,
+  so no remount/cancellation loop exists. A theory that React's microtask flush cancelled the effect
+  before `.finally` was tested and **disproved** — passive effects run in a task, so `.finally` wins.
+- Fixed regardless, because the structure made the symptom reachable in ways the code alone cannot rule out:
+  1. `Promise.all([listCards(), fetchProfileMe()])` meant a slow or failing `/profile/me` took the card
+     list down with it, even though the profile only enriches descriptions and step 3's values. The two
+     are now settled independently and a profile failure is non-fatal. This was a real defect with a
+     failing test to prove it.
+  2. Loading now starts when the modal **opens**, not when step 2 is reached, so the round-trips overlap
+     with the user typing a name instead of being a cold wait on arrival.
+  3. Nothing in `apiFetch` times out, so a request that never settles held step 2 on skeletons forever.
+     A 15s watchdog now turns that dead end into the existing error + Retry. Mutation-checked.
+- Also cleared the loading flag alongside the data rather than in a `finally`, so no ordering between
+  the two can strand it.
+- Checks: `tsc --noEmit` clean; 236 tests / 25 files green on three consecutive runs; `vite build` passes.
+
+## 2026-08-09 - Card details are edited on the profile; new cards copy details from an existing card
+
+- Decision: The card screen no longer shows a grid of abstract field-type checkboxes. It shows the user's **real values** — photo, mobile, landline, fax, email, address, website, LinkedIn/X/Facebook, job title, company — editable inline. A card owns no data; its vCard is built from profile fields mapped to it, so "editing a card's details" writes the profile group the card draws from: `personal` + `socials` + identity photo for PERSONAL/CUSTOM, the first `work` group for BUSINESS. New `lib/card-profile-fields.ts` owns that mapping and builds the `PATCH /v1/profile/me` body; `components/cards/card-details-panel.tsx` is the UI.
+- Reason: The checkboxes were a *filter* over what already existed, so ticking "Landline" did nothing when no landline was stored anywhere. There was no way to add a photo or a number from the card flow at all, which is what the feature is for.
+- Copying details: `POST /cards` creates a card with zero field-mappings and the server only ever maps fields during profile onboarding, so a new card's vCard was name-only. `addMapping` (`apps/api/src/card/card.service.ts:86-91`) only checks the field belongs to the caller — not that it is unused — so `copyCardFieldMappings(from, to)` in `lib/cards-api.ts` copies another card's mappings across. This is the only way to give a new card content without a backend change; it is offered in the create flow ("Start from an existing card") and on any card whose mapped-field count is 0.
+- Destructive PATCH: the API reconciles `work`/`socials` by deleting any field absent from the group it receives (`personal` is additive). `buildCardProfilePatch` therefore always resends the whole group.
+- Templates: creation moved out of a modal-inside-a-modal onto `/dashboard/share-templates`, rendered inline via a new `ShareTemplateForm` export; the header image is a first-class control shown at `aspect-[1.91/1]`. The share dialog now links to that page instead of nesting a creator. Placeholder image tiles are gone — no header image renders no tile, which previously read as a broken image. `share-template-creator.tsx` → `share-template-form.tsx`; the orphaned modal wrapper was deleted.
+- Known gaps, surfaced in the UI rather than hidden: `DEPARTMENT` has no write path anywhere in the API (row renders read-only with the reason), and `DATE` is stored with `label: null` so the vCard generator never emits `BDAY` (row saves, with a hint). Both were sent to the backend team along with the request for a field catalog / mapping-on-PATCH.
+- Files: added `lib/card-profile-fields.ts`, `components/cards/card-details-panel.tsx`; `copyCardFieldMappings` in `lib/cards-api.ts`; `website` added to work/business types in `lib/types.ts`. Rewrote `components/cards/card-create-modal.tsx` (Card → Details → Message, with copy-from), `pages/share-templates-page.tsx`, `components/cards/share-template-form.tsx`, `share-template-picker.tsx`, `share-card-dialog.tsx` (creator wiring only), `pages/card-detail-page.tsx`.
+- Alternatives: a per-field picker driven by `fieldId` (impossible — no endpoint labels fields); writing values onto the card directly (no such endpoint); leaving the checkbox grid and documenting the limitation (rejected — the screen looked functional and did nothing).
+
+## 2026-08-08 - Cards rebuilt around WhatsApp share templates; client-side card design removed
+
+- Decision: The card feature is now driven entirely by the server. A card is `{ name, type, isSensitive }` plus its server-side field mappings — nothing else. All client-only presentation (theme presets, `connect`/`scan` layouts, hand-typed card fields, uploaded photo, QR mark, live/mobile card previews) and the `contactbook:card-presentation` localStorage store are deleted. "Template" now means the Meta-approved WhatsApp message template the card is delivered with, not a visual layout.
+- New API layer: `lib/card-share-types.ts` (domain types, `SHAREABLE_FIELD_TYPES`, `SHARE_LIMITS`, settle/resend predicates) and `lib/card-share-api.ts` (`listShareTemplates`, `listShareTemplateVariants`, `createShareTemplate` multipart, `shareCard`, `getCardShareBatch`, `resendShareRecipient`, `listCardShares`, `generateCardVcard`, `renderTemplateBody`). `lib/cards-api.ts` keeps CRUD + field mappings only.
+- Reason: Recipients get a template message with a "Get Contact" button that returns a `.vcf`; WhatsApp approves the wording, so users can only pick a body variant and an optional header image. Designing a card in-app was therefore meaningless — the only thing worth configuring is what lands in the vCard.
+- Endpoint verification: `apps/api` in this checkout has no `share-templates` routes, but probing live shows `GET /api/v1/cards/share-templates/variants` → 401 (route exists, auth required) while `GET /api/v1/cards/<uuid>/variants` → 404. The deployed API is ahead of this checkout, so the frontend is built to the deployed contract. Legacy `/v1/whatsapp-templates` still answers but is no longer called.
+- Field types, not field ids: `GET /cards/:id/field-mappings` returns bare UUIDs and no endpoint lists a user's profile fields with ids + types, so a per-field picker would render UUIDs. The UI selects from the 12 `SHAREABLE_FIELD_TYPES` and passes `fieldTypes` to `/vcard` and `/share`; mapping counts are shown as a number and ids are never rendered.
+- Known gap: `POST /v1/cards` creates a card with **no** field mappings, and the vCard is built only from mapped fields, so a newly created card can produce a name-only vCard. The detail page states this plainly when the mapping count is 0, and `VcardPreview` shows the real generated file. Closing this needs backend work (a field catalog, or auto-mapping on card create).
+- Response normalisation: `listCardShares` accepts `items` or legacy `batches`; `generateCardVcard` accepts `objectKey` or legacy `key`; unknown `fieldTypes` members are dropped. Dispatch/delivery status unions stay open (`string & {}`) because the deployed enum is wider than this checkout's.
+- Routing: `/dashboard/share-templates` replaces `/dashboard/whatsapp-templates` (old path redirects). Card creation is an in-page modal (`CardCreateModal`); `?onboarding=card` still opens it from the dashboard.
+- Files: added `apps/web/src/lib/card-share-types.ts`, `card-share-api.ts`; `components/cards/{whatsapp-message-preview,share-template-picker,share-template-creator,card-field-types-picker,vcard-preview,share-recipient-picker,share-batch-status,share-card-dialog,card-tile,card-create-modal}.tsx`; `pages/share-templates-page.tsx`; `lib/__tests__/integration/card-share-api.integration.test.ts`. Rewrote `lib/cards-api.ts`, `lib/types.ts`, `pages/cards-page.tsx`, `pages/card-detail-page.tsx`, `pages/dashboard-page.tsx`, `App.tsx`, `components/app-shell.tsx`, `lib/__tests__/contract-map.ts`, `lib/__tests__/integration/cards-api.integration.test.ts`, `lib/__live__/prod-api.live.test.ts`. Deleted `lib/{card-presentation,card-maker,card-display,card-styles,card-field-options,whatsapp-templates-api}.ts`, `components/cards/{card-pair-tile,card-photo-upload,card-qr-mark,card-template-chooser,card-theme-picker,card-thumbs,live-card-preview,mobile-card-preview}.tsx`, `components/ui/share-sheet.tsx`, `pages/{card-onboarding-page,whatsapp-templates-page}.tsx`.
+- Alternatives: keeping the visual card alongside the WhatsApp flow (rejected — recipients never see it, so it was a false promise); persisting a per-card default `fieldTypes` in localStorage (rejected — reintroduces the client-only state we just removed); free-text template editing (rejected — Meta approves the copy, the API only accepts a variant id).
+
+### Follow-up (same day) — review fixes
+
+- **`apiFetch` gained `skipCache`, and an uncached GET no longer clears the cache.** `lib/api.ts` memoises every GET promise for the session and only evicts on a mutation, so `getCardShareBatch` polling, `listShareTemplates` refresh, and share-history paging all replayed their first response forever — delivery status could never change on screen. Every card-share read now sets `skipCache: true`, pinned by a regression test. This is the one change outside the card feature; it was the highest-severity defect found.
+- **Nested-modal Escape.** The share dialog and the template creator both listened on `window`, so one Escape closed both and discarded the whole share draft. The share dialog now ignores Escape while the creator (or a send) is in flight.
+- **`card-create-modal` reset guard removed.** A `wasOpenRef` "only on false→true" guard sat in front of a cancellable fetch, so StrictMode's double-invoke cancelled the request and blocked the re-run — the template picker showed skeletons forever on `/dashboard?onboarding=card`. The effect is now keyed on `open` alone.
+- **Recipient fallback dial restored to `+91`.** The rewrite took `DIAL_COUNTRIES[0]`, which is US `+1`; that value is the fallback used to parse every contact's stored number, so local Indian numbers would have been queued to US numbers. Contact parsing is also decoupled from the manual-entry country selector (changing it used to retroactively re-describe already-added recipients), and contacts skipped for an unreadable number are now counted in the UI instead of vanishing.
+- Also: max-3 template guard now counts pending templates; `senderName` (`{{1}}`) derives from one shared `shareSenderNameFrom` helper everywhere (the dashboard was using page state that is null until its own fetch lands); the detail page keeps the dialog open on its confirmation screen and no longer injects a new batch into a non-first history page; every history row may poll (settled batches are inert) so a resend on any row updates; polling that gives up now says so and offers "Check again"; raw template keys and ineffective `aria-label`s on `<p>`/`<span>` removed; modal backdrops are no longer focusable tab stops.
+- Known, not fixed: pending templates are component state, so "Awaiting approval" is lost on reload (the API only returns approved templates) — the copy now says so; the three modals still lack focus trapping/restore, which wants one shared hook rather than three fixes.
+
 ## 2026-08-05 - Card share picks recipients from vCard contacts (multi-select)
 
 - Decision: "Share via WhatsApp" no longer takes a typed phone number. Recipients are chosen in a new searchable multi-select (`components/ui/multi-select.tsx`) populated from `fetchAllContacts({ source: "VCARD" })`, one row per contact using its primary phone, capped at 50 (matches API `MAX_SHARE_CARD_RECIPIENTS`). Each recipient is sent with `contactId`, which `ShareCardRecipientDto` already accepts. The country-code select stays only as the fallback dial code for contacts saved without one; `parsePhoneParts()` in `lib/phone.ts` splits stored numbers and contacts that cannot be parsed are skipped with a warning toast.

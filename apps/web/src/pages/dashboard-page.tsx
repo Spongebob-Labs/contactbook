@@ -8,10 +8,14 @@ import {
   UserRound,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "@/context/auth-context";
 import { AppShell } from "@/components/app-shell";
-import { CardPairTile } from "@/components/cards/card-pair-tile";
+import { CardCreateModal } from "@/components/cards/card-create-modal";
+import { CardTile } from "@/components/cards/card-tile";
+import { ShareCardDialog } from "@/components/cards/share-card-dialog";
 import { buttonVariants } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
+import { shareSenderNameFrom } from "@/lib/card-share-types";
 import { createCard, listCards } from "@/lib/cards-api";
 import { fetchImportSummary } from "@/lib/contacts-api";
 import {
@@ -26,7 +30,6 @@ import type {
   ContactImportSummary,
   ProfileMeResponse,
 } from "@/lib/types";
-import { CardOnboardingModal } from "@/pages/card-onboarding-page";
 import { ImportOnboardingModal } from "@/pages/import-onboarding-page";
 import {
   ProfileOnboardingModal,
@@ -92,9 +95,11 @@ function getStarterCardRequests(
 export default function DashboardPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { profileIdentity } = useAuth();
   const [cards, setCards] = useState<ContactCard[]>([]);
   const [profile, setProfile] = useState<ProfileMeResponse | null>(null);
   const [importSummary, setImportSummary] = useState<ContactImportSummary | null>(null);
+  const [shareCard, setShareCard] = useState<ContactCard | null>(null);
   const hasConsumedPostOnboardingRoute = useRef(false);
   const onboardingStep = getOnboardingStep(searchParams.get("onboarding"));
   const returnTo = getSafeReturnPath(searchParams.get("returnTo"));
@@ -109,6 +114,10 @@ export default function DashboardPage() {
     profile?.identity.primaryEmail?.split("@")[0] ||
     "there";
   const timeOfDay = getTimeOfDayGreeting();
+  // Read from the auth context, not this page's `profile` state: that state is
+  // null until the overview request lands (and again if it fails), which would
+  // put "A ContactBook user" into a real WhatsApp message.
+  const shareSenderName = shareSenderNameFrom(profileIdentity);
 
   const setOnboardingStep = useCallback(
     (step: OnboardingStep | null) => {
@@ -285,7 +294,7 @@ export default function DashboardPage() {
           </p>
         </div>
         <Link
-          to="/dashboard?onboarding=card&returnTo=/dashboard"
+          to="/dashboard?onboarding=card"
           className={cn(buttonVariants(), "shrink-0 self-start")}
         >
           <Plus className="h-3.5 w-3.5" aria-hidden="true" />
@@ -326,7 +335,12 @@ export default function DashboardPage() {
         {visibleCards.length > 0 ? (
           <div className="flex gap-4 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {visibleCards.map((card) => (
-              <CardPairTile key={card.id} card={card} className="w-[376px]" />
+              <CardTile
+                key={card.id}
+                card={card}
+                onShare={setShareCard}
+                className="w-[320px] shrink-0"
+              />
             ))}
           </div>
         ) : (
@@ -341,7 +355,7 @@ export default function DashboardPage() {
                 </p>
               </div>
               <Link
-                to="/dashboard?onboarding=card&returnTo=/dashboard"
+                to="/dashboard?onboarding=card"
                 className={cn(buttonVariants(), "shrink-0")}
               >
                 <Plus className="h-3.5 w-3.5" aria-hidden="true" />
@@ -387,7 +401,7 @@ export default function DashboardPage() {
         <h2 className="title-section mb-4">Next steps</h2>
         <div className="grid gap-4 sm:grid-cols-3">
           <Link
-            to="/dashboard?onboarding=card&returnTo=/dashboard"
+            to="/dashboard?onboarding=card"
             className="rounded-lg border border-border bg-surface p-5 transition-colors duration-150 hover:bg-bg-hover"
           >
             <CreditCard className="mb-3 h-5 w-5 text-foreground" aria-hidden="true" />
@@ -395,7 +409,7 @@ export default function DashboardPage() {
               Create your first card
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Build a Connect or Scan card for sharing.
+              Send it on WhatsApp and people save you in one tap.
             </p>
           </Link>
           <Link
@@ -439,23 +453,29 @@ export default function DashboardPage() {
           }}
         />
       )}
-      {onboardingStep === "card" && !isSetupFlow && (
-        <CardOnboardingModal
-          mode="create"
-          onComplete={(card) => {
-            setCards((current) =>
-              current.some((item) => item.id === card.id)
-                ? current
-                : [card, ...current],
-            );
-            navigate(`/dashboard/cards/${card.id}`, {
-              replace: true,
-            });
-            void Promise.all([loadCards(), loadOverview()]);
-          }}
-          onSkip={() => setOnboardingStep(null)}
+      <CardCreateModal
+        open={onboardingStep === "card" && !isSetupFlow}
+        onClose={() => setOnboardingStep(null)}
+        onCreated={(card) => {
+          setCards((current) =>
+            current.some((item) => item.id === card.id)
+              ? current
+              : [card, ...current],
+          );
+          setOnboardingStep(null);
+          navigate(`/dashboard/cards/${card.id}`, { replace: true });
+          void Promise.all([loadCards(), loadOverview()]);
+        }}
+      />
+
+      {shareCard ? (
+        <ShareCardDialog
+          open
+          card={shareCard}
+          senderName={shareSenderName}
+          onClose={() => setShareCard(null)}
         />
-      )}
+      ) : null}
     </AppShell>
   );
 }

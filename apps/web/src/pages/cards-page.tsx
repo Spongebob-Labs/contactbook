@@ -1,73 +1,54 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { AlertCircle, IdCard, Plus } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
-import { CardPairTile } from "@/components/cards/card-pair-tile";
+import { CardCreateModal } from "@/components/cards/card-create-modal";
+import { CardTile } from "@/components/cards/card-tile";
+import { ShareCardDialog } from "@/components/cards/share-card-dialog";
 import { Alert } from "@/components/ui/alert";
-import { buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { FilterTabBar } from "@/components/ui/filter-tab-bar";
-import { SearchInput } from "@/components/ui/search-input";
 import { Panel } from "@/components/ui/panel";
+import { SearchInput } from "@/components/ui/search-input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAuth } from "@/context/auth-context";
+import { shareSenderNameFrom } from "@/lib/card-share-types";
 import { listCards } from "@/lib/cards-api";
-import { resolveTemplate } from "@/lib/card-maker";
 import { friendlyErrorMessages, logUiError } from "@/lib/friendly-errors";
 import type { ContactCard, ContactCardType } from "@/lib/types";
-import { cn } from "@/lib/utils";
+
+type CardFilter = "ALL" | ContactCardType;
 
 const filterTabs: Array<{ key: CardFilter; label: string }> = [
   { key: "ALL", label: "All" },
-  { key: "CONNECT", label: "Connect" },
-  { key: "SCAN", label: "Scan" },
   { key: "PERSONAL", label: "Personal" },
-  { key: "BUSINESS", label: "Business" },
+  { key: "BUSINESS", label: "Work" },
   { key: "CUSTOM", label: "Custom" },
 ];
 
-type CardFilter =
-  | "ALL"
-  | "CONNECT"
-  | "SCAN"
-  | "PERSONAL"
-  | "BUSINESS"
-  | "CUSTOM";
-
 function matchesFilter(card: ContactCard, filter: CardFilter) {
-  if (filter === "ALL") return true;
-  if (filter === "CONNECT") {
-    return resolveTemplate(card.template) === "connect";
-  }
-  if (filter === "SCAN") {
-    return resolveTemplate(card.template) === "scan";
-  }
-  if (filter === "CUSTOM") {
-    return card.type === "CUSTOM";
-  }
-  return card.type === (filter as ContactCardType);
+  return filter === "ALL" || card.type === filter;
 }
 
 function matchesQuery(card: ContactCard, query: string) {
-  const q = query.trim().toLowerCase();
-  if (!q) return true;
-  const haystack = [
-    card.name,
-    card.fields?.displayName,
-    card.fields?.title,
-    card.fields?.company,
-    card.fields?.email,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-  return haystack.includes(q);
+  const normalized = query.trim().toLowerCase();
+  return !normalized || card.name.toLowerCase().includes(normalized);
 }
 
+/**
+ * Card list. A card is now a name, a type, and whether it can be shared over
+ * WhatsApp — this page's job is to get the user to share, not admire a design.
+ */
 export default function CardsPage() {
+  const navigate = useNavigate();
+  const { profileIdentity } = useAuth();
   const [cards, setCards] = useState<ContactCard[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<CardFilter>("ALL");
   const [query, setQuery] = useState("");
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [shareCard, setShareCard] = useState<ContactCard | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -108,6 +89,15 @@ export default function CardsPage() {
     [cards, filter, query],
   );
 
+  const senderName = useMemo(() => {
+    return shareSenderNameFrom(profileIdentity);
+  }, [profileIdentity]);
+
+  const handleCreated = (card: ContactCard) => {
+    setIsCreateOpen(false);
+    navigate(`/dashboard/cards/${card.id}`);
+  };
+
   return (
     <AppShell>
       <div className="space-y-6">
@@ -120,7 +110,8 @@ export default function CardsPage() {
               </span>
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Create, manage and share your digital cards.
+              Share a card on WhatsApp and the person taps one button to save
+              you straight to their contacts.
             </p>
           </div>
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
@@ -131,18 +122,19 @@ export default function CardsPage() {
               containerClassName="w-full sm:w-56"
               aria-label="Search cards"
             />
-            <Link
-              to="/dashboard?onboarding=card&returnTo=/dashboard/cards"
-              className={cn(buttonVariants(), "shrink-0 justify-center")}
+            <Button
+              type="button"
+              className="shrink-0 justify-center"
+              onClick={() => setIsCreateOpen(true)}
             >
               <Plus className="h-3.5 w-3.5" aria-hidden="true" />
               Create card
-            </Link>
+            </Button>
           </div>
         </div>
 
         {isLoading && (
-          <section className="grid gap-4 md:grid-cols-2">
+          <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {Array.from({ length: 4 }).map((_, index) => (
               <Skeleton key={index} className="h-72 w-full rounded-lg" />
             ))}
@@ -157,9 +149,7 @@ export default function CardsPage() {
             />
             <div>
               <p className="font-medium">Could not load cards</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {friendlyErrorMessages.load}
-              </p>
+              <p className="mt-1 text-sm text-muted-foreground">{error}</p>
             </div>
           </Alert>
         )}
@@ -178,16 +168,17 @@ export default function CardsPage() {
                 Create your first card
               </h2>
               <p className="mt-2 max-w-md text-sm text-muted-foreground">
-                Build a personal, business, or custom card from the profile
-                information you want to share.
+                Build a card from your profile information, then share it on
+                WhatsApp so people can save you to their phone with one tap.
               </p>
-              <Link
-                to="/dashboard?onboarding=card&returnTo=/dashboard/cards"
-                className={cn(buttonVariants(), "mt-5")}
+              <Button
+                type="button"
+                className="mt-5"
+                onClick={() => setIsCreateOpen(true)}
               >
                 <Plus className="h-3.5 w-3.5" aria-hidden="true" />
                 Create card
-              </Link>
+              </Button>
             </div>
           </Panel>
         )}
@@ -209,13 +200,28 @@ export default function CardsPage() {
           )}
 
         {!isLoading && !error && filteredCards.length > 0 && (
-          <section className="grid gap-4 md:grid-cols-2">
+          <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {filteredCards.map((card) => (
-              <CardPairTile key={card.id} card={card} showName />
+              <CardTile key={card.id} card={card} onShare={setShareCard} />
             ))}
           </section>
         )}
       </div>
+
+      <CardCreateModal
+        open={isCreateOpen}
+        onClose={() => setIsCreateOpen(false)}
+        onCreated={handleCreated}
+      />
+
+      {shareCard ? (
+        <ShareCardDialog
+          open
+          onClose={() => setShareCard(null)}
+          card={shareCard}
+          senderName={senderName}
+        />
+      ) : null}
     </AppShell>
   );
 }

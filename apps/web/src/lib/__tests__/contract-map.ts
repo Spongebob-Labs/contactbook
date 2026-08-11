@@ -60,6 +60,12 @@ export const FRONTEND_API_CONTRACT = {
       pathSuffix: "/resend",
     },
   },
+  /** WhatsApp templates the card-share flow can send. */
+  shareTemplates: {
+    list: { method: "GET", path: "/v1/cards/share-templates" },
+    variants: { method: "GET", path: "/v1/cards/share-templates/variants" },
+    create: { method: "POST", path: "/v1/cards/share-templates" },
+  },
   connections: {
     list: { method: "GET", path: "/v1/connections" },
     request: { method: "POST", path: "/v1/connections/requests" },
@@ -68,10 +74,6 @@ export const FRONTEND_API_CONTRACT = {
       pathPrefix: "/v1/connections/requests/",
       pathSuffix: "/resend",
     },
-  },
-  whatsappTemplates: {
-    list: { method: "GET", pathPrefix: "/v1/whatsapp-templates" },
-    create: { method: "POST", path: "/v1/whatsapp-templates" },
   },
 } as const;
 
@@ -94,8 +96,9 @@ export function allContractPaths(): string[] {
     FRONTEND_API_CONTRACT.contacts.groups.path,
     FRONTEND_API_CONTRACT.integrations.googleDisconnect.path,
     FRONTEND_API_CONTRACT.cards.list.path,
+    FRONTEND_API_CONTRACT.shareTemplates.list.path,
+    FRONTEND_API_CONTRACT.shareTemplates.variants.path,
     FRONTEND_API_CONTRACT.connections.list.path,
     FRONTEND_API_CONTRACT.connections.request.path,
-    FRONTEND_API_CONTRACT.whatsappTemplates.create.path,
   ];
 }

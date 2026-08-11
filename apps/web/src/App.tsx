@@ -19,9 +19,7 @@ const PrivacyPage = lazy(() => import("@/pages/privacy-page"));
 const ProfilePage = lazy(() => import("@/pages/profile-page"));
 const TermsPage = lazy(() => import("@/pages/terms-page"));
 const ThemePreviewPage = lazy(() => import("@/pages/theme-preview-page"));
-const WhatsappTemplatesPage = lazy(
-  () => import("@/pages/whatsapp-templates-page"),
-);
+const ShareTemplatesPage = lazy(() => import("@/pages/share-templates-page"));
 const ConnectionsPage = lazy(() => import("@/pages/connections-page"));
 
 function pageTitleForPath(pathname: string) {
@@ -70,8 +68,8 @@ function pageTitleForPath(pathname: string) {
   if (pathname === "/dashboard/import") {
     return "Import Contacts | ContactBook";
   }
-  if (pathname === "/dashboard/whatsapp-templates") {
-    return "WhatsApp Templates | ContactBook";
+  if (pathname === "/dashboard/share-templates") {
+    return "Message Templates | ContactBook";
   }
   if (pathname === "/dashboard/connections") {
     return "Connections | ContactBook";
@@ -147,7 +145,7 @@ export default function App() {
             path="/onboarding/card"
             element={
               <Protected>
-                <Navigate to="/dashboard" replace />
+                <Navigate to="/dashboard?onboarding=card" replace />
               </Protected>
             }
           />
@@ -216,12 +214,16 @@ export default function App() {
             }
           />
           <Route
-            path="/dashboard/whatsapp-templates"
+            path="/dashboard/share-templates"
             element={
               <Protected>
-                <WhatsappTemplatesPage />
+                <ShareTemplatesPage />
               </Protected>
             }
+          />
+          <Route
+            path="/dashboard/whatsapp-templates"
+            element={<Navigate to="/dashboard/share-templates" replace />}
           />
           <Route
             path="/dashboard/connections"

@@ -6,6 +6,12 @@ export type SegmentedTabItem<T extends string> = {
   label: string;
   icon?: LucideIcon;
   count?: number | null;
+  /**
+   * `data-tour` hook for the product tour. It belongs on the trigger rather
+   * than the panel: a panel only exists while its tab is active, so a tour
+   * step pointing at one could never find it from another tab.
+   */
+  dataTour?: string;
 };
 
 type SegmentedTabsProps<T extends string> = {
@@ -41,6 +47,7 @@ export function SegmentedTabs<T extends string>({
             type="button"
             role="tab"
             aria-selected={isActive}
+            data-tour={item.dataTour}
             onClick={() => onChange(item.key)}
             className={cn(
               "inline-flex h-9 min-w-0 flex-1 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold tracking-tight transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:flex-none",

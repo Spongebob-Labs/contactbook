@@ -23,7 +23,7 @@ const desktopNav = [
   { to: "/dashboard/connections", label: "Connections", icon: Link2 },
   { to: "/dashboard/import", label: "Import", icon: Import },
   {
-    to: "/dashboard/whatsapp-templates",
+    to: "/dashboard/share-templates",
     label: "Templates",
     icon: MessageCircle,
   },

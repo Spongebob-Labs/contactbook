@@ -67,42 +67,12 @@ export type ContactUrl = {
 
 export type ContactCardType = "BUSINESS" | "PERSONAL" | "CUSTOM";
 
-/** Fields entered in the live card maker (UI / local store). */
-export type ContactCardFields = {
-  displayName: string;
-  title: string;
-  /** E.164-style dial prefix, e.g. "+971". */
-  countryCode: string;
-  /** National / local phone digits (no country code). */
-  phone: string;
-  email: string;
-  company: string;
-  address: string;
-  website: string;
-  linkedin: string;
-  twitter: string;
-  facebook: string;
-  instagram: string;
-  /**
-   * Compressed data-URL headshot for the live card avatar.
-   * Local UI pass only until media upload API exists.
-   */
-  photoDataUrl: string;
-};
-
-/** Theme for shareable card chrome (preset id or custom hex). */
-export type ContactCardTheme = {
-  presetId: string;
-  primary: string;
-};
-
 /**
- * Mobile portrait layout templates.
- * - connect: white identity panel, CTAs, socials (share page)
- * - scan: solid theme card with brand pill, details, and QR
+ * A shareable card. The server owns everything here: a card is a name, a type,
+ * and the set of profile fields mapped onto it. There is no client-side styling
+ * — what a recipient sees is the WhatsApp template message plus the generated
+ * vCard, both produced server-side.
  */
-export type ContactCardTemplate = "connect" | "scan";
-
 export type ContactCard = {
   id: string;
   userId: string;
@@ -110,12 +80,13 @@ export type ContactCard = {
   type: ContactCardType;
   createdAt: string;
   updatedAt: string;
+  /** Sensitive cards cannot be shared over WhatsApp — the API rejects the send. */
   isSensitive?: boolean;
-  /** Optional maker payload — client presentation until field-mappings cover content. */
-  fields?: ContactCardFields;
-  theme?: ContactCardTheme;
-  template?: ContactCardTemplate;
-  /** Profile field UUIDs mapped on the server when available. */
+  /**
+   * Profile field UUIDs mapped to this card. They decide what lands in the
+   * vCard. The API exposes no labels for them, so surface the count, never the
+   * ids themselves.
+   */
   mappedFieldIds?: string[];
 };
 
@@ -267,6 +238,8 @@ export type ProfileMeResponse = {
     workLandline?: string | null;
     workFax?: string | null;
     workEmail?: string | null;
+    /** Stored as a URL field and shared in the vCard. */
+    website?: string | null;
     workPostalAddress?: PostalAddress;
     employeeId?: string | null;
     custom?: Record<string, string>;
@@ -282,6 +255,8 @@ export type ProfileMeResponse = {
     businessLandline?: string | null;
     businessFax?: string | null;
     businessEmail?: string | null;
+    /** Stored as a URL field and shared in the vCard. */
+    website?: string | null;
     businessPostalAddress?: PostalAddress;
     businessType?: string | null;
     gstin?: string | null;

@@ -47,6 +47,12 @@ type ApiOptions = Omit<RequestInit, "body" | "credentials"> & {
   body?: unknown;
   /** When false, skip session refresh on 401. Default: auto (true for app APIs, false for auth). */
   retry?: boolean;
+  /**
+   * Bypass the in-memory GET cache, for reads whose whole purpose is to observe
+   * server state changing (delivery status, template approval). Without this a
+   * repeated GET resolves the first response forever.
+   */
+  skipCache?: boolean;
 };
 
 const getCache = new Map<string, Promise<unknown>>();
@@ -209,7 +215,7 @@ export async function apiFetch<T>(
   options: ApiOptions = {},
 ): Promise<T> {
   const method = requestMethod(options);
-  if (method === "GET") {
+  if (method === "GET" && !options.skipCache) {
     const cacheKey = getCacheKey(path, options);
     const cached = getCache.get(cacheKey);
     if (cached) {
@@ -225,7 +231,8 @@ export async function apiFetch<T>(
   }
 
   const payload = await requestJson<T>(path, options);
-  if (method !== "HEAD" && method !== "OPTIONS") {
+  // Only a mutation can invalidate cached reads — an uncached GET must not.
+  if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
     clearGetCache();
   }
   return payload as T;

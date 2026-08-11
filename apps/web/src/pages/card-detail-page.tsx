@@ -1,537 +1,195 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+/**
+ * One card's settings, sharing configuration, and delivery history.
+ *
+ * The three concerns are tabbed rather than stacked — the details editor alone
+ * is twelve rows tall, and burying "Share history" under it made delivery
+ * status unreachable without a scroll. The vCard preview stays pinned beside
+ * every tab because it is the only honest answer to "what will they actually
+ * get", and that question applies to all three.
+ */
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   AlertCircle,
   ArrowLeft,
-  Banknote,
-  Building2,
-  CalendarDays,
-  Copy,
-  Download,
-  Globe2,
-  Hash,
-  Image as ImageIcon,
-  Landmark,
-  Link as LinkIcon,
-  Mail,
-  MapPin,
-  Phone,
+  History,
+  IdCard,
+  Info,
+  ListChecks,
+  Settings2,
   Share2,
-  Smartphone,
   Trash2,
-  UserRound,
-  Wallet,
-  type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
-import { LiveCardPreview } from "@/components/cards/live-card-preview";
-import { MobileCardPreview } from "@/components/cards/mobile-card-preview";
+import { CardDetailsPanel } from "@/components/cards/card-details-panel";
+import { ShareBatchStatus } from "@/components/cards/share-batch-status";
+import { ShareCardDialog } from "@/components/cards/share-card-dialog";
+import { VcardPreview } from "@/components/cards/vcard-preview";
 import { Alert } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { EditableSection, ViewField } from "@/components/ui/editable-section";
 import { Input } from "@/components/ui/input";
+import { PageHeader } from "@/components/ui/page-header";
+import { Panel, PanelHeader } from "@/components/ui/panel";
 import {
-  MultiSelect,
-  type MultiSelectOption,
-} from "@/components/ui/multi-select";
-import { Panel } from "@/components/ui/panel";
-import { ShareSheet, type ShareSheetOptionId } from "@/components/ui/share-sheet";
+  SegmentedTabs,
+  type SegmentedTabItem,
+} from "@/components/ui/segmented-tabs";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getCardDisplayDetails } from "@/lib/card-display";
-import { listMappableFinancialFields } from "@/lib/card-field-options";
-import {
-  CARD_TEMPLATE_OPTIONS,
-  DEFAULT_CARD_THEME,
-  EMPTY_CARD_FIELDS,
-  formatCardPhone,
-  normalizeDialCode,
-  resolveTemplate,
-} from "@/lib/card-maker";
+import { useAuth } from "@/context/auth-context";
 import { ApiError } from "@/lib/api";
 import {
-  addCardFieldMapping,
+  dropCardFieldSelection,
+  readCardFieldSelection,
+  writeCardFieldSelection,
+} from "@/lib/card-field-selection";
+import { listCardShares } from "@/lib/card-share-api";
+import { shareSenderNameFrom } from "@/lib/card-share-types";
+import type { CardShareBatch, ShareableFieldType } from "@/lib/card-share-types";
+import {
+  copyCardFieldMappings,
   deleteCard,
-  generateCardVcard,
   getCard,
-  listCardShares,
-  removeCardFieldMapping,
-  resendCardShareRecipient,
-  shareCardBatch,
+  listCardsWithFieldCounts,
   updateCard,
-  type CardShareBatch,
-  type CardShareRecipientInput,
 } from "@/lib/cards-api";
-import { getContactName, getPrimaryPhone } from "@/lib/contact-display";
-import { fetchAllContacts } from "@/lib/contacts-api";
-import { DIAL_COUNTRIES } from "@/lib/dial-countries";
 import { friendlyErrorMessages, logUiError } from "@/lib/friendly-errors";
-import { parsePhoneParts } from "@/lib/phone";
-import { fetchProfileMe } from "@/lib/profile-api";
-import type {
-  ContactCard,
-  ContactCardFields,
-  ContactCardTemplate,
-  ContactCardTheme,
-  ContactCardType,
-  ContactDetail,
-  ProfileMeResponse,
-} from "@/lib/types";
+import { useCardTour } from "@/lib/use-card-tour";
+import type { ContactCard, ContactCardType } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
+/** Friendly labels for the API's card types — "Work" reads better than "Business" here. */
 const CARD_TYPE_OPTIONS: Array<{ value: ContactCardType; label: string }> = [
   { value: "PERSONAL", label: "Personal" },
-  { value: "BUSINESS", label: "Business" },
+  { value: "BUSINESS", label: "Work" },
   { value: "CUSTOM", label: "Custom" },
 ];
 
-/** Matches the API's `MAX_SHARE_CARD_RECIPIENTS`. */
-const MAX_SHARE_RECIPIENTS = 50;
-
-const cardTypeLabels: Record<ContactCardType, string> = {
-  BUSINESS: "Business",
+const CARD_TYPE_LABELS: Record<ContactCardType, string> = {
   PERSONAL: "Personal",
+  BUSINESS: "Work",
   CUSTOM: "Custom",
 };
 
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-  }).format(new Date(value));
-}
+type CardTab = "overview" | "shared" | "history";
 
-type DetailItem = {
-  icon: LucideIcon;
-  label: string;
-  value: string;
+const CARD_TABS: Array<SegmentedTabItem<CardTab>> = [
+  { key: "overview", label: "Overview", icon: Settings2 },
+  {
+    key: "shared",
+    label: "What's shared",
+    icon: ListChecks,
+    dataTour: "card-shared-fields",
+  },
+  { key: "history", label: "History", icon: History },
+];
+
+const TAB_LABELS: Record<CardTab, string> = {
+  overview: "Overview",
+  shared: "What's shared",
+  history: "History",
 };
 
-type DetailSection = {
-  title: string;
-  items: DetailItem[];
-};
-
-function firstText(...values: Array<string | null | undefined>) {
-  return values.find((value) => value?.trim())?.trim() ?? "";
+function formatDate(value: string): string {
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(
+    new Date(value),
+  );
 }
 
-function titleCase(value: string) {
-  return value
-    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
-    .replace(/[_-]+/g, " ")
-    .trim()
-    .replace(/\w\S*/g, (part) => part[0].toUpperCase() + part.slice(1));
-}
-
-function addressLine(address: ProfileMeResponse["personal"]["postalAddress"]) {
-  if (!address) {
-    return "";
-  }
-
-  return [
-    address.street,
-    address.city,
-    address.state,
-    address.pincode,
-    address.country,
-  ]
-    .filter(Boolean)
-    .join(", ");
-}
-
-function customItems(
-  custom: Record<string, string> | null | undefined,
-  excludedKeys: string[] = [],
-) {
-  if (!custom) {
-    return [];
-  }
-
-  const excluded = new Set(excludedKeys.map((key) => key.toLowerCase()));
-
-  return Object.entries(custom)
-    .filter(([key]) => !excluded.has(key.toLowerCase()))
-    .filter(([, value]) => value?.trim())
-    .map(([key, value]) => ({
-      icon: Hash,
-      label: titleCase(key),
-      value,
-    }));
-}
-
-function maybeItem(
-  icon: LucideIcon,
-  label: string,
-  value: string | null | undefined,
-): DetailItem | null {
-  const text = value?.trim();
-  return text ? { icon, label, value: text } : null;
-}
-
-function compactItems(items: Array<DetailItem | null>) {
-  return items.filter((item): item is DetailItem => Boolean(item));
-}
-
-function maskedEnd(value: string | null | undefined, visible = 4) {
-  const text = value?.trim();
-  if (!text) {
-    return "";
-  }
-  const suffix = text.slice(-visible);
-  return `•••• ${suffix}`;
-}
-
-function fieldsFromCard(
-  card: ContactCard,
-  profile: ProfileMeResponse | null,
-): ContactCardFields {
-  if (card.fields) {
-    return {
-      ...EMPTY_CARD_FIELDS,
-      ...card.fields,
-      countryCode: normalizeDialCode(card.fields.countryCode || "+1"),
-    };
-  }
-
-  const details = getCardDisplayDetails(card, profile);
-  return {
-    ...EMPTY_CARD_FIELDS,
-    displayName: details.name,
-    title: details.role,
-    countryCode: "+1",
-    phone: details.phone.replace(/^\+\d{1,4}\s*/, ""),
-    email: details.email,
-    company: details.company,
-    address: details.location,
-    website: details.website || details.social,
-    linkedin: details.linkedin,
-    twitter: details.twitter,
-    facebook: details.facebook,
-    instagram: details.instagram,
-    photoDataUrl: "",
-  };
-}
-
-function themeFromCard(card: ContactCard): ContactCardTheme {
-  return card.theme ?? DEFAULT_CARD_THEME;
-}
-
-function templateFromCard(card: ContactCard): ContactCardTemplate {
-  return resolveTemplate(card.template);
-}
-
-function templateFromQuery(value: string | null): ContactCardTemplate | null {
-  if (value === "connect" || value === "scan") {
-    return value;
-  }
-  return null;
-}
-
-function cardDetailSections(card: ContactCard, profile: ProfileMeResponse | null) {
-  const personal = profile?.personal;
-  const work = profile?.work[0];
-  const business = profile?.business[0];
-  const social = profile?.socials[0];
-  const includeFinancial = card.type === "PERSONAL";
-  const useBusinessProfile = card.type === "BUSINESS";
-
-  const contactItems = compactItems([
-    maybeItem(
-      Phone,
-      useBusinessProfile ? "Mobile" : "Phone",
-      useBusinessProfile
-        ? firstText(business?.businessMobile, work?.workMobile, profile?.identity.primaryPhone)
-        : firstText(personal?.mobile, profile?.identity.primaryPhone),
-    ),
-    maybeItem(
-      Phone,
-      "Landline",
-      useBusinessProfile
-        ? firstText(business?.businessLandline, work?.workLandline)
-        : personal?.landline,
-    ),
-    maybeItem(
-      Mail,
-      "Email",
-      useBusinessProfile
-        ? firstText(business?.businessEmail, work?.workEmail, profile?.identity.primaryEmail)
-        : firstText(personal?.email, profile?.identity.primaryEmail),
-    ),
-    maybeItem(
-      MapPin,
-      useBusinessProfile ? "Business address" : "Address",
-      useBusinessProfile
-        ? firstText(
-            addressLine(business?.businessPostalAddress),
-            addressLine(work?.workPostalAddress),
-          )
-        : firstText(personal?.currentLocation, addressLine(personal?.postalAddress)),
-    ),
-  ]);
-
-  const organizationItems = compactItems([
-    maybeItem(Building2, "Business", business?.businessName),
-    maybeItem(UserRound, "Business title", business?.businessTitle),
-    maybeItem(Building2, "Company", work?.companyName),
-    maybeItem(UserRound, "Work title", work?.workTitle),
-    ...customItems(business?.custom),
-    ...customItems(work?.custom),
-  ]);
-
-  const personalItems = compactItems([
-    maybeItem(UserRound, "Nickname", personal?.custom?.nickname),
-    maybeItem(UserRound, "Title", personal?.custom?.title),
-    maybeItem(MapPin, "Current location", personal?.currentLocation),
-    maybeItem(CalendarDays, "Date of birth", personal?.dateOfBirth ?? personal?.yearOfBirth),
-    ...customItems(useBusinessProfile ? undefined : personal?.custom, [
-      "nickname",
-      "title",
-    ]),
-  ]);
-
-  const socialItems = compactItems([
-    maybeItem(Globe2, "Website", social?.website),
-    maybeItem(LinkIcon, "LinkedIn", social?.linkedin),
-    maybeItem(LinkIcon, "Instagram", social?.custom?.instagram),
-    maybeItem(LinkIcon, "Facebook", social?.facebook),
-    maybeItem(LinkIcon, "X / Twitter", social?.twitter),
-    maybeItem(LinkIcon, "GitHub", social?.github),
-    maybeItem(Phone, "WhatsApp", social?.whatsApp),
-    ...customItems(social?.custom, ["instagram"]),
-  ]);
-
-  const financialItems = includeFinancial
-    ? compactItems([
-        ...(profile?.financial.bankAccounts ?? []).flatMap((account) =>
-          compactItems([
-            maybeItem(
-              Landmark,
-              account.tag || "Bank account",
-              firstText(
-                [account.bankName, maskedEnd(account.accountNumber), account.currency]
-                  .filter(Boolean)
-                  .join(" • "),
-              ),
-            ),
-            maybeItem(Banknote, "IFSC", maskedEnd(account.ifsc)),
-          ]),
-        ),
-        ...(profile?.financial.digitalWallets ?? []).map((wallet) =>
-          maybeItem(
-            Wallet,
-            wallet.tag || wallet.platform || "Digital wallet",
-            [wallet.platform, maskedEnd(wallet.handleOrLink, 3)]
-              .filter(Boolean)
-              .join(" • "),
-          ),
-        ),
-      ])
-    : [];
-
-  const imageItems = compactItems([
-    maybeItem(ImageIcon, "Profile photo", profile?.identity.profilePhoto),
-    maybeItem(ImageIcon, "Business logo", business?.businessLogo),
-    maybeItem(ImageIcon, "Company logo", work?.companyLogo),
-  ]);
-
-  const sections: DetailSection[] = [{ title: "Contact", items: contactItems }];
-
-  if (!useBusinessProfile && personalItems.length > 0) {
-    sections.push({ title: "Personal", items: personalItems });
-  }
-  if (organizationItems.length > 0) {
-    sections.push({
-      title: useBusinessProfile ? "Business" : "Work",
-      items: organizationItems,
-    });
-  }
-  if (socialItems.length > 0) {
-    sections.push({ title: "Social", items: socialItems });
-  }
-  if (financialItems.length > 0) {
-    sections.push({ title: "Financial", items: financialItems });
-  }
-  if (imageItems.length > 0) {
-    sections.push({ title: "Media", items: imageItems });
-  }
-
-  return sections.filter((section) => section.items.length > 0);
-}
-
-function essentialFacts(fields: ContactCardFields): DetailItem[] {
-  return compactItems([
-    maybeItem(UserRound, "Name", fields.displayName),
-    maybeItem(UserRound, "Title", fields.title),
-    maybeItem(
-      Phone,
-      "Phone",
-      fields.phone.trim()
-        ? formatCardPhone(
-            normalizeDialCode(fields.countryCode || "+1"),
-            fields.phone,
-          )
-        : "",
-    ),
-    maybeItem(Mail, "Email", fields.email),
-    maybeItem(Building2, "Company", fields.company),
-    maybeItem(MapPin, "Address", fields.address),
-    maybeItem(Globe2, "Website", fields.website),
-    maybeItem(LinkIcon, "LinkedIn", fields.linkedin),
-    maybeItem(LinkIcon, "X / Twitter", fields.twitter),
-    maybeItem(LinkIcon, "Facebook", fields.facebook),
-    maybeItem(LinkIcon, "Instagram", fields.instagram),
-  ]);
-}
-
-function getCardDetailPath(cardId: string) {
-  return `/dashboard/cards/${cardId}`;
-}
-
-async function copyCardLink(card: ContactCard) {
-  const url = `${window.location.origin}${getCardDetailPath(card.id)}`;
-  try {
-    await navigator.clipboard.writeText(url);
-    toast.success("Link copied.");
-  } catch (error) {
-    logUiError("Could not copy card link", error);
-    toast.error("Could not copy link.");
-  }
-}
-
-function downloadLocalVcardStub(card: ContactCard, fields: ContactCardFields) {
-  const lines = [
-    "BEGIN:VCARD",
-    "VERSION:3.0",
-    `FN:${fields.displayName || card.name}`,
-    fields.title ? `TITLE:${fields.title}` : null,
-    fields.company ? `ORG:${fields.company}` : null,
-    fields.phone
-      ? `TEL;TYPE=CELL:${normalizeDialCode(fields.countryCode)} ${fields.phone}`
-      : null,
-    fields.email ? `EMAIL:${fields.email}` : null,
-    fields.website ? `URL:${fields.website}` : null,
-    "END:VCARD",
-  ].filter(Boolean);
-
-  const blob = new Blob([lines.join("\n")], { type: "text/vcard;charset=utf-8" });
-  const href = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = href;
-  anchor.download = `${(fields.displayName || card.name || "contact")
-    .replace(/\s+/g, "-")
-    .toLowerCase()}.vcf`;
-  anchor.click();
-  URL.revokeObjectURL(href);
-  toast.success("Contact file downloaded.");
-}
-
-async function downloadCardVcard(card: ContactCard, fields: ContactCardFields) {
-  try {
-    const asset = await generateCardVcard(card.id);
-    const anchor = document.createElement("a");
-    anchor.href = asset.url;
-    anchor.download = `${(fields.displayName || card.name || "contact")
-      .replace(/\s+/g, "-")
-      .toLowerCase()}.vcf`;
-    anchor.target = "_blank";
-    anchor.rel = "noopener noreferrer";
-    anchor.click();
-    toast.success("Contact file ready.");
-  } catch (error) {
-    logUiError("Server VCF unavailable, using local fallback", error);
-    downloadLocalVcardStub(card, fields);
-  }
-}
-
+/** One card's settings, sharing configuration, and delivery history. */
 export default function CardDetailPage() {
   const { cardId } = useParams();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const templateParam = templateFromQuery(searchParams.get("template"));
-  const [card, setCard] = useState<ContactCard | null>(null);
-  const [profile, setProfile] = useState<ProfileMeResponse | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [isSavingMeta, setIsSavingMeta] = useState(false);
-  const [mappingBusyId, setMappingBusyId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [profileError, setProfileError] = useState<string | null>(null);
-  const [shareOpen, setShareOpen] = useState(false);
-  const [whatsappShareOpen, setWhatsappShareOpen] = useState(false);
-  const [shareCountryCode, setShareCountryCode] = useState("+91");
-  const [shareNote, setShareNote] = useState("");
-  const [isSharingWhatsapp, setIsSharingWhatsapp] = useState(false);
-  const [shareContacts, setShareContacts] = useState<ContactDetail[]>([]);
-  const [selectedShareContactIds, setSelectedShareContactIds] = useState<
-    string[]
-  >([]);
-  const [isLoadingShareContacts, setIsLoadingShareContacts] = useState(false);
-  const [shareContactsError, setShareContactsError] = useState<string | null>(
-    null,
-  );
-  const [shareBatches, setShareBatches] = useState<CardShareBatch[]>([]);
-  const [sharesError, setSharesError] = useState<string | null>(null);
-  const [resendBusyId, setResendBusyId] = useState<string | null>(null);
-  const [editName, setEditName] = useState("");
-  const [editType, setEditType] = useState<ContactCardType>("PERSONAL");
-  const [editSensitive, setEditSensitive] = useState(false);
+  const { profileIdentity, userId } = useAuth();
 
-  const refreshShares = async (id: string) => {
+  const [card, setCard] = useState<ContactCard | null>(null);
+  const [activeTab, setActiveTab] = useState<CardTab>("overview");
+  const [isLoading, setIsLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [fieldTypes, setFieldTypes] = useState<ShareableFieldType[]>([]);
+  /** Bumped after a profile save so the vCard preview re-generates. */
+  const [previewKey, setPreviewKey] = useState(0);
+  const [otherCards, setOtherCards] = useState<ContactCard[]>([]);
+  const [copySourceId, setCopySourceId] = useState("");
+  const [isCopying, setIsCopying] = useState(false);
+
+  const [editingSettings, setEditingSettings] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [draftName, setDraftName] = useState("");
+  const [draftType, setDraftType] = useState<ContactCardType>("PERSONAL");
+  const [draftSensitive, setDraftSensitive] = useState(false);
+
+  const [shareBatches, setShareBatches] = useState<CardShareBatch[]>([]);
+  const [sharesPage, setSharesPage] = useState(1);
+  const [sharesTotalPages, setSharesTotalPages] = useState(1);
+  const [isLoadingShares, setIsLoadingShares] = useState(false);
+  const [sharesError, setSharesError] = useState<string | null>(null);
+
+  const senderName = useMemo(() => {
+    return shareSenderNameFrom(profileIdentity);
+  }, [profileIdentity]);
+
+  // Armed only once the card has rendered — the tour anchors do not exist while
+  // the page is still skeletons, and a tour with nothing to point at gives up.
+  useCardTour({ userId, enabled: Boolean(card) && !isLoading });
+
+  const loadShares = useCallback(async (id: string, page: number) => {
+    setIsLoadingShares(true);
+    setSharesError(null);
     try {
-      const response = await listCardShares(id, { page: 1, limit: 10 });
-      setShareBatches(response.batches ?? []);
-      setSharesError(null);
-    } catch (err) {
-      logUiError("Could not load card shares", err);
+      const response = await listCardShares(id, { page, limit: 10 });
+      setShareBatches(response.items);
+      setSharesPage(response.page);
+      setSharesTotalPages(response.totalPages);
+    } catch (error) {
+      logUiError("Could not load share history", error);
       setShareBatches([]);
       setSharesError(
-        err instanceof ApiError && err.message
-          ? err.message
-          : "Could not load recent WhatsApp shares.",
+        error instanceof ApiError && error.message
+          ? error.message
+          : friendlyErrorMessages.load,
       );
+    } finally {
+      setIsLoadingShares(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
 
-    const loadCard = async () => {
+    const load = async () => {
       if (!cardId) {
-        setError("Card id is missing.");
+        setNotFound(true);
         setIsLoading(false);
         return;
       }
-
       setIsLoading(true);
-      setError(null);
-      setProfileError(null);
-
+      setNotFound(false);
+      setLoadError(null);
       try {
         const data = await getCard(cardId);
-        if (isMounted) {
-          setCard(data);
-          setEditName(data.name);
-          setEditType(data.type);
-          setEditSensitive(Boolean(data.isSensitive));
+        if (!isMounted) {
+          return;
         }
-        await refreshShares(cardId);
-      } catch (err) {
-        if (isMounted) {
-          logUiError("Could not load card", err);
-          setCard(null);
-          setError(friendlyErrorMessages.load);
+        setCard(data);
+        void loadShares(cardId, 1);
+      } catch (error) {
+        if (!isMounted) {
+          return;
         }
-      }
-
-      try {
-        const profileData = await fetchProfileMe();
-        if (isMounted) {
-          setProfile(profileData);
-        }
-      } catch (err) {
-        if (isMounted) {
-          logUiError("Could not load profile for card detail", err);
-          setProfile(null);
-          setProfileError(friendlyErrorMessages.load);
+        logUiError("Could not load card", error);
+        setCard(null);
+        if (
+          error instanceof ApiError &&
+          (error.status === 404 || error.status === 403)
+        ) {
+          setNotFound(true);
+        } else {
+          setLoadError(friendlyErrorMessages.load);
         }
       } finally {
         if (isMounted) {
@@ -540,144 +198,82 @@ export default function CardDetailPage() {
       }
     };
 
-    void loadCard();
+    void load();
     return () => {
       isMounted = false;
     };
-  }, [cardId]);
+  }, [cardId, loadShares]);
 
-  // Recipients come from the user's vCard-imported contacts; load lazily the
-  // first time the WhatsApp share dialog opens.
+  /**
+   * The share filter lives in the browser, not on the card, so it has to be
+   * re-read here. `userId` is a dependency because auth resolves after the
+   * first paint — reading before it lands would return an empty selection and
+   * silently widen what the card shares.
+   */
   useEffect(() => {
-    if (!whatsappShareOpen || shareContacts.length > 0) {
+    if (!cardId) {
       return;
     }
+    setFieldTypes(readCardFieldSelection(userId, cardId));
+  }, [cardId, userId]);
 
-    let isMounted = true;
-    const loadShareContacts = async () => {
-      setIsLoadingShareContacts(true);
-      setShareContactsError(null);
-      try {
-        const contacts = await fetchAllContacts({ source: "VCARD" });
-        if (isMounted) {
-          setShareContacts(contacts);
-        }
-      } catch (err) {
-        if (isMounted) {
-          logUiError("Could not load contacts for card share", err);
-          setShareContacts([]);
-          setShareContactsError(
-            err instanceof ApiError && err.message
-              ? err.message
-              : "Could not load your imported contacts.",
-          );
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoadingShareContacts(false);
-        }
+  const handleFieldTypesChange = useCallback(
+    (next: ShareableFieldType[]) => {
+      setFieldTypes(next);
+      if (cardId) {
+        writeCardFieldSelection(userId, cardId, next);
       }
-    };
-
-    void loadShareContacts();
-    return () => {
-      isMounted = false;
-    };
-  }, [shareContacts.length, whatsappShareOpen]);
-
-  const shareContactOptions = useMemo<MultiSelectOption[]>(
-    () =>
-      shareContacts
-        .filter((contact) => getPrimaryPhone(contact).trim())
-        .map((contact) => ({
-          value: contact.id,
-          label: getContactName(contact),
-          description: getPrimaryPhone(contact),
-        })),
-    [shareContacts],
+    },
+    [cardId, userId],
   );
 
-  const mappableFields = useMemo(
-    () => listMappableFinancialFields(profile),
-    [profile],
-  );
-
-  const mappedFieldIds = useMemo(
-    () => new Set(card?.mappedFieldIds ?? []),
-    [card?.mappedFieldIds],
-  );
-
-  const handleSaveMeta = async () => {
-    if (!cardId || !card) {
+  const startEditSettings = () => {
+    if (!card) {
       return;
     }
-    const nextName = editName.trim();
-    if (!nextName) {
+    setDraftName(card.name);
+    setDraftType(card.type);
+    setDraftSensitive(Boolean(card.isSensitive));
+    setEditingSettings(true);
+  };
+
+  const cancelEditSettings = () => setEditingSettings(false);
+
+  const saveSettings = async () => {
+    if (!card || !cardId) {
+      return;
+    }
+    const trimmedName = draftName.trim();
+    if (!trimmedName) {
       toast.error("Enter a card name.");
       return;
     }
-    setIsSavingMeta(true);
+    setSavingSettings(true);
     try {
       const updated = await updateCard(cardId, {
-        name: nextName,
-        type: editType,
-        isSensitive: editSensitive,
-        fields: card.fields,
-        theme: card.theme,
-        template: card.template,
+        name: trimmedName,
+        type: draftType,
+        isSensitive: draftSensitive,
       });
-      setCard({
-        ...updated,
-        mappedFieldIds: card.mappedFieldIds,
-      });
+      setCard((current) =>
+        current ? { ...updated, mappedFieldIds: current.mappedFieldIds } : updated,
+      );
       toast.success("Card updated.");
-    } catch (err) {
-      logUiError("Could not update card", err);
+      setEditingSettings(false);
+    } catch (error) {
+      logUiError("Could not update card", error);
       toast.error(friendlyErrorMessages.save);
     } finally {
-      setIsSavingMeta(false);
+      setSavingSettings(false);
     }
   };
 
-  const handleToggleMapping = async (fieldId: string, enabled: boolean) => {
-    if (!cardId || !card) {
-      return;
-    }
-    setMappingBusyId(fieldId);
-    try {
-      if (enabled) {
-        await addCardFieldMapping(cardId, fieldId);
-        setCard({
-          ...card,
-          mappedFieldIds: Array.from(
-            new Set([...(card.mappedFieldIds ?? []), fieldId]),
-          ),
-        });
-        toast.success("Field added to card.");
-      } else {
-        await removeCardFieldMapping(cardId, fieldId);
-        setCard({
-          ...card,
-          mappedFieldIds: (card.mappedFieldIds ?? []).filter(
-            (id) => id !== fieldId,
-          ),
-        });
-        toast.success("Field removed from card.");
-      }
-    } catch (err) {
-      logUiError("Could not update card field mapping", err);
-      toast.error(friendlyErrorMessages.save);
-    } finally {
-      setMappingBusyId(null);
-    }
-  };
-
-  const handleDeleteCard = async () => {
-    if (!cardId || !card) {
+  const handleDelete = async () => {
+    if (!card || !cardId) {
       return;
     }
     const confirmed = window.confirm(
-      `Delete “${card.name}”? This cannot be undone.`,
+      `Delete "${card.name}"? This cannot be undone.`,
     );
     if (!confirmed) {
       return;
@@ -685,744 +281,507 @@ export default function CardDetailPage() {
     setIsDeleting(true);
     try {
       await deleteCard(cardId);
+      // The stored selection would otherwise outlive the card forever, and a
+      // recycled id would inherit a stranger's filter.
+      dropCardFieldSelection(userId, cardId);
       toast.success("Card deleted.");
       navigate("/dashboard/cards", { replace: true });
-    } catch (err) {
-      logUiError("Could not delete card", err);
+    } catch (error) {
+      logUiError("Could not delete card", error);
       toast.error(friendlyErrorMessages.save);
     } finally {
       setIsDeleting(false);
     }
   };
 
-  const handleShareOption = (option: ShareSheetOptionId) => {
-    if (!card) {
+  const handlePrevPage = () => {
+    if (!cardId || sharesPage <= 1) {
       return;
     }
-    if (option === "whatsapp") {
-      setWhatsappShareOpen(true);
-    }
+    void loadShares(cardId, sharesPage - 1);
   };
 
-  const handleWhatsappShare = async () => {
-    if (!cardId || !card) {
+  const handleNextPage = () => {
+    if (!cardId || sharesPage >= sharesTotalPages) {
       return;
     }
-    const fallbackDial = shareCountryCode.trim();
-    if (!/^\+\d{1,4}$/.test(fallbackDial)) {
-      toast.error("Select a valid country code.");
+    void loadShares(cardId, sharesPage + 1);
+  };
+
+  const handleBatchChange = (batchId: string, updated: CardShareBatch) => {
+    setShareBatches((current) =>
+      current.map((batch) => (batch.id === batchId ? updated : batch)),
+    );
+  };
+
+  /**
+   * Leaves the dialog open on its confirmation screen — that is where the user
+   * watches delivery land. History only takes the new batch when page 1 is on
+   * screen; otherwise it would show a page-1 row inside page 3 and push that
+   * page's oldest entry out of view.
+   */
+  const handleShared = (batch: CardShareBatch) => {
+    if (!cardId) {
       return;
     }
-    if (selectedShareContactIds.length === 0) {
-      toast.error("Select at least one contact.");
-      return;
-    }
-
-    const recipients: CardShareRecipientInput[] = [];
-    const unusableContacts: string[] = [];
-
-    for (const contactId of selectedShareContactIds) {
-      const contact = shareContacts.find((item) => item.id === contactId);
-      if (!contact) {
-        continue;
-      }
-      const parts = parsePhoneParts(getPrimaryPhone(contact), fallbackDial);
-      if (!parts) {
-        unusableContacts.push(getContactName(contact));
-        continue;
-      }
-      recipients.push({ ...parts, contactId: contact.id });
-    }
-
-    if (recipients.length === 0) {
-      toast.error(
-        "None of the selected contacts have a valid phone number to share with.",
-      );
-      return;
-    }
-    if (unusableContacts.length > 0) {
-      toast.warning(
-        `Skipping ${unusableContacts.length} contact(s) without a valid phone number: ${unusableContacts.join(", ")}.`,
-      );
-    }
-
-    setIsSharingWhatsapp(true);
-    try {
-      const batch = await shareCardBatch(cardId, {
-        recipients,
-        note: shareNote,
-      });
-      toast.success(
-        recipients.length === 1
-          ? `WhatsApp share queued for ${recipients[0].countryCode} ${recipients[0].phone}.`
-          : `WhatsApp share queued for ${recipients.length} contacts.`,
-      );
-      setWhatsappShareOpen(false);
-      setSelectedShareContactIds([]);
-      setShareNote("");
+    if (sharesPage === 1) {
       setShareBatches((current) => [batch, ...current].slice(0, 10));
-      await refreshShares(cardId);
-    } catch (err) {
-      logUiError("Could not share card via WhatsApp", err);
+      return;
+    }
+    void loadShares(cardId, 1);
+  };
+
+  const mappedFieldCount = card?.mappedFieldIds?.length ?? 0;
+
+  /**
+   * A card created through `POST /cards` starts with no details attached, and
+   * the server only ever attaches them during profile onboarding. Copying them
+   * across from another card is the one way to fill it.
+   */
+  useEffect(() => {
+    if (!card || mappedFieldCount > 0) {
+      return;
+    }
+    let isMounted = true;
+    listCardsWithFieldCounts()
+      .then((all) => {
+        if (!isMounted) {
+          return;
+        }
+        // Cards known to be empty are useless as a source — copying one leaves
+        // this card just as bare — so they sort last and never preselect.
+        const candidates = all
+          .filter((item) => item.id !== card.id)
+          .sort(
+            (a, b) =>
+              Number(a.mappedFieldIds?.length === 0) -
+              Number(b.mappedFieldIds?.length === 0),
+          );
+        setOtherCards(candidates);
+        setCopySourceId((current) => current || (candidates[0]?.id ?? ""));
+      })
+      .catch((error: unknown) => {
+        logUiError("Could not load cards to copy details from", error);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [card, mappedFieldCount]);
+
+  const handleCopyDetails = async () => {
+    if (!card || !copySourceId) {
+      return;
+    }
+    setIsCopying(true);
+    try {
+      const { copied } = await copyCardFieldMappings(copySourceId, card.id);
+      if (copied === 0) {
+        toast.error("That card has no details to copy.");
+        return;
+      }
+      const refreshed = await getCard(card.id);
+      setCard(refreshed);
+      setPreviewKey((value) => value + 1);
+      toast.success(
+        `Copied ${copied} detail${copied === 1 ? "" : "s"} onto this card.`,
+      );
+    } catch (error) {
+      logUiError("Could not copy card details", error);
       toast.error(
-        err instanceof ApiError && err.message
-          ? err.message
-          : "We couldn't share this card right now.",
+        error instanceof ApiError && error.message
+          ? error.message
+          : friendlyErrorMessages.save,
       );
     } finally {
-      setIsSharingWhatsapp(false);
+      setIsCopying(false);
     }
   };
 
-  const handleResendRecipient = async (
-    batchId: string,
-    recipientId: string,
-  ) => {
-    setResendBusyId(recipientId);
-    try {
-      await resendCardShareRecipient(batchId, recipientId);
-      toast.success("Resend queued.");
-      if (cardId) {
-        await refreshShares(cardId);
-      }
-    } catch (err) {
-      logUiError("Could not resend card share", err);
-      toast.error(
-        err instanceof ApiError && err.message
-          ? err.message
-          : "Could not resend this share.",
-      );
-    } finally {
-      setResendBusyId(null);
-    }
-  };
+  const headerActions = card ? (
+    <div className="flex flex-col items-stretch gap-1.5 sm:items-end">
+      <div className="flex items-center gap-2">
+        <Button
+          type="button"
+          data-tour="card-share"
+          onClick={() => setShareOpen(true)}
+          disabled={card.isSensitive}
+          title={
+            card.isSensitive
+              ? "Private cards can't be shared over WhatsApp."
+              : undefined
+          }
+        >
+          <Share2 className="h-4 w-4" aria-hidden="true" />
+          Share
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={isDeleting}
+          onClick={() => void handleDelete()}
+        >
+          <Trash2 className="h-4 w-4" aria-hidden="true" />
+          {isDeleting ? "Deleting…" : "Delete"}
+        </Button>
+      </div>
+      {card.isSensitive ? (
+        <p className="text-xs text-muted-foreground">
+          Private cards can't be shared over WhatsApp.
+        </p>
+      ) : null}
+    </div>
+  ) : null;
 
   return (
     <AppShell>
-      <section className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap items-center gap-3">
-          <Link
-            to="/dashboard/cards"
-            className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "-ml-2")}
-          >
-            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-            Cards
-          </Link>
-        </div>
-        {card && (
-          <div className="flex flex-wrap items-center gap-2 self-start">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setShareOpen(true)}
-            >
-              <Share2 className="h-4 w-4" aria-hidden="true" />
-              Share
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={isDeleting}
-              onClick={() => void handleDeleteCard()}
-            >
-              <Trash2 className="h-4 w-4" aria-hidden="true" />
-              {isDeleting ? "Deleting…" : "Delete"}
-            </Button>
-          </div>
-        )}
-      </section>
+      <div className="space-y-6">
+        <PageHeader
+          title={card?.name ?? "Card"}
+          subtitle={
+            card
+              ? `${CARD_TYPE_LABELS[card.type]} card · Updated ${formatDate(card.updatedAt)}`
+              : undefined
+          }
+          actions={headerActions}
+        />
 
-      {isLoading && (
-        <section className="grid gap-4 lg:grid-cols-[minmax(320px,400px)_minmax(0,1fr)]">
-          <Skeleton className="h-[560px] w-full rounded-xl" />
-          <Skeleton className="h-72 w-full rounded-xl" />
-        </section>
-      )}
-
-      {!isLoading && profileError && !error && card && (
-        <Alert className="mb-4 flex items-start gap-3">
-          <AlertCircle className="mt-0.5 h-4 w-4 text-destructive" aria-hidden="true" />
-          <div>
-            <p className="font-medium">Could not load profile details</p>
-            <p className="mt-1 text-sm text-muted-foreground">{profileError}</p>
-          </div>
-        </Alert>
-      )}
-
-      {!isLoading && error && (
-        <Alert className="flex items-start gap-3">
-          <AlertCircle className="mt-0.5 h-4 w-4 text-destructive" aria-hidden="true" />
-          <div>
-            <p className="font-medium">Could not load card</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {friendlyErrorMessages.load}
-            </p>
-          </div>
-        </Alert>
-      )}
-
-      {!isLoading && !error && card && (
-        <>
-          <CardDetailPreview
-            card={card}
-            profile={profile}
-            preferredTemplate={templateParam}
-            onShare={() => setShareOpen(true)}
-          />
-
-          <Panel className="mt-6 space-y-4 p-5">
-            <div>
-              <h2 className="text-base font-semibold text-foreground">
-                Card settings
-              </h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Updates name, type, and sensitivity on the server (
-                <code className="text-xs">PATCH /cards/:id</code>).
-              </p>
+        {isLoading ? (
+          <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(320px,380px)] lg:gap-6">
+            <div className="space-y-6">
+              <Skeleton className="h-10 w-72 rounded-xl" />
+              <Skeleton className="h-48 w-full rounded-lg" />
+              <Skeleton className="h-56 w-full rounded-lg" />
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="sm:col-span-2">
-                <label className="text-sm font-medium" htmlFor="card-name">
-                  Name
-                </label>
-                <Input
-                  id="card-name"
-                  className="mt-2"
-                  value={editName}
-                  onChange={(event) => setEditName(event.target.value)}
-                  disabled={isSavingMeta}
+            <Skeleton className="mt-6 h-96 w-full rounded-lg lg:mt-0" />
+          </div>
+        ) : null}
+
+        {!isLoading && notFound ? (
+          <Panel className="border-dashed">
+            <div className="flex min-h-56 flex-col items-center justify-center px-2 py-6 text-center">
+              <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-full border border-border bg-surface text-foreground">
+                <IdCard className="h-5 w-5" aria-hidden="true" />
+              </div>
+              <h2 className="text-base font-semibold text-foreground">
+                We couldn't find that card.
+              </h2>
+              <p className="mt-2 max-w-md text-sm text-muted-foreground">
+                It may have been deleted, or you might not have access to it.
+              </p>
+              <Link to="/dashboard/cards" className={cn(buttonVariants(), "mt-5")}>
+                <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+                Back to cards
+              </Link>
+            </div>
+          </Panel>
+        ) : null}
+
+        {!isLoading && !notFound && loadError ? (
+          <Alert className="flex items-start gap-3">
+            <AlertCircle className="mt-0.5 h-4 w-4 text-destructive" aria-hidden="true" />
+            <div>
+              <p className="font-medium">Could not load card</p>
+              <p className="mt-1 text-sm text-muted-foreground">{loadError}</p>
+            </div>
+          </Alert>
+        ) : null}
+
+        {!isLoading && !notFound && !loadError && card ? (
+          <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(320px,380px)] lg:gap-6">
+            <div className="min-w-0 space-y-6">
+              <div data-tour="card-tabs">
+                <SegmentedTabs
+                  items={CARD_TABS}
+                  value={activeTab}
+                  onChange={setActiveTab}
+                  aria-label="Card sections"
                 />
               </div>
-              <div>
-                <label className="text-sm font-medium" htmlFor="card-type">
-                  Type
-                </label>
-                <select
-                  id="card-type"
-                  className="mt-2 flex h-10 w-full rounded-md border border-border bg-surface px-3 text-sm"
-                  value={editType}
-                  onChange={(event) =>
-                    setEditType(event.target.value as ContactCardType)
-                  }
-                  disabled={isSavingMeta}
+
+              {activeTab === "overview" ? (
+                <div
+                  role="tabpanel"
+                  aria-label={TAB_LABELS.overview}
+                  className="space-y-6"
                 >
-                  {CARD_TYPE_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex items-end">
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={editSensitive}
-                    onChange={(event) => setEditSensitive(event.target.checked)}
-                    disabled={isSavingMeta}
-                  />
-                  Mark as sensitive
-                </label>
-              </div>
-            </div>
-            <Button
-              type="button"
-              size="sm"
-              disabled={isSavingMeta}
-              onClick={() => void handleSaveMeta()}
-            >
-              {isSavingMeta ? "Saving…" : "Save settings"}
-            </Button>
-          </Panel>
-
-          <Panel className="mt-4 space-y-4 p-5">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h2 className="text-base font-semibold text-foreground">
-                  WhatsApp shares
-                </h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Recent share batches for this card (
-                  <code className="text-xs">GET /cards/:id/shares</code>).
-                </p>
-              </div>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  if (cardId) {
-                    void refreshShares(cardId);
-                  }
-                }}
-              >
-                Refresh
-              </Button>
-            </div>
-            {sharesError ? (
-              <p className="text-sm text-muted-foreground">{sharesError}</p>
-            ) : null}
-            {shareBatches.length === 0 && !sharesError ? (
-              <p className="text-sm text-muted-foreground">
-                No WhatsApp shares yet. Use Share → WhatsApp to send this card.
-              </p>
-            ) : (
-              <ul className="space-y-3">
-                {shareBatches.map((batch) => (
-                  <li
-                    key={batch.id}
-                    className="rounded-lg border border-border px-3 py-3"
+                  <EditableSection
+                    title="Card settings"
+                    description="Name, type, and whether this card can be shared over WhatsApp."
+                    editing={editingSettings}
+                    saving={savingSettings}
+                    onEdit={startEditSettings}
+                    onCancel={cancelEditSettings}
+                    onSave={() => void saveSettings()}
                   >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-sm font-medium text-foreground">
-                        {formatDate(batch.createdAt)}
-                        {batch.note ? ` · ${batch.note}` : ""}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {batch.recipients.length} recipient
-                        {batch.recipients.length === 1 ? "" : "s"}
-                      </p>
-                    </div>
-                    <ul className="mt-2 space-y-2">
-                      {batch.recipients.map((recipient) => (
-                        <li
-                          key={recipient.id}
-                          className="flex flex-wrap items-center justify-between gap-2 text-sm"
-                        >
-                          <span className="text-foreground">
-                            {recipient.countryCode} {recipient.phone}
-                            <span className="ml-2 text-xs text-muted-foreground">
-                              {recipient.dispatchStatus}
-                              {recipient.deliveryStatus
-                                ? ` · ${recipient.deliveryStatus}`
-                                : ""}
-                            </span>
-                          </span>
-                          {recipient.dispatchStatus === "FAILED" ? (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              disabled={resendBusyId === recipient.id}
-                              onClick={() =>
-                                void handleResendRecipient(
-                                  batch.id,
-                                  recipient.id,
-                                )
+                    {editingSettings ? (
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="sm:col-span-2">
+                          <label className="text-sm font-medium" htmlFor="card-name">
+                            Name
+                          </label>
+                          <Input
+                            id="card-name"
+                            className="mt-2"
+                            value={draftName}
+                            onChange={(event) => setDraftName(event.target.value)}
+                            disabled={savingSettings}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-sm font-medium" htmlFor="card-type">
+                            Type
+                          </label>
+                          <select
+                            id="card-type"
+                            className="mt-2 flex h-10 w-full rounded-md border border-border bg-surface px-3 text-sm"
+                            value={draftType}
+                            onChange={(event) =>
+                              setDraftType(event.target.value as ContactCardType)
+                            }
+                            disabled={savingSettings}
+                          >
+                            {CARD_TYPE_OPTIONS.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="flex items-end">
+                          <label className="flex items-center gap-2 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={draftSensitive}
+                              onChange={(event) =>
+                                setDraftSensitive(event.target.checked)
                               }
-                            >
-                              {resendBusyId === recipient.id
-                                ? "Resending…"
-                                : "Resend"}
-                            </Button>
-                          ) : null}
-                        </li>
-                      ))}
-                    </ul>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Panel>
-
-          <Panel className="mt-4 space-y-4 p-5">
-            <div>
-              <h2 className="text-base font-semibold text-foreground">
-                Profile fields on this card
-              </h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Map financial profile fields that expose a{" "}
-                <code className="text-xs">fieldId</code>. Identity and work
-                mappings need a backend field catalog.
-              </p>
-            </div>
-            {mappableFields.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No mappable financial fields on your profile yet. Add bank,
-                wallet, or crypto details in Profile first.
-              </p>
-            ) : (
-              <ul className="space-y-2">
-                {mappableFields.map((field) => {
-                  const checked = mappedFieldIds.has(field.fieldId);
-                  const busy = mappingBusyId === field.fieldId;
-                  return (
-                    <li
-                      key={field.fieldId}
-                      className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-foreground">
-                          {field.label}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {field.kind}
-                          {field.isSensitive ? " · sensitive" : ""}
-                        </p>
+                              disabled={savingSettings}
+                            />
+                            Keep this card private — don't allow WhatsApp sharing
+                          </label>
+                        </div>
                       </div>
-                      <label className="flex shrink-0 items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          disabled={busy}
-                          onChange={(event) =>
-                            void handleToggleMapping(
-                              field.fieldId,
-                              event.target.checked,
-                            )
+                    ) : (
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <ViewField label="Name" value={card.name} />
+                        <ViewField label="Type" value={CARD_TYPE_LABELS[card.type]} />
+                        <ViewField
+                          label="Sharing"
+                          value={
+                            card.isSensitive
+                              ? "Private — WhatsApp sharing off"
+                              : "Shareable"
                           }
                         />
-                        {busy ? "Saving…" : "Include"}
-                      </label>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </Panel>
-        </>
-      )}
+                      </div>
+                    )}
+                  </EditableSection>
 
-      {card ? (
-        <ShareSheet
-          open={shareOpen}
-          onClose={() => setShareOpen(false)}
-          onSelect={(id) => {
-            setShareOpen(false);
-            handleShareOption(id);
-          }}
-        />
-      ) : null}
+                  {mappedFieldCount === 0 ? (
+                    <Panel className="space-y-4 p-5">
+                      <PanelHeader title="This card is empty" />
+                      <div className="flex items-start gap-2 rounded-md border border-border bg-secondary p-3">
+                        <Info
+                          className="mt-0.5 h-4 w-4 shrink-0 text-foreground"
+                          aria-hidden="true"
+                        />
+                        <p className="text-sm font-medium text-foreground">
+                          This card doesn&apos;t carry any of your details yet, so
+                          people who receive it would only get your name.
+                        </p>
+                      </div>
+                      {otherCards.length > 0 ? (
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                          <label className="flex flex-1 flex-col gap-2 text-sm font-medium">
+                            <span>Copy details from another card</span>
+                            <select
+                              className="flex h-10 w-full rounded-md border border-border bg-surface px-3 text-sm"
+                              value={copySourceId}
+                              onChange={(event) =>
+                                setCopySourceId(event.target.value)
+                              }
+                              disabled={isCopying}
+                            >
+                              {otherCards.map((item) => (
+                                <option key={item.id} value={item.id}>
+                                  {item.mappedFieldIds?.length === 0
+                                    ? `${item.name} — no details`
+                                    : item.name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <Button
+                            type="button"
+                            className="shrink-0"
+                            disabled={isCopying || !copySourceId}
+                            onClick={() => void handleCopyDetails()}
+                          >
+                            {isCopying ? "Copying…" : "Copy details"}
+                          </Button>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">
+                          No other card has details to copy from yet — fill in your
+                          profile and this card will have something to carry.
+                        </p>
+                      )}
+                    </Panel>
+                  ) : null}
+                </div>
+              ) : null}
 
-      {whatsappShareOpen && card ? (
-        <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4">
-          <button
-            type="button"
-            aria-label="Close WhatsApp share"
-            className="absolute inset-0 bg-foreground/40 backdrop-blur-sm"
-            onClick={() => setWhatsappShareOpen(false)}
-          />
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label="Share card on WhatsApp"
-            className="relative z-10 max-h-[85vh] w-full max-w-md space-y-4 overflow-y-auto overscroll-contain rounded-t-xl border border-border bg-surface p-5 sm:max-h-[calc(100vh-2rem)] sm:rounded-xl"
-          >
-            <div>
-              <h2 className="text-base font-semibold text-foreground">
-                Share via WhatsApp
-              </h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Sends an approved WhatsApp template, then the contact file when
-                the recipient taps Get Contact.
-              </p>
-            </div>
-            <div className="flex flex-col gap-2 text-sm font-medium">
-              <span id="share-contacts-label">Contacts</span>
-              <MultiSelect
-                aria-labelledby="share-contacts-label"
-                options={shareContactOptions}
-                value={selectedShareContactIds}
-                onValueChange={setSelectedShareContactIds}
-                placeholder="Select imported contacts"
-                searchPlaceholder="Search contacts"
-                loadingMessage="Loading contacts…"
-                emptyMessage={
-                  shareContactsError
-                    ? "Contacts could not be loaded"
-                    : "No imported contacts with a phone number"
-                }
-                isLoading={isLoadingShareContacts}
-                disabled={isSharingWhatsapp}
-                maxSelected={MAX_SHARE_RECIPIENTS}
-              />
-              {shareContactsError ? (
-                <p className="text-xs font-normal text-destructive">
-                  {shareContactsError}
-                </p>
-              ) : (
-                <p className="text-xs font-normal text-muted-foreground">
-                  Numbers come from your imported vCard contacts.
-                </p>
-              )}
-            </div>
-            <label className="flex flex-col gap-2 text-sm font-medium">
-              <span>Country code for numbers saved without one</span>
-              <select
-                className="flex h-10 w-full rounded-md border border-border bg-surface px-3 text-sm"
-                value={shareCountryCode}
-                onChange={(event) => setShareCountryCode(event.target.value)}
-                disabled={isSharingWhatsapp}
-              >
-                {DIAL_COUNTRIES.map((country) => (
-                  <option key={`${country.iso2}-${country.dial}`} value={country.dial}>
-                    {country.name} ({country.dial})
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-2 text-sm font-medium">
-              <span>Note (optional)</span>
-              <Input
-                maxLength={300}
-                placeholder="Great meeting you!"
-                value={shareNote}
-                onChange={(event) => setShareNote(event.target.value)}
-                disabled={isSharingWhatsapp}
-              />
-            </label>
-            <div className="flex gap-3 pt-1">
-              <Button
-                type="button"
-                variant="outline"
-                className="flex-1"
-                disabled={isSharingWhatsapp}
-                onClick={() => setWhatsappShareOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                className="flex-1"
-                disabled={
-                  isSharingWhatsapp || selectedShareContactIds.length === 0
-                }
-                onClick={() => void handleWhatsappShare()}
-              >
-                {isSharingWhatsapp ? "Sending…" : "Send"}
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-    </AppShell>
-  );
-}
+              {activeTab === "shared" ? (
+                <div
+                  role="tabpanel"
+                  aria-label={TAB_LABELS.shared}
+                  className="space-y-4"
+                >
+                  {mappedFieldCount === 0 ? (
+                    <div className="flex items-start gap-2 rounded-md border border-border bg-secondary p-3">
+                      <Info
+                        className="mt-0.5 h-4 w-4 shrink-0 text-foreground"
+                        aria-hidden="true"
+                      />
+                      <p className="text-sm font-medium text-foreground">
+                        This card doesn&apos;t carry any of your details yet, so
+                        people who receive it would only get your name. Copy them
+                        across from the Overview tab.
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      {mappedFieldCount} profile detail
+                      {mappedFieldCount === 1 ? "" : "s"} are on this card. Tick
+                      what gets shared — the choice is remembered for the next
+                      send.
+                    </p>
+                  )}
+                  <CardDetailsPanel
+                    cardId={card.id}
+                    cardType={card.type}
+                    selectedTypes={fieldTypes}
+                    onSelectedTypesChange={handleFieldTypesChange}
+                    onSaved={() => setPreviewKey((value) => value + 1)}
+                  />
+                </div>
+              ) : null}
 
-function CardDetailPreview({
-  card,
-  profile,
-  preferredTemplate,
-  onShare,
-}: {
-  card: ContactCard;
-  profile: ProfileMeResponse | null;
-  preferredTemplate: ContactCardTemplate | null;
-  onShare: () => void;
-}) {
-  const [showMore, setShowMore] = useState(false);
-  const [mobilePreviewOpen, setMobilePreviewOpen] = useState(false);
+              {activeTab === "history" ? (
+                <div role="tabpanel" aria-label={TAB_LABELS.history}>
+                  <Panel className="space-y-4 p-5">
+                    <PanelHeader title="Share history" />
 
-  const fields = useMemo(() => fieldsFromCard(card, profile), [card, profile]);
-  const theme = useMemo(() => themeFromCard(card), [card]);
-  const template = useMemo(
-    () => preferredTemplate ?? templateFromCard(card),
-    [card, preferredTemplate],
-  );
-  const templateMeta = CARD_TEMPLATE_OPTIONS.find((item) => item.id === template);
-  const facts = useMemo(() => essentialFacts(fields), [fields]);
-  const extraSections = useMemo(
-    () => (card.fields ? [] : cardDetailSections(card, profile)),
-    [card, profile],
-  );
+                    {isLoadingShares ? (
+                      <div className="space-y-3">
+                        <Skeleton className="h-24 w-full rounded-lg" />
+                        <Skeleton className="h-24 w-full rounded-lg" />
+                      </div>
+                    ) : null}
 
-  return (
-    <section className="grid items-start gap-6 lg:grid-cols-[minmax(320px,400px)_minmax(0,1fr)] lg:gap-8">
-      <aside className="rounded-xl border border-border bg-surface p-4 sm:p-5">
-        <div className="mb-4">
-          <p className="text-sm font-semibold text-foreground">
-            {templateMeta?.label ?? "Connect"} template
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {templateMeta?.description}
-          </p>
-        </div>
-        <div className="flex justify-center rounded-xl border border-border bg-bg-hover/80 px-3 py-5 sm:px-4 sm:py-6">
-          <div className="w-full max-w-[340px]">
-            <LiveCardPreview
-              fields={fields}
-              theme={theme}
-              template={template}
-              onSaveContact={() => void downloadCardVcard(card, fields)}
-              onShareCard={onShare}
-            />
-          </div>
-        </div>
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          className="mt-3 w-full justify-center"
-          onClick={() => setMobilePreviewOpen(true)}
-        >
-          <Smartphone className="h-3.5 w-3.5" aria-hidden="true" />
-          View on phone
-        </Button>
-      </aside>
+                    {!isLoadingShares && sharesError ? (
+                      <Alert className="flex items-start gap-3">
+                        <AlertCircle
+                          className="mt-0.5 h-4 w-4 text-destructive"
+                          aria-hidden="true"
+                        />
+                        <div>
+                          <p className="font-medium">Could not load share history</p>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            {sharesError}
+                          </p>
+                        </div>
+                      </Alert>
+                    ) : null}
 
-      <div className="min-w-0 space-y-5">
-        <Panel className="p-5 sm:p-6">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-muted-foreground">
-                {cardTypeLabels[card.type]} card
-              </p>
-              <h1 className="mt-1 font-sans text-2xl font-semibold tracking-tight text-foreground sm:text-[28px]">
-                {card.name}
-              </h1>
-              {fields.displayName && fields.displayName !== card.name ? (
-                <p className="mt-1.5 text-sm text-muted-foreground">
-                  Showing as {fields.displayName}
-                  {fields.title ? ` · ${fields.title}` : ""}
-                </p>
-              ) : fields.title ? (
-                <p className="mt-1.5 text-sm text-muted-foreground">{fields.title}</p>
+                    {!isLoadingShares && !sharesError && shareBatches.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        No one has been sent this card yet.
+                      </p>
+                    ) : null}
+
+                    {!isLoadingShares && !sharesError && shareBatches.length > 0 ? (
+                      <>
+                        <div className="space-y-4">
+                          {/*
+                            Every row may poll: ShareBatchStatus only starts a timer
+                            while a batch is unsettled, so finished history is inert
+                            and a resend on any row picks its status back up.
+                          */}
+                          {shareBatches.map((batch) => (
+                            <div
+                              key={batch.id}
+                              className="rounded-lg border border-border p-4"
+                            >
+                              <ShareBatchStatus
+                                batch={batch}
+                                onChange={(updated) =>
+                                  handleBatchChange(batch.id, updated)
+                                }
+                              />
+                            </div>
+                          ))}
+                        </div>
+                        {sharesTotalPages > 1 ? (
+                          <div className="flex items-center justify-between gap-3 pt-1">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              disabled={sharesPage <= 1 || isLoadingShares}
+                              onClick={handlePrevPage}
+                            >
+                              Previous
+                            </Button>
+                            <p className="text-xs text-muted-foreground">
+                              Page {sharesPage} of {sharesTotalPages}
+                            </p>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              disabled={
+                                sharesPage >= sharesTotalPages || isLoadingShares
+                              }
+                              onClick={handleNextPage}
+                            >
+                              Next
+                            </Button>
+                          </div>
+                        ) : null}
+                      </>
+                    ) : null}
+                  </Panel>
+                </div>
               ) : null}
             </div>
+
+            <div
+              data-tour="card-vcard-preview"
+              className="mt-6 lg:sticky lg:top-6 lg:mt-0 lg:self-start"
+            >
+              {/* Remounted after a save or a copy so it re-reads the vCard. */}
+              <VcardPreview
+                key={previewKey}
+                cardId={card.id}
+                fieldTypes={fieldTypes}
+                cardName={card.name}
+              />
+            </div>
           </div>
-
-          <div className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-            <Button
-              type="button"
-              size="sm"
-              className="justify-center"
-              onClick={onShare}
-            >
-              <Share2 className="h-4 w-4" aria-hidden="true" />
-              Share
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="justify-center"
-              onClick={() => setMobilePreviewOpen(true)}
-            >
-              <Smartphone className="h-4 w-4" aria-hidden="true" />
-              Preview
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="justify-center"
-              onClick={() => {
-                void copyCardLink(card);
-              }}
-            >
-              <Copy className="h-4 w-4" aria-hidden="true" />
-              Copy link
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="justify-center"
-              onClick={() => void downloadCardVcard(card, fields)}
-            >
-              <Download className="h-4 w-4" aria-hidden="true" />
-              Save contact
-            </Button>
-          </div>
-
-          <p className="mt-4 text-xs text-muted-foreground">
-            Created {formatDate(card.createdAt)}
-            <span className="mx-2 text-border-strong">·</span>
-            Updated {formatDate(card.updatedAt)}
-          </p>
-        </Panel>
-
-        <Panel className="p-5 sm:p-6">
-          <h2 className="text-sm font-semibold text-foreground">On this card</h2>
-          {facts.length > 0 ? (
-            <dl className="mt-4 divide-y divide-border">
-              {facts.map((item) => (
-                <div
-                  key={`${item.label}-${item.value}`}
-                  className="flex items-baseline justify-between gap-4 py-3 first:pt-0 last:pb-0"
-                >
-                  <dt className="shrink-0 text-[12px] font-medium text-muted-foreground">
-                    {item.label}
-                  </dt>
-                  <dd className="min-w-0 text-right text-[13px] font-medium text-foreground">
-                    <span className="break-words">{item.value}</span>
-                  </dd>
-                </div>
-              ))}
-            </dl>
-          ) : (
-            <p className="mt-3 text-sm text-muted-foreground">
-              No fields saved on this card yet.
-            </p>
-          )}
-        </Panel>
-
-        {extraSections.length > 0 && (
-          <Panel className="p-5 sm:p-6">
-            <button
-              type="button"
-              onClick={() => setShowMore((current) => !current)}
-              className="flex w-full items-center justify-between gap-3 text-left"
-              aria-expanded={showMore}
-            >
-              <div>
-                <h2 className="text-sm font-semibold text-foreground">
-                  Profile extras
-                </h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Optional profile data not stored on the card shell.
-                </p>
-              </div>
-              <span className="text-xs font-semibold text-foreground">
-                {showMore ? "Hide" : "Show"}
-              </span>
-            </button>
-
-            {showMore ? (
-              <div className="mt-5 space-y-5 border-t border-border pt-5">
-                {extraSections.map((section) => (
-                  <div key={section.title}>
-                    <h3 className="text-sm font-semibold text-foreground">
-                      {section.title}
-                    </h3>
-                    <dl className="mt-2 divide-y divide-border">
-                      {section.items.map((item) => (
-                        <div
-                          key={`${section.title}-${item.label}-${item.value}`}
-                          className="flex items-baseline justify-between gap-4 py-2.5"
-                        >
-                          <dt className="shrink-0 text-[12px] text-muted-foreground">
-                            {item.label}
-                          </dt>
-                          <dd className="min-w-0 break-words text-right text-[13px] font-medium text-foreground">
-                            {item.value}
-                          </dd>
-                        </div>
-                      ))}
-                    </dl>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-          </Panel>
-        )}
+        ) : null}
       </div>
 
-      <MobileCardPreview
-        open={mobilePreviewOpen}
-        onClose={() => setMobilePreviewOpen(false)}
-        fields={fields}
-        theme={theme}
-        template={template}
-        title={card.name}
-        onSaveContact={() => void downloadCardVcard(card, fields)}
-        onShareCard={() => {
-          setMobilePreviewOpen(false);
-          onShare();
-        }}
-      />
-    </section>
+      {card ? (
+        <ShareCardDialog
+          open={shareOpen}
+          onClose={() => setShareOpen(false)}
+          card={card}
+          senderName={senderName}
+          defaultFieldTypes={fieldTypes.length > 0 ? fieldTypes : undefined}
+          onShared={handleShared}
+        />
+      ) : null}
+    </AppShell>
   );
 }

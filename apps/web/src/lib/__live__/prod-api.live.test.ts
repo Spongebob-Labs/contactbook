@@ -363,12 +363,12 @@ describe("live API smoke", () => {
     expect(res.status).toBe(200);
   });
 
-  it("GET /v1/whatsapp-templates with Bearer (tolerate 404)", async () => {
+  it("GET /v1/cards/share-templates with Bearer (tolerate 404)", async () => {
     if (!LIVE_ACCESS_TOKEN) {
       record({
-        name: "whatsapp-templates",
+        name: "card-share-templates",
         method: "GET",
-        path: "/v1/whatsapp-templates",
+        path: "/v1/cards/share-templates",
         status: 0,
         ok: true,
         skipped: true,
@@ -376,12 +376,12 @@ describe("live API smoke", () => {
       });
       return;
     }
-    const res = await liveFetch("/v1/whatsapp-templates");
+    const res = await liveFetch("/v1/cards/share-templates");
     if (isGatewayFailure(res.status)) {
       record({
-        name: "whatsapp-templates",
+        name: "card-share-templates",
         method: "GET",
-        path: "/v1/whatsapp-templates",
+        path: "/v1/cards/share-templates",
         status: res.status,
         ok: false,
         detail: "GATEWAY_DOWN",
@@ -390,9 +390,9 @@ describe("live API smoke", () => {
     }
     const ok = res.status === 200 || res.status === 404;
     record({
-      name: "whatsapp-templates",
+      name: "card-share-templates",
       method: "GET",
-      path: "/v1/whatsapp-templates",
+      path: "/v1/cards/share-templates",
       status: res.status,
       ok,
       detail:
