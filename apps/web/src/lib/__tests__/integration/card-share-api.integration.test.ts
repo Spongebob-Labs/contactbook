@@ -146,6 +146,45 @@ describe("card-share-api integration", () => {
     expect(isBatchSettled(created)).toBe(false);
   });
 
+  /*
+    The API filters with `fieldTypes ? new Set(fieldTypes) : null`, so a literal
+    `[]` matches nothing and ships a name-only VCF, while an absent key ships
+    every mapped field. The UI's empty selection means the latter — so both the
+    share and the vcard body must drop the key rather than send an empty array.
+  */
+  it("drops an empty field selection from the share body instead of sending []", async () => {
+    const { calls } = mockFetchSequence([{ status: 201, body: batch }]);
+
+    await shareCard(batch.cardId, {
+      templateKey: template.key,
+      fieldTypes: [],
+      recipients: [{ phone: "9347243575", countryCode: "+91" }],
+    });
+
+    expect(calls[0]?.body).toEqual({
+      templateKey: template.key,
+      recipients: [{ phone: "9347243575", countryCode: "+91" }],
+    });
+  });
+
+  it("drops an empty field selection from the vcard body too", async () => {
+    const { calls } = mockFetchSequence([
+      {
+        status: 201,
+        body: {
+          objectKey: "adf1c578/88d321.vcf",
+          url: "https://storage.googleapis.com/contactbook-card-shares/88d321.vcf",
+          fieldTypes: [],
+          sizeBytes: 141,
+        },
+      },
+    ]);
+
+    await generateCardVcard(batch.cardId, []);
+
+    expect(calls[0]?.body).toEqual({});
+  });
+
   it("polls a batch and resends a failed recipient", async () => {
     const { calls } = mockFetchSequence([
       {

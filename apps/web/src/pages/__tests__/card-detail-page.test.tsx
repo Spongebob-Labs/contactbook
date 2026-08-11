@@ -1,6 +1,9 @@
 /**
- * Card detail page: three tabs over one pinned vCard preview, plus the
- * per-card share-field selection that now survives a reload.
+ * Card detail page: two tabs over one pinned vCard preview, plus the per-card
+ * share-field selection that survives a reload.
+ *
+ * Details and their share switches live together on the Card tab — they were
+ * split across two tabs, which read as two unrelated jobs.
  *
  * The API layer is mocked wholesale — this asserts page structure and the
  * localStorage round-trip, not transport, which `card-share-api.integration`
@@ -10,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { toast } from "sonner";
 import CardDetailPage from "@/pages/card-detail-page";
 import {
   readCardFieldSelection,
@@ -22,6 +26,7 @@ const mocks = vi.hoisted(() => ({
   useAuth: vi.fn(),
   getCard: vi.fn(),
   listCardsWithFieldCounts: vi.fn(),
+  listCardFieldMappings: vi.fn(),
   updateCard: vi.fn(),
   deleteCard: vi.fn(),
   copyCardFieldMappings: vi.fn(),
@@ -45,6 +50,7 @@ vi.mock("@/lib/use-card-tour", () => ({ useCardTour: () => {} }));
 vi.mock("@/lib/cards-api", () => ({
   getCard: mocks.getCard,
   listCardsWithFieldCounts: mocks.listCardsWithFieldCounts,
+  listCardFieldMappings: mocks.listCardFieldMappings,
   updateCard: mocks.updateCard,
   deleteCard: mocks.deleteCard,
   copyCardFieldMappings: mocks.copyCardFieldMappings,
@@ -144,7 +150,12 @@ function renderPage(): void {
 /** Resolves once the card has loaded and the tab bar is on screen. */
 async function renderLoadedPage(): Promise<void> {
   renderPage();
-  await screen.findByRole("tab", { name: /overview/i });
+  await screen.findByRole("tab", { name: /^card$/i });
+}
+
+/** A share switch, which replaced the old per-field "Include" checkbox. */
+function shareSwitch(name: string): HTMLElement {
+  return screen.getByRole("switch", { name: `Share ${name}` });
 }
 
 async function openTab(name: RegExp): Promise<void> {
@@ -165,6 +176,9 @@ beforeEach(() => {
   });
   mocks.getCard.mockResolvedValue(CARD);
   mocks.listCardsWithFieldCounts.mockResolvedValue([CARD]);
+  // Attaching checks its own result, so the default is a card that ended up with
+  // something on it.
+  mocks.listCardFieldMappings.mockResolvedValue([{ fieldId: "field-1" }]);
   mocks.updateCard.mockResolvedValue(CARD);
   mocks.deleteCard.mockResolvedValue(undefined);
   mocks.copyCardFieldMappings.mockResolvedValue({ copied: 2, total: 2 });
@@ -196,40 +210,26 @@ afterEach(() => {
 });
 
 describe("CardDetailPage tabs", () => {
-  it("renders the three tabs with Overview selected first", async () => {
+  it("renders two tabs with Card selected first", async () => {
     await renderLoadedPage();
 
     expect(
-      screen.getByRole("tab", { name: /overview/i }).getAttribute("aria-selected"),
+      screen.getByRole("tab", { name: /^card$/i }).getAttribute("aria-selected"),
     ).toBe("true");
-    expect(screen.getByRole("tab", { name: /what's shared/i })).toBeTruthy();
     expect(screen.getByRole("tab", { name: /history/i })).toBeTruthy();
-    expect(screen.getByText("Card settings")).toBeTruthy();
+    expect(screen.queryByRole("tab", { name: /what's shared/i })).toBeNull();
   });
 
-  it("shows the card settings on Overview and keeps Share and Delete in the header", async () => {
+  it("puts the details, their switches, and card settings on one tab", async () => {
     await renderLoadedPage();
 
     expect(screen.getByText("Work card", { selector: "h1" })).toBeTruthy();
     expect(screen.getByRole("button", { name: /share/i })).toBeTruthy();
     expect(screen.getByRole("button", { name: /delete/i })).toBeTruthy();
-    // The details editor belongs to the "What's shared" tab, not Overview.
-    expect(screen.queryByText("Card details")).toBeNull();
-  });
-
-  it("renders the details panel on the What's shared tab", async () => {
-    await renderLoadedPage();
-    await openTab(/what's shared/i);
-
-    expect(await screen.findByText("Card details")).toBeTruthy();
-    expect(
-      await screen.findByLabelText("Include Mobile when sharing"),
-    ).toBeTruthy();
-    expect(
-      screen
-        .getByRole("tab", { name: /what's shared/i })
-        .getAttribute("aria-selected"),
-    ).toBe("true");
+    // Editing a value and choosing whether it is shared are one screen now.
+    expect(await screen.findByText("Details")).toBeTruthy();
+    expect(shareSwitch("Mobile")).toBeTruthy();
+    expect(screen.getByText("Card settings")).toBeTruthy();
   });
 
   it("lists share batches on the History tab", async () => {
@@ -268,20 +268,27 @@ describe("CardDetailPage field selection", () => {
     writeCardFieldSelection(USER_ID, CARD_ID, ["PHONE", "EMAIL"]);
 
     await renderLoadedPage();
-    await openTab(/what's shared/i);
+    await screen.findByText("Details");
 
-    const mobile = await screen.findByLabelText<HTMLInputElement>(
-      "Include Mobile when sharing",
-    );
-    expect(mobile.checked).toBe(true);
-    expect(
-      screen.getByLabelText<HTMLInputElement>("Include Email when sharing").checked,
-    ).toBe(true);
-    expect(
-      screen.getByLabelText<HTMLInputElement>("Include Landline when sharing")
-        .checked,
-    ).toBe(false);
-    expect(screen.getByText("2 of 12 selected")).toBeTruthy();
+    expect(shareSwitch("Mobile").getAttribute("aria-checked")).toBe("true");
+    expect(shareSwitch("Email").getAttribute("aria-checked")).toBe("true");
+    // Only what is filled in can be counted, and the profile has no landline.
+    expect(screen.getByText("2 of 2 shared")).toBeTruthy();
+  });
+
+  /*
+    A detail with no value cannot be shared, so its switch is inert rather than
+    offering a choice that the generated file would silently ignore.
+  */
+  it("cannot switch on a detail that has no value", async () => {
+    writeCardFieldSelection(USER_ID, CARD_ID, ["PHONE", "EMAIL"]);
+
+    await renderLoadedPage();
+    await screen.findByText("Details");
+
+    const landline = shareSwitch("Landline") as HTMLButtonElement;
+    expect(landline.disabled).toBe(true);
+    expect(landline.getAttribute("aria-checked")).toBe("false");
   });
 
   it("writes the selection back when the user changes it", async () => {
@@ -289,12 +296,54 @@ describe("CardDetailPage field selection", () => {
     const user = userEvent.setup();
 
     await renderLoadedPage();
-    await openTab(/what's shared/i);
-    await user.click(await screen.findByLabelText("Include Email when sharing"));
+    await screen.findByText("Details");
+    await user.click(shareSwitch("Email"));
 
     await waitFor(() => {
       expect(readCardFieldSelection(USER_ID, CARD_ID)).toEqual(["PHONE", "EMAIL"]);
     });
+  });
+
+  /*
+    An empty stored selection means "everything" to the API, so it has to be
+    drawn as every switch on — and switching one off has to materialise the list
+    rather than leaving the empty array in place.
+
+    Materialised from every detail on screen, not only the filled ones: switching
+    Email off says "everything except email", so a landline added later should
+    still go out.
+  */
+  it("draws a never-narrowed card as sharing everything", async () => {
+    const user = userEvent.setup();
+
+    await renderLoadedPage();
+    await screen.findByText("Details");
+
+    expect(shareSwitch("Mobile").getAttribute("aria-checked")).toBe("true");
+    expect(shareSwitch("Email").getAttribute("aria-checked")).toBe("true");
+
+    await user.click(shareSwitch("Email"));
+
+    await waitFor(() => {
+      const stored = readCardFieldSelection(USER_ID, CARD_ID);
+      expect(stored).not.toContain("EMAIL");
+      expect(stored).toContain("PHONE");
+      expect(stored).toContain("LANDLINE");
+    });
+  });
+
+  it("keeps the last shared detail on, so the card cannot silently share everything", async () => {
+    writeCardFieldSelection(USER_ID, CARD_ID, ["PHONE"]);
+
+    await renderLoadedPage();
+    await screen.findByText("Details");
+
+    const mobile = shareSwitch("Mobile") as HTMLButtonElement;
+    expect(mobile.getAttribute("aria-checked")).toBe("true");
+    expect(mobile.disabled).toBe(true);
+    expect(mobile.getAttribute("title")).toBe(
+      "At least one detail has to be shared.",
+    );
   });
 
   it("forgets the card's selection once the card is deleted", async () => {
@@ -339,29 +388,88 @@ describe("CardDetailPage states", () => {
     ).toBeTruthy();
   });
 
-  it("offers the copy-details recovery flow on Overview for an empty card", async () => {
+  /*
+    An empty card is one click from working: the server attaches unmapped fields
+    on any profile patch, so saving an unchanged profile is the whole fix. The
+    old flow sent the user to a different tab to copy from another card, which
+    only worked if such a card happened to exist.
+  */
+  it("offers a one-click fix for a card that carries nothing", async () => {
+    mocks.getCard.mockResolvedValue({ ...CARD, mappedFieldIds: [] });
+    const user = userEvent.setup();
+
+    await renderLoadedPage();
+
+    expect(
+      await screen.findByText("Recipients would only get your name"),
+    ).toBeTruthy();
+    await user.click(
+      screen.getByRole("button", { name: /add my details to this card/i }),
+    );
+
+    await waitFor(() => {
+      expect(mocks.patchProfileMe).toHaveBeenCalled();
+    });
+    // The card is re-read, so the empty state can clear without a reload.
+    await waitFor(() => {
+      expect(mocks.getCard).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  /*
+    The patch only attaches fields where the server's card-mapping backfill is
+    deployed. Against an API without it the patch returns 200 and the card stays
+    name-only — announcing success there is what made a broken share look like a
+    working one.
+  */
+  it("does not claim success when the patch attached nothing", async () => {
+    mocks.getCard.mockResolvedValue({ ...CARD, mappedFieldIds: [] });
+    mocks.listCardFieldMappings.mockResolvedValue([]);
+    const user = userEvent.setup();
+
+    await renderLoadedPage();
+    await screen.findByText("Recipients would only get your name");
+    await user.click(
+      screen.getByRole("button", { name: /add my details to this card/i }),
+    );
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(
+        expect.stringContaining("still carries nothing"),
+      );
+    });
+    expect(toast.success).not.toHaveBeenCalledWith("Your details are on this card.");
+  });
+
+  /*
+    Copying posts real field ids read off another card, so it works whether or not
+    the server backfills mappings on patch — the recovery path that always exists.
+  */
+  it("offers copying from a card that does carry details", async () => {
     mocks.getCard.mockResolvedValue({ ...CARD, mappedFieldIds: [] });
     mocks.listCardsWithFieldCounts.mockResolvedValue([
-      CARD,
-      {
-        ...CARD,
-        id: "card-2",
-        name: "Personal card",
-        mappedFieldIds: ["field-c"],
-      },
+      { ...CARD, mappedFieldIds: [] },
+      { ...CARD, id: "card-2", name: "Personal", mappedFieldIds: ["f1", "f2"] },
     ]);
     const user = userEvent.setup();
 
     await renderLoadedPage();
 
     const copyButton = await screen.findByRole("button", {
-      name: /copy details/i,
+      name: /copy details from "Personal"/i,
     });
     await user.click(copyButton);
 
     await waitFor(() => {
-      expect(mocks.copyCardFieldMappings).toHaveBeenCalledWith("card-2", CARD_ID);
+      expect(mocks.copyCardFieldMappings).toHaveBeenCalledWith("card-2", CARD.id);
     });
+  });
+
+  it("says nothing about being empty once the card carries details", async () => {
+    await renderLoadedPage();
+    await screen.findByText("Details");
+
+    expect(screen.queryByText("Recipients would only get your name")).toBeNull();
   });
 
   it("shows the not-found state when the card is missing", async () => {
@@ -371,7 +479,7 @@ describe("CardDetailPage states", () => {
     renderPage();
 
     expect(await screen.findByText("We couldn't find that card.")).toBeTruthy();
-    expect(screen.queryByRole("tab", { name: /overview/i })).toBeNull();
+    expect(screen.queryByRole("tab", { name: /^card$/i })).toBeNull();
   });
 
   it("shows a load error when the card cannot be fetched", async () => {
@@ -417,7 +525,7 @@ describe("CardDetailPage states", () => {
     });
   });
 
-  it("saves card settings from the Overview tab", async () => {
+  it("saves card settings from the Card tab", async () => {
     const user = userEvent.setup();
     mocks.updateCard.mockResolvedValue({ ...CARD, name: "Renamed card" });
 

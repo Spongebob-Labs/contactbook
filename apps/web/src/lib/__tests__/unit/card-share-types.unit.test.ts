@@ -3,6 +3,8 @@ import {
   SHAREABLE_FIELD_META,
   SHAREABLE_FIELD_TYPES,
   canResendRecipient,
+  canonicaliseFieldTypes,
+  fieldTypesBody,
   isBatchSettled,
   isDispatchSettled,
   isShareableFieldType,
@@ -54,6 +56,42 @@ describe("shareable field types", () => {
     expect(isShareableFieldType("PHONE")).toBe(true);
     expect(isShareableFieldType("BANK_ACCOUNT")).toBe(false);
     expect(isShareableFieldType("TEXT")).toBe(false);
+  });
+});
+
+describe("fieldTypes request body", () => {
+  /*
+    The one asymmetry in this contract. `VCardGeneratorService` filters with
+    `fieldTypes ? new Set(fieldTypes) : null`, so an omitted key includes every
+    mapping and a literal `[]` includes none — a name-only VCF. The UI's own
+    convention is that an empty selection means "share everything", so the empty
+    case must never reach the wire.
+  */
+  it("omits the key entirely for an empty selection", () => {
+    expect(fieldTypesBody([])).toEqual({});
+    expect(fieldTypesBody(undefined)).toEqual({});
+    expect("fieldTypes" in fieldTypesBody([])).toBe(false);
+  });
+
+  it("sends a narrowed selection in canonical order", () => {
+    expect(fieldTypesBody(["EMAIL", "PHONE"])).toEqual({
+      fieldTypes: ["PHONE", "EMAIL"],
+    });
+  });
+
+  it("drops types the API would reject rather than 400 the whole share", () => {
+    expect(
+      fieldTypesBody(["PHONE", "BANK_ACCOUNT" as never, "PHONE"]),
+    ).toEqual({ fieldTypes: ["PHONE"] });
+  });
+
+  it("canonicalises independently of click order", () => {
+    expect(canonicaliseFieldTypes(["DATE", "PHONE", "EMAIL", "PHONE"])).toEqual([
+      "PHONE",
+      "EMAIL",
+      "DATE",
+    ]);
+    expect(canonicaliseFieldTypes(["nonsense", 7, null])).toEqual([]);
   });
 });
 

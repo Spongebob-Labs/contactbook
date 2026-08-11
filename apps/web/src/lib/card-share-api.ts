@@ -10,6 +10,7 @@
  */
 import { apiFetch } from "@/lib/api";
 import {
+  fieldTypesBody,
   isShareableFieldType,
   type CardSharePage,
   type CardShareBatch,
@@ -164,6 +165,10 @@ function normalizeBatch(raw: unknown): CardShareBatch {
 /**
  * Queues the card for delivery. Recipients come back `PENDING`; the dispatch
  * cron picks them up within roughly ten seconds.
+ *
+ * The `.vcf` is built inside this one call — `generateCardVcard` is a preview,
+ * not a prerequisite. Passing the same `fieldTypes` to both is what makes the
+ * previewed file and the delivered file the same content-addressed object.
  */
 export async function shareCard(
   cardId: string,
@@ -185,7 +190,9 @@ export async function shareCard(
         ...(recipient.contactId ? { contactId: recipient.contactId } : {}),
       })),
       ...(note ? { note } : {}),
-      ...(input.fieldTypes?.length ? { fieldTypes: input.fieldTypes } : {}),
+      // Never `fieldTypes: []` — that filters every field out and sends a
+      // name-only card. See `fieldTypesBody`.
+      ...fieldTypesBody(input.fieldTypes),
     },
   });
   return normalizeBatch(raw);
@@ -255,6 +262,11 @@ export async function listCardShares(
  * Pre-generates the `.vcf` so the UI can show exactly what a recipient receives.
  * Content-addressed: the same card + field selection returns the same URL
  * without re-uploading.
+ *
+ * Optional for sharing — `shareCard` generates its own. Call this to preview,
+ * and to learn what a card actually holds: an unfiltered call returns everything
+ * mapped to it, which is the only server-side answer to that question
+ * (`VcardAssetResponseDto.fieldTypes` merely echoes the filter sent in).
  */
 export async function generateCardVcard(
   cardId: string,
@@ -262,7 +274,7 @@ export async function generateCardVcard(
 ): Promise<CardVcardAsset> {
   const raw = await apiFetch<unknown>(`/v1/cards/${cardId}/vcard`, {
     method: "POST",
-    body: fieldTypes?.length ? { fieldTypes } : {},
+    body: fieldTypesBody(fieldTypes),
   });
   const record = asRecord(raw);
   return {

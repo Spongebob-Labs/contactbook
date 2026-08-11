@@ -15,8 +15,7 @@
  * survive a round-trip instead of collapsing into "never chosen".
  */
 import {
-  SHAREABLE_FIELD_TYPES,
-  isShareableFieldType,
+  canonicaliseFieldTypes,
   type ShareableFieldType,
 } from "@/lib/card-share-types";
 
@@ -61,19 +60,8 @@ function removeRaw(key: string): void {
   }
 }
 
-/**
- * Canonical order, deduped, with anything the share API would reject removed —
- * a stored selection can outlive the deploy that dropped one of its types.
- */
-function normalise(values: readonly unknown[]): ShareableFieldType[] {
-  const wanted = new Set(
-    values.filter(
-      (value): value is ShareableFieldType =>
-        typeof value === "string" && isShareableFieldType(value),
-    ),
-  );
-  return SHAREABLE_FIELD_TYPES.filter((type) => wanted.has(type));
-}
+/** Shared with the request builder so a stored selection and a sent one agree. */
+const normalise = canonicaliseFieldTypes;
 
 /** Every card selection stored for a user; `{}` when signed out or unreadable. */
 export function readAllCardFieldSelections(

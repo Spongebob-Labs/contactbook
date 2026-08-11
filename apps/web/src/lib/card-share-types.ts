@@ -32,6 +32,51 @@ export function isShareableFieldType(
   return (SHAREABLE_FIELD_TYPES as readonly string[]).includes(value);
 }
 
+/**
+ * Canonical order, deduped, with anything the API would reject dropped — a
+ * stored or user-built selection can outlive the deploy that removed one of its
+ * types.
+ */
+export function canonicaliseFieldTypes(
+  values: readonly unknown[],
+): ShareableFieldType[] {
+  const wanted = new Set(
+    values.filter(
+      (value): value is ShareableFieldType =>
+        typeof value === "string" && isShareableFieldType(value),
+    ),
+  );
+  return SHAREABLE_FIELD_TYPES.filter((type) => wanted.has(type));
+}
+
+/**
+ * The `fieldTypes` fragment to spread into a `POST /cards/:id/vcard` or
+ * `/share` body.
+ *
+ * `fieldTypes` is only ever a **filter over the field mappings the card already
+ * holds** — it never carries values. The values come from that card's
+ * `CardFieldMapping` rows, so narrowing to `["PHONE"]` on a card with no phone
+ * mapping yields a name-only VCF rather than an error.
+ *
+ * The wire convention is the inverse of the UI's, which is the trap this helper
+ * exists to close. `VCardGeneratorService` builds its filter as
+ * `fieldTypes ? new Set(fieldTypes) : null`, so **omitting** the key includes
+ * every mapped field while sending `[]` matches nothing at all. The UI reads an
+ * empty selection as "share everything", so an empty array must be dropped from
+ * the body, never forwarded.
+ *
+ * Spread the result — `{ ...fieldTypesBody(types) }` — so an empty selection
+ * contributes no key. Every request carrying a field filter goes through here;
+ * that is what keeps a future caller from re-inventing the `?.length` check and
+ * getting it backwards.
+ */
+export function fieldTypesBody(
+  types: readonly ShareableFieldType[] | undefined,
+): { fieldTypes?: ShareableFieldType[] } {
+  const filter = canonicaliseFieldTypes(types ?? []);
+  return filter.length > 0 ? { fieldTypes: filter } : {};
+}
+
 /** Copy + vCard mapping for each shareable field type, for pickers and previews. */
 export const SHAREABLE_FIELD_META: Record<
   ShareableFieldType,

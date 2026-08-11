@@ -1,11 +1,14 @@
 /**
- * One card's settings, sharing configuration, and delivery history.
+ * One card's details, settings, and delivery history.
  *
- * The three concerns are tabbed rather than stacked — the details editor alone
- * is twelve rows tall, and burying "Share history" under it made delivery
- * status unreachable without a scroll. The vCard preview stays pinned beside
- * every tab because it is the only honest answer to "what will they actually
- * get", and that question applies to all three.
+ * Two tabs, not three. "Overview" and "What's shared" used to split one
+ * question — what does this card say about me? — so a value was typed on one
+ * screen and switched on from another, with nothing to connect the two. They are
+ * now one tab; History stays separate because delivery status is a different
+ * question and sat unreachable below a twelve-row editor.
+ *
+ * The vCard preview stays pinned beside both tabs: it is the only honest answer
+ * to "what will they actually get".
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -14,8 +17,6 @@ import {
   ArrowLeft,
   History,
   IdCard,
-  Info,
-  ListChecks,
   Settings2,
   Share2,
   Trash2,
@@ -47,13 +48,7 @@ import {
 import { listCardShares } from "@/lib/card-share-api";
 import { shareSenderNameFrom } from "@/lib/card-share-types";
 import type { CardShareBatch, ShareableFieldType } from "@/lib/card-share-types";
-import {
-  copyCardFieldMappings,
-  deleteCard,
-  getCard,
-  listCardsWithFieldCounts,
-  updateCard,
-} from "@/lib/cards-api";
+import { deleteCard, getCard, updateCard } from "@/lib/cards-api";
 import { friendlyErrorMessages, logUiError } from "@/lib/friendly-errors";
 import { useCardTour } from "@/lib/use-card-tour";
 import type { ContactCard, ContactCardType } from "@/lib/types";
@@ -72,22 +67,20 @@ const CARD_TYPE_LABELS: Record<ContactCardType, string> = {
   CUSTOM: "Custom",
 };
 
-type CardTab = "overview" | "shared" | "history";
+type CardTab = "card" | "history";
 
+/**
+ * Two tabs, not three. "Overview" and "What's shared" split one question —
+ * what this card says about me — across two screens, so a value was edited in
+ * one place and switched on in another with nothing to connect them.
+ */
 const CARD_TABS: Array<SegmentedTabItem<CardTab>> = [
-  { key: "overview", label: "Overview", icon: Settings2 },
-  {
-    key: "shared",
-    label: "What's shared",
-    icon: ListChecks,
-    dataTour: "card-shared-fields",
-  },
+  { key: "card", label: "Card", icon: Settings2, dataTour: "card-shared-fields" },
   { key: "history", label: "History", icon: History },
 ];
 
 const TAB_LABELS: Record<CardTab, string> = {
-  overview: "Overview",
-  shared: "What's shared",
+  card: "Card",
   history: "History",
 };
 
@@ -104,7 +97,7 @@ export default function CardDetailPage() {
   const { profileIdentity, userId } = useAuth();
 
   const [card, setCard] = useState<ContactCard | null>(null);
-  const [activeTab, setActiveTab] = useState<CardTab>("overview");
+  const [activeTab, setActiveTab] = useState<CardTab>("card");
   const [isLoading, setIsLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -113,9 +106,6 @@ export default function CardDetailPage() {
   const [fieldTypes, setFieldTypes] = useState<ShareableFieldType[]>([]);
   /** Bumped after a profile save so the vCard preview re-generates. */
   const [previewKey, setPreviewKey] = useState(0);
-  const [otherCards, setOtherCards] = useState<ContactCard[]>([]);
-  const [copySourceId, setCopySourceId] = useState("");
-  const [isCopying, setIsCopying] = useState(false);
 
   const [editingSettings, setEditingSettings] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
@@ -334,68 +324,22 @@ export default function CardDetailPage() {
   const mappedFieldCount = card?.mappedFieldIds?.length ?? 0;
 
   /**
-   * A card created through `POST /cards` starts with no details attached, and
-   * the server only ever attaches them during profile onboarding. Copying them
-   * across from another card is the one way to fill it.
+   * A save can change which profile fields the card carries — the server attaches
+   * unmapped fields on every patch — so the card is re-read, not just the preview.
+   * That is what clears the "only get your name" state without a manual reload.
    */
-  useEffect(() => {
-    if (!card || mappedFieldCount > 0) {
+  const handleDetailsSaved = useCallback(async () => {
+    setPreviewKey((value) => value + 1);
+    if (!cardId) {
       return;
     }
-    let isMounted = true;
-    listCardsWithFieldCounts()
-      .then((all) => {
-        if (!isMounted) {
-          return;
-        }
-        // Cards known to be empty are useless as a source — copying one leaves
-        // this card just as bare — so they sort last and never preselect.
-        const candidates = all
-          .filter((item) => item.id !== card.id)
-          .sort(
-            (a, b) =>
-              Number(a.mappedFieldIds?.length === 0) -
-              Number(b.mappedFieldIds?.length === 0),
-          );
-        setOtherCards(candidates);
-        setCopySourceId((current) => current || (candidates[0]?.id ?? ""));
-      })
-      .catch((error: unknown) => {
-        logUiError("Could not load cards to copy details from", error);
-      });
-    return () => {
-      isMounted = false;
-    };
-  }, [card, mappedFieldCount]);
-
-  const handleCopyDetails = async () => {
-    if (!card || !copySourceId) {
-      return;
-    }
-    setIsCopying(true);
     try {
-      const { copied } = await copyCardFieldMappings(copySourceId, card.id);
-      if (copied === 0) {
-        toast.error("That card has no details to copy.");
-        return;
-      }
-      const refreshed = await getCard(card.id);
+      const refreshed = await getCard(cardId);
       setCard(refreshed);
-      setPreviewKey((value) => value + 1);
-      toast.success(
-        `Copied ${copied} detail${copied === 1 ? "" : "s"} onto this card.`,
-      );
     } catch (error) {
-      logUiError("Could not copy card details", error);
-      toast.error(
-        error instanceof ApiError && error.message
-          ? error.message
-          : friendlyErrorMessages.save,
-      );
-    } finally {
-      setIsCopying(false);
+      logUiError("Could not refresh the card after saving", error);
     }
-  };
+  }, [cardId]);
 
   const headerActions = card ? (
     <div className="flex flex-col items-stretch gap-1.5 sm:items-end">
@@ -498,12 +442,21 @@ export default function CardDetailPage() {
                 />
               </div>
 
-              {activeTab === "overview" ? (
+              {activeTab === "card" ? (
                 <div
                   role="tabpanel"
-                  aria-label={TAB_LABELS.overview}
+                  aria-label={TAB_LABELS.card}
                   className="space-y-6"
                 >
+                  <CardDetailsPanel
+                    cardId={card.id}
+                    cardType={card.type}
+                    selectedTypes={fieldTypes}
+                    onSelectedTypesChange={handleFieldTypesChange}
+                    isEmpty={mappedFieldCount === 0}
+                    onSaved={() => void handleDetailsSaved()}
+                  />
+
                   <EditableSection
                     title="Card settings"
                     description="Name, type, and whether this card can be shared over WhatsApp."
@@ -576,94 +529,6 @@ export default function CardDetailPage() {
                       </div>
                     )}
                   </EditableSection>
-
-                  {mappedFieldCount === 0 ? (
-                    <Panel className="space-y-4 p-5">
-                      <PanelHeader title="This card is empty" />
-                      <div className="flex items-start gap-2 rounded-md border border-border bg-secondary p-3">
-                        <Info
-                          className="mt-0.5 h-4 w-4 shrink-0 text-foreground"
-                          aria-hidden="true"
-                        />
-                        <p className="text-sm font-medium text-foreground">
-                          This card doesn&apos;t carry any of your details yet, so
-                          people who receive it would only get your name.
-                        </p>
-                      </div>
-                      {otherCards.length > 0 ? (
-                        <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-                          <label className="flex flex-1 flex-col gap-2 text-sm font-medium">
-                            <span>Copy details from another card</span>
-                            <select
-                              className="flex h-10 w-full rounded-md border border-border bg-surface px-3 text-sm"
-                              value={copySourceId}
-                              onChange={(event) =>
-                                setCopySourceId(event.target.value)
-                              }
-                              disabled={isCopying}
-                            >
-                              {otherCards.map((item) => (
-                                <option key={item.id} value={item.id}>
-                                  {item.mappedFieldIds?.length === 0
-                                    ? `${item.name} — no details`
-                                    : item.name}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          <Button
-                            type="button"
-                            className="shrink-0"
-                            disabled={isCopying || !copySourceId}
-                            onClick={() => void handleCopyDetails()}
-                          >
-                            {isCopying ? "Copying…" : "Copy details"}
-                          </Button>
-                        </div>
-                      ) : (
-                        <p className="text-sm text-muted-foreground">
-                          No other card has details to copy from yet — fill in your
-                          profile and this card will have something to carry.
-                        </p>
-                      )}
-                    </Panel>
-                  ) : null}
-                </div>
-              ) : null}
-
-              {activeTab === "shared" ? (
-                <div
-                  role="tabpanel"
-                  aria-label={TAB_LABELS.shared}
-                  className="space-y-4"
-                >
-                  {mappedFieldCount === 0 ? (
-                    <div className="flex items-start gap-2 rounded-md border border-border bg-secondary p-3">
-                      <Info
-                        className="mt-0.5 h-4 w-4 shrink-0 text-foreground"
-                        aria-hidden="true"
-                      />
-                      <p className="text-sm font-medium text-foreground">
-                        This card doesn&apos;t carry any of your details yet, so
-                        people who receive it would only get your name. Copy them
-                        across from the Overview tab.
-                      </p>
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">
-                      {mappedFieldCount} profile detail
-                      {mappedFieldCount === 1 ? "" : "s"} are on this card. Tick
-                      what gets shared — the choice is remembered for the next
-                      send.
-                    </p>
-                  )}
-                  <CardDetailsPanel
-                    cardId={card.id}
-                    cardType={card.type}
-                    selectedTypes={fieldTypes}
-                    onSelectedTypesChange={handleFieldTypesChange}
-                    onSaved={() => setPreviewKey((value) => value + 1)}
-                  />
                 </div>
               ) : null}
 
@@ -772,13 +637,18 @@ export default function CardDetailPage() {
         ) : null}
       </div>
 
+      {/*
+        `defaultFieldTypes` is passed explicitly, empty included: this page's live
+        state is ahead of the store between a toggle and its write, and an empty
+        list means the same "share everything" here that it means everywhere else.
+      */}
       {card ? (
         <ShareCardDialog
           open={shareOpen}
           onClose={() => setShareOpen(false)}
           card={card}
           senderName={senderName}
-          defaultFieldTypes={fieldTypes.length > 0 ? fieldTypes : undefined}
+          defaultFieldTypes={fieldTypes}
           onShared={handleShared}
         />
       ) : null}

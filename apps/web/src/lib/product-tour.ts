@@ -37,13 +37,13 @@ export const CARD_TOUR_STEPS: readonly TourStep[] = Object.freeze([
     element: '[data-tour="card-tabs"]',
     title: "Switch between views",
     description:
-      "Move between this card's settings, what it shares, and everyone you have sent it to.",
+      "Move between this card's details and everyone you have sent it to.",
   }),
   Object.freeze({
     element: '[data-tour="card-shared-fields"]',
-    title: "Choose what you share",
+    title: "Fill in and share",
     description:
-      "Tick only the details you want to hand out. Untick anything you would rather keep private.",
+      "Edit a detail's value, then use its switch to decide whether it goes out.",
   }),
   Object.freeze({
     element: '[data-tour="card-vcard-preview"]',

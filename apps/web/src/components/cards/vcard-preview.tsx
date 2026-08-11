@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { AlertCircle } from "lucide-react";
-import { API_BASE } from "@/lib/api";
 import { generateCardVcard } from "@/lib/card-share-api";
 import {
   SHAREABLE_FIELD_META,
@@ -13,6 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Alert } from "@/components/ui/alert";
 import { buttonVariants } from "@/components/ui/button";
 import { friendlyErrorMessages, logUiError } from "@/lib/friendly-errors";
+import { fetchVcardText, parseVcardRows, type VcardRow } from "@/lib/vcard-content";
 import { cn } from "@/lib/utils";
 
 export type VcardPreviewProps = {
@@ -23,33 +23,7 @@ export type VcardPreviewProps = {
   className?: string;
 };
 
-/** One displayable line parsed out of the generated `.vcf`. */
-type VcardRow = {
-  label: string;
-  value: string;
-  isImage?: boolean;
-};
-
 const DEBOUNCE_MS = 400;
-const SKIP_PROPERTIES = new Set(["BEGIN", "END", "VERSION", "PRODID", "REV", "UID"]);
-
-/**
- * Where to read the generated VCF text from.
- *
- * Not `asset.url`: that points straight at the GCS bucket, which serves no
- * `Access-Control-Allow-Origin`, so the browser blocked every read and the
- * preview fell back to bare field-type badges — the file's actual values were
- * never displayable. `GET /v1/vcards/download/:objectKey` proxies the same bytes
- * from our own API, which does send CORS headers. It needs no auth (the
- * WhatsApp "Save to Contacts" page uses it too), so a plain fetch is enough.
- */
-function vcfTextUrl(objectKey: string): string {
-  const path = objectKey
-    .split("/")
-    .map((segment) => encodeURIComponent(segment))
-    .join("/");
-  return `${API_BASE}/v1/vcards/download/${path}`;
-}
 
 /** Renders a byte count the way a person would say it, e.g. "1.4 KB". */
 function humanFileSize(bytes: number): string {
@@ -64,126 +38,6 @@ function humanFileSize(bytes: number): string {
     unitIndex += 1;
   }
   return `${value.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
-}
-
-function unescapeVcardValue(raw: string): string {
-  return raw
-    .replaceAll("\\n", "\n")
-    .replaceAll("\\N", "\n")
-    .replaceAll("\\,", ",")
-    .replaceAll("\\;", ";")
-    .replaceAll("\\\\", "\\");
-}
-
-/** Joins folded continuation lines (leading space/tab) back onto their parent line. */
-function unfoldVcardLines(text: string): string[] {
-  const rawLines = text.split(/\r\n|\n|\r/);
-  const lines: string[] = [];
-  for (const line of rawLines) {
-    if ((line.startsWith(" ") || line.startsWith("\t")) && lines.length > 0) {
-      lines[lines.length - 1] = `${lines[lines.length - 1]}${line.slice(1)}`;
-    } else if (line.length > 0) {
-      lines.push(line);
-    }
-  }
-  return lines;
-}
-
-function phoneKind(params: string): string {
-  const upper = params.toUpperCase();
-  if (upper.includes("FAX")) {
-    return "Fax";
-  }
-  if (upper.includes("HOME")) {
-    return "Home";
-  }
-  if (upper.includes("CELL") || upper.includes("MOBILE")) {
-    return "Mobile";
-  }
-  return "Phone";
-}
-
-/** Turns vCard 3.0 text into friendly rows; unsupported/blank properties are skipped. */
-function parseVcard(text: string): VcardRow[] {
-  const rows: VcardRow[] = [];
-  let hasName = false;
-
-  for (const line of unfoldVcardLines(text)) {
-    const colonIndex = line.indexOf(":");
-    if (colonIndex < 0) {
-      continue;
-    }
-    const head = line.slice(0, colonIndex);
-    const rawValue = line.slice(colonIndex + 1);
-    const [propertyName = "", ...paramParts] = head.split(";");
-    const property = propertyName.toUpperCase();
-    if (SKIP_PROPERTIES.has(property)) {
-      continue;
-    }
-    const params = paramParts.join(";");
-    const value = unescapeVcardValue(rawValue).trim();
-    if (!value) {
-      continue;
-    }
-
-    switch (property) {
-      case "FN":
-      case "N":
-        if (!hasName) {
-          hasName = true;
-          rows.push({ label: "Name", value });
-        }
-        break;
-      case "TEL":
-        rows.push({ label: phoneKind(params), value });
-        break;
-      case "EMAIL":
-        rows.push({ label: "Email", value });
-        break;
-      case "ADR": {
-        const joined = value
-          .split(";")
-          .map((part) => part.trim())
-          .filter(Boolean)
-          .join(", ");
-        if (joined) {
-          rows.push({ label: "Address", value: joined });
-        }
-        break;
-      }
-      case "URL":
-        rows.push({
-          label: params.toUpperCase().includes("TYPE=SOCIAL") ? "Social" : "Website",
-          value,
-        });
-        break;
-      case "ORG":
-        rows.push({
-          label: "Company",
-          value: value
-            .split(";")
-            .map((part) => part.trim())
-            .filter(Boolean)
-            .join(" · "),
-        });
-        break;
-      case "TITLE":
-        rows.push({ label: "Job title", value });
-        break;
-      case "BDAY":
-        rows.push({ label: "Birthday", value });
-        break;
-      case "PHOTO":
-        if (value.startsWith("https://")) {
-          rows.push({ label: "Photo", value, isImage: true });
-        }
-        break;
-      default:
-        break;
-    }
-  }
-
-  return rows;
 }
 
 /** Shows exactly what a recipient will save: a parsed vCard, or a safe field-type summary. */
@@ -213,18 +67,11 @@ export function VcardPreview({ cardId, fieldTypes, cardName, className }: VcardP
           setRows(null);
 
           try {
-            const response = await fetch(vcfTextUrl(result.objectKey));
+            const text = await fetchVcardText(result.objectKey);
             if (!isCurrent) {
               return;
             }
-            if (!response.ok) {
-              throw new Error(`Unexpected status ${response.status}`);
-            }
-            const text = await response.text();
-            if (!isCurrent) {
-              return;
-            }
-            setRows(parseVcard(text));
+            setRows(parseVcardRows(text));
           } catch {
             // Proxy unreachable, or the file failed to parse — the field-type
             // summary below still gives an honest preview.

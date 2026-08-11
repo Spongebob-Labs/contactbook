@@ -1,4 +1,4 @@
-import { useEffect, useState, type JSX } from "react";
+import { useEffect, useRef, useState, type JSX } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   AlertCircle,
@@ -22,8 +22,14 @@ import { WhatsappMessagePreview } from "@/components/cards/whatsapp-message-prev
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/context/auth-context";
 import { ApiError } from "@/lib/api";
-import { listShareTemplates, shareCard } from "@/lib/card-share-api";
+import { readCardFieldSelection } from "@/lib/card-field-selection";
+import {
+  generateCardVcard,
+  listShareTemplates,
+  shareCard,
+} from "@/lib/card-share-api";
 import {
   SHARE_LIMITS,
   type CardShareBatch,
@@ -36,13 +42,19 @@ import {
   pickDefaultShareTemplate,
 } from "@/lib/share-template-capabilities";
 import type { ContactCard } from "@/lib/types";
+import { fetchVcardText, vcardFieldTypes } from "@/lib/vcard-content";
 
 export type ShareCardDialogProps = {
   open: boolean;
   onClose: () => void;
   card: ContactCard;
   senderName: string;
-  /** Field types the card shares by default; the dialog lets the user narrow them. */
+  /**
+   * Field types to start from; the dialog lets the user narrow them further for
+   * this send only. Omit it and the card's own saved selection is read from the
+   * store — every entry point then respects the narrowing the user set on the
+   * card page, instead of quietly falling back to "share everything".
+   */
   defaultFieldTypes?: ShareableFieldType[];
   onShared?: (batch: CardShareBatch) => void;
 };
@@ -60,6 +72,7 @@ export function ShareCardDialog({
   onShared,
 }: ShareCardDialogProps): JSX.Element | null {
   const navigate = useNavigate();
+  const { userId } = useAuth();
   const [step, setStep] = useState(1);
 
   const [templates, setTemplates] = useState<ShareTemplate[]>([]);
@@ -70,11 +83,32 @@ export function ShareCardDialog({
   const [note, setNote] = useState("");
   const [fieldTypes, setFieldTypes] = useState<ShareableFieldType[]>([]);
   const [recipients, setRecipients] = useState<ShareRecipientDraft[]>([]);
+  /** Undefined until the card's vCard is read — the picker then offers every type. */
+  const [availableTypes, setAvailableTypes] = useState<
+    ShareableFieldType[] | undefined
+  >(undefined);
+  /** Identifies the current open, so a stale probe cannot land on a new card. */
+  const openTokenRef = useRef(0);
 
   const [isSending, setIsSending] = useState(false);
   const [batch, setBatch] = useState<CardShareBatch | null>(null);
 
   const isBlocked = card.isSensitive === true;
+  /**
+   * Two independent ways to know the card holds nothing, because neither is
+   * always available: `mappedFieldIds` is absent from some list responses, and
+   * the vCard probe can fail. `undefined` on either side means unknown, not
+   * empty, so no claim is made from it.
+   */
+  const isNameOnly =
+    card.mappedFieldIds?.length === 0 || availableTypes?.length === 0;
+  /**
+   * The probe has come back and found nothing, so there is genuinely no choice to
+   * offer. `mappedFieldIds` alone is not enough to hide the picker: it can be
+   * stale or absent, and hiding the picker on a card that does carry details
+   * would strand the user with no way to narrow.
+   */
+  const hasNothingToFilter = availableTypes?.length === 0;
 
   const loadTemplates = async () => {
     setIsLoadingTemplates(true);
@@ -102,15 +136,49 @@ export function ShareCardDialog({
     }
   };
 
+  /**
+   * What this card carries, read off its own unfiltered vCard — the file the
+   * server builds from the card's field mappings, and the only place that answer
+   * exists (`fieldTypes` in the response merely echoes the filter sent in).
+   *
+   * A failure leaves it unknown and every type stays pickable: greying out a
+   * detail the card really holds is worse than offering one it does not.
+   */
+  const loadAvailableTypes = async (token: number) => {
+    try {
+      // No filter: everything mapped to the card. Content-addressed, so this is
+      // the same asset the preview will show when nothing is narrowed.
+      const asset = await generateCardVcard(card.id);
+      const text = await fetchVcardText(asset.objectKey);
+      if (openTokenRef.current !== token) {
+        return;
+      }
+      setAvailableTypes(vcardFieldTypes(text));
+    } catch (error) {
+      logUiError("Could not read what this card carries", error);
+      if (openTokenRef.current === token) {
+        setAvailableTypes(undefined);
+      }
+    }
+  };
+
   useEffect(() => {
     if (!open) {
       return;
     }
+    // Reopening for a different card must not accept the previous card's
+    // in-flight answer about what it carries.
+    const token = openTokenRef.current + 1;
+    openTokenRef.current = token;
     setStep(1);
     setTemplateKey(null);
     setNote("");
-    setFieldTypes(defaultFieldTypes ?? []);
+    // Falls back to the card's stored selection rather than `[]`: an empty list
+    // is "share everything" to the API, so a caller that forgets the prop would
+    // widen what goes out without anyone touching a switch.
+    setFieldTypes(defaultFieldTypes ?? readCardFieldSelection(userId, card.id));
     setRecipients([]);
+    setAvailableTypes(undefined);
     setBatch(null);
     if (card.isSensitive) {
       setTemplates([]);
@@ -119,6 +187,7 @@ export function ShareCardDialog({
       return;
     }
     void loadTemplates();
+    void loadAvailableTypes(token);
     // Only re-run when the dialog opens — reopening should start from a clean slate.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -337,35 +406,103 @@ export function ShareCardDialog({
 
             {step === 2 ? (
               <div className="space-y-4">
-                <div className="space-y-1">
-                  <p className="text-sm text-muted-foreground">
-                    Tick the details that end up in the contact file the recipient saves.
-                  </p>
-                  <p className="text-sm font-medium text-foreground">
-                    Leaving everything unticked shares every field mapped to this card — not
-                    none of them.
-                  </p>
-                </div>
-                <div className="lg:grid lg:grid-cols-2 lg:gap-5">
-                  <CardFieldTypesPicker
-                    value={fieldTypes}
-                    onChange={setFieldTypes}
-                    disabled={isSending}
-                  />
-                  {/*
-                    Driven by the same `fieldTypes` the share call sends, so the
-                    file on screen is the file the recipient gets. The VCF is
-                    content-addressed by card + selection, so previewing one
-                    selection while sending another is how a photo goes missing.
-                  */}
-                  <div className="mt-4 lg:mt-0">
-                    <VcardPreview
-                      cardId={card.id}
-                      fieldTypes={fieldTypes}
-                      cardName={card.name}
-                    />
-                  </div>
-                </div>
+                {/*
+                  A card with no field mappings sends FN/N and nothing else. A
+                  filter cannot conjure a field, so the picker is not shown at
+                  all here — a grid of twelve dead checkboxes above "0 of 0
+                  selected" reads as a broken screen, and there is no decision on
+                  it for the user to make.
+                */}
+                {hasNothingToFilter ? (
+                  <>
+                    <Alert className="flex items-start gap-3">
+                      <AlertCircle
+                        className="mt-0.5 h-4 w-4 shrink-0 text-destructive"
+                        aria-hidden="true"
+                      />
+                      <div>
+                        <p className="font-medium">
+                          "{card.name}" has no details attached yet
+                        </p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          Recipients would get your name and nothing else. There
+                          is nothing to pick here until the card carries
+                          something — attach your details to it first, then come
+                          back.
+                        </p>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="mt-3"
+                          onClick={() => navigate(`/dashboard/cards/${card.id}`)}
+                        >
+                          Open card and attach details
+                        </Button>
+                      </div>
+                    </Alert>
+                    <div className="lg:max-w-sm">
+                      <VcardPreview
+                        cardId={card.id}
+                        fieldTypes={fieldTypes}
+                        cardName={card.name}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm text-muted-foreground">
+                      Tick the details that end up in the contact file the
+                      recipient saves. Untick nothing and they get everything this
+                      card carries. Only details already on the card can be sent.
+                    </p>
+                    {/*
+                      The probe could not read the card, but the card itself says
+                      it holds nothing — still worth warning about, even though
+                      the picker has to stay usable in case that is stale.
+                    */}
+                    {isNameOnly ? (
+                      <Alert className="flex items-start gap-3">
+                        <AlertCircle
+                          className="mt-0.5 h-4 w-4 shrink-0 text-destructive"
+                          aria-hidden="true"
+                        />
+                        <div>
+                          <p className="font-medium">
+                            "{card.name}" may have no details attached
+                          </p>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            Check the preview before sending — if it shows only
+                            your name, open the card and attach your details
+                            first.
+                          </p>
+                        </div>
+                      </Alert>
+                    ) : null}
+                    <div className="lg:grid lg:grid-cols-2 lg:gap-5">
+                      <CardFieldTypesPicker
+                        value={fieldTypes}
+                        onChange={setFieldTypes}
+                        availableTypes={availableTypes}
+                        disabled={isSending}
+                      />
+                      {/*
+                        Driven by the same `fieldTypes` the share call sends, so
+                        the file on screen is the file the recipient gets. The VCF
+                        is content-addressed by card + selection, so previewing
+                        one selection while sending another is how a photo goes
+                        missing.
+                      */}
+                      <div className="mt-4 lg:mt-0">
+                        <VcardPreview
+                          cardId={card.id}
+                          fieldTypes={fieldTypes}
+                          cardName={card.name}
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             ) : null}
 

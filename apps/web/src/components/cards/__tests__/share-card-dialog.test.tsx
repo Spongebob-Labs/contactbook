@@ -4,7 +4,7 @@
  * contact file the instant the recipient taps, a quick-reply template only opens
  * a session and the file arrives as a second message.
  */
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, within, type RenderResult } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
@@ -12,6 +12,8 @@ import {
   ShareCardDialog,
   type ShareCardDialogProps,
 } from "@/components/cards/share-card-dialog";
+import { useAuth } from "@/context/auth-context";
+import { cardFieldSelectionKey } from "@/lib/card-field-selection";
 import { generateCardVcard, listShareTemplates } from "@/lib/card-share-api";
 import type { ShareTemplate } from "@/lib/card-share-types";
 import type { ContactCard } from "@/lib/types";
@@ -27,7 +29,11 @@ vi.mock("@/lib/card-share-api", async (importOriginal) => {
   };
 });
 
+vi.mock("@/context/auth-context", () => ({ useAuth: vi.fn() }));
+
 const listShareTemplatesMock = vi.mocked(listShareTemplates);
+
+const USER_ID = "99999999-8888-7777-6666-555555555555";
 
 const QUICK_REPLY: ShareTemplate = {
   key: "user_baad7976_classic_msk2wpe5",
@@ -52,12 +58,65 @@ const DIRECT_WITH_IMAGE: ShareTemplate = {
 
 const CARD: ContactCard = {
   id: "11111111-2222-3333-4444-555555555555",
-  userId: "99999999-8888-7777-6666-555555555555",
+  userId: USER_ID,
   name: "Work card",
   type: "BUSINESS",
   createdAt: "2026-08-01T09:00:00.000Z",
   updatedAt: "2026-08-07T09:00:00.000Z",
+  mappedFieldIds: ["f1", "f2", "f3", "f4"],
 };
+
+/**
+ * The card's unfiltered vCard — four of the twelve shareable types, which is the
+ * whole point: a filter can only narrow what the card already carries. `FN` is
+ * not a mapping, so it must not count as a fifth.
+ */
+function vcf(...lines: string[]): string {
+  return ["BEGIN:VCARD", "VERSION:3.0", ...lines, "END:VCARD"].join("\r\n");
+}
+
+const CARD_VCF = vcf(
+  "FN:Vansh Mehta",
+  "N:Mehta;Vansh;;;",
+  "TEL;TYPE=CELL:+919347243575",
+  "EMAIL:vansh@shavastudios.ai",
+  "TITLE:Founder",
+  "ORG:Shava Studios",
+);
+
+/** The four types CARD_VCF proves, in canonical order. */
+const AVAILABLE_LABELS = ["Mobile", "Email", "Job title", "Company"] as const;
+
+beforeEach(() => {
+  window.localStorage.clear();
+  vi.mocked(useAuth).mockReturnValue({ userId: USER_ID } as ReturnType<typeof useAuth>);
+  // Both the availability probe and the preview read the VCF through the proxy.
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => new Response(CARD_VCF)),
+  );
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+/** Seeds the per-card selection the card page would have written. */
+function saveSelection(types: string[]): void {
+  window.localStorage.setItem(
+    cardFieldSelectionKey(USER_ID),
+    JSON.stringify({ [CARD.id]: types }),
+  );
+}
+
+/** Walks to step 2 and waits for the card's field universe to land. */
+async function goToDetailsStep(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  await screen.findByText(DIRECT_SUMMARY);
+  await user.click(screen.getByRole("button", { name: "Next" }));
+  await screen.findByText(
+    new RegExp(`of ${AVAILABLE_LABELS.length} selected`),
+  );
+}
 
 function renderDialog(
   templates: ShareTemplate[],
@@ -213,8 +272,7 @@ describe("ShareCardDialog steps", () => {
     const user = userEvent.setup();
     renderDialog([DIRECT_WITH_IMAGE], { defaultFieldTypes: ["PHONE", "EMAIL"] });
 
-    await screen.findByText(DIRECT_SUMMARY);
-    await user.click(screen.getByRole("button", { name: "Next" }));
+    await goToDetailsStep(user);
 
     expect(screen.getByRole("checkbox", { name: /Mobile/ })).toHaveProperty(
       "checked",
@@ -230,18 +288,111 @@ describe("ShareCardDialog steps", () => {
     );
   });
 
-  it("spells out that an empty selection shares everything", async () => {
+  /*
+    The card page writes the narrowing to the selection store; the cards list and
+    the dashboard open this dialog with no prop at all. Falling back to `[]` there
+    meant the API's inverted default took over and the whole card went out.
+  */
+  it("reads the card's stored narrowing when no default is passed in", async () => {
+    const user = userEvent.setup();
+    saveSelection(["PHONE"]);
+    renderDialog([DIRECT_WITH_IMAGE]);
+
+    await goToDetailsStep(user);
+
+    expect(screen.getByRole("checkbox", { name: /Mobile/ })).toHaveProperty(
+      "checked",
+      true,
+    );
+    expect(screen.getByRole("checkbox", { name: /Email/ })).toHaveProperty(
+      "checked",
+      false,
+    );
+  });
+
+  /*
+    An empty selection means "everything" to the API, so the picker draws every
+    box ticked instead of showing empty boxes under a caption claiming the
+    opposite.
+  */
+  it("draws an empty selection as everything ticked", async () => {
     const user = userEvent.setup();
     renderDialog([DIRECT_WITH_IMAGE]);
+
+    await goToDetailsStep(user);
+
+    expect(screen.getByText("4 of 4 selected")).toBeTruthy();
+    for (const label of AVAILABLE_LABELS) {
+      expect(screen.getByRole("checkbox", { name: new RegExp(label) })).toHaveProperty(
+        "checked",
+        true,
+      );
+    }
+  });
+
+  /*
+    `fieldTypes` filters the mappings a card already holds — it never carries
+    values. Offering a type the card has nothing behind promises a detail the
+    recipient will never see.
+  */
+  it("does not let the user tick a detail the card has no value for", async () => {
+    const user = userEvent.setup();
+    renderDialog([DIRECT_WITH_IMAGE]);
+
+    await goToDetailsStep(user);
+
+    const fax = screen.getByRole("checkbox", { name: /Fax/ });
+    expect(fax).toHaveProperty("checked", false);
+    expect(fax).toHaveProperty("disabled", true);
+  });
+
+  /*
+    Unticking the last box stored `[]`, which the API reads as "send everything" —
+    so the one click that means "share less" shared the most.
+  */
+  it("keeps the last ticked detail ticked", async () => {
+    const user = userEvent.setup();
+    renderDialog([DIRECT_WITH_IMAGE], { defaultFieldTypes: ["PHONE"] });
+
+    await goToDetailsStep(user);
+
+    const mobile = screen.getByRole("checkbox", { name: /Mobile/ });
+    expect(mobile).toHaveProperty("disabled", true);
+    await user.click(mobile);
+    expect(mobile).toHaveProperty("checked", true);
+    expect(screen.getByText("1 of 4 selected")).toBeTruthy();
+  });
+
+  /*
+    A card with no mappings sends FN/N whatever is ticked, so there is no decision
+    to make. Twelve dead checkboxes over "0 of 0 selected" read as a broken
+    screen — the picker is replaced by the one thing that can be acted on.
+  */
+  it("replaces the picker with a way out when the card carries nothing", async () => {
+    const user = userEvent.setup();
+    // A card with no mappings really does generate a name-only file.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(vcf("FN:Vansh Mehta", "N:Mehta;Vansh;;;"))),
+    );
+    // `mappedFieldIds` left off deliberately: the cards list omits it, so the
+    // warning has to survive on the vCard evidence alone.
+    renderDialog([DIRECT_WITH_IMAGE], {
+      card: { ...CARD, mappedFieldIds: undefined },
+    });
 
     await screen.findByText(DIRECT_SUMMARY);
     await user.click(screen.getByRole("button", { name: "Next" }));
 
     expect(
-      screen.getByText(
-        /shares every field mapped to this card — not none of them/i,
-      ),
+      await screen.findByText('"Work card" has no details attached yet'),
     ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: /open card and attach details/i }),
+    ).toBeTruthy();
+    // No dead grid, and no "0 of 0 selected" caption under it.
+    expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
+    expect(screen.queryByText(/of 0 selected/)).toBeNull();
   });
 });
 
