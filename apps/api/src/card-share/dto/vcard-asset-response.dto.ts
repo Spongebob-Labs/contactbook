@@ -11,12 +11,14 @@ export class VcardAssetResponseDto {
 
   @ApiProperty({
     description: "Full public GCS URL to the VCF file",
-    example: "https://storage.googleapis.com/contactbook-card-shares/abc123/deadbeef.vcf",
+    example:
+      "https://storage.googleapis.com/contactbook-card-shares/abc123/deadbeef.vcf",
   })
   url!: string;
 
   @ApiPropertyOptional({
-    description: "Field types included in this VCF (omitted means all shareable fields)",
+    description:
+      "Field types included in this VCF (omitted means all shareable fields)",
     type: [String],
     enum: SHAREABLE_FIELD_TYPES,
   })

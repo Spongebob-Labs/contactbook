@@ -1,6 +1,11 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import {
+  WhatsappTemplateApprovalStatus,
+  WhatsappTemplateUseCase,
+} from "@prisma/client";
+import { PrismaService } from "../prisma/prisma.service";
+import {
   CLIENT_ERROR_TWILIO_CODES,
   mapHttpStatus,
   TwilioSendError,
@@ -18,8 +23,8 @@ interface TwilioConfig {
   authToken: string;
   /** Normalized `whatsapp:+<e164>` sender. */
   whatsappFrom: string;
-  /** Approved WhatsApp Authentication template SID (HX…). */
-  otpContentSid: string;
+  /** Fallback Authentication template SID (HX…) when no OTP row is registered in DB. */
+  otpContentSid?: string;
 }
 
 const MESSAGES_ENDPOINT = (accountSid: string) =>
@@ -31,11 +36,47 @@ const MESSAGES_ENDPOINT = (accountSid: string) =>
 export class TwilioOtpClient {
   private readonly logger = new Logger(TwilioOtpClient.name);
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   /** True when all required Twilio env vars are present. */
   isConfigured(): boolean {
     return this.readConfig() !== null;
+  }
+
+  /**
+   * The OTP ContentSid comes from the WhatsappTemplate registry (useCase OTP, active,
+   * approved — kept consistent with Twilio by the sync service), so template rotation
+   * is a DB change, not a deploy. TWILIO_OTP_CONTENT_SID remains as a fallback for
+   * environments where no OTP row is registered yet.
+   */
+  private async resolveOtpContentSid(fallback?: string): Promise<string> {
+    const row = await this.prisma.whatsappTemplate
+      .findFirst({
+        where: {
+          useCase: WhatsappTemplateUseCase.OTP,
+          isActive: true,
+          approvalStatus: WhatsappTemplateApprovalStatus.APPROVED,
+        },
+        orderBy: { createdAt: "asc" },
+      })
+      .catch((error: unknown) => {
+        // A DB hiccup must not take down login when the env fallback exists.
+        this.logger.warn(
+          `OTP template lookup failed, falling back to env: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        return null;
+      });
+    const contentSid = row?.contentSid ?? fallback;
+    if (!contentSid) {
+      throw new TwilioSendError(
+        "WhatsApp OTP is temporarily unavailable.",
+        503,
+      );
+    }
+    return contentSid;
   }
 
   /**
@@ -48,10 +89,11 @@ export class TwilioOtpClient {
     code: string,
   ): Promise<TwilioMessageResult> {
     const cfg = this.readConfigOrThrow();
+    const contentSid = await this.resolveOtpContentSid(cfg.otpContentSid);
     const body = new URLSearchParams({
       To: `whatsapp:${toE164}`,
       From: cfg.whatsappFrom,
-      ContentSid: cfg.otpContentSid,
+      ContentSid: contentSid,
       ContentVariables: JSON.stringify({ "1": code }),
     });
 
@@ -130,8 +172,9 @@ export class TwilioOtpClient {
     const accountSid = this.config.get<string>("TWILIO_ACCOUNT_SID");
     const authToken = this.config.get<string>("TWILIO_AUTH_TOKEN");
     const whatsappFromRaw = this.config.get<string>("TWILIO_WHATSAPP_FROM");
+    // Optional: the registry (WhatsappTemplate, useCase OTP) is the primary source.
     const otpContentSid = this.config.get<string>("TWILIO_OTP_CONTENT_SID");
-    if (!accountSid || !authToken || !whatsappFromRaw || !otpContentSid) {
+    if (!accountSid || !authToken || !whatsappFromRaw) {
       return null;
     }
     const whatsappFrom = whatsappFromRaw.startsWith("whatsapp:")

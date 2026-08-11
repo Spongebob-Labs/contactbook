@@ -13,7 +13,6 @@ import {
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
-  ApiNoContentResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
@@ -48,23 +47,37 @@ export class WhatsappTemplateController {
 
   @Get(":key")
   @ApiOperation({
-    summary: "Get a single template with live Twilio approval status",
+    summary: "Get a single template, reconciled against Twilio",
     description:
-      "Fetches the template from DB and enriches it with the current WhatsApp " +
-      "approval status from the Twilio Content API.",
+      "Runs a live sync against the Twilio Content API before returning: content drift " +
+      "is repaired from Twilio, approval status is mirrored, and templates deleted on " +
+      "Twilio are flagged MISSING_ON_TWILIO and deactivated.",
   })
   @ApiOkResponse({ type: WhatsappTemplateResponseDto })
   getOne(@Param("key") key: string) {
     return this.templates.getOne(key);
   }
 
+  @Post(":key/sync")
+  @ApiOperation({
+    summary: "Force an immediate DB<->Twilio reconciliation for a template",
+    description:
+      "Same reconciliation the 10-minute cron performs, on demand. Use after editing " +
+      "or approving a template in the Twilio Console to pick up the change immediately.",
+  })
+  @ApiOkResponse({ type: WhatsappTemplateResponseDto })
+  syncNow(@Param("key") key: string) {
+    return this.templates.syncNow(key);
+  }
+
   @Post()
   @ApiOperation({
-    summary: "Create a new WhatsApp template on Twilio and register it in the DB",
+    summary:
+      "Create a new WhatsApp template on Twilio and register it in the DB",
     description:
-      "Creates a twilio/call-to-action Content Template (body + Save Contact URL button), " +
-      "submits it for WhatsApp approval, and saves the row with isActive: false. " +
-      "Once Twilio shows approvalStatus: approved, activate it via PATCH /:key { isActive: true }.",
+      "Creates a Content Template (body + Save Contact URL button, optional image header), " +
+      "submits it for WhatsApp approval, and saves the row. The template stays out of the " +
+      "user-facing picker and is blocked at send time until Meta approves it.",
   })
   @ApiCreatedResponse({ type: WhatsappTemplateResponseDto })
   create(@Body() dto: CreateWhatsappTemplateDto) {
@@ -75,15 +88,12 @@ export class WhatsappTemplateController {
   @ApiOperation({
     summary: "Update a template",
     description:
-      "Metadata-only changes (isDefault, isActive): DB update only. " +
-      "If body or buttonTitle is provided, a new Twilio Content Template is created, " +
-      "submitted for re-approval, contentSid is swapped, and isActive is reset to false.",
+      "isActive changes are a DB-only update. Content changes (body, buttonTitle, " +
+      "headerImageUrl) create a new Twilio Content Template, submit it for re-approval, " +
+      "and swap the contentSid; sends are blocked until the new content is approved.",
   })
   @ApiOkResponse({ type: WhatsappTemplateResponseDto })
-  update(
-    @Param("key") key: string,
-    @Body() dto: UpdateWhatsappTemplateDto,
-  ) {
+  update(@Param("key") key: string, @Body() dto: UpdateWhatsappTemplateDto) {
     return this.templates.update(key, dto);
   }
 

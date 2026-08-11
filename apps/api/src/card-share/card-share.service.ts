@@ -62,9 +62,10 @@ export class CardShareService {
     await this.assertContactsOwnedByUser(userId, deduped);
     await this.assertWithinRateLimit(userId, deduped.length);
 
-    const template = await this.templates.resolveActive(
+    const template = await this.templates.resolveForSend(
       WhatsappTemplateUseCase.CARD_SHARE,
       dto.templateKey,
+      userId,
     );
     const asset = await this.vcardGenerator.getOrCreateAsset(
       userId,

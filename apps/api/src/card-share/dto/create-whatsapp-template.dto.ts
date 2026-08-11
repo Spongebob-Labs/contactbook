@@ -1,7 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { WhatsappTemplateUseCase } from "@prisma/client";
 import {
-  IsBoolean,
   IsEnum,
   IsOptional,
   IsString,
@@ -77,18 +76,10 @@ export class CreateWhatsappTemplateDto {
       "Static image URL to use as the WhatsApp message header. Must be a publicly accessible " +
       "HTTPS URL (JPEG or PNG). Baked into the template at creation — not a per-send variable. " +
       "Omit for a text-only header.",
-    example: "https://storage.googleapis.com/contactbook-assets/contact-card-header.png",
+    example:
+      "https://storage.googleapis.com/contactbook-assets/contact-card-header.png",
   })
   @IsOptional()
   @IsUrl({ protocols: ["https"], require_tld: true })
   headerImageUrl?: string;
-
-  @ApiPropertyOptional({
-    description:
-      "Set as the default template for this use case + locale. Clears isDefault on any existing default.",
-    default: false,
-  })
-  @IsOptional()
-  @IsBoolean()
-  isDefault?: boolean;
 }
