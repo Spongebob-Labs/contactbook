@@ -63,6 +63,17 @@ export class ProfilePersistenceService {
     private readonly sync: SyncService,
   ) {}
 
+  async listFields(
+    userId: string,
+  ): Promise<{ id: string; type: FieldType; label: string | null; value: string | null; groupId: string }[]> {
+    const fields = await this.prisma.profileField.findMany({
+      where: { group: { userId }, isSensitive: false },
+      select: { id: true, type: true, label: true, value: true, groupId: true },
+      orderBy: { createdAt: "asc" },
+    });
+    return fields;
+  }
+
   async loadGroups(userId: string): Promise<GroupWithFields[]> {
     return this.prisma.fieldGroup.findMany({
       where: { userId },
