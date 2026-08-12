@@ -9,7 +9,7 @@ import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/context/auth-context";
 import { ApiError } from "@/lib/api";
-import { fetchShareTemplates, shareCard } from "@/lib/card-share-api";
+import { listShareTemplates, shareCard } from "@/lib/card-share-api";
 import { DIAL_COUNTRIES } from "@/lib/dial-countries";
 import { nationalDigits } from "@/lib/phone";
 import { renderTemplatePreview } from "@/lib/template-preview";
@@ -88,7 +88,7 @@ export function ShareCardDialog({ card, open, onClose }: ShareCardDialogProps) {
     setTemplates(null);
     setTemplatesError(null);
     try {
-      const items = await fetchShareTemplates();
+      const items = await listShareTemplates();
       setTemplates(items);
       // Preselect when there is exactly one option; otherwise force an explicit pick.
       setSelectedKey(items.length === 1 ? items[0].key : null);

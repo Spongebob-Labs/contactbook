@@ -64,6 +64,7 @@ function makeCard(overrides: Partial<ContactCard> = {}): ContactCard {
     userId: "user-1",
     name: "Work card",
     type: "BUSINESS",
+    isSensitive: false,
     createdAt: "2026-08-01T10:00:00.000Z",
     updatedAt: "2026-08-01T10:00:00.000Z",
     ...overrides,

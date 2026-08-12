@@ -77,6 +77,7 @@ function makeCard(overrides: Partial<ContactCard>): ContactCard {
     userId: USER_ID,
     name: "Card",
     type: "PERSONAL",
+    isSensitive: false,
     createdAt: "2026-07-01T10:00:00.000Z",
     updatedAt: "2026-07-01T10:00:00.000Z",
     ...overrides,

@@ -48,11 +48,9 @@ function toContactCard(
     userId: apiCard.userId ?? "",
     name: apiCard.name,
     type: toApiCardType(apiCard.type),
+    isSensitive: apiCard.isSensitive ?? false,
     createdAt: apiCard.createdAt,
     updatedAt: apiCard.updatedAt,
-    ...(apiCard.isSensitive !== undefined
-      ? { isSensitive: apiCard.isSensitive }
-      : {}),
     ...(mappedFieldIds ? { mappedFieldIds } : {}),
   };
 }

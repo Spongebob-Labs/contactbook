@@ -61,6 +61,7 @@ const CARD: ContactCard = {
   userId: USER_ID,
   name: "Work card",
   type: "BUSINESS",
+  isSensitive: false,
   createdAt: "2026-08-01T09:00:00.000Z",
   updatedAt: "2026-08-07T09:00:00.000Z",
   mappedFieldIds: ["f1", "f2", "f3", "f4"],

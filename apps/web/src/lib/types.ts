@@ -81,8 +81,6 @@ export type ContactCard = {
   isSensitive: boolean;
   createdAt: string;
   updatedAt: string;
-  /** Sensitive cards cannot be shared over WhatsApp — the API rejects the send. */
-  isSensitive?: boolean;
   /**
    * Profile field UUIDs mapped to this card. They decide what lands in the
    * vCard. The API exposes no labels for them, so surface the count, never the
