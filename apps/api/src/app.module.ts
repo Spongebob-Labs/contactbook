@@ -18,6 +18,7 @@ import { SyncModule } from "./sync/sync.module";
 import { TravelModule } from "./travel/travel.module";
 import { TwilioOtpModule } from "./twilio-otp/twilio-otp.module";
 import { WhatsappCloudModule } from "./whatsapp-cloud/whatsapp-cloud.module";
+import { DashboardModule } from "./dashboard/dashboard.module";
 import { LoggerModule } from "./common/logger/logger.module";
 
 @Module({
@@ -38,6 +39,7 @@ import { LoggerModule } from "./common/logger/logger.module";
     ContactsModule,
     CardShareModule,
     CardModule,
+    DashboardModule,
     SyncModule,
     IntegrationModule,
     ConnectionModule,
