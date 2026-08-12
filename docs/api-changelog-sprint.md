@@ -332,3 +332,37 @@ GET    /api/v1/travel/notifications/contacts
 PUT    /api/v1/travel/notifications/contacts
 POST   /api/v1/travel/notifications/dispatch
 ```
+
+---
+
+## 2026-08-06 — Card-share template picker (1:1 Twilio mapping)
+
+### Breaking: `templateKey` required on `POST /api/v1/cards/:cardId/share`
+
+The default-template fallback is removed. Clients must pass the `key` of a template picked
+from the new picker endpoint; the picked template is exactly what gets sent. Missing
+`templateKey` → **400**. A picked template that is deactivated / not WhatsApp-approved / out
+of sync with Twilio → **409** with a status-specific message.
+
+### New: `GET /api/v1/cards/share-templates`
+
+User-facing picker list: active, WhatsApp-approved templates verified in sync with Twilio.
+Response items: `{ key, locale, body, buttonTitle, headerImageUrl, syncedAt }`. Body/button
+content mirrors Twilio exactly (strict 1:1: `contentSid` is unique per registry row), so
+previews rendered from it match the delivered WhatsApp message character-for-character.
+Empty array ⇒ sharing temporarily unavailable.
+
+### New: `POST /api/v1/whatsapp-templates/:key/sync`
+
+Forces an immediate DB↔Twilio reconciliation (same job the 10-minute cron runs): repairs
+content drift from Twilio, mirrors approval status, deactivates templates deleted on Twilio.
+
+### Changed: `/api/v1/whatsapp-templates` admin CRUD
+
+- Response DTO now includes `buttonTitle`, `headerImageUrl`, `approvalStatus`,
+  `rejectionReason`, `syncStatus`, `syncedAt`; `isDefault` removed.
+- `isDefault` is no longer accepted on create/update (deprecated column, slated for removal).
+- New templates are registered `isActive: true`; the approval gate (not `isActive`) keeps
+  them out of the picker until Meta approves.
+- `PATCH` accepts `headerImageUrl`; any content change swaps the `contentSid` and re-submits
+  for approval.

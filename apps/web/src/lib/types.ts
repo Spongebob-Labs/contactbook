@@ -78,6 +78,7 @@ export type ContactCard = {
   userId: string;
   name: string;
   type: ContactCardType;
+  isSensitive: boolean;
   createdAt: string;
   updatedAt: string;
   /** Sensitive cards cannot be shared over WhatsApp — the API rejects the send. */
@@ -307,4 +308,46 @@ export type ProfileMeResponse = {
       isSensitive: boolean;
     }>;
   };
+};
+
+/** A WhatsApp template as shown in the share picker (mirrors Twilio content exactly). */
+export type ShareTemplate = {
+  key: string;
+  locale: string;
+  /** Body with WhatsApp variables: {{1}} sender name, {{2}} card name, {{3}} note. */
+  body: string;
+  buttonTitle: string;
+  headerImageUrl: string | null;
+  syncedAt: string | null;
+};
+
+export type ShareRecipientInput = {
+  countryCode: string;
+  phone: string;
+  contactId?: string;
+};
+
+export type ShareBatchRecipient = {
+  id: string;
+  countryCode: string;
+  phone: string;
+  contactId: string | null;
+  dispatchStatus: "PENDING" | "RETRYING" | "DISPATCHED" | "FAILED";
+  deliveryStatus: "PENDING" | "SENT" | "DELIVERED" | "READ" | "FAILED" | null;
+  lastDispatchError: string | null;
+  sentAt: string | null;
+  deliveredAt: string | null;
+  readAt: string | null;
+  failedAt: string | null;
+  createdAt: string;
+};
+
+export type ShareBatch = {
+  id: string;
+  cardId: string | null;
+  cardName: string;
+  cardType: ContactCardType;
+  note: string | null;
+  createdAt: string;
+  recipients: ShareBatchRecipient[];
 };

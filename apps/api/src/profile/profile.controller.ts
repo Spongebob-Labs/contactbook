@@ -30,8 +30,10 @@ import {
 } from "./dto/profile-me-response.dto";
 import { ProfileMeSerializerService } from "./profile-me.serializer";
 import { ProfileMeUpsertService } from "./profile-me.upsert.service";
+import { ProfilePersistenceService } from "./profile-persistence.service";
 import type { ProfileMeResponse } from "./profile-me.types";
 import { ApiExceptionFilter } from "../common/filters/api-exception.filter";
+import { ProfileFieldResponseDto } from "./dto/profile-field-response.dto";
 
 @ApiTags("Profile")
 @ApiBearerAuth("access-token")
@@ -42,6 +44,7 @@ export class ProfileController {
   constructor(
     private readonly profileMe: ProfileMeSerializerService,
     private readonly profileMeUpsert: ProfileMeUpsertService,
+    private readonly profilePersistence: ProfilePersistenceService,
   ) {}
 
   @Post("onboarding")
@@ -125,6 +128,18 @@ export class ProfileController {
     const rest = { ...result } as Partial<ProfileMeResponse>;
     delete rest.profileOnboardingCompletedAt;
     return rest as Omit<ProfileMeResponse, "profileOnboardingCompletedAt">;
+  }
+
+  @Get("me/fields")
+  @ApiOperation({
+    summary: "List all profile fields with their IDs",
+    description:
+      "Returns a flat list of the caller's non-sensitive profile fields. " +
+      "Use the `id` values as `fieldId` when mapping fields onto a card via POST /cards/:cardId/field-mappings.",
+  })
+  @ApiOkResponse({ type: [ProfileFieldResponseDto] })
+  listFields(@CurrentUser() user: JwtUserPayload): Promise<ProfileFieldResponseDto[]> {
+    return this.profilePersistence.listFields(user.sub);
   }
 
   @Get("me")

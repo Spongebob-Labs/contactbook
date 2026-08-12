@@ -1,54 +1,132 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import type { WhatsappTemplate, WhatsappTemplateUseCase } from "@prisma/client";
+import {
+  WhatsappTemplateApprovalStatus,
+  WhatsappTemplateSyncStatus,
+  WhatsappTemplateUseCase,
+  type WhatsappTemplate,
+} from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
+import { GcsTemplateImageService } from "../storage/gcs-template-image.service";
 import { TwilioContentApiService } from "./twilio-content-api.service";
+import {
+  WhatsappTemplateSyncService,
+  approvalStatusToEnum,
+} from "./whatsapp-template-sync.service";
+import {
+  SHARE_TEMPLATE_BUTTON_TITLE,
+  findShareTemplateVariant,
+} from "./share-template-variants";
 import type { CreateWhatsappTemplateDto } from "./dto/create-whatsapp-template.dto";
 import type { UpdateWhatsappTemplateDto } from "./dto/update-whatsapp-template.dto";
 import type { WhatsappTemplateResponseDto } from "./dto/whatsapp-template-response.dto";
+
+const SENDABLE_SYNC_STATUSES: WhatsappTemplateSyncStatus[] = [
+  WhatsappTemplateSyncStatus.IN_SYNC,
+  WhatsappTemplateSyncStatus.DRIFT_REPAIRED,
+];
+
+/** How many templates one user may create (global templates don't count). */
+export const MAX_USER_TEMPLATES = 3;
+
+const TEMPLATE_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 
 @Injectable()
 export class WhatsappTemplateService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly twilioContent: TwilioContentApiService,
+    private readonly sync: WhatsappTemplateSyncService,
+    private readonly templateImages: GcsTemplateImageService,
   ) {}
 
   /**
-   * Resolves the template to use for a send. An explicit `key` must match an active
-   * template for the given use case (400 otherwise). Omitted `key` picks the active
-   * template flagged `isDefault`, tie-broken by oldest `createdAt` if more than one
-   * default somehow exists.
+   * Resolves the template for a send. The key is REQUIRED — there is no default
+   * fallback: the template the user picked is exactly what gets sent. Blocks unless
+   * the template is active, WhatsApp-approved, and verified in sync with Twilio.
    */
-  async resolveActive(
+  async resolveForSend(
     useCase: WhatsappTemplateUseCase,
-    key?: string,
+    key: string,
+    userId?: string,
   ): Promise<WhatsappTemplate> {
-    if (key) {
-      const template = await this.prisma.whatsappTemplate.findFirst({
-        where: { key, useCase, isActive: true },
-      });
-      if (!template) {
-        throw new BadRequestException(
-          `No active ${useCase} template found for key "${key}"`,
-        );
-      }
-      return template;
-    }
-
-    const template = await this.prisma.whatsappTemplate.findFirst({
-      where: { useCase, isActive: true },
-      orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
+    const row = await this.prisma.whatsappTemplate.findFirst({
+      where: { key, useCase },
     });
-    if (!template) {
+    // User-created templates are private to their creator; report them as not found
+    // to other users rather than leaking their existence.
+    if (
+      !row ||
+      (row.createdByUserId !== null && row.createdByUserId !== userId)
+    ) {
       throw new BadRequestException(
-        `No active ${useCase} template is configured`,
+        `No ${useCase} template found for key "${key}"`,
       );
     }
+    if (!row.isActive) {
+      throw new ConflictException(`Template "${key}" is deactivated`);
+    }
+
+    const template = await this.sync.ensureFresh(row);
+
+    if (template.approvalStatus !== WhatsappTemplateApprovalStatus.APPROVED) {
+      throw new ConflictException(
+        `Template "${key}" is not WhatsApp-approved (status: ${template.approvalStatus})`,
+      );
+    }
+    if (!SENDABLE_SYNC_STATUSES.includes(template.syncStatus)) {
+      throw new ConflictException(
+        `Template "${key}" is out of sync with Twilio (status: ${template.syncStatus})`,
+      );
+    }
+    if (!template.isActive) {
+      // ensureFresh can deactivate (deleted on Twilio, broken button base URL).
+      throw new ConflictException(`Template "${key}" is no longer available`);
+    }
     return template;
+  }
+
+  /**
+   * Templates eligible for the user-facing picker: active, approved, and verified in
+   * sync with Twilio. Stale rows are re-synced first so the picker never shows a
+   * preview older than the freshness TTL.
+   */
+  async listForPicker(
+    useCase: WhatsappTemplateUseCase = WhatsappTemplateUseCase.CARD_SHARE,
+    userId?: string,
+    includePending = false,
+  ): Promise<WhatsappTemplate[]> {
+    const rows = await this.prisma.whatsappTemplate.findMany({
+      where: {
+        useCase,
+        isActive: true,
+        OR: [
+          { createdByUserId: null },
+          ...(userId ? [{ createdByUserId: userId }] : []),
+        ],
+      },
+      orderBy: { createdAt: "asc" },
+    });
+    const synced = [];
+    for (const row of rows) {
+      synced.push(await this.sync.ensureFresh(row));
+    }
+    return synced.filter((t) => {
+      if (!t.isActive) return false;
+      if (t.approvalStatus === WhatsappTemplateApprovalStatus.APPROVED &&
+          SENDABLE_SYNC_STATUSES.includes(t.syncStatus)) {
+        return true;
+      }
+      // Include the caller's own non-approved templates when requested.
+      if (includePending && userId && t.createdByUserId === userId) {
+        return true;
+      }
+      return false;
+    });
   }
 
   async listAll(
@@ -56,28 +134,108 @@ export class WhatsappTemplateService {
   ): Promise<WhatsappTemplateResponseDto[]> {
     const rows = await this.prisma.whatsappTemplate.findMany({
       where: useCase ? { useCase } : undefined,
-      orderBy: [{ isActive: "desc" }, { isDefault: "desc" }, { createdAt: "asc" }],
+      orderBy: [{ isActive: "desc" }, { createdAt: "asc" }],
     });
     return rows.map((r) => this.toDto(r));
   }
 
+  /** Fetches one template, reconciling it against Twilio first (a GET also repairs). */
   async getOne(key: string): Promise<WhatsappTemplateResponseDto> {
     const row = await this.prisma.whatsappTemplate.findUnique({
       where: { key },
     });
     if (!row) throw new NotFoundException(`Template "${key}" not found`);
 
-    const approval = await this.twilioContent.fetchApprovalStatus(row.contentSid);
-    return {
-      ...this.toDto(row),
-      approvalStatus: approval.approvalStatus,
-      rejectionReason: approval.rejectionReason,
-    };
+    const synced = await this.sync.syncOne(row);
+    return this.toDto(synced);
+  }
+
+  /** Force an immediate Twilio reconciliation for one template. */
+  async syncNow(key: string): Promise<WhatsappTemplateResponseDto> {
+    return this.getOne(key);
+  }
+
+  /**
+   * User-created share template: a fixed body variant + optional header image, with the
+   * "Get Contact" QUICK_REPLY button (tap → VCF document follow-up). Capped per user;
+   * visible/sendable only by the creator until an admin promotes it (createdByUserId
+   * null). Joins the creator's picker automatically once Meta approves.
+   */
+  async createUserTemplate(
+    userId: string,
+    variantId: string,
+    image?: { buffer: Buffer; mimeType: string; sizeBytes: number },
+  ): Promise<WhatsappTemplate> {
+    const variant = findShareTemplateVariant(variantId);
+    if (!variant) {
+      throw new BadRequestException(`Unknown template variant "${variantId}"`);
+    }
+
+    const owned = await this.prisma.whatsappTemplate.count({
+      where: { createdByUserId: userId },
+    });
+    if (owned >= MAX_USER_TEMPLATES) {
+      throw new ConflictException(
+        `You can create at most ${MAX_USER_TEMPLATES} templates`,
+      );
+    }
+
+    if (image) {
+      if (image.sizeBytes > TEMPLATE_IMAGE_MAX_BYTES) {
+        throw new BadRequestException("Header image must be 5 MB or smaller");
+      }
+      if (!this.templateImages.extensionForMime(image.mimeType)) {
+        throw new BadRequestException(
+          "Header image must be image/jpeg, image/png, or image/webp",
+        );
+      }
+    }
+
+    // Key doubles as the Twilio friendly_name (lowercase alnum + underscores).
+    const key = `user_${userId.replace(/-/g, "").slice(0, 8)}_${variantId}_${Date.now().toString(36)}`;
+
+    const headerImageUrl = image
+      ? await this.templateImages.upload(key, image.buffer, image.mimeType)
+      : undefined;
+
+    const contentSid = await this.twilioContent.create({
+      name: key,
+      body: variant.body,
+      buttonTitle: SHARE_TEMPLATE_BUTTON_TITLE,
+      buttonType: "QUICK_REPLY",
+      category: "UTILITY",
+      headerImageUrl,
+    });
+
+    const approvalStatus = await this.twilioContent.submitForApproval(
+      contentSid,
+      key,
+      "UTILITY",
+    );
+
+    return this.prisma.whatsappTemplate.create({
+      data: {
+        key,
+        useCase: WhatsappTemplateUseCase.CARD_SHARE,
+        contentSid,
+        locale: "en",
+        bodyPreview: variant.body,
+        buttonTitle: SHARE_TEMPLATE_BUTTON_TITLE,
+        headerImageUrl: headerImageUrl ?? null,
+        isActive: true,
+        approvalStatus: approvalStatusToEnum(approvalStatus),
+        // Just pushed to Twilio, so in sync by construction.
+        syncStatus: WhatsappTemplateSyncStatus.IN_SYNC,
+        syncedAt: new Date(),
+        createdByUserId: userId,
+      },
+    });
   }
 
   /**
    * Creates a new Content Template on Twilio, submits it for WhatsApp approval, and
-   * registers it in the DB with isActive: false. Activate it via PATCH once approved.
+   * registers it in the DB. The row is active immediately — the approval gate (not
+   * isActive) keeps it out of the picker and blocks sends until Meta approves it.
    */
   async create(
     dto: CreateWhatsappTemplateDto,
@@ -110,95 +268,87 @@ export class WhatsappTemplateService {
       category,
     );
 
-    const row = await this.prisma.$transaction(async (tx) => {
-      if (dto.isDefault) {
-        await tx.whatsappTemplate.updateMany({
-          where: { useCase, locale, isDefault: true },
-          data: { isDefault: false },
-        });
-      }
-      return tx.whatsappTemplate.create({
-        data: {
-          key: dto.key,
-          useCase,
-          contentSid,
-          locale,
-          bodyPreview: dto.body,
-          // isActive: false — template needs WhatsApp approval before it can be used.
-          // Activate via PATCH once Twilio shows approvalStatus: "approved".
-          isActive: false,
-          isDefault: dto.isDefault ?? false,
-        },
-      });
+    const row = await this.prisma.whatsappTemplate.create({
+      data: {
+        key: dto.key,
+        useCase,
+        contentSid,
+        locale,
+        bodyPreview: dto.body,
+        buttonTitle,
+        headerImageUrl: dto.headerImageUrl ?? null,
+        isActive: true,
+        approvalStatus: approvalStatusToEnum(approvalStatus),
+        // We just pushed this exact content to Twilio, so it's in sync by construction.
+        syncStatus: WhatsappTemplateSyncStatus.IN_SYNC,
+        syncedAt: new Date(),
+      },
     });
 
-    return {
-      ...this.toDto(row),
-      approvalStatus,
-    };
+    return this.toDto(row);
   }
 
   /**
-   * Updates a template. If body or buttonTitle changes, a new Twilio Content Template is
-   * created and submitted for re-approval (contentSid is swapped, isActive reset to false).
-   * Metadata-only changes (isDefault, isActive) are a DB-only update.
+   * Updates a template. If body/buttonTitle/headerImageUrl changes, a new Twilio
+   * Content Template is created and submitted for re-approval (contentSid is swapped;
+   * the approval gate blocks sends until Meta approves the new content).
+   * isActive changes are a DB-only update.
    */
   async update(
     key: string,
     dto: UpdateWhatsappTemplateDto,
   ): Promise<WhatsappTemplateResponseDto> {
-    const row = await this.prisma.whatsappTemplate.findUnique({ where: { key } });
+    const row = await this.prisma.whatsappTemplate.findUnique({
+      where: { key },
+    });
     if (!row) throw new NotFoundException(`Template "${key}" not found`);
 
-    const contentChanged = dto.body !== undefined || dto.buttonTitle !== undefined;
-    let newContentSid = row.contentSid;
-    let approvalStatus: string | undefined;
+    const contentChanged =
+      dto.body !== undefined ||
+      dto.buttonTitle !== undefined ||
+      dto.headerImageUrl !== undefined;
 
+    let contentData = {};
     if (contentChanged) {
       const newBody = dto.body ?? row.bodyPreview;
-      const newButtonTitle = dto.buttonTitle ?? "Save Contact";
+      const newButtonTitle = dto.buttonTitle ?? row.buttonTitle;
+      const newHeaderImageUrl = dto.headerImageUrl ?? row.headerImageUrl;
 
-      newContentSid = await this.twilioContent.create({
+      const newContentSid = await this.twilioContent.create({
         name: `${key}_${Date.now()}`,
         body: newBody,
         buttonTitle: newButtonTitle,
         category: "UTILITY",
+        headerImageUrl: newHeaderImageUrl ?? undefined,
       });
 
-      approvalStatus = await this.twilioContent.submitForApproval(
+      const approvalStatus = await this.twilioContent.submitForApproval(
         newContentSid,
         `${key}_updated`,
         "UTILITY",
       );
+
+      contentData = {
+        contentSid: newContentSid,
+        bodyPreview: newBody,
+        buttonTitle: newButtonTitle,
+        headerImageUrl: newHeaderImageUrl,
+        approvalStatus: approvalStatusToEnum(approvalStatus),
+        rejectionReason: null,
+        syncStatus: WhatsappTemplateSyncStatus.IN_SYNC,
+        syncedAt: new Date(),
+      };
     }
 
-    const updated = await this.prisma.$transaction(async (tx) => {
-      if (dto.isDefault) {
-        await tx.whatsappTemplate.updateMany({
-          where: {
-            useCase: row.useCase,
-            locale: row.locale,
-            isDefault: true,
-            key: { not: key },
-          },
-          data: { isDefault: false },
-        });
-      }
-      return tx.whatsappTemplate.update({
-        where: { key },
-        data: {
-          ...(dto.body !== undefined ? { bodyPreview: dto.body } : {}),
-          ...(contentChanged ? { contentSid: newContentSid, isActive: false } : {}),
-          ...(dto.isActive !== undefined && !contentChanged ? { isActive: dto.isActive } : {}),
-          ...(dto.isDefault !== undefined ? { isDefault: dto.isDefault } : {}),
-        },
-      });
+    const updated = await this.prisma.whatsappTemplate.update({
+      where: { key },
+      data: {
+        ...contentData,
+        ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
+      },
     });
 
-    return {
-      ...this.toDto(updated),
-      ...(approvalStatus ? { approvalStatus } : {}),
-    };
+    return this.toDto(updated);
   }
 
   /**
@@ -206,7 +356,9 @@ export class WhatsappTemplateService {
    * Blocks if it is the only active template for its use case (would break all sends).
    */
   async delete(key: string): Promise<{ ok: true }> {
-    const row = await this.prisma.whatsappTemplate.findUnique({ where: { key } });
+    const row = await this.prisma.whatsappTemplate.findUnique({
+      where: { key },
+    });
     if (!row) throw new NotFoundException(`Template "${key}" not found`);
 
     if (row.isActive) {
@@ -224,7 +376,11 @@ export class WhatsappTemplateService {
 
     await this.prisma.whatsappTemplate.update({
       where: { key },
-      data: { isActive: false, isDefault: false },
+      data: {
+        isActive: false,
+        syncStatus: WhatsappTemplateSyncStatus.MISSING_ON_TWILIO,
+        syncedAt: new Date(),
+      },
     });
 
     return { ok: true };
@@ -237,9 +393,14 @@ export class WhatsappTemplateService {
       useCase: row.useCase,
       locale: row.locale,
       bodyPreview: row.bodyPreview,
+      buttonTitle: row.buttonTitle,
+      headerImageUrl: row.headerImageUrl,
       contentSid: row.contentSid,
-      isDefault: row.isDefault,
       isActive: row.isActive,
+      approvalStatus: row.approvalStatus,
+      rejectionReason: row.rejectionReason,
+      syncStatus: row.syncStatus,
+      syncedAt: row.syncedAt,
       createdAt: row.createdAt,
     };
   }

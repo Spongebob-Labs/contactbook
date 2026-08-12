@@ -15,6 +15,7 @@ async function bootstrap(): Promise<void> {
     process.env.CORS_ORIGIN ??
     [
       "https://contactbookten.vercel.app",
+      "https://contactbook-staging.vercel.app",
       "https://www.getcontactbook.com",
       "http://localhost:3000",
       "http://localhost:5173",
@@ -43,7 +44,8 @@ async function bootstrap(): Promise<void> {
       "HTTP API for ContactBook: sync professional and personal contacts via web and WhatsApp.",
     )
     .setVersion("1.0")
-    .addServer("http://localhost:8080", "Local")
+    .addServer("http://localhost:8080", "Local (PORT=8080)")
+    .addServer("http://localhost:8001", "Local (default dev port)")
     .addServer("http://34.147.177.94:8080", "VM Dev")
     .addServer("https://uat.api.getcontactbook.com", "UAT")
     .addServer("https://api.getcontactbook.com", "Production")

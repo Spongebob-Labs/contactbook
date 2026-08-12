@@ -47,7 +47,9 @@ export class GcsUploadService {
       });
     } else {
       const projectId = this.config.get<string>("GCS_PROJECT_ID");
-      const keyBase64 = this.config.get<string>("GCS_SERVICE_ACCOUNT_KEY_BASE64");
+      const keyBase64 = this.config.get<string>(
+        "GCS_SERVICE_ACCOUNT_KEY_BASE64",
+      );
       const credentials = keyBase64
         ? JSON.parse(Buffer.from(keyBase64, "base64").toString("utf-8"))
         : undefined;

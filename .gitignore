@@ -33,6 +33,11 @@ yarn-error.log*
 # Graphify knowledge graph (local AST cache / reports)
 graphify-out/
 
+# Test files — kept local only, not committed
+*.spec.ts
+*.test.ts
+*.test.tsx
+
 # OpenTofu / Terraform — local backend config (bucket name is not secret but often per-env)
 iac/opentofu/backend.hcl
 scripts/**
