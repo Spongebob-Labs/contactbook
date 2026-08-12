@@ -17,6 +17,16 @@ export function nationalDigits(raw: string): string {
   return raw.replace(/\D/g, "").replace(/^0+/, "");
 }
 
+/**
+ * Normalizes an E.164 country calling prefix to a leading `+` and digits only
+ * (`1` → `+1`, ` +44 ` → `+44`). Mirrors the API's `normalizeDialCode` so the
+ * value we send matches what the server compares against.
+ */
+export function normalizeDialCode(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  return `+${digits}`;
+}
+
 export type PhoneParts = {
   /** E.164 country calling code, e.g. `+91`. */
   countryCode: string;

@@ -1,4 +1,5 @@
 import { apiFetch } from "@/lib/api";
+import { nationalDigits, normalizeDialCode } from "@/lib/phone";
 import type { SendOtpResponse, VerifyCodeResponse } from "@/lib/types";
 
 /**
@@ -13,17 +14,25 @@ import type { SendOtpResponse, VerifyCodeResponse } from "@/lib/types";
  */
 
 const PHONE_VERIFICATION_TOKEN_MIN_LENGTH = 20;
+const COUNTRY_CODE_PATTERN = /^\+\d{1,4}$/;
+const NATIONAL_PHONE_PATTERN = /^\d{4,15}$/;
 
 export type AuthPhoneContext = {
   phone: string;
   countryCode: string;
 };
 
-/** Body for `POST /auth/register` — phone is bound inside phoneVerificationToken. */
+/**
+ * Body for `POST /auth/register`. The API re-checks `phone`/`countryCode`
+ * against the claims inside `phoneVerificationToken`, so both must be the same
+ * pair that was sent to OTP send/verify — they are required, not derived.
+ */
 export type CompleteRegistrationInput = {
   phoneVerificationToken: string;
   firstName: string;
   lastName: string;
+  phone: string;
+  countryCode: string;
   email: string;
 };
 
@@ -100,7 +109,7 @@ export function verifyWhatsappOtp(
 
 /**
  * First-time signup. Refuses to call the API without a real verification JWT
- * so we never hit class-validator 400s for a missing/empty token.
+ * or a valid phone pair so we never hit class-validator 400s for missing fields.
  */
 export function completeRegistration(
   input: CompleteRegistrationInput,
@@ -112,12 +121,23 @@ export function completeRegistration(
     );
   }
 
+  const phone = nationalDigits(input.phone);
+  const countryCode = normalizeDialCode(input.countryCode);
+  if (!NATIONAL_PHONE_PATTERN.test(phone)) {
+    throw new Error("Registration requires the verified phone number.");
+  }
+  if (!COUNTRY_CODE_PATTERN.test(countryCode)) {
+    throw new Error("Registration requires the verified country code.");
+  }
+
   return apiFetch<Record<string, never>>("/v1/auth/register", {
     method: "POST",
     body: {
       phoneVerificationToken,
       firstName: input.firstName.trim(),
       lastName: input.lastName.trim(),
+      phone,
+      countryCode,
       email: input.email.trim(),
     },
     retry: false,

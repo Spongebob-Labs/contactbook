@@ -52,14 +52,30 @@ describe("isRegisteredAuthResult", () => {
 });
 
 describe("completeRegistration guard", () => {
+  const validInput = {
+    phoneVerificationToken: "t".repeat(24),
+    firstName: "Ada",
+    lastName: "Lovelace",
+    phone: "9876543210",
+    countryCode: "+91",
+    email: "ada@example.com",
+  };
+
   it("throws before network when token is missing", () => {
     expect(() =>
-      completeRegistration({
-        phoneVerificationToken: "short",
-        firstName: "Ada",
-        lastName: "Lovelace",
-        email: "ada@example.com",
-      }),
+      completeRegistration({ ...validInput, phoneVerificationToken: "short" }),
     ).toThrow(/phoneVerificationToken/);
+  });
+
+  it("throws before network when phone is missing", () => {
+    expect(() => completeRegistration({ ...validInput, phone: "" })).toThrow(
+      /phone number/,
+    );
+  });
+
+  it("throws before network when country code is missing", () => {
+    expect(() =>
+      completeRegistration({ ...validInput, countryCode: "" }),
+    ).toThrow(/country code/);
   });
 });

@@ -1,5 +1,22 @@
 # Decision Context
 
+## 2026-08-12 - Register body regression: phone + countryCode restored
+
+- Decision: `POST /auth/register` again sends `phone` (national digits) and `countryCode` (`+…`) from
+  the *verified* phone context alongside `phoneVerificationToken`, `firstName`, `lastName`, `email`.
+  The client normalizes both (`nationalDigits`, new `normalizeDialCode` in `lib/phone.ts`) and refuses
+  to call the API when either fails the API's regexes, matching the existing token guard. Re-affirms
+  the 2026-08-02 decision, which the code had drifted away from back to "token-only identity".
+- Reason: Live API returned `400` — `phone must be a string` / `must match /^\d{4,15}$/` and
+  `countryCode must be a string` / `must match /^\+\d{1,4}$/`. `CompleteRegisterDto` requires both, and
+  `AuthService.completeRegister` compares them against the JWT claims, so they can never be omitted.
+- Notes: The pair must come from `phoneContext` (what OTP send/verify used), not the phone form, or the
+  claim check 401s. Verified against production: the old body 400s on those four field errors; the new
+  body clears validation and only fails on a deliberately invalid token (`401`).
+- Files: `apps/web/src/lib/auth-api.ts`, `apps/web/src/lib/phone.ts`, `apps/web/src/pages/auth-page.tsx`,
+  `apps/web/src/lib/__tests__/unit/auth-api.unit.test.ts`,
+  `apps/web/src/lib/__tests__/integration/auth-api.integration.test.ts`, `decision-context.md`.
+
 ## 2026-08-09 - Card flow revamp: preset-driven wizard, tabbed card page, first-visit tour
 
 - Decision: The create-card wizard is now **Card → Start from → What it shares**. Step 2 picks an
@@ -1833,3 +1850,19 @@
 - Files: `styles.css`, `app-shell.tsx`, `card-styles.ts`, `dashboard-page.tsx`, `cards-page.tsx`, `import-page.tsx`, `contact-import-options.tsx`, `table.tsx`, `contacts-page.tsx`.
 - Checks: `tsc --noEmit` + `pnpm lint` both pass cleanly.
 
+
+## 2026-08-12 - Auth Page UI Revamp (Presentation Only)
+
+- Decision: Rebuild the `/auth` screen presentation on design-system tokens without touching the WhatsApp OTP flow contract.
+- Reason: The sign-in screen looked unfinished next to the rest of the product — a lone card in dead space, a marketing-sized headline in a product shell, generic Connect/Control/Current tiles, and internal API messaging leaking into the register step.
+- Notes:
+  - Brand panel: real `/app-logo.svg` mark (was a generic MessageCircle tile) linking home, top logo / centered message / privacy footnote rhythm so the column no longer has a large empty gap, and the three highlights became icon + title + one-line benefit rows reusing landing-page Connect/Control/Current copy.
+  - Form column: white `bg-surface` panel against the `bg-background` form side, card centered with symmetric padding (was `pt-24` off-center), mobile brand header added since the aside is desktop-only, plus a trust line and Privacy / Terms / Back to home links.
+  - Added a 3-step progress indicator (Number, Verify, Profile) in the card header.
+  - Off-system styles removed: `shadow-xs` and `focus-within:ring-*` replaced with the DS `focus-visible/focus-within:outline` treatment; inputs raised to h-11 with 16px mobile text to stop iOS zoom-on-focus.
+  - Register step no longer prints `POST /api/v1/auth/register` or `phoneVerificationToken` to users (AGENTS.md: no developer messaging in production UI). It shows a verified-number confirmation, or a plain 'verification expired, request a new code' message; the submit-disabled logic is unchanged.
+  - OTP step: large centered mono input with `autoComplete="one-time-code"` + autofocus, and a Resend control with a 30s cooldown (reuses `sendWhatsappOtp`) so users no longer have to go Back and re-enter the number.
+  - Country code combobox: kept typable (dial codes outside `DIAL_COUNTRIES` must stay reachable) and added flags, keyboard navigation (arrows / Enter / Escape), outside-click close, and `aria-activedescendant`.
+  - Forms: label `htmlFor`/`id` pairs, per-field `aria-invalid`, `role="alert"` errors, destructive borders, and busy button states with spinners.
+- Files: `apps/web/src/pages/auth-page.tsx`.
+- Checks: `pnpm lint` (tsc --noEmit) passes. Browser verification skipped per AGENTS.md.

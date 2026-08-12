@@ -46,13 +46,15 @@ describe("auth-api integration", () => {
     });
   });
 
-  it("POSTs register with trimmed fields", async () => {
+  it("POSTs register with trimmed fields and the verified phone pair", async () => {
     const token = "t".repeat(24);
     const { calls } = mockFetchSequence([{ status: 200, body: {} }]);
     await completeRegistration({
       phoneVerificationToken: ` ${token} `,
       firstName: " Ada ",
       lastName: " Lovelace ",
+      phone: " 098765 43210 ",
+      countryCode: " 91 ",
       email: " ada@example.com ",
     });
     expect(pathFromUrl(calls[0]?.url ?? "")).toBe(
@@ -62,6 +64,8 @@ describe("auth-api integration", () => {
       phoneVerificationToken: token,
       firstName: "Ada",
       lastName: "Lovelace",
+      phone: "9876543210",
+      countryCode: "+91",
       email: "ada@example.com",
     });
   });

@@ -29,6 +29,7 @@ import {
   SHAREABLE_FIELD_TYPES,
   type ShareableFieldType,
 } from "@/lib/card-share-types";
+import { syncCardFieldMappings } from "@/lib/card-field-sync";
 import {
   copyCardFieldMappings,
   createCard,
@@ -113,8 +114,7 @@ export function CardCreateModal({
   const [presetsError, setPresetsError] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
 
-  // Null means "not chosen yet", which resolves to the most recently updated
-  // card. `START_BLANK` is a real choice and must not collapse into it.
+  // Null means "not chosen yet", which resolves to `START_BLANK`.
   const [presetChoice, setPresetChoice] = useState<string | null>(null);
   const [selectedTypes, setSelectedTypes] = useState<ShareableFieldType[]>([]);
   const [showAdditional, setShowAdditional] = useState(false);
@@ -251,8 +251,16 @@ export function CardCreateModal({
     () => listCardPresets(existingCards, readAllCardFieldSelections(userId), profile),
     [existingCards, profile, userId],
   );
-  // Presets arrive newest-first, so the head is the preselected one.
-  const activePresetId = presetChoice ?? presets[0]?.cardId ?? START_BLANK;
+  /*
+   * Defaults to "Start blank", never to a card.
+   *
+   * This used to resolve to `presets[0]` — the most recently updated card — so
+   * opening the wizard and pressing Next silently adopted the last card the user
+   * made, and step 3 arrived with its details already ticked. Nobody chose that,
+   * and it is not recoverable by reading the screen: the ticks look like the
+   * user's own. A card the user did not pick must never seed a new one.
+   */
+  const activePresetId = presetChoice ?? START_BLANK;
   const activePreset = useMemo(
     () => presets.find((preset) => preset.cardId === activePresetId) ?? null,
     [presets, activePresetId],
@@ -261,6 +269,19 @@ export function CardCreateModal({
     () => resolvePresetFields(activePreset, type, profile),
     [activePreset, type, profile],
   );
+
+  /*
+   * Starting blank lists every field this card's type can carry, all unticked,
+   * rather than putting them behind "Add more fields".
+   *
+   * With no preset there is nothing to pre-tick, so the old layout showed a
+   * paragraph and a collapsed accordion — a step that looked like it had no
+   * choices on it at all. Blank means "you pick", so the choices have to be the
+   * thing on screen.
+   */
+  const startsBlank = activePreset === null;
+  const pickable = startsBlank ? additional : offered;
+  const collapsed = startsBlank ? [] : additional;
 
   // Re-derives the ticks whenever the preset, the card type or the profile
   // changes — every one of those changes the rows step 3 is about to show.
@@ -317,17 +338,28 @@ export function CardCreateModal({
     try {
       const card = await createCard({ name: trimmedName, type });
 
+      /*
+        Always attached from the new card's own type, never copied wholesale from
+        the preset card.
+
+        `copyCardFieldMappings` duplicates the source's `fieldId`s verbatim, and a
+        field belongs to one profile group. Copying a personal card onto a Work
+        card therefore gave it the personal group's phone, landline and email and
+        none of the workplace's company, job title or logo — while the editor,
+        which reads a work card's values from `work[0]`, displayed Kidan and SDE
+        with their switches on. A 149-byte VCF under a "6 of 6 shared" heading.
+
+        The preset's job is the share selection below, not the mappings.
+      */
       let copied = 0;
-      if (activePreset) {
-        try {
-          const result = await copyCardFieldMappings(activePreset.cardId, card.id);
-          copied = result.copied;
-        } catch (error) {
-          logUiError("Could not copy card details", error);
-          toast.warning(
-            "Card created, but its details couldn't be copied — you can copy them from the card page.",
-          );
-        }
+      try {
+        const sync = await syncCardFieldMappings(card.id, type);
+        copied = sync.added;
+      } catch (error) {
+        logUiError("Could not attach details to the new card", error);
+        toast.warning(
+          "Card created, but its details couldn't be attached — open the card and use \"Add my details to this card\".",
+        );
       }
 
       // Persisted last, so a failed create never leaves a selection behind for
@@ -497,12 +529,12 @@ export function CardCreateModal({
             <p className="text-sm text-muted-foreground">
               {activePreset
                 ? `These come from ${activePreset.name}. Untick anything this card should keep to itself.`
-                : "This card starts empty, so it shares only your name. Pick anything you want it to share once its details are added."}
+                : "Nothing is preselected. Tick whatever this card should share — your profile's details get attached to it either way."}
             </p>
 
-            {offered.length > 0 ? (
+            {pickable.length > 0 ? (
               <div className="space-y-2">
-                {offered.map((row) => (
+                {pickable.map((row) => (
                   <ShareFieldRow
                     key={row.field.key}
                     row={row}
@@ -514,7 +546,7 @@ export function CardCreateModal({
               </div>
             ) : null}
 
-            {offered.length > 0 && selectedTypes.length === 0 ? (
+            {pickable.length > 0 && selectedTypes.length === 0 ? (
               <div className="flex items-start gap-2 rounded-md border border-border bg-secondary p-3">
                 <Info className="mt-0.5 h-4 w-4 shrink-0 text-foreground" aria-hidden="true" />
                 <p className="text-sm font-medium text-foreground">
@@ -523,7 +555,7 @@ export function CardCreateModal({
               </div>
             ) : null}
 
-            {additional.length > 0 ? (
+            {collapsed.length > 0 ? (
               <div className="space-y-2">
                 <Button
                   type="button"
@@ -540,7 +572,7 @@ export function CardCreateModal({
                 </Button>
                 {showAdditional ? (
                   <div className="space-y-2">
-                    {additional.map((row) => (
+                    {collapsed.map((row) => (
                       <ShareFieldRow
                         key={row.field.key}
                         row={row}

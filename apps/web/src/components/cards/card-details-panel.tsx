@@ -10,7 +10,7 @@
  * explaining it in prose: values are edits to your profile and wait for Save;
  * switches are this card's own filter and apply immediately.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Image as ImageIcon, X } from "lucide-react";
 import { toast } from "sonner";
 import { Alert } from "@/components/ui/alert";
@@ -20,6 +20,10 @@ import { Panel, PanelHeader } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { ApiError } from "@/lib/api";
+import {
+  listCardMappedFieldTypes,
+  syncCardFieldMappings,
+} from "@/lib/card-field-sync";
 import {
   EMPTY_ADDRESS,
   buildCardProfilePatch,
@@ -303,6 +307,59 @@ export function CardDetailsPanel({
   }, [fields]);
 
   /**
+   * Types the card really carries, read off its own mappings.
+   *
+   * Not the same as `visibleTypes`, which is only what this card's *type* can
+   * draw from the profile. The two diverge whenever a card's mappings do not
+   * match its type — a work card built from a personal card's preset showed
+   * "Company: Kidan · shared" while its vCard carried no ORG line, because the
+   * switch was drawn from the profile and the file from the mappings.
+   *
+   * `null` while unknown (still loading, or the read failed), which is drawn as
+   * "no claim" rather than "not attached".
+   */
+  const [attachedTypes, setAttachedTypes] = useState<Set<ShareableFieldType> | null>(
+    null,
+  );
+
+  const loadAttachedTypes = useCallback(async () => {
+    if (!cardId) {
+      setAttachedTypes(null);
+      return;
+    }
+    try {
+      setAttachedTypes(new Set(await listCardMappedFieldTypes(cardId)));
+    } catch (error) {
+      logUiError("Could not read what this card carries", error);
+      setAttachedTypes(null);
+    }
+  }, [cardId]);
+
+  useEffect(() => {
+    void loadAttachedTypes();
+  }, [loadAttachedTypes]);
+
+  /** False only when the card is known not to carry this type. */
+  const isAttached = (type: ShareableFieldType): boolean =>
+    attachedTypes === null || attachedTypes.has(type);
+
+  /** Filled rows this card's type offers but the card does not actually hold. */
+  const unattachedTypes = useMemo(
+    () =>
+      attachedTypes === null
+        ? []
+        : visibleTypes.filter(
+            (type) =>
+              !attachedTypes.has(type) &&
+              fields.some((field) => field.type === type && isFilled(field)),
+          ),
+    // isFilled reads `edits`, but an unsaved edit is not attachable yet, so the
+    // saved values are the right basis here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [attachedTypes, visibleTypes, fields],
+  );
+
+  /**
    * An empty stored selection means "share everything attached to this card", so
    * it is rendered as every switch on rather than every switch off. The old UI
    * showed the literal empty state and had to caption it with the opposite of
@@ -401,19 +458,40 @@ export function CardDetailsPanel({
   };
 
   /**
-   * Writes the profile and refreshes it. Called with the pending edits by Save,
-   * and with none by "Add my details" — an unchanged patch is what makes the
-   * server attach this card's fields to it, so the button needs no edits of its
-   * own.
+   * Writes the profile, then attaches this card's fields to it.
+   *
+   * Both halves are needed. `PATCH /profile/me` only stores values as profile
+   * fields; nothing about that links them to a card, so on its own it leaves a
+   * name-only vCard — which is exactly how this read as a broken share. The sync
+   * maps the fields afterwards, and running it on every save is what makes a
+   * landline typed today reach the card today.
+   *
+   * A sync failure is not a save failure: the values are already stored, so it
+   * is reported separately rather than rolling the save back.
    */
-  const persist = async (pending: CardProfileEdits): Promise<boolean> => {
+  const persist = async (
+    pending: CardProfileEdits,
+  ): Promise<{ attached: number } | null> => {
     const patch = buildCardProfilePatch(profile, cardType, pending);
     await patchProfileMe(patch);
     const refreshed = await fetchProfileMe();
     setProfile(refreshed);
     setEdits(EMPTY_EDITS);
+
+    let result: { attached: number } | null = null;
+    if (cardId) {
+      try {
+        // After the patch: a value typed for the first time only exists as a
+        // field once the profile has stored it.
+        const sync = await syncCardFieldMappings(cardId, cardType);
+        result = { attached: sync.added };
+      } catch (error) {
+        logUiError("Could not attach this card's details", error);
+      }
+      await loadAttachedTypes();
+    }
     onSaved?.();
-    return true;
+    return result;
   };
 
   const handleSave = async () => {
@@ -422,8 +500,12 @@ export function CardDetailsPanel({
     }
     setIsSaving(true);
     try {
-      await persist(edits);
-      toast.success("Details saved.");
+      const result = await persist(edits);
+      toast.success(
+        result && result.attached > 0
+          ? `Details saved, and ${result.attached} now go out with this card.`
+          : "Details saved.",
+      );
     } catch (error) {
       logUiError("Could not save card details", error);
       toast.error(
@@ -435,10 +517,10 @@ export function CardDetailsPanel({
   };
 
   /**
-   * Attaching relies on the server mapping profile fields to cards during a
-   * patch. Where that backfill is not deployed the patch succeeds and the card
-   * stays empty, so the result is checked rather than announced — claiming
-   * success and leaving a name-only card is how this looked like a broken share.
+   * Attaches this card's profile fields to it. The result is checked rather than
+   * announced — a card that still carries nothing after a successful run means
+   * the profile has nothing this card's type can draw from, and saying "done"
+   * over a name-only card is what sent empty contacts out.
    */
   const handleAttach = async () => {
     if (isAttaching || !profile) {
@@ -446,13 +528,17 @@ export function CardDetailsPanel({
     }
     setIsAttaching(true);
     try {
-      await persist(edits);
+      const result = await persist(edits);
       const mappings = cardId
         ? await listCardFieldMappings(cardId).catch(() => null)
         : null;
       if (mappings && mappings.length === 0) {
         toast.error(
-          "Your profile saved, but this card still carries nothing. Copy details from another card instead.",
+          "Nothing could be attached — your profile has no details this card's type can use yet. Fill a value in below and save.",
+        );
+      } else if (result && result.attached > 0) {
+        toast.success(
+          `${result.attached} detail${result.attached === 1 ? "" : "s"} now go out with this card.`,
         );
       } else {
         toast.success("Your details are on this card.");
@@ -487,6 +573,7 @@ export function CardDetailsPanel({
         );
       } else {
         toast.success(`Copied ${copied} detail${copied === 1 ? "" : "s"} onto this card.`);
+        await loadAttachedTypes();
         onSaved?.();
       }
     } catch (error) {
@@ -554,23 +641,34 @@ export function CardDetailsPanel({
 
       {!isLoading && !loadError ? (
         <div className="space-y-6">
-          {isEmpty ? (
+          {isEmpty || unattachedTypes.length > 0 ? (
             <div className="rounded-lg border border-border bg-secondary p-4">
               <p className="text-sm font-semibold text-foreground">
-                Recipients would only get your name
+                {isEmpty
+                  ? "Recipients would only get your name"
+                  : `${unattachedTypes.length} detail${unattachedTypes.length === 1 ? "" : "s"} below won't be sent`}
               </p>
               <p className="mt-1 text-sm text-muted-foreground">
-                None of the details below are attached to this card yet, so the
-                contact file it sends is empty apart from your name. Filling a
-                value in and saving does not attach it on its own.
+                {isEmpty
+                  ? "None of the details below are attached to this card yet, so the contact file it sends is empty apart from your name."
+                  : `${unattachedTypes
+                      .map((type) => SHAREABLE_FIELD_META[type].label)
+                      .join(", ")} ${unattachedTypes.length === 1 ? "has" : "have"} a value on your profile but ${unattachedTypes.length === 1 ? "is" : "are"} not attached to this card, so ${unattachedTypes.length === 1 ? "it" : "they"} stay out of the contact file however the switches are set.`}
               </p>
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 {/*
-                  Copying is first because it works whatever the server does: it
-                  posts real field ids read off a card that already has them.
-                  Saving the profile only attaches fields where the server's
-                  card-mapping backfill is deployed.
+                  Attaching is first: it reads the profile's own field ids and maps
+                  them, so it works from an untouched profile. Copying stays as a
+                  second route for pulling another card's exact selection across.
                 */}
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={isAttaching || isSaving || isCopying}
+                  onClick={() => void handleAttach()}
+                >
+                  {isAttaching ? "Adding…" : "Add my details to this card"}
+                </Button>
                 {sourceCards.length > 0 ? (
                   <>
                     {sourceCards.length > 1 ? (
@@ -591,6 +689,7 @@ export function CardDetailsPanel({
                     <Button
                       type="button"
                       size="sm"
+                      variant="outline"
                       disabled={isCopying || isAttaching || isSaving}
                       onClick={() => void handleCopyFrom()}
                     >
@@ -602,15 +701,6 @@ export function CardDetailsPanel({
                     </Button>
                   </>
                 ) : null}
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={sourceCards.length > 0 ? "outline" : "default"}
-                  disabled={isAttaching || isSaving || isCopying}
-                  onClick={() => void handleAttach()}
-                >
-                  {isAttaching ? "Adding…" : "Add my details to this card"}
-                </Button>
               </div>
             </div>
           ) : null}
@@ -636,6 +726,7 @@ export function CardDetailsPanel({
                       group={group}
                       isShared={isShared}
                       isFilled={groupFilled}
+                      isAttached={isAttached(group.type)}
                       // The API reads an empty selection as "everything", so a
                       // card with nothing switched on would quietly share the
                       // lot. The last switch therefore stays on.
@@ -684,6 +775,8 @@ type DetailGroupProps = {
   group: TypeGroup;
   isShared: boolean;
   isFilled: boolean;
+  /** False when the card is known not to carry this type — the switch cannot help. */
+  isAttached: boolean;
   lockedOn: boolean;
   onToggle: () => void;
   valueOf: (field: CardProfileField) => string;
@@ -711,6 +804,7 @@ function DetailGroup({
   group,
   isShared,
   isFilled,
+  isAttached,
   lockedOn,
   onToggle,
   valueOf,
@@ -729,18 +823,25 @@ function DetailGroup({
   const isFlat =
     single !== null && single.inputKind !== "address" && single.inputKind !== "photo";
 
+  /*
+    A switch only filters what the card already carries. Showing it on for a
+    detail with no mapping behind it promised a line the vCard never had — the
+    exact reason a "6 of 6 shared" card delivered three properties.
+  */
   const toggle = (
     <Switch
-      checked={isShared && isFilled}
-      disabled={disabled || !isFilled || lockedOn}
+      checked={isShared && isFilled && isAttached}
+      disabled={disabled || !isFilled || !isAttached || lockedOn}
       onChange={onToggle}
       label={`Share ${group.title}`}
       title={
         !isFilled
           ? "Add a value to share this."
-          : lockedOn
-            ? "At least one detail has to be shared."
-            : undefined
+          : !isAttached
+            ? "Not on this card yet — use “Add my details to this card”."
+            : lockedOn
+              ? "At least one detail has to be shared."
+              : undefined
       }
     />
   );

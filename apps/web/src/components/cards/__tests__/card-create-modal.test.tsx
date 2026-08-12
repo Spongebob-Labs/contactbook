@@ -11,6 +11,7 @@ import {
   createCard,
   listCardsWithFieldCounts,
 } from "@/lib/cards-api";
+import { syncCardFieldMappings } from "@/lib/card-field-sync";
 import { useAuth } from "@/context/auth-context";
 import { fetchProfileMe } from "@/lib/profile-api";
 import { toast } from "sonner";
@@ -20,6 +21,10 @@ vi.mock("@/lib/cards-api", () => ({
   createCard: vi.fn(),
   listCardsWithFieldCounts: vi.fn(),
   copyCardFieldMappings: vi.fn(),
+}));
+
+vi.mock("@/lib/card-field-sync", () => ({
+  syncCardFieldMappings: vi.fn(),
 }));
 
 vi.mock("@/lib/profile-api", () => ({
@@ -120,9 +125,14 @@ async function goToPresets(user: User): Promise<void> {
   await screen.findByRole("radio", { name: /Personal card/ });
 }
 
-/** Renders and advances to "What it shares" with the preselected preset. */
+/**
+ * Renders and advances to "What it shares" **having picked the personal-card
+ * preset**. The preset has to be chosen explicitly: the wizard defaults to Start
+ * blank so that no card the user did not pick can seed a new one.
+ */
 async function goToFields(user: User): Promise<void> {
   await goToPresets(user);
+  await user.click(screen.getByRole("radio", { name: /Personal card/ }));
   await user.click(button("Next"));
   await screen.findByRole("button", { name: "Create card" });
 }
@@ -144,6 +154,11 @@ beforeEach(() => {
   vi.mocked(fetchProfileMe).mockResolvedValue(profile);
   vi.mocked(createCard).mockResolvedValue(createdCard);
   vi.mocked(copyCardFieldMappings).mockResolvedValue({ copied: 2, total: 2 });
+  vi.mocked(syncCardFieldMappings).mockResolvedValue({
+    added: 2,
+    alreadyMapped: 0,
+    candidates: 2,
+  });
 
   // The preset advertises exactly three types, one of which has no value.
   writeCardFieldSelection(USER_ID, personalCard.id, ["PHONE", "LANDLINE", "EMAIL"]);
@@ -189,16 +204,50 @@ describe("step 2 — Start from", () => {
     expect(options[2]).toContain("Start blank");
   });
 
-  it("preselects the most recently updated card", async () => {
+  /*
+    Defaulting to the newest card meant opening the wizard and pressing Next
+    silently seeded the new card from the last one made, with its details already
+    ticked on step 3 — indistinguishable from choices the user had made.
+  */
+  it("preselects Start blank, never one of the user's cards", async () => {
     const user = userEvent.setup();
     await goToPresets(user);
 
     expect(
-      screen.getByRole("radio", { name: /Personal card/ }).getAttribute("aria-checked"),
+      screen.getByRole("radio", { name: /Start blank/ }).getAttribute("aria-checked"),
     ).toBe("true");
+    for (const name of [/Personal card/, /Work card/]) {
+      expect(screen.getByRole("radio", { name }).getAttribute("aria-checked")).toBe(
+        "false",
+      );
+    }
+  });
+
+  it("arrives at step 3 with nothing ticked when left on Start blank", async () => {
+    const user = userEvent.setup();
+    await goToPresets(user);
+    await user.click(button("Next"));
+    await screen.findByRole("button", { name: "Create card" });
+
     expect(
-      screen.getByRole("radio", { name: /Work card/ }).getAttribute("aria-checked"),
-    ).toBe("false");
+      screen.queryAllByRole<HTMLInputElement>("checkbox").filter((box) => box.checked),
+    ).toHaveLength(0);
+  });
+
+  /*
+    Blank still has to offer the choices. Leaving them behind "Add more fields"
+    made the step look like it had nothing on it, so "I pick the fields" was not
+    actually available.
+  */
+  it("lists every field of the card's type to pick from when blank", async () => {
+    const user = userEvent.setup();
+    await goToPresets(user);
+    await user.click(button("Next"));
+    await screen.findByRole("button", { name: "Create card" });
+
+    expect(checkbox("Mobile").checked).toBe(false);
+    expect(checkbox("Email").checked).toBe(false);
+    expect(screen.queryByRole("button", { name: /Add more fields/ })).toBeNull();
   });
 
   it("shows each preset's type badge and the fields it gives", async () => {
@@ -293,29 +342,51 @@ describe("step 3 — What it shares", () => {
 });
 
 describe("creating the card", () => {
-  it("creates, copies the preset's mappings, then saves the selection — in that order", async () => {
+  /*
+    The preset chooses the share selection, never the mappings. Copying a preset
+    card's `fieldId`s verbatim gave a Work card the personal group's phone and
+    email and none of the workplace's company or job title, because a field
+    belongs to exactly one group — a 149-byte VCF under "6 of 6 shared".
+  */
+  it("creates, attaches the card's own type's fields, then saves the selection — in that order", async () => {
     const order: string[] = [];
     vi.mocked(createCard).mockImplementation(async () => {
       order.push("createCard");
       return createdCard;
     });
-    vi.mocked(copyCardFieldMappings).mockImplementation(async () => {
-      order.push("copyCardFieldMappings");
-      // The selection must not be persisted before the copy has run.
+    vi.mocked(syncCardFieldMappings).mockImplementation(async () => {
+      order.push("syncCardFieldMappings");
+      // The selection must not be persisted before the attach has run.
       expect(readCardFieldSelection(USER_ID, createdCard.id)).toEqual([]);
-      return { copied: 2, total: 2 };
+      return { added: 2, alreadyMapped: 0, candidates: 2 };
     });
 
     const user = userEvent.setup();
     await goToFields(user);
     await user.click(button("Create card"));
 
-    expect(order).toEqual(["createCard", "copyCardFieldMappings"]);
+    expect(order).toEqual(["createCard", "syncCardFieldMappings"]);
     expect(createCard).toHaveBeenCalledWith({ name: "Aayush Sharma", type: "PERSONAL" });
-    expect(copyCardFieldMappings).toHaveBeenCalledWith("card-personal", "card-new");
+    expect(syncCardFieldMappings).toHaveBeenCalledWith("card-new", "PERSONAL");
+    expect(copyCardFieldMappings).not.toHaveBeenCalled();
     expect(readCardFieldSelection(USER_ID, "card-new")).toEqual(["PHONE", "EMAIL"]);
     expect(onCreated).toHaveBeenCalledWith(createdCard);
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it("attaches by the card's own type, not the preset card's type", async () => {
+    const user = userEvent.setup();
+    renderModal();
+    await user.clear(nameInput());
+    await user.type(nameInput(), "Work card");
+    await user.click(screen.getByRole("radio", { name: "Work" }));
+    await user.click(button("Next"));
+    await screen.findByRole("radio", { name: /Start blank/ });
+    await user.click(button("Next"));
+    await screen.findByRole("button", { name: "Create card" });
+    await user.click(button("Create card"));
+
+    expect(syncCardFieldMappings).toHaveBeenCalledWith("card-new", "BUSINESS");
   });
 
   it("uses the name and type chosen on step 1", async () => {
@@ -333,8 +404,12 @@ describe("creating the card", () => {
     expect(createCard).toHaveBeenCalledWith({ name: "Client card", type: "CUSTOM" });
   });
 
-  it("reports the real number of copied details, never just 'done'", async () => {
-    vi.mocked(copyCardFieldMappings).mockResolvedValue({ copied: 3, total: 5 });
+  it("reports the real number of attached details, never just 'done'", async () => {
+    vi.mocked(syncCardFieldMappings).mockResolvedValue({
+      added: 3,
+      alreadyMapped: 0,
+      candidates: 5,
+    });
     const user = userEvent.setup();
     await goToFields(user);
     await user.click(button("Create card"));
@@ -342,25 +417,30 @@ describe("creating the card", () => {
     expect(String(vi.mocked(toast.success).mock.calls[0]?.[0])).toContain("3");
   });
 
-  it("skips the copy entirely when starting blank", async () => {
+  /*
+    "Start blank" used to mean permanently blank — `POST /cards` creates no field
+    mappings, so the card could only ever send a bare name.
+  */
+  it("still attaches the profile's fields when starting blank", async () => {
     const user = userEvent.setup();
     await goToPresets(user);
     await user.click(screen.getByRole("radio", { name: /Start blank/ }));
     await user.click(button("Next"));
     await screen.findByRole("button", { name: "Create card" });
 
-    await user.click(button(/Add more fields/));
+    // Directly visible now — blank lists the choices instead of hiding them.
     await user.click(checkbox("Mobile"));
     await user.click(button("Create card"));
 
     expect(createCard).toHaveBeenCalledTimes(1);
+    expect(syncCardFieldMappings).toHaveBeenCalledWith("card-new", "PERSONAL");
     expect(copyCardFieldMappings).not.toHaveBeenCalled();
     expect(readCardFieldSelection(USER_ID, "card-new")).toEqual(["PHONE"]);
   });
 
-  it("still creates the card and warns when the copy fails", async () => {
+  it("still creates the card and warns when attaching fails", async () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
-    vi.mocked(copyCardFieldMappings).mockRejectedValue(new Error("boom"));
+    vi.mocked(syncCardFieldMappings).mockRejectedValue(new Error("boom"));
 
     const user = userEvent.setup();
     await goToFields(user);
@@ -478,10 +558,12 @@ describe("CardCreateModal slow network", () => {
 });
 
 describe("CardCreateModal preset quality", () => {
-  it("preselects a card that has details over a newer empty one", async () => {
-    // The real failure: every card made today was empty, the newest was
-    // preselected, nothing was copied, and the recipient got a name-only
-    // contact. The preset that carries details must win.
+  /*
+    Nothing is preselected any more, so this is about *order*: the card that
+    actually carries details has to be the first one offered, ahead of a newer
+    empty one, or the obvious pick is the one that copies nothing.
+  */
+  it("offers a card that has details ahead of a newer empty one", async () => {
     vi.mocked(listCardsWithFieldCounts).mockResolvedValue([
       makeCard({
         id: "card-empty",
@@ -502,11 +584,13 @@ describe("CardCreateModal preset quality", () => {
     await user.click(button("Next"));
     await screen.findByRole("radio", { name: /Onboarding card/ });
 
-    const chosen = screen.getByRole("radio", { name: /Onboarding card/ });
-    expect(chosen.getAttribute("aria-checked")).toBe("true");
+    const options = screen.getAllByRole("radio").map((option) => option.textContent ?? "");
+    expect(options[0]).toContain("Onboarding card");
+    expect(options[1]).toContain("Empty newest");
+    // Still nothing chosen for the user.
     expect(
-      screen.getByRole("radio", { name: /Empty newest/ }).getAttribute("aria-checked"),
-    ).toBe("false");
+      screen.getByRole("radio", { name: /Start blank/ }).getAttribute("aria-checked"),
+    ).toBe("true");
   });
 
   it("says plainly that an empty card would share only a name", async () => {

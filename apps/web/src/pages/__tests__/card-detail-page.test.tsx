@@ -30,6 +30,8 @@ const mocks = vi.hoisted(() => ({
   updateCard: vi.fn(),
   deleteCard: vi.fn(),
   copyCardFieldMappings: vi.fn(),
+  addCardFieldMapping: vi.fn(),
+  listProfileFields: vi.fn(),
   listCardShares: vi.fn(),
   generateCardVcard: vi.fn(),
   getCardShareBatch: vi.fn(),
@@ -54,6 +56,7 @@ vi.mock("@/lib/cards-api", () => ({
   updateCard: mocks.updateCard,
   deleteCard: mocks.deleteCard,
   copyCardFieldMappings: mocks.copyCardFieldMappings,
+  addCardFieldMapping: mocks.addCardFieldMapping,
 }));
 
 vi.mock("@/lib/card-share-api", () => ({
@@ -70,6 +73,7 @@ vi.mock("@/lib/profile-api", () => ({
   fetchProfileMe: mocks.fetchProfileMe,
   patchProfileMe: mocks.patchProfileMe,
   uploadProfilePhoto: mocks.uploadProfilePhoto,
+  listProfileFields: mocks.listProfileFields,
 }));
 
 vi.mock("sonner", () => ({
@@ -176,12 +180,35 @@ beforeEach(() => {
   });
   mocks.getCard.mockResolvedValue(CARD);
   mocks.listCardsWithFieldCounts.mockResolvedValue([CARD]);
-  // Attaching checks its own result, so the default is a card that ended up with
-  // something on it.
-  mocks.listCardFieldMappings.mockResolvedValue([{ fieldId: "field-1" }]);
+  // The ids have to be the same ones `listProfileFields` returns below: the panel
+  // joins the two to work out which types the card really carries, and a mapping
+  // pointing at no known field reads as "not attached".
+  mocks.listCardFieldMappings.mockResolvedValue([
+    { fieldId: "pf-mobile" },
+    { fieldId: "pf-email" },
+  ]);
   mocks.updateCard.mockResolvedValue(CARD);
   mocks.deleteCard.mockResolvedValue(undefined);
   mocks.copyCardFieldMappings.mockResolvedValue({ copied: 2, total: 2 });
+  mocks.addCardFieldMapping.mockResolvedValue({ cardId: "card-1", fieldId: "field-1" });
+  // Real ids off `GET /v1/profile/me/fields` — the only endpoint that exposes
+  // them, and what makes attaching possible from the client at all.
+  mocks.listProfileFields.mockResolvedValue([
+    {
+      id: "pf-mobile",
+      type: "PHONE",
+      label: null,
+      value: "9953266232",
+      groupId: PROFILE.personal.groupId,
+    },
+    {
+      id: "pf-email",
+      type: "EMAIL",
+      label: null,
+      value: "vansh@example.com",
+      groupId: PROFILE.personal.groupId,
+    },
+  ]);
   mocks.listCardShares.mockResolvedValue({
     items: [BATCH],
     page: 1,
@@ -422,7 +449,13 @@ describe("CardDetailPage states", () => {
     name-only — announcing success there is what made a broken share look like a
     working one.
   */
-  it("does not claim success when the patch attached nothing", async () => {
+  /*
+    The fix for empty contacts. `PATCH /profile/me` only stores values as profile
+    fields; a card's content is `CardFieldMapping` rows, so the ids from
+    `GET /v1/profile/me/fields` have to be posted to
+    `POST /cards/:id/field-mappings` or the card keeps sending a bare name.
+  */
+  it("maps the profile's own field ids onto an empty card", async () => {
     mocks.getCard.mockResolvedValue({ ...CARD, mappedFieldIds: [] });
     mocks.listCardFieldMappings.mockResolvedValue([]);
     const user = userEvent.setup();
@@ -434,11 +467,83 @@ describe("CardDetailPage states", () => {
     );
 
     await waitFor(() => {
+      expect(mocks.addCardFieldMapping).toHaveBeenCalledWith("card-1", "pf-mobile");
+      expect(mocks.addCardFieldMapping).toHaveBeenCalledWith("card-1", "pf-email");
+    });
+  });
+
+  /*
+    The "6 of 6 shared, 149-byte VCF" bug. A Work card built from a personal
+    card's preset held the personal group's fields, so the editor drew Company
+    and Job title from `work[0]` with their switches on while the card carried no
+    such mapping and the file no ORG line. A switch only filters what is
+    attached, so it must not offer a detail the card does not hold.
+  */
+  it("will not show a detail as shared when the card does not carry it", async () => {
+    mocks.listCardFieldMappings.mockResolvedValue([{ fieldId: "pf-email" }]);
+    await renderLoadedPage();
+
+    const mobile = await screen.findByRole("switch", { name: "Share Mobile" });
+    expect(mobile.getAttribute("aria-checked")).toBe("false");
+    expect(mobile.hasAttribute("disabled")).toBe(true);
+    expect(mobile.getAttribute("title")).toContain("Not on this card yet");
+    // The attached one still reads as shared.
+    expect(
+      screen.getByRole("switch", { name: "Share Email" }).getAttribute("aria-checked"),
+    ).toBe("true");
+  });
+
+  it("names the details that would silently stay out of the file", async () => {
+    mocks.listCardFieldMappings.mockResolvedValue([{ fieldId: "pf-email" }]);
+    await renderLoadedPage();
+
+    expect(await screen.findByText("1 detail below won't be sent")).toBeTruthy();
+    expect(screen.getByText(/Mobile has a value on your profile/)).toBeTruthy();
+  });
+
+  it("does not claim success when there was nothing to attach", async () => {
+    mocks.getCard.mockResolvedValue({ ...CARD, mappedFieldIds: [] });
+    mocks.listCardFieldMappings.mockResolvedValue([]);
+    mocks.listProfileFields.mockResolvedValue([]);
+    const user = userEvent.setup();
+
+    await renderLoadedPage();
+    await screen.findByText("Recipients would only get your name");
+    await user.click(
+      screen.getByRole("button", { name: /add my details to this card/i }),
+    );
+
+    await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith(
-        expect.stringContaining("still carries nothing"),
+        expect.stringContaining("Nothing could be attached"),
       );
     });
+    expect(mocks.addCardFieldMapping).not.toHaveBeenCalled();
     expect(toast.success).not.toHaveBeenCalledWith("Your details are on this card.");
+  });
+
+  /*
+    A field that only starts existing when the profile is saved still has to reach
+    the card in the same action — otherwise "Save details" silently leaves the new
+    landline off every share.
+  */
+  it("attaches newly saved values without a second click", async () => {
+    // Email is on the card, mobile is not — the state a first-time value is in.
+    mocks.listCardFieldMappings.mockResolvedValue([{ fieldId: "pf-email" }]);
+    const user = userEvent.setup();
+
+    await renderLoadedPage();
+    // Awaited: the Details panel fetches the profile after the tab bar mounts, so
+    // the inputs are not there on the first paint.
+    const input = await screen.findByRole("textbox", { name: /^mobile$/i });
+    await user.clear(input);
+    await user.type(input, "9347243575");
+    await user.click(screen.getByRole("button", { name: /save details/i }));
+
+    await waitFor(() => {
+      expect(mocks.patchProfileMe).toHaveBeenCalled();
+      expect(mocks.addCardFieldMapping).toHaveBeenCalledWith("card-1", "pf-mobile");
+    });
   });
 
   /*
