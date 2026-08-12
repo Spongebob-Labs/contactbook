@@ -30,6 +30,9 @@ yarn-error.log*
 .secrets
 .pnpm-store/
 
+# Graphify knowledge graph (local AST cache / reports)
+graphify-out/
+
 # Test files — kept local only, not committed
 *.spec.ts
 *.test.ts

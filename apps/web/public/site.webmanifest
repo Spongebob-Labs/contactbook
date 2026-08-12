@@ -1,0 +1,17 @@
+{
+  "name": "ContactBook",
+  "short_name": "ContactBook",
+  "description": "Create a living contact profile, share personal cards, and keep imported contacts current.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0C0D0F",
+  "theme_color": "#C8B89A",
+  "icons": [
+    {
+      "src": "/app-logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

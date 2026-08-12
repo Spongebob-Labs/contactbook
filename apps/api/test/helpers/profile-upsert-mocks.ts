@@ -1,4 +1,4 @@
-import { FieldCategory, FieldType } from "@prisma/client";
+import { CardType, FieldCategory, FieldType } from "@prisma/client";
 import type { GroupWithFields } from "../../src/profile/profile-me.flatten";
 import { registrationIdentity } from "../fixtures/profile-payloads";
 import { emptyProfileMeResponse } from "../fixtures/profile-responses";
@@ -30,9 +30,11 @@ export type ProfileUpsertMocks = {
     };
     contactCard: {
       create: jest.Mock;
+      findMany: jest.Mock;
     };
     cardFieldMapping: {
       createMany: jest.Mock;
+      findMany: jest.Mock;
     };
     $transaction: jest.Mock;
   };
@@ -129,9 +131,13 @@ export function createProfileUpsertMocks(
             ...args.data,
           }),
         ),
+      // No cards by default, so `syncCardMappings` short-circuits and only the
+      // specs that opt in (via `addPersonalCard`) exercise the backfill.
+      findMany: jest.fn().mockResolvedValue([]),
     },
     cardFieldMapping: {
       createMany: jest.fn().mockResolvedValue({ count: 1 }),
+      findMany: jest.fn().mockResolvedValue([]),
     },
     $transaction: jest.fn(),
   };
@@ -222,6 +228,33 @@ export function addWorkGroup(
   } as unknown as GroupWithFields;
   mocks.groups.push(g);
   return g;
+}
+
+/**
+ * Gives the user some cards, so `syncCardMappings` has somewhere to attach
+ * fields instead of short-circuiting on "no cards yet".
+ */
+export function addCards(
+  mocks: ProfileUpsertMocks,
+  cards: { id: string; type: CardType }[],
+): void {
+  mocks.prisma.contactCard.findMany.mockResolvedValue(cards);
+}
+
+export function addPersonalCard(
+  mocks: ProfileUpsertMocks,
+  cardId = "card-personal",
+): string {
+  addCards(mocks, [{ id: cardId, type: CardType.PERSONAL }]);
+  return cardId;
+}
+
+export function addWorkCard(
+  mocks: ProfileUpsertMocks,
+  cardId = "card-work",
+): string {
+  addCards(mocks, [{ id: cardId, type: CardType.BUSINESS }]);
+  return cardId;
 }
 
 export function addPersonalGroupWithPhone(

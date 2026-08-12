@@ -1,16 +1,35 @@
+/** Twilio OTP verify (`POST /auth/otp/whatsapp/verify`). */
 export type VerifyCodeResponse =
-  | { registered: true }
   | {
+      verified?: true;
+      registered: true;
+      isOnboarded?: boolean;
+      userId?: string;
+      accessToken?: string;
+      refreshToken?: string;
+    }
+  | {
+      verified?: true;
       registered: false;
-      message: string;
-      phoneVerificationToken: string;
+      message?: string;
+      /**
+       * Required for POST /auth/register. Issued by OTP verify for
+       * unregistered phones.
+       */
+      phoneVerificationToken?: string;
     };
+
+export type SendOtpResponse = {
+  message: string;
+  expiresInSeconds?: number;
+  resendAfterSeconds?: number;
+};
 
 export type ContactSource =
   | "GOOGLE"
   | "ICLOUD"
   | "VCARD"
-  | "MANUAL";
+  | "CONTACTBOOK";
 
 export type ContactPhone = {
   value: string;
@@ -46,8 +65,14 @@ export type ContactUrl = {
   label?: string | null;
 };
 
-export type ContactCardType = "BUSINESS" | "PERSONAL" | "PAYMENT" | "CUSTOM";
+export type ContactCardType = "BUSINESS" | "PERSONAL" | "CUSTOM";
 
+/**
+ * A shareable card. The server owns everything here: a card is a name, a type,
+ * and the set of profile fields mapped onto it. There is no client-side styling
+ * — what a recipient sees is the WhatsApp template message plus the generated
+ * vCard, both produced server-side.
+ */
 export type ContactCard = {
   id: string;
   userId: string;
@@ -56,6 +81,14 @@ export type ContactCard = {
   isSensitive: boolean;
   createdAt: string;
   updatedAt: string;
+  /** Sensitive cards cannot be shared over WhatsApp — the API rejects the send. */
+  isSensitive?: boolean;
+  /**
+   * Profile field UUIDs mapped to this card. They decide what lands in the
+   * vCard. The API exposes no labels for them, so surface the count, never the
+   * ids themselves.
+   */
+  mappedFieldIds?: string[];
 };
 
 export type ContactImportSummary = {
@@ -82,6 +115,16 @@ export type ContactImportSummary = {
   }>;
 };
 
+export type ContactLabel = {
+  id: string;
+  name: string;
+};
+
+export type ContactGroup = ContactLabel & {
+  source?: ContactSource | null;
+  externalId?: string | null;
+};
+
 export type ContactProviderLink = {
   source: ContactSource;
   externalId: string;
@@ -101,6 +144,9 @@ export type ContactImport = {
   lastName?: string | null;
   primaryPhone?: ContactPhone | null;
   primaryEmail?: ContactEmail | null;
+  tags: ContactLabel[];
+  groups: ContactGroup[];
+  providerLinks?: ContactProviderLink[];
   createdAt: string;
   updatedAt: string;
 };
@@ -115,8 +161,15 @@ export type ContactDetail = ContactImport & {
   organizations: ContactOrganization[];
   addresses: ContactAddress[];
   urls: ContactUrl[];
-  providerLinks?: ContactProviderLink[];
   deletedAt?: string | null;
+};
+
+export type ContactListResponse = {
+  items: ContactDetail[];
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
 };
 
 export type GoogleSyncResponse = {
@@ -124,6 +177,25 @@ export type GoogleSyncResponse = {
   processedCount: number;
   totalContacts: number;
   lastSyncAt: string | null;
+};
+
+export type ContactImportResult = ContactImportSummary & {
+  completedAt?: string;
+  created?: number;
+  updated?: number;
+  /** New API import counters */
+  imported?: number;
+  merged?: number;
+  skipped?: Array<{ reason: string; externalId?: string }>;
+  importedCount?: number;
+  processedCount?: number;
+  createdCount?: number;
+  updatedCount?: number;
+  skippedCount?: number;
+  totalContacts?: number;
+  lastSyncAt?: string | null;
+  message?: string;
+  summary?: ContactImportSummary;
 };
 
 export type PostalAddress = {
@@ -167,6 +239,8 @@ export type ProfileMeResponse = {
     workLandline?: string | null;
     workFax?: string | null;
     workEmail?: string | null;
+    /** Stored as a URL field and shared in the vCard. */
+    website?: string | null;
     workPostalAddress?: PostalAddress;
     employeeId?: string | null;
     custom?: Record<string, string>;
@@ -182,6 +256,8 @@ export type ProfileMeResponse = {
     businessLandline?: string | null;
     businessFax?: string | null;
     businessEmail?: string | null;
+    /** Stored as a URL field and shared in the vCard. */
+    website?: string | null;
     businessPostalAddress?: PostalAddress;
     businessType?: string | null;
     gstin?: string | null;

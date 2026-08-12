@@ -1,135 +1,340 @@
-import { Cloud, FileUp, Lock, UploadCloud } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { useRef, useState } from "react";
+import { Cloud, FileUp, UploadCloud } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Panel } from "@/components/ui/panel";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { cn } from "@/lib/utils";
-
-type ImportOption = {
-  key: "google" | "icloud" | "vcf";
-  title: string;
-  description: string;
-  badge: string;
-  icon: typeof UploadCloud;
-  disabled?: boolean;
-};
 
 type ContactImportOptionsProps = {
   className?: string;
+  /** @deprecated Row layout ignores card density flags. */
   compact?: boolean;
+  /** @deprecated Row layout ignores featured grid flags. */
   featuredGoogle?: boolean;
-} & (
-  | {
-      hideGoogle: true;
-      onConnectGoogle?: () => void;
-      isConnectingGoogle?: boolean;
-    }
-  | {
-      hideGoogle?: false;
-      onConnectGoogle: () => void;
-      isConnectingGoogle: boolean;
-    }
-);
-
-const options: ImportOption[] = [
-  {
-    key: "google",
-    title: "Google Contacts",
-    description: "Connect your Google account and sync contacts into ContactBook.",
-    badge: "Available",
-    icon: UploadCloud,
-  },
-  {
-    key: "icloud",
-    title: "iCloud Contacts",
-    description: "Import contacts from iCloud once the secure connector is ready.",
-    badge: "Coming soon",
-    icon: Cloud,
-    disabled: true,
-  },
-  {
-    key: "vcf",
-    title: "Upload VCF file",
-    description: "Upload exported vCard files after file import support is available.",
-    badge: "Coming soon",
-    icon: FileUp,
-    disabled: true,
-  },
-];
+  hideGoogle?: boolean;
+  onConnectGoogle?: () => void;
+  isConnectingGoogle?: boolean;
+  onSyncGoogle?: () => void;
+  isSyncingGoogle?: boolean;
+  onFullImportGoogle?: () => void;
+  isFullImportingGoogle?: boolean;
+  onDisconnectGoogle?: () => void;
+  isDisconnectingGoogle?: boolean;
+  googleConnected?: boolean;
+  googleMeta?: string;
+  onUploadVcf?: (file: File) => void | Promise<void>;
+  isUploadingVcf?: boolean;
+  vcfMeta?: string;
+  onImportIcloud?: (input: {
+    appleId: string;
+    appSpecificPassword: string;
+  }) => void | Promise<void>;
+  isImportingIcloud?: boolean;
+  onSyncIcloud?: () => void;
+  isSyncingIcloud?: boolean;
+  icloudConnected?: boolean;
+  icloudMeta?: string;
+};
 
 export function ContactImportOptions({
   onConnectGoogle,
   isConnectingGoogle = false,
+  onSyncGoogle,
+  isSyncingGoogle = false,
+  onFullImportGoogle,
+  isFullImportingGoogle = false,
+  onDisconnectGoogle,
+  isDisconnectingGoogle = false,
+  googleConnected = false,
+  googleMeta,
+  onUploadVcf,
+  isUploadingVcf = false,
+  vcfMeta,
+  onImportIcloud,
+  isImportingIcloud = false,
+  onSyncIcloud,
+  isSyncingIcloud = false,
+  icloudConnected = false,
+  icloudMeta,
   className,
-  compact = false,
-  featuredGoogle = false,
   hideGoogle = false,
 }: ContactImportOptionsProps) {
-  const visibleOptions = hideGoogle
-    ? options.filter((option) => option.key !== "google")
-    : options;
+  const vcfInputRef = useRef<HTMLInputElement | null>(null);
+  const [isDraggingVcf, setIsDraggingVcf] = useState(false);
+  const [icloudOpen, setIcloudOpen] = useState(false);
+  const [appleId, setAppleId] = useState("");
+  const [appSpecificPassword, setAppSpecificPassword] = useState("");
+
+  const handleVcfFileChange = (file: File | undefined) => {
+    if (!file || !onUploadVcf) {
+      return;
+    }
+    void onUploadVcf(file);
+    if (vcfInputRef.current) {
+      vcfInputRef.current.value = "";
+    }
+  };
+
+  const submitIcloudImport = async () => {
+    if (!onImportIcloud) {
+      return;
+    }
+
+    const trimmedAppleId = appleId.trim();
+    const trimmedPassword = appSpecificPassword.trim();
+    if (!trimmedAppleId || !trimmedPassword) {
+      toast.error("Enter your Apple ID and an app-specific password.");
+      return;
+    }
+
+    try {
+      await onImportIcloud({
+        appleId: trimmedAppleId,
+        appSpecificPassword: trimmedPassword,
+      });
+      setAppSpecificPassword("");
+      setIcloudOpen(false);
+    } catch {
+      // Parent handler logs and toasts.
+    }
+  };
+
+  const googleBusy =
+    isConnectingGoogle ||
+    isSyncingGoogle ||
+    isFullImportingGoogle ||
+    isDisconnectingGoogle;
 
   return (
-    <div
-      className={cn(
-        "grid gap-4",
-        featuredGoogle && !hideGoogle ? "lg:grid-cols-2" : "lg:grid-cols-3",
-        className,
-      )}
-    >
-      {visibleOptions.map((option) => {
-        const Icon = option.icon;
-        return (
-          <div
-            key={option.key}
-            className={cn(
-              "flex flex-col rounded-lg border border-border bg-card",
-              compact ? "min-h-52 p-4" : "min-h-64 p-5",
-              featuredGoogle && option.key === "google" && "lg:col-span-2 lg:min-h-44",
-              option.disabled && "bg-muted/30",
-            )}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div
-                className={cn(
-                  "flex items-center justify-center rounded-md bg-secondary text-primary",
-                  compact ? "h-9 w-9" : "h-11 w-11",
-                )}
-              >
-                <Icon className={cn(compact ? "h-4 w-4" : "h-5 w-5")} aria-hidden="true" />
+    <Panel className={cn("overflow-hidden p-0", className)}>
+      {!hideGoogle ? (
+        <>
+          <div className="flex flex-col gap-3 px-4 py-3.5 sm:flex-row sm:items-center sm:px-5">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border bg-surface text-foreground">
+              <UploadCloud className="h-4 w-4" aria-hidden="true" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-sm font-semibold text-foreground">
+                  Google Contacts
+                </p>
+                {googleConnected ? (
+                  <StatusBadge variant="connected">Connected</StatusBadge>
+                ) : null}
               </div>
-              <Badge variant={option.disabled ? "outline" : "success"}>
-                {option.badge}
-              </Badge>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {googleMeta ??
+                  (googleConnected
+                    ? "Sync or fully re-import contacts from Google"
+                    : "Connect your Google account to sync contacts")}
+              </p>
             </div>
-            <div className={cn("flex-1", compact ? "mt-4" : "mt-5")}>
-              <h2 className={cn("font-semibold tracking-normal", compact ? "text-base" : "text-lg")}>
-                {option.title}
-              </h2>
-              <p className="mt-2 text-sm text-muted-foreground">{option.description}</p>
-            </div>
-            {option.key === "google" ? (
-              <Button
-                type="button"
-                className={cn("w-full", compact ? "mt-4" : "mt-5")}
-                onClick={onConnectGoogle}
-                disabled={isConnectingGoogle}
-              >
-                <UploadCloud className="h-4 w-4" aria-hidden="true" />
-                {isConnectingGoogle ? "Connecting" : "Connect Google"}
-              </Button>
+            {googleConnected ? (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="shrink-0 rounded-full"
+                  onClick={onSyncGoogle}
+                  disabled={googleBusy || !onSyncGoogle}
+                >
+                  {isSyncingGoogle ? "Syncing…" : "Sync"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="shrink-0 rounded-full"
+                  onClick={onFullImportGoogle}
+                  disabled={googleBusy || !onFullImportGoogle}
+                >
+                  {isFullImportingGoogle ? "Importing…" : "Full import"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="shrink-0 rounded-full text-destructive"
+                  onClick={onDisconnectGoogle}
+                  disabled={googleBusy || !onDisconnectGoogle}
+                >
+                  {isDisconnectingGoogle ? "Disconnecting…" : "Disconnect"}
+                </Button>
+              </div>
             ) : (
               <Button
                 type="button"
-                className={cn("w-full", compact ? "mt-4" : "mt-5")}
-                variant="outline"
-                disabled
+                variant="ghost"
+                size="sm"
+                className="shrink-0 rounded-full"
+                onClick={onConnectGoogle}
+                disabled={googleBusy || !onConnectGoogle}
               >
-                <Lock className="h-4 w-4" aria-hidden="true" />
-                {option.key === "vcf" ? "Upload" : "Connect now"}
+                {isConnectingGoogle ? "Connecting…" : "Connect"}
               </Button>
             )}
           </div>
-        );
-      })}
-    </div>
+          <div className="border-t border-border" role="separator" />
+        </>
+      ) : null}
+
+      <div
+        className={cn(
+          "flex items-center gap-3 px-4 py-3.5 sm:px-5",
+          isDraggingVcf && "bg-bg-hover",
+        )}
+        onDragOver={
+          onUploadVcf
+            ? (event) => {
+                event.preventDefault();
+                setIsDraggingVcf(true);
+              }
+            : undefined
+        }
+        onDragLeave={
+          onUploadVcf
+            ? () => {
+                setIsDraggingVcf(false);
+              }
+            : undefined
+        }
+        onDrop={
+          onUploadVcf
+            ? (event) => {
+                event.preventDefault();
+                setIsDraggingVcf(false);
+                handleVcfFileChange(event.dataTransfer.files?.[0]);
+              }
+            : undefined
+        }
+      >
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border bg-surface text-foreground">
+          <FileUp className="h-4 w-4" aria-hidden="true" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm font-semibold text-foreground">Upload VCF</p>
+          </div>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {isDraggingVcf
+              ? "Drop file to upload"
+              : (vcfMeta ?? "Upload a .vcf or .vcard file from your device")}
+          </p>
+        </div>
+        <input
+          ref={vcfInputRef}
+          type="file"
+          accept=".vcf,.vcard,text/vcard,text/x-vcard"
+          className="sr-only"
+          onChange={(event) => handleVcfFileChange(event.target.files?.[0])}
+        />
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="shrink-0 rounded-full"
+          disabled={isUploadingVcf || !onUploadVcf}
+          onClick={() => vcfInputRef.current?.click()}
+        >
+          {isUploadingVcf ? "Uploading…" : "Upload file"}
+        </Button>
+      </div>
+
+      <div className="border-t border-border" role="separator" />
+
+      <div className="px-4 py-3.5 sm:px-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border bg-surface text-foreground">
+            <Cloud className="h-4 w-4" aria-hidden="true" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-sm font-semibold text-foreground">
+                iCloud Contacts
+              </p>
+              {icloudConnected ? (
+                <StatusBadge variant="connected">Connected</StatusBadge>
+              ) : null}
+            </div>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {icloudMeta ??
+                "Import with Apple ID, then sync for incremental updates"}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {icloudConnected && onSyncIcloud ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="shrink-0 rounded-full"
+                disabled={isSyncingIcloud || isImportingIcloud}
+                onClick={onSyncIcloud}
+              >
+                {isSyncingIcloud ? "Syncing…" : "Sync"}
+              </Button>
+            ) : null}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="shrink-0 rounded-full"
+              disabled={isImportingIcloud || !onImportIcloud}
+              onClick={() => setIcloudOpen((current) => !current)}
+            >
+              {icloudOpen
+                ? "Close"
+                : icloudConnected
+                  ? "Re-import"
+                  : "Connect"}
+            </Button>
+          </div>
+        </div>
+
+        {icloudOpen ? (
+          <div className="mt-4 space-y-3 border-t border-border pt-4">
+            <Input
+              type="email"
+              value={appleId}
+              onChange={(event) => setAppleId(event.target.value)}
+              placeholder="Apple ID email"
+              autoComplete="username"
+              disabled={isImportingIcloud}
+              aria-label="Apple ID email"
+            />
+            <Input
+              type="password"
+              value={appSpecificPassword}
+              onChange={(event) => setAppSpecificPassword(event.target.value)}
+              placeholder="App-specific password"
+              autoComplete="current-password"
+              disabled={isImportingIcloud}
+              aria-label="App-specific password"
+            />
+            <p className="text-xs text-muted-foreground">
+              Generate an app-specific password in your Apple ID account
+              settings.
+            </p>
+            <Button
+              type="button"
+              size="sm"
+              className="w-full sm:w-auto"
+              disabled={
+                isImportingIcloud ||
+                !onImportIcloud ||
+                !appleId.trim() ||
+                !appSpecificPassword.trim()
+              }
+              onClick={() => void submitIcloudImport()}
+            >
+              {isImportingIcloud ? "Importing…" : "Import from iCloud"}
+            </Button>
+          </div>
+        ) : null}
+      </div>
+    </Panel>
   );
 }

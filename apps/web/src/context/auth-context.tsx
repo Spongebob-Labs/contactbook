@@ -7,20 +7,22 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { apiFetch, getCookie } from "@/lib/api";
+import { ApiError, apiFetch, getCookie } from "@/lib/api";
 import {
   clearContactBookSessionState,
   GOOGLE_CONNECTED_KEY,
 } from "@/lib/session-storage";
+import { clearSessionTokens, hasClientSessionHint } from "@/lib/session-tokens";
 import { supabase } from "@/lib/supabase";
 import type { ProfileMeResponse } from "@/lib/types";
 
 type AuthContextValue = {
   userId: string | null;
   profileIdentity: ProfileMeResponse["identity"] | null;
+  profileOnboardingCompletedAt: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  refreshUser: () => void;
+  refreshUser: () => Promise<void>;
   markAuthenticated: () => void;
   logout: () => Promise<void>;
 };
@@ -32,6 +34,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profileIdentity, setProfileIdentity] = useState<
     ProfileMeResponse["identity"] | null
   >(null);
+  const [profileOnboardingCompletedAt, setProfileOnboardingCompletedAt] =
+    useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -39,6 +43,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let isMounted = true;
 
     const bootstrapSession = async () => {
+      const currentPath = window.location.pathname;
+      const isPublicRoute =
+        currentPath === "/" ||
+        currentPath === "/about" ||
+        currentPath === "/contact" ||
+        currentPath === "/privacy" ||
+        currentPath === "/terms" ||
+        currentPath === "/auth" ||
+        currentPath === "/auth/callback";
+      const cookieUserId = getCookie("cb_user_id");
+
+      if (isPublicRoute && !cookieUserId && !hasClientSessionHint()) {
+        if (!isMounted) {
+          return;
+        }
+        setUserId(null);
+        setProfileIdentity(null);
+        setProfileOnboardingCompletedAt(null);
+        setIsAuthenticated(false);
+        setIsLoading(false);
+        return;
+      }
+
       try {
         const profile = await apiFetch<ProfileMeResponse>("/v1/profile/me");
         if (!isMounted) {
@@ -46,6 +73,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         setUserId(getCookie("cb_user_id") ?? profile.identity.primaryEmail);
         setProfileIdentity(profile.identity);
+        setProfileOnboardingCompletedAt(
+          profile.profileOnboardingCompletedAt ?? null,
+        );
         setIsAuthenticated(true);
       } catch {
         if (!isMounted) {
@@ -54,6 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         clearContactBookSessionState();
         setUserId(null);
         setProfileIdentity(null);
+        setProfileOnboardingCompletedAt(null);
         setIsAuthenticated(false);
       } finally {
         if (isMounted) {
@@ -68,18 +99,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const refreshUser = useCallback(() => {
-    const nextUserId = getCookie("cb_user_id");
-    setUserId(nextUserId);
-    setProfileIdentity(null);
-    setIsAuthenticated(Boolean(nextUserId));
-    setIsLoading(false);
+  const refreshUser = useCallback(async () => {
+    try {
+      const profile = await apiFetch<ProfileMeResponse>("/v1/profile/me");
+      setUserId(getCookie("cb_user_id") ?? profile.identity.primaryEmail);
+      setProfileIdentity(profile.identity);
+      setProfileOnboardingCompletedAt(
+        profile.profileOnboardingCompletedAt ?? null,
+      );
+      setIsAuthenticated(true);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        clearContactBookSessionState();
+        setUserId(null);
+        setProfileIdentity(null);
+        setProfileOnboardingCompletedAt(null);
+        setIsAuthenticated(false);
+      }
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
   const markAuthenticated = useCallback(() => {
     localStorage.removeItem(GOOGLE_CONNECTED_KEY);
     setUserId(getCookie("cb_user_id"));
     setProfileIdentity(null);
+    setProfileOnboardingCompletedAt(null);
     setIsAuthenticated(true);
     setIsLoading(false);
   }, []);
@@ -92,10 +138,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         retry: false,
       });
     } finally {
+      clearSessionTokens();
       clearContactBookSessionState();
       await supabase?.auth.signOut().catch(() => undefined);
       setUserId(null);
       setProfileIdentity(null);
+      setProfileOnboardingCompletedAt(null);
       setIsAuthenticated(false);
       setIsLoading(false);
     }
@@ -105,6 +153,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       userId,
       profileIdentity,
+      profileOnboardingCompletedAt,
       isAuthenticated,
       isLoading,
       refreshUser,
@@ -117,6 +166,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logout,
       markAuthenticated,
       profileIdentity,
+      profileOnboardingCompletedAt,
       refreshUser,
       userId,
     ],

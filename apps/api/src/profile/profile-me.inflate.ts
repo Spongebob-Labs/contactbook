@@ -200,7 +200,13 @@ export function inflatePersonal(
     }
   }
   if (item.dateOfBirth !== undefined) {
-    const s = scalarSpec(FieldType.DATE, item.dateOfBirth);
+    // Labelled, not left null: the vCard writer only emits BDAY for a DATE field
+    // whose label reads as a birthday (`isBirthdayLabel` in
+    // vcard-generator.service.ts), because a bare DATE could be any anniversary.
+    // An unlabelled dateOfBirth was therefore dropped from every shared VCF.
+    // `flattenField` keys the read-back off FieldType.DATE, not the label, so
+    // naming it does not disturb the GET /profile/me round-trip.
+    const s = scalarSpec(FieldType.DATE, item.dateOfBirth, "Birthday");
     if (s) {
       fields.push(s);
     }
