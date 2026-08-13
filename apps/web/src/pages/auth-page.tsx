@@ -190,6 +190,18 @@ export default function AuthPage() {
     return () => window.clearTimeout(timer);
   }, [resendSeconds]);
 
+  // The phone field takes focus on arrival, but plain `autoFocus` lets the
+  // browser scroll the card into view and clips the top of the split layout.
+  useEffect(() => {
+    if (isLoading || step !== "phone") {
+      return;
+    }
+
+    document
+      .getElementById("auth-phone-national")
+      ?.focus({ preventScroll: true });
+  }, [isLoading, step]);
+
   if (isLoading) {
     return <PageLoader />;
   }
@@ -411,440 +423,444 @@ export default function AuthPage() {
   const registerDisabled = isBusy || !canSubmitRegister;
 
   return (
-    <main className="grid min-h-screen bg-background lg:grid-cols-[minmax(0,1fr)_30rem]">
-      <aside className="hidden border-r border-border bg-surface px-10 py-10 lg:flex lg:flex-col">
-        <div className="mx-auto flex w-full max-w-xl flex-1 flex-col">
-          <Link
-            to="/"
-            className="inline-flex items-center gap-2.5 self-start rounded-md px-2 py-1.5 text-sm font-semibold text-foreground transition-colors duration-150 hover:bg-bg-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
-          >
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-md">
-              <img
-                src="/app-logo.svg"
-                alt=""
-                className="h-full w-full"
-                aria-hidden="true"
-              />
-            </span>
-            ContactBook
-          </Link>
+    <main className="min-h-screen bg-background">
+      {/* Two panels split by a single hairline: brand narrative on the left,
+       *  the auth box on the right. The grid is min-h-screen so the partition
+       *  runs the full viewport height instead of only beside the card. */}
+      <div className="mx-auto grid min-h-screen w-full max-w-[80rem] grid-cols-1 lg:grid-cols-[minmax(0,1fr)_29rem] xl:grid-cols-[minmax(0,1fr)_31rem]">
+        <section className="order-2 flex flex-col justify-center border-t border-border px-6 pb-14 pt-12 sm:px-8 lg:order-1 lg:border-t-0 lg:px-10 lg:py-12 lg:pr-16">
+          <div className="w-full max-w-[34rem]">
+            <BrandLockup className="hidden lg:inline-flex" />
 
-          <div className="flex flex-1 flex-col justify-center py-10">
-            <p className="text-sm font-medium text-muted-foreground">
+            <p className="text-sm font-medium text-muted-foreground lg:mt-10">
               Never lose contact
             </p>
-            <h1 className="mt-3 text-3xl font-semibold leading-tight tracking-[-0.01em] text-foreground">
+            <h1 className="mt-3 text-[1.75rem] font-semibold leading-[1.15] tracking-[-0.02em] text-foreground sm:text-[2rem] lg:text-[2.25rem]">
               Create the address book profile that updates itself.
             </h1>
-            <p className="body mt-4 max-w-lg">
+            <p className="mt-4 max-w-[30rem] text-[0.9375rem] leading-7 text-muted-foreground">
               Sign in with WhatsApp, create your personal ContactBook, and choose
               the details family, friends, and new connections can keep current.
             </p>
 
-            <dl className="mt-10 border-t border-border">
+            <dl className="mt-8 space-y-5 border-t border-border pt-8">
               {BRAND_HIGHLIGHTS.map((highlight) => (
-                <div
-                  key={highlight.title}
-                  className="grid grid-cols-[9rem_1fr] gap-6 border-b border-border py-4"
-                >
-                  <dt className="flex items-center gap-2.5 text-sm font-medium leading-6 text-foreground">
-                    <highlight.icon
-                      className="h-4 w-4 shrink-0 text-muted-foreground"
-                      aria-hidden="true"
-                    />
-                    {highlight.title}
-                  </dt>
-                  <dd className="text-sm leading-6 text-muted-foreground">
-                    {highlight.description}
-                  </dd>
+                <div key={highlight.title} className="flex items-start gap-4">
+                  <span
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-surface"
+                    aria-hidden="true"
+                  >
+                    <highlight.icon className="h-4 w-4 text-muted-foreground" />
+                  </span>
+                  <div className="min-w-0 pt-0.5">
+                    <dt className="text-sm font-medium text-foreground">
+                      {highlight.title}
+                    </dt>
+                    <dd className="mt-1 text-sm leading-6 text-muted-foreground">
+                      {highlight.description}
+                    </dd>
+                  </div>
                 </div>
               ))}
             </dl>
+
+            <p className="mt-8 max-w-[26rem] text-xs leading-5 text-muted-foreground">
+              Private by design. Your details stay yours, and sharing is always
+              your choice.
+            </p>
           </div>
+        </section>
 
-          <p className="text-xs leading-5 text-muted-foreground">
-            Private by design. Your details stay yours, and sharing is always
-            your choice.
-          </p>
-        </div>
-      </aside>
+        <section className="order-1 flex flex-col justify-center px-6 py-12 sm:px-8 lg:order-2 lg:border-l lg:border-border lg:px-10">
+          <div className="mx-auto flex w-full max-w-md flex-col gap-6">
+            <BrandLockup className="inline-flex lg:hidden" />
 
-      <section className="flex min-h-screen flex-col justify-center gap-6 px-4 py-10 sm:px-8">
-        <Link
-          to="/"
-          className="inline-flex items-center gap-2.5 self-start rounded-md px-2 py-1.5 text-sm font-semibold text-foreground transition-colors duration-150 hover:bg-bg-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground lg:hidden"
-        >
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-md">
-            <img
-              src="/app-logo.svg"
-              alt=""
-              className="h-full w-full"
-              aria-hidden="true"
-            />
-          </span>
-          ContactBook
-        </Link>
-
-        <Card className="w-full max-w-md self-center">
-          <CardHeader className="gap-4 p-6 pb-4">
-            <div className="flex items-center gap-3">
-              <div className="flex flex-1 gap-1.5" aria-hidden="true">
-                {STEP_ORDER.map((stepKey, index) => (
-                  <span
-                    key={stepKey}
-                    className={cn(
-                      "h-1 flex-1 rounded-full transition-colors duration-300",
-                      index <= STEP_ORDER.indexOf(step)
-                        ? "bg-foreground"
-                        : "bg-border",
-                    )}
-                  />
-                ))}
-              </div>
-              <p className="text-xs font-medium text-muted-foreground">
-                Step {STEP_ORDER.indexOf(step) + 1} of {STEP_ORDER.length}
-                <span className="sr-only">: {STEP_LABELS[step]}</span>
-              </p>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <h2 className="text-lg font-semibold tracking-[-0.01em] text-foreground">
-                {step === "phone" && "Sign in or create account"}
-                {step === "otp" && "Enter your WhatsApp code"}
-                {step === "register" && "Finish your profile"}
-              </h2>
-              <p className="body">
-                {step === "phone" &&
-                  "Enter your WhatsApp number and we'll send a 6-digit code. No password to remember."}
-                {step === "otp" && (
-                  <>
-                    We sent a code to{" "}
-                    <span className="font-medium text-foreground">
-                      {verifiedPhoneLabel}
-                    </span>{" "}
-                    on WhatsApp.
-                  </>
-                )}
-                {step === "register" &&
-                  "Add the details that identify your contact profile."}
-              </p>
-            </div>
-          </CardHeader>
-          <CardContent className="p-6 pt-2">
-            {step === "phone" && (
-              <form
-                className="space-y-5"
-                onSubmit={phoneForm.handleSubmit(onRequestCode)}
-              >
-                <div className="flex flex-col gap-2">
-                  <label className={FIELD_LABEL} htmlFor="auth-phone-national">
-                    Phone number
-                  </label>
-                  <div
-                    className={cn(FIELD_GROUP, hasPhoneError && "border-destructive")}
-                  >
-                    <CountryCodeCombobox
-                      value={selectedCountryCode}
-                      options={COUNTRY_CODE_OPTIONS}
-                      disabled={isBusy}
-                      onChange={(countryCode) =>
-                        phoneForm.setValue("countryCode", countryCode, {
-                          shouldDirty: true,
-                          shouldTouch: true,
-                          shouldValidate: true,
-                        })
-                      }
-                    />
-                    <Input
-                      id="auth-phone-national"
-                      inputMode="tel"
-                      autoComplete="tel-national"
-                      autoFocus
-                      disabled={isBusy}
-                      placeholder="98765 43210"
-                      aria-invalid={Boolean(phoneErrors.national)}
-                      aria-describedby={
-                        hasPhoneError ? "auth-phone-error" : "auth-phone-hint"
-                      }
-                      className={cn(FIELD_GROUP_INPUT, "text-base sm:text-sm")}
-                      {...phoneForm.register("national")}
-                      onChange={(event) =>
-                        phoneForm.setValue(
-                          "national",
-                          phoneNumberInput(event.target.value),
-                          {
-                            shouldDirty: true,
-                            shouldTouch: true,
-                            shouldValidate: true,
-                          },
-                        )
-                      }
-                    />
+            <Card className="w-full">
+              <CardHeader className="gap-5 p-6 pb-5 sm:p-7 sm:pb-6">
+                <div className="flex items-center gap-3">
+                  <div className="flex flex-1 gap-1.5" aria-hidden="true">
+                    {STEP_ORDER.map((stepKey, index) => (
+                      <span
+                        key={stepKey}
+                        className={cn(
+                          "h-1 flex-1 rounded-full transition-colors duration-300",
+                          index <= STEP_ORDER.indexOf(step)
+                            ? "bg-foreground"
+                            : "bg-border",
+                        )}
+                      />
+                    ))}
                   </div>
-                  {hasPhoneError ? (
-                    <p
-                      id="auth-phone-error"
-                      role="alert"
-                      className="text-sm text-destructive"
-                    >
-                      {phoneErrors.countryCode?.message ??
-                        phoneErrors.national?.message}
-                    </p>
-                  ) : (
-                    <p id="auth-phone-hint" className="body">
-                      Use the number linked to your WhatsApp account.
-                    </p>
-                  )}
+                  <p className="shrink-0 text-xs font-medium tabular-nums text-muted-foreground">
+                    Step {STEP_ORDER.indexOf(step) + 1} of {STEP_ORDER.length}
+                    <span className="sr-only">: {STEP_LABELS[step]}</span>
+                  </p>
                 </div>
-                <Button
-                  type="submit"
-                  className="w-full"
-                  disabled={isBusy}
-                  aria-busy={isBusy}
-                >
-                  {isBusy ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                      Sending code
-                    </>
-                  ) : (
-                    "Send WhatsApp code"
-                  )}
-                </Button>
-              </form>
-            )}
-
-            {step === "otp" && (
-              <form
-                className="space-y-5"
-                onSubmit={otpForm.handleSubmit(onVerifyCode)}
-              >
                 <div className="flex flex-col gap-2">
-                  <label className={FIELD_LABEL} htmlFor="auth-otp-code">
-                    6-digit code
-                  </label>
-                  <Input
-                    id="auth-otp-code"
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
-                    autoFocus
-                    maxLength={6}
-                    disabled={isBusy}
-                    placeholder="000000"
-                    aria-invalid={Boolean(otpForm.formState.errors.code)}
-                    aria-describedby={
-                      otpForm.formState.errors.code ? "auth-otp-error" : undefined
-                    }
-                    className={cn(
-                      "text-center font-mono text-base tracking-[0.35em] sm:text-sm",
-                      otpForm.formState.errors.code && "border-destructive",
-                    )}
-                    {...otpForm.register("code")}
-                    onChange={(event) =>
-                      otpForm.setValue(
-                        "code",
-                        event.target.value.replace(/\D/g, "").slice(0, 6),
-                      )
-                    }
-                  />
-                  {otpForm.formState.errors.code && (
-                    <p
-                      id="auth-otp-error"
-                      role="alert"
-                      className="text-sm text-destructive"
-                    >
-                      {otpForm.formState.errors.code.message}
-                    </p>
-                  )}
-                </div>
-                <Button
-                  type="submit"
-                  className="w-full"
-                  disabled={isBusy}
-                  aria-busy={isBusy}
-                >
-                  {isBusy ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                      Verifying
-                    </>
-                  ) : (
-                    "Verify and continue"
-                  )}
-                </Button>
-                <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+                  <h2 className="text-lg font-semibold tracking-[-0.01em] text-foreground">
+                    {step === "phone" && "Sign in or create account"}
+                    {step === "otp" && "Enter your WhatsApp code"}
+                    {step === "register" && "Finish your profile"}
+                  </h2>
                   <p className="body">
-                    Didn&apos;t get it?{" "}
+                    {step === "phone" &&
+                      "Enter your WhatsApp number and we'll send a 6-digit code. No password to remember."}
+                    {step === "otp" && (
+                      <>
+                        We sent a code to{" "}
+                        <span className="font-medium text-foreground">
+                          {verifiedPhoneLabel}
+                        </span>{" "}
+                        on WhatsApp.
+                      </>
+                    )}
+                    {step === "register" &&
+                      "Add the details that identify your contact profile."}
+                  </p>
+                </div>
+              </CardHeader>
+              <CardContent className="p-6 pt-0 sm:p-7 sm:pt-0">
+                {step === "phone" && (
+                  <form
+                    className="space-y-5"
+                    onSubmit={phoneForm.handleSubmit(onRequestCode)}
+                  >
+                    <div className="flex flex-col gap-2">
+                      <label className={FIELD_LABEL} htmlFor="auth-phone-national">
+                        Phone number
+                      </label>
+                      <div
+                        className={cn(FIELD_GROUP, hasPhoneError && "border-destructive")}
+                      >
+                        <CountryCodeCombobox
+                          value={selectedCountryCode}
+                          options={COUNTRY_CODE_OPTIONS}
+                          disabled={isBusy}
+                          onChange={(countryCode) =>
+                            phoneForm.setValue("countryCode", countryCode, {
+                              shouldDirty: true,
+                              shouldTouch: true,
+                              shouldValidate: true,
+                            })
+                          }
+                        />
+                        <Input
+                          id="auth-phone-national"
+                          inputMode="tel"
+                          autoComplete="tel-national"
+                          disabled={isBusy}
+                          placeholder="98765 43210"
+                          aria-invalid={Boolean(phoneErrors.national)}
+                          aria-describedby={
+                            hasPhoneError ? "auth-phone-error" : "auth-phone-hint"
+                          }
+                          className={cn(FIELD_GROUP_INPUT, "text-base sm:text-sm")}
+                          {...phoneForm.register("national")}
+                          onChange={(event) =>
+                            phoneForm.setValue(
+                              "national",
+                              phoneNumberInput(event.target.value),
+                              {
+                                shouldDirty: true,
+                                shouldTouch: true,
+                                shouldValidate: true,
+                              },
+                            )
+                          }
+                        />
+                      </div>
+                      {hasPhoneError ? (
+                        <p
+                          id="auth-phone-error"
+                          role="alert"
+                          className="text-sm text-destructive"
+                        >
+                          {phoneErrors.countryCode?.message ??
+                            phoneErrors.national?.message}
+                        </p>
+                      ) : (
+                        <p id="auth-phone-hint" className="body">
+                          Use the number linked to your WhatsApp account.
+                        </p>
+                      )}
+                    </div>
+                    <Button
+                      type="submit"
+                      className="w-full"
+                      disabled={isBusy}
+                      aria-busy={isBusy}
+                    >
+                      {isBusy ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                          Sending code
+                        </>
+                      ) : (
+                        "Send WhatsApp code"
+                      )}
+                    </Button>
+                  </form>
+                )}
+
+                {step === "otp" && (
+                  <form
+                    className="space-y-5"
+                    onSubmit={otpForm.handleSubmit(onVerifyCode)}
+                  >
+                    <div className="flex flex-col gap-2">
+                      <label className={FIELD_LABEL} htmlFor="auth-otp-code">
+                        6-digit code
+                      </label>
+                      <Input
+                        id="auth-otp-code"
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        autoFocus
+                        maxLength={6}
+                        disabled={isBusy}
+                        placeholder="000000"
+                        aria-invalid={Boolean(otpForm.formState.errors.code)}
+                        aria-describedby={
+                          otpForm.formState.errors.code ? "auth-otp-error" : undefined
+                        }
+                        className={cn(
+                          "text-center font-mono text-base tracking-[0.35em] sm:text-sm",
+                          otpForm.formState.errors.code && "border-destructive",
+                        )}
+                        {...otpForm.register("code")}
+                        onChange={(event) =>
+                          otpForm.setValue(
+                            "code",
+                            event.target.value.replace(/\D/g, "").slice(0, 6),
+                          )
+                        }
+                      />
+                      {otpForm.formState.errors.code && (
+                        <p
+                          id="auth-otp-error"
+                          role="alert"
+                          className="text-sm text-destructive"
+                        >
+                          {otpForm.formState.errors.code.message}
+                        </p>
+                      )}
+                    </div>
+                    <Button
+                      type="submit"
+                      className="w-full"
+                      disabled={isBusy}
+                      aria-busy={isBusy}
+                    >
+                      {isBusy ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                          Verifying
+                        </>
+                      ) : (
+                        "Verify and continue"
+                      )}
+                    </Button>
+                    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+                      <p className="body">
+                        Didn&apos;t get it?{" "}
+                        <button
+                          type="button"
+                          onClick={onResendCode}
+                          disabled={isBusy || resendSeconds > 0}
+                          className="font-medium text-foreground underline underline-offset-4 transition-colors duration-150 hover:text-muted-foreground disabled:cursor-not-allowed disabled:text-muted-foreground disabled:no-underline"
+                        >
+                          {resendSeconds > 0
+                            ? `Resend in ${resendSeconds}s`
+                            : "Resend code"}
+                        </button>
+                      </p>
+                      <button
+                        type="button"
+                        onClick={restartFromPhone}
+                        disabled={isBusy}
+                        className={QUIET_ACTION}
+                      >
+                        <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+                        Change number
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                {step === "register" && (
+                  <form
+                    className="space-y-5"
+                    onSubmit={registerForm.handleSubmit(onRegister)}
+                  >
+                    {canSubmitRegister ? (
+                      <p className="flex items-center gap-2.5 rounded-md border border-border bg-secondary px-3 py-2.5 text-sm text-foreground">
+                        <Check
+                          className="h-4 w-4 shrink-0 text-success"
+                          aria-hidden="true"
+                        />
+                        <span className="min-w-0 truncate">
+                          <span className="font-medium">{verifiedPhoneLabel}</span>{" "}
+                          verified
+                        </span>
+                      </p>
+                    ) : (
+                      <p
+                        role="alert"
+                        className="rounded-md border border-destructive/30 bg-[var(--color-danger-bg)] px-3 py-2.5 text-sm text-destructive"
+                      >
+                        Your verification has expired. Request a new WhatsApp code to
+                        continue.
+                      </p>
+                    )}
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="flex flex-col gap-2">
+                        <label className={FIELD_LABEL} htmlFor="auth-first-name">
+                          First name
+                        </label>
+                        <Input
+                          id="auth-first-name"
+                          autoComplete="given-name"
+                          disabled={registerDisabled}
+                          placeholder="Aayush"
+                          aria-invalid={Boolean(registerErrors.firstName)}
+                          className={cn(
+                            "text-base sm:text-sm",
+                            registerErrors.firstName && "border-destructive",
+                          )}
+                          {...registerForm.register("firstName")}
+                        />
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <label className={FIELD_LABEL} htmlFor="auth-last-name">
+                          Last name
+                        </label>
+                        <Input
+                          id="auth-last-name"
+                          autoComplete="family-name"
+                          disabled={registerDisabled}
+                          placeholder="Sharma"
+                          aria-invalid={Boolean(registerErrors.lastName)}
+                          className={cn(
+                            "text-base sm:text-sm",
+                            registerErrors.lastName && "border-destructive",
+                          )}
+                          {...registerForm.register("lastName")}
+                        />
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <label className={FIELD_LABEL} htmlFor="auth-email">
+                        Email
+                      </label>
+                      <Input
+                        id="auth-email"
+                        type="email"
+                        autoComplete="email"
+                        disabled={registerDisabled}
+                        placeholder="you@example.com"
+                        aria-invalid={Boolean(registerErrors.email)}
+                        className={cn(
+                          "text-base sm:text-sm",
+                          registerErrors.email && "border-destructive",
+                        )}
+                        {...registerForm.register("email")}
+                      />
+                    </div>
+                    {(registerErrors.firstName ||
+                      registerErrors.lastName ||
+                      registerErrors.email) && (
+                      <p role="alert" className="text-sm text-destructive">
+                        {registerErrors.firstName?.message ??
+                          registerErrors.lastName?.message ??
+                          registerErrors.email?.message}
+                      </p>
+                    )}
+                    <Button
+                      type="submit"
+                      className="w-full"
+                      disabled={registerDisabled}
+                      aria-busy={isBusy}
+                    >
+                      {isBusy ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                          Creating account
+                        </>
+                      ) : (
+                        "Create account"
+                      )}
+                    </Button>
                     <button
                       type="button"
-                      onClick={onResendCode}
-                      disabled={isBusy || resendSeconds > 0}
-                      className="font-medium text-foreground underline underline-offset-4 transition-colors duration-150 hover:text-muted-foreground disabled:cursor-not-allowed disabled:text-muted-foreground disabled:no-underline"
+                      onClick={restartFromPhone}
+                      disabled={isBusy}
+                      className={QUIET_ACTION}
                     >
-                      {resendSeconds > 0
-                        ? `Resend in ${resendSeconds}s`
-                        : "Resend code"}
+                      <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+                      Start with a different number
                     </button>
-                  </p>
-                  <button
-                    type="button"
-                    onClick={restartFromPhone}
-                    disabled={isBusy}
-                    className={QUIET_ACTION}
-                  >
-                    <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
-                    Change number
-                  </button>
-                </div>
-              </form>
-            )}
+                  </form>
+                )}
 
-            {step === "register" && (
-              <form
-                className="space-y-5"
-                onSubmit={registerForm.handleSubmit(onRegister)}
+                <p className="mt-6 flex items-center justify-center gap-2 border-t border-border pt-5 text-xs text-muted-foreground">
+                  <ShieldCheck className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  Secured with WhatsApp one-time passcodes
+                </p>
+              </CardContent>
+            </Card>
+
+            <p className="text-center text-xs text-muted-foreground">
+              <Link
+                to="/privacy"
+                className="transition-colors duration-150 hover:text-foreground"
               >
-                {canSubmitRegister ? (
-                  <p className="flex items-center gap-2.5 rounded-md border border-border bg-secondary px-3 py-2.5 text-sm text-foreground">
-                    <Check
-                      className="h-4 w-4 shrink-0 text-success"
-                      aria-hidden="true"
-                    />
-                    <span className="min-w-0 truncate">
-                      <span className="font-medium">{verifiedPhoneLabel}</span>{" "}
-                      verified
-                    </span>
-                  </p>
-                ) : (
-                  <p
-                    role="alert"
-                    className="rounded-md border border-destructive/30 bg-[var(--color-danger-bg)] px-3 py-2.5 text-sm text-destructive"
-                  >
-                    Your verification has expired. Request a new WhatsApp code to
-                    continue.
-                  </p>
-                )}
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="flex flex-col gap-2">
-                    <label className={FIELD_LABEL} htmlFor="auth-first-name">
-                      First name
-                    </label>
-                    <Input
-                      id="auth-first-name"
-                      autoComplete="given-name"
-                      disabled={registerDisabled}
-                      placeholder="Aayush"
-                      aria-invalid={Boolean(registerErrors.firstName)}
-                      className={cn(
-                        "text-base sm:text-sm",
-                        registerErrors.firstName && "border-destructive",
-                      )}
-                      {...registerForm.register("firstName")}
-                    />
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <label className={FIELD_LABEL} htmlFor="auth-last-name">
-                      Last name
-                    </label>
-                    <Input
-                      id="auth-last-name"
-                      autoComplete="family-name"
-                      disabled={registerDisabled}
-                      placeholder="Sharma"
-                      aria-invalid={Boolean(registerErrors.lastName)}
-                      className={cn(
-                        "text-base sm:text-sm",
-                        registerErrors.lastName && "border-destructive",
-                      )}
-                      {...registerForm.register("lastName")}
-                    />
-                  </div>
-                </div>
-                <div className="flex flex-col gap-2">
-                  <label className={FIELD_LABEL} htmlFor="auth-email">
-                    Email
-                  </label>
-                  <Input
-                    id="auth-email"
-                    type="email"
-                    autoComplete="email"
-                    disabled={registerDisabled}
-                    placeholder="you@example.com"
-                    aria-invalid={Boolean(registerErrors.email)}
-                    className={cn(
-                      "text-base sm:text-sm",
-                      registerErrors.email && "border-destructive",
-                    )}
-                    {...registerForm.register("email")}
-                  />
-                </div>
-                {(registerErrors.firstName ||
-                  registerErrors.lastName ||
-                  registerErrors.email) && (
-                  <p role="alert" className="text-sm text-destructive">
-                    {registerErrors.firstName?.message ??
-                      registerErrors.lastName?.message ??
-                      registerErrors.email?.message}
-                  </p>
-                )}
-                <Button
-                  type="submit"
-                  className="w-full"
-                  disabled={registerDisabled}
-                  aria-busy={isBusy}
-                >
-                  {isBusy ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                      Creating account
-                    </>
-                  ) : (
-                    "Create account"
-                  )}
-                </Button>
-                <button
-                  type="button"
-                  onClick={restartFromPhone}
-                  disabled={isBusy}
-                  className={QUIET_ACTION}
-                >
-                  <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
-                  Start with a different number
-                </button>
-              </form>
-            )}
-
-            <p className="mt-6 flex items-center justify-center gap-2 border-t border-border pt-5 text-xs text-muted-foreground">
-              <ShieldCheck className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-              Secured with WhatsApp one-time passcodes
+                Privacy
+              </Link>
+              <span aria-hidden="true" className="px-2">
+                ·
+              </span>
+              <Link
+                to="/terms"
+                className="transition-colors duration-150 hover:text-foreground"
+              >
+                Terms
+              </Link>
+              <span aria-hidden="true" className="px-2">
+                ·
+              </span>
+              <Link
+                to="/"
+                className="transition-colors duration-150 hover:text-foreground"
+              >
+                Back to home
+              </Link>
             </p>
-          </CardContent>
-        </Card>
-
-        <p className="w-full max-w-md self-center text-center text-xs text-muted-foreground">
-          <Link
-            to="/privacy"
-            className="transition-colors duration-150 hover:text-foreground"
-          >
-            Privacy
-          </Link>
-          <span aria-hidden="true" className="px-2">
-            ·
-          </span>
-          <Link
-            to="/terms"
-            className="transition-colors duration-150 hover:text-foreground"
-          >
-            Terms
-          </Link>
-          <span aria-hidden="true" className="px-2">
-            ·
-          </span>
-          <Link to="/" className="transition-colors duration-150 hover:text-foreground">
-            Back to home
-          </Link>
-        </p>
-      </section>
+          </div>
+        </section>
+      </div>
     </main>
+  );
+}
+
+function BrandLockup({ className }: { className?: string }) {
+  return (
+    <Link
+      to="/"
+      className={cn(
+        "-ml-2 w-fit items-center gap-2.5 rounded-md px-2 py-1.5 text-sm font-semibold text-foreground transition-colors duration-150 hover:bg-bg-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground",
+        className,
+      )}
+    >
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-md">
+        <img
+          src="/app-logo.svg"
+          alt=""
+          className="h-full w-full"
+          aria-hidden="true"
+        />
+      </span>
+      ContactBook
+    </Link>
   );
 }
 

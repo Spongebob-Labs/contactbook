@@ -1897,3 +1897,28 @@
   - Kept from the previous passes (UX, not brand): single shared field shape, resend with 30s cooldown, label/`aria-invalid`/`role="alert"` wiring, busy button states, country list fixes (open shows all countries; only the first `+1` match is checked), and no developer messaging in the register step.
 - Files: `apps/web/src/pages/auth-page.tsx`.
 - Checks: `pnpm lint` (tsc --noEmit) clean, 193 unit tests pass. Rendered at 1440x900 and 375x812 across all three steps; OTP/register reached by temporarily forcing the initial step locally, then reverting — no OTP requests sent to the API.
+
+## 2026-08-13 - Auth Page Is A Single Centered Column (Supersedes Both Entries Above)
+
+- Decision: Remove the split-screen layout from `/auth` entirely. One centered column: logo, a `max-w-[26rem]` Card, legal links, centered both axes on `bg-background`.
+- Reason: The two-panel layout could not be aligned. Constraining the left panel's content with `mx-auto max-w-xl` inside a very wide panel pushed the logo and copy into the middle of the left half — on a ~1920px viewport that left ~280px of dead space on the left plus large voids above and below, and nothing shared an axis with anything. A single centered column has no alignment degrees of freedom, so it stays correct at every width.
+- Notes:
+  - The marketing block (eyebrow, headline, lede, Connect/Control/Current rows, privacy footnote) was deleted, not relocated. It was the source of the alignment problem, and the landing page already carries that message. Re-adding it means re-introducing a second column, so it should only come back as a deliberate decision.
+  - `BRAND_HIGHLIGHTS` and the `ContactRound` / `RefreshCw` imports were removed with it.
+  - Card narrowed 28rem → 26rem; gap between logo / card / links is `gap-5`. The OTP resend + Change number row still fits on one line at this width.
+  - Everything else is unchanged from the design-system pass: DS Card/Button/Input at default sizes, Inter, near-black primary, DS focus outline applied once to the phone group, three-segment step meter with 'Step N of 3'.
+- Files: `apps/web/src/pages/auth-page.tsx`.
+- Checks: `pnpm lint` (tsc --noEmit) clean, 193 unit tests pass. Rendered at 1920x1080, 1440x900 and 375x812; OTP step checked at the narrower card width, then the forced step reverted to 'phone'. No OTP requests sent to the API.
+
+## 2026-08-13 - Auth Page Copy Restored, Alignment Fixed With One Shared Container
+
+- Decision: Restore all client-supplied left-column copy on `/auth` (eyebrow, headline, lede, Connect/Control/Current, privacy footnote) and fix the alignment by putting BOTH columns inside a single centered `max-w-5xl` container.
+- Reason: The previous entry removed that copy while chasing the alignment problem — wrong call, the copy came from the client and only its spacing was ever in question. The alignment defect was never the copy: it came from each half owning its own centering, so nothing shared an axis. One container fixes it structurally.
+- Notes:
+  - Structure: `main` centers a `max-w-5xl` block; inside, the logo sits at the container's left edge (`-ml-2` cancels the link's own padding so the mark optically aligns with the text below), then a `grid lg:grid-cols-[minmax(0,1fr)_26rem]` with `gap-16`. Logo, eyebrow, headline, lede, list and footnote therefore all start on the same axis as the container, and the text+card composition is centered as one unit with symmetric page margins at any width.
+  - Never re-introduce a per-column `mx-auto max-w-*`: that is exactly what pushed the logo into the middle of the left half and created ~280px of dead space at 1920px.
+  - Highlight rows changed from the `grid-cols-[9rem_1fr]` divider table to a plain icon + title + description list (`space-y-5`, no hairlines) because the narrower column made the two-column rows wrap awkwardly.
+  - Column order: card first on mobile (`order-1 lg:order-2`) so sign-in is actionable above the fold, with the copy following below; text-left/card-right on `lg`.
+  - Vertical `items-center` on the grid, so the shorter OTP card and the taller register card both stay balanced against the copy.
+- Files: `apps/web/src/pages/auth-page.tsx`.
+- Checks: `pnpm lint` (tsc --noEmit) clean, 193 unit tests pass. Rendered at 1920x1080, 1440x900 and 375x812.
