@@ -2,3 +2,6 @@ node_modules
 dist
 .env
 coverage
+
+scripts/reset-google-state.ts
+scripts/reset-google-state-all.ts
