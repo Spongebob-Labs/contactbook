@@ -1866,3 +1866,34 @@
   - Forms: label `htmlFor`/`id` pairs, per-field `aria-invalid`, `role="alert"` errors, destructive borders, and busy button states with spinners.
 - Files: `apps/web/src/pages/auth-page.tsx`.
 - Checks: `pnpm lint` (tsc --noEmit) passes. Browser verification skipped per AGENTS.md.
+
+## 2026-08-13 - Auth Page Adopts The Public Brand (Frosted Card On Hero)
+
+- Decision: Re-skin `/auth` in the public marketing palette — the `contactbook-hero-city.webp` hero photo under a flat charcoal scrim, Times display headline, teal primary CTA — with the form in a frosted white card. Auth logic untouched.
+- Reason: The previous pass styled auth as an app screen (flat #fafafa, Inter, near-black CTA). Arriving from the charcoal/teal/Times landing hero made sign-in look like a different product, which is what read as generic and 'AI-made'. Auth is the seam between marketing and product, so it now follows the brand side.
+- Notes:
+  - Glass: `bg-white/[0.93] backdrop-blur-[28px] border-white/70` + deep soft shadow. Deliberately high opacity — at 0.82 the card sampled the dark backdrop and read dusty gray, and muted 14px text fell to ~4.3:1 contrast. 0.93 keeps the frost visible at the edges while text stays comfortably AA.
+  - Scrim held at `bg-public-charcoal/[0.80]`: at 0.86 the photograph disappeared and the left half read as flat gray.
+  - One shared field shape (`FIELD_SHELL`) across all three steps: h-12, `rounded-xl`, teal border + 4px teal halo on focus-within. Replaces the previous double-bordered composite (bordered wrapper + bordered child + offset outline) that read as a vague box.
+  - Left column is now an editorial `dl` (label | description hairline rows), echoing the landing page's `problems` divide-y motif instead of generic feature tiles.
+  - Step chrome reduced to three slim progress segments; the uppercase step label was dropped because it competed with the card title. Progress is exposed to AT via `role="img"` + `aria-label`.
+  - Two bugs found only by rendering it: (1) opening the country list seeded the filter with the current dial code, so only +1 showed and the rest of the world was hidden behind a manual clear — now an `isFiltering` flag means opening shows all countries and only typing narrows; (2) +1 marked both Canada and the United States as selected — now only the first dial match is checked.
+  - Responsive: mobile headline drops to 1.75rem so the phone field sits above the fold on a 375x812 device (it was below it); left-column rhythm tightens under `@media (min-height:880px)` so nothing clips at 1280x720.
+- Files: `apps/web/src/pages/auth-page.tsx`.
+- Checks: `pnpm lint` (tsc --noEmit) clean, 193 unit tests pass, no console errors. Verified in-browser at 1440x900, 1280x720, and 375x812 across all three steps (OTP and register screenshotted by temporarily forcing the initial step locally, then reverting — no OTP requests were sent to the API).
+- Deviation: AGENTS.md says not to test in a browser unless asked. I did render this one, because two blind passes on a purely visual complaint had already missed and the last two defects above were only visible on screen.
+
+## 2026-08-13 - Auth Page Reverts To The Dashboard Design System (Supersedes The Brand Skin Above)
+
+- Decision: Drop the hero photo, glass card, teal accents and Times display type from `/auth`. The login screen now uses only the internal dashboard design system: white `bg-surface` panel beside a `bg-background` form column, DS `Card` / `Button` / `Input` components, Inter, near-black primary, DS radius and border tokens, no shadows.
+- Reason: Direct user instruction — no background image, white background, and only the dashboard's design system on the login screen. Supersedes the '2026-08-13 - Auth Page Adopts The Public Brand' entry above; the public palette (`--public-*`) is now reserved for the marketing pages only.
+- Notes:
+  - Column split mirrors the app shell: white surface panel with `border-r` (like the sidebar) + `bg-background` content side holding the white Card, so auth reads like any dashboard page.
+  - No component overrides invented: the app never overrides `Input` height or uses `size="lg"` on buttons, so fields and the submit button use DS defaults (h-9, default Button).
+  - Focus treatment is the DS one — `focus-visible:outline outline-2 outline-offset-2 outline-foreground` — applied once to the phone group rather than to nested inputs, which is what made the old composite field look like a vague double border.
+  - Step chrome is now three `bg-foreground`/`bg-border` segments plus a plain 'Step N of 3' caption (the step name is `sr-only`).
+  - Do not use `.label-section` for a muted eyebrow: the utility hard-sets `color: var(--foreground)` and beats a `text-muted-foreground` class, so it rendered as a second bold heading. Plain `text-sm font-medium text-muted-foreground` instead.
+  - Left panel content is wrapped in `mx-auto w-full max-w-xl` so logo, message and footnote share one axis and the panel's whitespace is balanced instead of pooling on the right.
+  - Kept from the previous passes (UX, not brand): single shared field shape, resend with 30s cooldown, label/`aria-invalid`/`role="alert"` wiring, busy button states, country list fixes (open shows all countries; only the first `+1` match is checked), and no developer messaging in the register step.
+- Files: `apps/web/src/pages/auth-page.tsx`.
+- Checks: `pnpm lint` (tsc --noEmit) clean, 193 unit tests pass. Rendered at 1440x900 and 375x812 across all three steps; OTP/register reached by temporarily forcing the initial step locally, then reverting — no OTP requests sent to the API.

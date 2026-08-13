@@ -12,12 +12,14 @@ import { useAuth } from "@/context/auth-context";
 import { AppShell } from "@/components/app-shell";
 import { CardCreateModal } from "@/components/cards/card-create-modal";
 import { CardTile } from "@/components/cards/card-tile";
+import { DashboardMetrics } from "@/components/dashboard/dashboard-metrics";
 import { ShareCardDialog } from "@/components/cards/share-card-dialog";
 import { buttonVariants } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { shareSenderNameFrom } from "@/lib/card-share-types";
 import { createCard, listCards } from "@/lib/cards-api";
 import { fetchImportSummary } from "@/lib/contacts-api";
+import { fetchDashboardStats } from "@/lib/dashboard-api";
 import {
   getMissingProfileSections,
   getProfileCompletion,
@@ -28,6 +30,7 @@ import type {
   ContactCard,
   ContactCardType,
   ContactImportSummary,
+  DashboardStats,
   ProfileMeResponse,
 } from "@/lib/types";
 import { ImportOnboardingModal } from "@/pages/import-onboarding-page";
@@ -99,6 +102,8 @@ export default function DashboardPage() {
   const [cards, setCards] = useState<ContactCard[]>([]);
   const [profile, setProfile] = useState<ProfileMeResponse | null>(null);
   const [importSummary, setImportSummary] = useState<ContactImportSummary | null>(null);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [isStatsLoading, setIsStatsLoading] = useState(true);
   const [shareCard, setShareCard] = useState<ContactCard | null>(null);
   const hasConsumedPostOnboardingRoute = useRef(false);
   const onboardingStep = getOnboardingStep(searchParams.get("onboarding"));
@@ -221,6 +226,31 @@ export default function DashboardPage() {
     }
   }, []);
 
+  /**
+   * Deliberately its own request rather than another leg of `loadOverview`'s
+   * `Promise.all`: a stats failure there would reject the whole batch and blank
+   * the profile with it. `DashboardMetrics` falls back to the card and contact
+   * counts this page already has, so losing stats costs detail, not the page.
+   */
+  const loadStats = useCallback(async (shouldUpdate: () => boolean = () => true) => {
+    setIsStatsLoading(true);
+    try {
+      const data = await fetchDashboardStats();
+      if (shouldUpdate()) {
+        setStats(data);
+      }
+    } catch (error) {
+      logUiError("Could not load dashboard stats", error);
+      if (shouldUpdate()) {
+        setStats(null);
+      }
+    } finally {
+      if (shouldUpdate()) {
+        setIsStatsLoading(false);
+      }
+    }
+  }, []);
+
   const finishSetupProfileStep = useCallback(
     async (result: ProfileOnboardingResult) => {
       if (isSetupFlow) {
@@ -234,7 +264,7 @@ export default function DashboardPage() {
         }
       }
 
-      await loadOverview();
+      await Promise.all([loadOverview(), loadStats()]);
       if (isSetupFlow) {
         await loadCards();
       }
@@ -270,11 +300,12 @@ export default function DashboardPage() {
     void Promise.all([
       loadCards(() => isMounted),
       loadOverview(() => isMounted),
+      loadStats(() => isMounted),
     ]);
     return () => {
       isMounted = false;
     };
-  }, [loadCards, loadOverview]);
+  }, [loadCards, loadOverview, loadStats]);
 
   useEffect(() => {
     if (onboardingStep === "card" && isSetupFlow) {
@@ -303,21 +334,12 @@ export default function DashboardPage() {
       </section>
 
       <section className="mb-8">
-        <div className="inline-flex items-stretch overflow-hidden rounded-md border border-border bg-surface">
-          <div className="px-5 py-4">
-            <p className="text-3xl font-bold tracking-[-0.01em] text-foreground">
-              {cards.length}
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">Cards</p>
-          </div>
-          <div className="w-px self-stretch bg-border" aria-hidden="true" />
-          <div className="px-5 py-4">
-            <p className="text-3xl font-bold tracking-[-0.01em] text-foreground">
-              {connectionCount}
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">Contacts</p>
-          </div>
-        </div>
+        <DashboardMetrics
+          stats={stats}
+          fallbackCardCount={cards.length}
+          fallbackContactCount={connectionCount}
+          isRefreshing={isStatsLoading && stats !== null}
+        />
       </section>
 
       <section className="mb-8">
@@ -464,7 +486,7 @@ export default function DashboardPage() {
           );
           setOnboardingStep(null);
           navigate(`/dashboard/cards/${card.id}`, { replace: true });
-          void Promise.all([loadCards(), loadOverview()]);
+          void Promise.all([loadCards(), loadOverview(), loadStats()]);
         }}
       />
 

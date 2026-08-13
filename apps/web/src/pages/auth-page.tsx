@@ -16,7 +16,7 @@ import { toast } from "sonner";
 import { z } from "zod";
 import { PageLoader } from "@/components/page-loader";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/context/auth-context";
 import { ApiError } from "@/lib/api";
@@ -36,6 +36,17 @@ import { cn } from "@/lib/utils";
 const COUNTRY_CODE_PATTERN = /^\+\d{1,4}$/;
 const NATIONAL_PHONE_PATTERN = /^\d{4,15}$/;
 const RESEND_COOLDOWN_SECONDS = 30;
+
+/** Matches the app design system: same field metrics and focus treatment the
+ *  dashboard `Input` uses, applied once to the country + number group so the
+ *  composite reads as a single control instead of nested boxes. */
+const FIELD_GROUP =
+  "flex h-9 rounded-md border border-border bg-surface transition-colors duration-150 focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-foreground";
+const FIELD_GROUP_INPUT =
+  "h-full min-w-0 flex-1 rounded-none border-0 bg-transparent focus-visible:outline-none";
+const FIELD_LABEL = "text-sm font-medium text-foreground";
+const QUIET_ACTION =
+  "inline-flex items-center gap-1.5 text-sm font-medium text-foreground transition-colors duration-150 hover:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-40";
 
 const phoneSchema = z.object({
   countryCode: z
@@ -80,9 +91,9 @@ const COUNTRY_CODE_OPTIONS = [...DIAL_COUNTRIES].sort((current, next) => {
 const STEP_ORDER: Step[] = ["phone", "otp", "register"];
 
 const STEP_LABELS: Record<Step, string> = {
-  phone: "Number",
-  otp: "Verify",
-  register: "Profile",
+  phone: "Your number",
+  otp: "Verification",
+  register: "Your profile",
 };
 
 const BRAND_HIGHLIGHTS = [
@@ -396,108 +407,142 @@ export default function AuthPage() {
   );
   const phoneErrors = phoneForm.formState.errors;
   const registerErrors = registerForm.formState.errors;
+  const hasPhoneError = Boolean(phoneErrors.countryCode || phoneErrors.national);
+  const registerDisabled = isBusy || !canSubmitRegister;
 
   return (
-    <main className="grid min-h-screen bg-background lg:grid-cols-[minmax(0,1fr)_minmax(0,32rem)]">
-      <aside className="hidden border-r border-border bg-surface px-10 py-10 lg:flex lg:flex-col xl:px-14">
-        <Link
-          to="/"
-          className="inline-flex items-center gap-2.5 self-start rounded-md px-1 py-1 text-sm font-semibold text-foreground transition-colors duration-150 hover:bg-bg-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
-        >
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-md">
-            <img src="/app-logo.svg" alt="" className="h-full w-full" aria-hidden="true" />
-          </span>
-          ContactBook
-        </Link>
+    <main className="grid min-h-screen bg-background lg:grid-cols-[minmax(0,1fr)_30rem]">
+      <aside className="hidden border-r border-border bg-surface px-10 py-10 lg:flex lg:flex-col">
+        <div className="mx-auto flex w-full max-w-xl flex-1 flex-col">
+          <Link
+            to="/"
+            className="inline-flex items-center gap-2.5 self-start rounded-md px-2 py-1.5 text-sm font-semibold text-foreground transition-colors duration-150 hover:bg-bg-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
+          >
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-md">
+              <img
+                src="/app-logo.svg"
+                alt=""
+                className="h-full w-full"
+                aria-hidden="true"
+              />
+            </span>
+            ContactBook
+          </Link>
 
-        <div className="flex flex-1 items-center py-12">
-          <div className="max-w-lg">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+          <div className="flex flex-1 flex-col justify-center py-10">
+            <p className="text-sm font-medium text-muted-foreground">
               Never lose contact
             </p>
-            <h1 className="mt-4 text-4xl font-semibold leading-[1.12] tracking-tight text-foreground xl:text-[2.75rem]">
+            <h1 className="mt-3 text-3xl font-semibold leading-tight tracking-[-0.01em] text-foreground">
               Create the address book profile that updates itself.
             </h1>
-            <p className="mt-4 max-w-md text-base leading-7 text-muted-foreground">
+            <p className="body mt-4 max-w-lg">
               Sign in with WhatsApp, create your personal ContactBook, and choose
               the details family, friends, and new connections can keep current.
             </p>
 
-            <ul className="mt-10 space-y-5">
+            <dl className="mt-10 border-t border-border">
               {BRAND_HIGHLIGHTS.map((highlight) => (
-                <li key={highlight.title} className="flex items-start gap-4">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-secondary text-foreground">
-                    <highlight.icon className="h-4 w-4" aria-hidden="true" />
-                  </span>
-                  <div className="min-w-0">
-                    <p className="label-section">{highlight.title}</p>
-                    <p className="mt-0.5 text-sm leading-6 text-muted-foreground">
-                      {highlight.description}
-                    </p>
-                  </div>
-                </li>
+                <div
+                  key={highlight.title}
+                  className="grid grid-cols-[9rem_1fr] gap-6 border-b border-border py-4"
+                >
+                  <dt className="flex items-center gap-2.5 text-sm font-medium leading-6 text-foreground">
+                    <highlight.icon
+                      className="h-4 w-4 shrink-0 text-muted-foreground"
+                      aria-hidden="true"
+                    />
+                    {highlight.title}
+                  </dt>
+                  <dd className="text-sm leading-6 text-muted-foreground">
+                    {highlight.description}
+                  </dd>
+                </div>
               ))}
-            </ul>
+            </dl>
           </div>
-        </div>
 
-        <p className="text-xs leading-5 text-muted-foreground">
-          Private by design. Your details stay yours, and sharing is always your
-          choice.
-        </p>
+          <p className="text-xs leading-5 text-muted-foreground">
+            Private by design. Your details stay yours, and sharing is always
+            your choice.
+          </p>
+        </div>
       </aside>
 
-      <section className="flex min-h-screen flex-col justify-center gap-6 px-4 py-12 sm:px-8 lg:px-10">
+      <section className="flex min-h-screen flex-col justify-center gap-6 px-4 py-10 sm:px-8">
         <Link
           to="/"
-          className="inline-flex items-center gap-2.5 self-start rounded-md px-1 py-1 text-sm font-semibold text-foreground transition-colors duration-150 hover:bg-bg-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground lg:hidden"
+          className="inline-flex items-center gap-2.5 self-start rounded-md px-2 py-1.5 text-sm font-semibold text-foreground transition-colors duration-150 hover:bg-bg-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground lg:hidden"
         >
           <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-md">
-            <img src="/app-logo.svg" alt="" className="h-full w-full" aria-hidden="true" />
+            <img
+              src="/app-logo.svg"
+              alt=""
+              className="h-full w-full"
+              aria-hidden="true"
+            />
           </span>
           ContactBook
         </Link>
 
         <Card className="w-full max-w-md self-center">
           <CardHeader className="gap-4 p-6 pb-4">
-            <StepProgress current={step} />
+            <div className="flex items-center gap-3">
+              <div className="flex flex-1 gap-1.5" aria-hidden="true">
+                {STEP_ORDER.map((stepKey, index) => (
+                  <span
+                    key={stepKey}
+                    className={cn(
+                      "h-1 flex-1 rounded-full transition-colors duration-300",
+                      index <= STEP_ORDER.indexOf(step)
+                        ? "bg-foreground"
+                        : "bg-border",
+                    )}
+                  />
+                ))}
+              </div>
+              <p className="text-xs font-medium text-muted-foreground">
+                Step {STEP_ORDER.indexOf(step) + 1} of {STEP_ORDER.length}
+                <span className="sr-only">: {STEP_LABELS[step]}</span>
+              </p>
+            </div>
             <div className="flex flex-col gap-1.5">
-              <h2 className="text-lg font-semibold tracking-tight text-foreground">
+              <h2 className="text-lg font-semibold tracking-[-0.01em] text-foreground">
                 {step === "phone" && "Sign in or create account"}
                 {step === "otp" && "Enter your WhatsApp code"}
                 {step === "register" && "Finish your profile"}
               </h2>
-              <CardDescription>
+              <p className="body">
                 {step === "phone" &&
-                  "Enter your WhatsApp number and we'll send a 6-digit code. No password needed."}
+                  "Enter your WhatsApp number and we'll send a 6-digit code. No password to remember."}
                 {step === "otp" && (
                   <>
                     We sent a code to{" "}
-                    <span className="font-medium text-foreground">{verifiedPhoneLabel}</span>{" "}
+                    <span className="font-medium text-foreground">
+                      {verifiedPhoneLabel}
+                    </span>{" "}
                     on WhatsApp.
                   </>
                 )}
                 {step === "register" &&
                   "Add the details that identify your contact profile."}
-              </CardDescription>
+              </p>
             </div>
           </CardHeader>
           <CardContent className="p-6 pt-2">
             {step === "phone" && (
-              <form className="space-y-5" onSubmit={phoneForm.handleSubmit(onRequestCode)}>
+              <form
+                className="space-y-5"
+                onSubmit={phoneForm.handleSubmit(onRequestCode)}
+              >
                 <div className="flex flex-col gap-2">
-                  <label className="label-section" htmlFor="auth-phone-national">
+                  <label className={FIELD_LABEL} htmlFor="auth-phone-national">
                     Phone number
                   </label>
                   <div
-                    className={cn(
-                      "flex h-11 rounded-md border border-border bg-surface transition-colors duration-150 focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-foreground",
-                      (phoneErrors.countryCode || phoneErrors.national) &&
-                        "border-destructive",
-                    )}
+                    className={cn(FIELD_GROUP, hasPhoneError && "border-destructive")}
                   >
                     <CountryCodeCombobox
-                      embedded
                       value={selectedCountryCode}
                       options={COUNTRY_CODE_OPTIONS}
                       disabled={isBusy}
@@ -509,7 +554,6 @@ export default function AuthPage() {
                         })
                       }
                     />
-                    <div className="my-2 w-px bg-border" aria-hidden="true" />
                     <Input
                       id="auth-phone-national"
                       inputMode="tel"
@@ -519,11 +563,9 @@ export default function AuthPage() {
                       placeholder="98765 43210"
                       aria-invalid={Boolean(phoneErrors.national)}
                       aria-describedby={
-                        phoneErrors.national || phoneErrors.countryCode
-                          ? "auth-phone-error"
-                          : "auth-phone-hint"
+                        hasPhoneError ? "auth-phone-error" : "auth-phone-hint"
                       }
-                      className="h-full min-w-0 flex-1 rounded-none border-0 bg-transparent px-3 text-base focus-visible:outline-none sm:text-sm"
+                      className={cn(FIELD_GROUP_INPUT, "text-base sm:text-sm")}
                       {...phoneForm.register("national")}
                       onChange={(event) =>
                         phoneForm.setValue(
@@ -538,19 +580,23 @@ export default function AuthPage() {
                       }
                     />
                   </div>
-                  {phoneErrors.countryCode || phoneErrors.national ? (
-                    <p id="auth-phone-error" role="alert" className="text-sm text-destructive">
-                      {phoneErrors.countryCode?.message ?? phoneErrors.national?.message}
+                  {hasPhoneError ? (
+                    <p
+                      id="auth-phone-error"
+                      role="alert"
+                      className="text-sm text-destructive"
+                    >
+                      {phoneErrors.countryCode?.message ??
+                        phoneErrors.national?.message}
                     </p>
                   ) : (
-                    <p id="auth-phone-hint" className="text-xs text-muted-foreground">
+                    <p id="auth-phone-hint" className="body">
                       Use the number linked to your WhatsApp account.
                     </p>
                   )}
                 </div>
                 <Button
                   type="submit"
-                  size="lg"
                   className="w-full"
                   disabled={isBusy}
                   aria-busy={isBusy}
@@ -568,9 +614,12 @@ export default function AuthPage() {
             )}
 
             {step === "otp" && (
-              <form className="space-y-5" onSubmit={otpForm.handleSubmit(onVerifyCode)}>
+              <form
+                className="space-y-5"
+                onSubmit={otpForm.handleSubmit(onVerifyCode)}
+              >
                 <div className="flex flex-col gap-2">
-                  <label className="label-section" htmlFor="auth-otp-code">
+                  <label className={FIELD_LABEL} htmlFor="auth-otp-code">
                     6-digit code
                   </label>
                   <Input
@@ -586,7 +635,7 @@ export default function AuthPage() {
                       otpForm.formState.errors.code ? "auth-otp-error" : undefined
                     }
                     className={cn(
-                      "h-14 text-center font-mono text-2xl tracking-[0.42em] placeholder:tracking-[0.42em] placeholder:text-[#D1D5DB]",
+                      "text-center font-mono text-base tracking-[0.35em] sm:text-sm",
                       otpForm.formState.errors.code && "border-destructive",
                     )}
                     {...otpForm.register("code")}
@@ -598,14 +647,17 @@ export default function AuthPage() {
                     }
                   />
                   {otpForm.formState.errors.code && (
-                    <p id="auth-otp-error" role="alert" className="text-sm text-destructive">
+                    <p
+                      id="auth-otp-error"
+                      role="alert"
+                      className="text-sm text-destructive"
+                    >
                       {otpForm.formState.errors.code.message}
                     </p>
                   )}
                 </div>
                 <Button
                   type="submit"
-                  size="lg"
                   className="w-full"
                   disabled={isBusy}
                   aria-busy={isBusy}
@@ -619,38 +671,47 @@ export default function AuthPage() {
                     "Verify and continue"
                   )}
                 </Button>
-                <div className="flex items-center justify-between gap-3 border-t border-border pt-4">
-                  <p className="text-sm text-muted-foreground">
-                    Didn&apos;t get the code?{" "}
+                <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+                  <p className="body">
+                    Didn&apos;t get it?{" "}
                     <button
                       type="button"
                       onClick={onResendCode}
                       disabled={isBusy || resendSeconds > 0}
                       className="font-medium text-foreground underline underline-offset-4 transition-colors duration-150 hover:text-muted-foreground disabled:cursor-not-allowed disabled:text-muted-foreground disabled:no-underline"
                     >
-                      {resendSeconds > 0 ? `Resend in ${resendSeconds}s` : "Resend"}
+                      {resendSeconds > 0
+                        ? `Resend in ${resendSeconds}s`
+                        : "Resend code"}
                     </button>
                   </p>
-                  <Button
+                  <button
                     type="button"
-                    variant="ghost"
                     onClick={restartFromPhone}
                     disabled={isBusy}
+                    className={QUIET_ACTION}
                   >
-                    <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+                    <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
                     Change number
-                  </Button>
+                  </button>
                 </div>
               </form>
             )}
 
             {step === "register" && (
-              <form className="space-y-5" onSubmit={registerForm.handleSubmit(onRegister)}>
+              <form
+                className="space-y-5"
+                onSubmit={registerForm.handleSubmit(onRegister)}
+              >
                 {canSubmitRegister ? (
-                  <p className="flex items-center gap-2 rounded-md border border-border bg-secondary px-3 py-2.5 text-sm text-foreground">
-                    <Check className="h-4 w-4 shrink-0 text-success" aria-hidden="true" />
+                  <p className="flex items-center gap-2.5 rounded-md border border-border bg-secondary px-3 py-2.5 text-sm text-foreground">
+                    <Check
+                      className="h-4 w-4 shrink-0 text-success"
+                      aria-hidden="true"
+                    />
                     <span className="min-w-0 truncate">
-                      {verifiedPhoneLabel} verified
+                      <span className="font-medium">{verifiedPhoneLabel}</span>{" "}
+                      verified
                     </span>
                   </p>
                 ) : (
@@ -664,46 +725,55 @@ export default function AuthPage() {
                 )}
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="flex flex-col gap-2">
-                    <label className="label-section" htmlFor="auth-first-name">
+                    <label className={FIELD_LABEL} htmlFor="auth-first-name">
                       First name
                     </label>
                     <Input
                       id="auth-first-name"
                       autoComplete="given-name"
-                      disabled={isBusy || !canSubmitRegister}
+                      disabled={registerDisabled}
                       placeholder="Aayush"
                       aria-invalid={Boolean(registerErrors.firstName)}
-                      className={cn("h-11", registerErrors.firstName && "border-destructive")}
+                      className={cn(
+                        "text-base sm:text-sm",
+                        registerErrors.firstName && "border-destructive",
+                      )}
                       {...registerForm.register("firstName")}
                     />
                   </div>
                   <div className="flex flex-col gap-2">
-                    <label className="label-section" htmlFor="auth-last-name">
+                    <label className={FIELD_LABEL} htmlFor="auth-last-name">
                       Last name
                     </label>
                     <Input
                       id="auth-last-name"
                       autoComplete="family-name"
-                      disabled={isBusy || !canSubmitRegister}
+                      disabled={registerDisabled}
                       placeholder="Sharma"
                       aria-invalid={Boolean(registerErrors.lastName)}
-                      className={cn("h-11", registerErrors.lastName && "border-destructive")}
+                      className={cn(
+                        "text-base sm:text-sm",
+                        registerErrors.lastName && "border-destructive",
+                      )}
                       {...registerForm.register("lastName")}
                     />
                   </div>
                 </div>
                 <div className="flex flex-col gap-2">
-                  <label className="label-section" htmlFor="auth-email">
+                  <label className={FIELD_LABEL} htmlFor="auth-email">
                     Email
                   </label>
                   <Input
                     id="auth-email"
                     type="email"
                     autoComplete="email"
-                    disabled={isBusy || !canSubmitRegister}
+                    disabled={registerDisabled}
                     placeholder="you@example.com"
                     aria-invalid={Boolean(registerErrors.email)}
-                    className={cn("h-11", registerErrors.email && "border-destructive")}
+                    className={cn(
+                      "text-base sm:text-sm",
+                      registerErrors.email && "border-destructive",
+                    )}
                     {...registerForm.register("email")}
                   />
                 </div>
@@ -718,9 +788,8 @@ export default function AuthPage() {
                 )}
                 <Button
                   type="submit"
-                  size="lg"
                   className="w-full"
-                  disabled={isBusy || !canSubmitRegister}
+                  disabled={registerDisabled}
                   aria-busy={isBusy}
                 >
                   {isBusy ? (
@@ -732,115 +801,74 @@ export default function AuthPage() {
                     "Create account"
                   )}
                 </Button>
-                <div className="border-t border-border pt-4">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={restartFromPhone}
-                    disabled={isBusy}
-                  >
-                    <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-                    Start with a different number
-                  </Button>
-                </div>
+                <button
+                  type="button"
+                  onClick={restartFromPhone}
+                  disabled={isBusy}
+                  className={QUIET_ACTION}
+                >
+                  <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+                  Start with a different number
+                </button>
               </form>
             )}
+
+            <p className="mt-6 flex items-center justify-center gap-2 border-t border-border pt-5 text-xs text-muted-foreground">
+              <ShieldCheck className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              Secured with WhatsApp one-time passcodes
+            </p>
           </CardContent>
         </Card>
 
-        <div className="flex w-full max-w-md flex-col items-center gap-2 self-center text-center">
-          <p className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-            <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
-            Secured with WhatsApp one-time passcodes
-          </p>
-          <p className="text-xs text-muted-foreground">
-            <Link
-              to="/privacy"
-              className="underline underline-offset-4 transition-colors duration-150 hover:text-foreground"
-            >
-              Privacy
-            </Link>
-            <span aria-hidden="true"> · </span>
-            <Link
-              to="/terms"
-              className="underline underline-offset-4 transition-colors duration-150 hover:text-foreground"
-            >
-              Terms
-            </Link>
-            <span aria-hidden="true"> · </span>
-            <Link
-              to="/"
-              className="underline underline-offset-4 transition-colors duration-150 hover:text-foreground"
-            >
-              Back to home
-            </Link>
-          </p>
-        </div>
+        <p className="w-full max-w-md self-center text-center text-xs text-muted-foreground">
+          <Link
+            to="/privacy"
+            className="transition-colors duration-150 hover:text-foreground"
+          >
+            Privacy
+          </Link>
+          <span aria-hidden="true" className="px-2">
+            ·
+          </span>
+          <Link
+            to="/terms"
+            className="transition-colors duration-150 hover:text-foreground"
+          >
+            Terms
+          </Link>
+          <span aria-hidden="true" className="px-2">
+            ·
+          </span>
+          <Link to="/" className="transition-colors duration-150 hover:text-foreground">
+            Back to home
+          </Link>
+        </p>
       </section>
     </main>
   );
 }
 
-function StepProgress({ current }: { current: Step }) {
-  const currentIndex = STEP_ORDER.indexOf(current);
-
-  return (
-    <ol className="flex items-center gap-2">
-      {STEP_ORDER.map((stepKey, index) => {
-        const isDone = index < currentIndex;
-        const isCurrent = index === currentIndex;
-
-        return (
-          <li key={stepKey} className="flex min-w-0 items-center gap-2">
-            <span
-              className={cn(
-                "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[11px] font-medium",
-                isDone && "border-foreground bg-foreground text-primary-foreground",
-                isCurrent && "border-foreground text-foreground",
-                !isDone && !isCurrent && "border-border text-muted-foreground",
-              )}
-              aria-hidden="true"
-            >
-              {isDone ? <Check className="h-3 w-3" /> : index + 1}
-            </span>
-            <span
-              className={cn(
-                "truncate text-xs",
-                isCurrent ? "font-medium text-foreground" : "text-muted-foreground",
-              )}
-              aria-current={isCurrent ? "step" : undefined}
-            >
-              {STEP_LABELS[stepKey]}
-            </span>
-            {index < STEP_ORDER.length - 1 && (
-              <span className="h-px w-3 shrink-0 bg-border sm:w-5" aria-hidden="true" />
-            )}
-          </li>
-        );
-      })}
-    </ol>
-  );
-}
-
 function CountryCodeCombobox({
   disabled,
-  embedded = false,
   onChange,
   options,
   value,
 }: {
   disabled?: boolean;
-  embedded?: boolean;
   onChange: (value: string) => void;
   options: CountryCodeOption[];
   value: string;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState(value);
+  // Opening the list shows every country; only typing narrows it. Without this
+  // the trigger would seed the filter with the current dial code and hide the
+  // rest of the world behind a manual clear.
+  const [isFiltering, setIsFiltering] = useState(false);
   const [highlightIndex, setHighlightIndex] = useState(0);
   const rootRef = useRef<HTMLDivElement>(null);
   const filteredOptions = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
+    const normalizedQuery = isFiltering ? query.trim().toLowerCase() : "";
 
     if (!normalizedQuery) {
       return options;
@@ -853,7 +881,12 @@ function CountryCodeCombobox({
         return label.includes(normalizedQuery) || option.dial.includes(normalizedQuery);
       },
     );
-  }, [options, query]);
+  }, [isFiltering, options, query]);
+  // `value` is only a dial code, so +1 matches both Canada and the US. Mark the
+  // first match so the list reads as one selection instead of two.
+  const selectedIndex = filteredOptions.findIndex(
+    (option) => option.dial === value,
+  );
 
   useEffect(() => {
     if (!isOpen) {
@@ -863,6 +896,7 @@ function CountryCodeCombobox({
     const closeOnOutsidePointer = (event: PointerEvent) => {
       if (!rootRef.current?.contains(event.target as Node)) {
         setQuery(value);
+        setIsFiltering(false);
         setIsOpen(false);
       }
     };
@@ -877,16 +911,28 @@ function CountryCodeCombobox({
     setHighlightIndex(0);
   }, [query, isOpen]);
 
+  const openList = () => {
+    setQuery(value);
+    setIsFiltering(false);
+    setIsOpen(true);
+  };
+
+  const closeList = () => {
+    setQuery(value);
+    setIsFiltering(false);
+    setIsOpen(false);
+  };
+
   const selectOption = (option: CountryCodeOption) => {
     onChange(option.dial);
     setQuery(option.dial);
+    setIsFiltering(false);
     setIsOpen(false);
   };
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Escape") {
-      setQuery(value);
-      setIsOpen(false);
+      closeList();
       return;
     }
 
@@ -918,16 +964,10 @@ function CountryCodeCombobox({
   return (
     <div
       ref={rootRef}
-      className={cn("relative", embedded && "w-[6.5rem] shrink-0 sm:w-28")}
+      className="relative h-full w-[5.5rem] shrink-0 border-r border-border"
       onKeyDown={handleKeyDown}
     >
-      <div
-        className={cn(
-          "flex rounded-md border border-border bg-surface transition-colors duration-150 focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-foreground",
-          embedded &&
-            "h-full rounded-none border-0 bg-transparent focus-within:outline-none",
-        )}
-      >
+      <div className="flex h-full items-center">
         <Input
           inputMode="tel"
           autoComplete="tel-country-code"
@@ -947,22 +987,18 @@ function CountryCodeCombobox({
               return;
             }
 
-            setQuery(value);
-            setIsOpen(false);
+            closeList();
           }}
           onChange={(event) => {
             setQuery(countryCodeInput(event.target.value));
+            setIsFiltering(true);
             setIsOpen(true);
           }}
-          onFocus={() => {
-            setQuery(value);
-            setIsOpen(true);
-          }}
+          onFocus={openList}
           placeholder="+1"
           className={cn(
-            "border-0 focus-visible:outline-none",
-            embedded &&
-              "h-full rounded-none bg-transparent pl-3 pr-0 text-base tabular-nums sm:text-sm",
+            FIELD_GROUP_INPUT,
+            "pr-0 tabular-nums text-base sm:text-sm",
           )}
           role="combobox"
           aria-expanded={isOpen}
@@ -977,20 +1013,23 @@ function CountryCodeCombobox({
         <button
           type="button"
           disabled={disabled}
-          className={cn(
-            "flex shrink-0 items-center justify-center rounded-none px-2 text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:outline-none disabled:opacity-40",
-            embedded && "h-full",
-          )}
+          tabIndex={-1}
+          className="flex h-full shrink-0 items-center justify-center pl-1 pr-2.5 text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:outline-none disabled:opacity-40"
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => {
-            setQuery(value);
-            setIsOpen((current) => !current);
+            if (isOpen) {
+              closeList();
+              return;
+            }
+            openList();
           }}
           aria-label="Show country codes"
-          tabIndex={-1}
         >
           <ChevronDown
-            className={cn("h-4 w-4 transition-transform duration-150", isOpen && "rotate-180")}
+            className={cn(
+              "h-4 w-4 transition-transform duration-200",
+              isOpen && "rotate-180",
+            )}
             aria-hidden="true"
           />
         </button>
@@ -1001,14 +1040,11 @@ function CountryCodeCombobox({
           id="country-code-options"
           role="listbox"
           aria-label="Country calling codes"
-          className={cn(
-            "absolute z-20 mt-2 max-h-64 w-full overflow-y-auto rounded-md border border-border bg-popover p-1.5 text-popover-foreground",
-            embedded && "w-72",
-          )}
+          className="absolute left-0 top-[calc(100%+0.5rem)] z-30 max-h-60 w-72 overflow-y-auto rounded-md border border-border bg-popover p-2 text-popover-foreground"
         >
           {filteredOptions.length > 0 ? (
             filteredOptions.map((option, index) => {
-              const isSelected = option.dial === value;
+              const isSelected = index === selectedIndex;
               const isHighlighted = index === highlightIndex;
 
               return (
@@ -1024,7 +1060,7 @@ function CountryCodeCombobox({
                     }
                   }}
                   className={cn(
-                    "flex h-10 w-full items-center gap-2.5 rounded-md px-2.5 text-left text-sm transition-colors duration-150",
+                    "flex h-10 w-full items-center gap-3 rounded-sm px-3 text-left text-sm transition-colors duration-150",
                     isHighlighted ? "bg-bg-hover" : "hover:bg-bg-hover",
                   )}
                   onMouseDown={(event) => event.preventDefault()}
@@ -1034,7 +1070,9 @@ function CountryCodeCombobox({
                   <span className="text-base leading-none" aria-hidden="true">
                     {countryFlag(option.iso2)}
                   </span>
-                  <span className="min-w-0 flex-1 truncate text-foreground">{option.name}</span>
+                  <span className="min-w-0 flex-1 truncate text-foreground">
+                    {option.name}
+                  </span>
                   <span className="shrink-0 tabular-nums text-muted-foreground">
                     {option.dial}
                   </span>
@@ -1045,7 +1083,7 @@ function CountryCodeCombobox({
               );
             })
           ) : (
-            <div className="px-2.5 py-2 text-sm text-muted-foreground">
+            <div className="px-3 py-2 text-sm text-muted-foreground">
               No country code found.
             </div>
           )}

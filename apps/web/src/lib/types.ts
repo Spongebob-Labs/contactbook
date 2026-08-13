@@ -349,3 +349,54 @@ export type ShareBatch = {
   createdAt: string;
   recipients: ShareBatchRecipient[];
 };
+
+/**
+ * `GET /v1/dashboard/stats` — per-user aggregates behind the dashboard metrics.
+ *
+ * Careful: this is **not a partition**. `pending`/`dispatched`/`failed` are
+ * `CardShareRecipient.dispatchStatus` (did we hand it to Twilio) and together
+ * cover every recipient, while `delivered`/`read` come from the separate,
+ * nullable `deliveryStatus` the WhatsApp webhook reports back — and `read` is a
+ * subset of `delivered` (the API counts `delivered` as `IN (DELIVERED, READ)`).
+ * Summing all five double-counts. Render it as a funnel, never a pie.
+ */
+export type ShareDeliveryBreakdown = {
+  pending: number;
+  dispatched: number;
+  delivered: number;
+  read: number;
+  failed: number;
+};
+
+export type DashboardTopContact = {
+  /** Null when the number was never linked to a synced contact. */
+  contactId: string | null;
+  displayName: string;
+  countryCode: string;
+  phone: string;
+  timesSharedWith: number;
+  lastSharedAt: string;
+};
+
+export type DashboardTopCard = {
+  /** Null when the card has since been deleted; the name is a snapshot. */
+  cardId: string | null;
+  cardName: string;
+  cardType: string;
+  timesShared: number;
+  recipientCount: number;
+};
+
+export type DashboardStats = {
+  totalCards: number;
+  totalContacts: number;
+  totalShareBatches: number;
+  totalRecipientsReached: number;
+  deliveryBreakdown: ShareDeliveryBreakdown;
+  topContacts: DashboardTopContact[];
+  topCards: DashboardTopCard[];
+  sharesLast7Days: number;
+  sharesLast30Days: number;
+  contactsAddedLast30Days: number;
+  newCardsLast30Days: number;
+};
