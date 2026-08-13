@@ -8,6 +8,7 @@ export const IMPORT_ONBOARDING_VCF_DONE_KEY =
 
 import { clearAllCardFieldSelections } from "@/lib/card-field-selection";
 import { clearAllCardTourSeen } from "@/lib/product-tour";
+import { clearSessionTokens } from "@/lib/session-tokens";
 
 export function clearContactBookSessionState() {
   sessionStorage.removeItem(GOOGLE_OAUTH_PENDING_KEY);
@@ -19,11 +20,7 @@ export function clearContactBookSessionState() {
   // not inherit another user's card selections or a suppressed tour.
   clearAllCardFieldSelections();
   clearAllCardTourSeen();
-  // Dynamic import avoided — keep sync clear for logout paths.
-  try {
-    sessionStorage.removeItem("cb_client_access_token");
-    sessionStorage.removeItem("cb_client_refresh_token");
-  } catch {
-    // ignore
-  }
+  // Tokens now persist across tabs, so ending a session has to clear the
+  // persistent store too — never just the per-tab one.
+  clearSessionTokens();
 }

@@ -77,11 +77,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           profile.profileOnboardingCompletedAt ?? null,
         );
         setIsAuthenticated(true);
-      } catch {
+      } catch (error) {
         if (!isMounted) {
           return;
         }
-        clearContactBookSessionState();
+        // Only the API rejecting the session ends it. A network blip or a 5xx
+        // must not discard tokens that are still valid — the next load retries.
+        if (error instanceof ApiError && error.status === 401) {
+          clearContactBookSessionState();
+        }
         setUserId(null);
         setProfileIdentity(null);
         setProfileOnboardingCompletedAt(null);

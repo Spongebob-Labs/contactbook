@@ -9,7 +9,7 @@ import {
 
 describe("session-tokens", () => {
   beforeEach(() => {
-    sessionStorage.clear();
+    clearSessionTokens();
   });
 
   it("stores and reads access/refresh tokens", () => {
@@ -34,6 +34,35 @@ describe("session-tokens", () => {
     clearSessionTokens();
     expect(getAccessToken()).toBeNull();
     expect(getRefreshToken()).toBeNull();
+    expect(hasClientSessionHint()).toBe(false);
+  });
+
+  it("keeps the session after the tab is closed", () => {
+    setSessionTokens({ accessToken: "access-1", refreshToken: "refresh-1" });
+    // A new tab starts with an empty per-tab store; the session must survive it.
+    sessionStorage.clear();
+    expect(getAccessToken()).toBe("access-1");
+    expect(hasClientSessionHint()).toBe(true);
+  });
+
+  it("adopts tokens left in the per-tab store by an older build", () => {
+    sessionStorage.setItem("cb_client_access_token", "legacy-access");
+    sessionStorage.setItem("cb_client_refresh_token", "legacy-refresh");
+
+    expect(getAccessToken()).toBe("legacy-access");
+    expect(getRefreshToken()).toBe("legacy-refresh");
+    expect(localStorage.getItem("cb_client_access_token")).toBe("legacy-access");
+    expect(sessionStorage.getItem("cb_client_access_token")).toBeNull();
+  });
+
+  it("clears both stores so logout cannot leave a session behind", () => {
+    sessionStorage.setItem("cb_client_access_token", "legacy-access");
+    setSessionTokens({ accessToken: "access-1", refreshToken: "refresh-1" });
+
+    clearSessionTokens();
+
+    expect(localStorage.getItem("cb_client_access_token")).toBeNull();
+    expect(sessionStorage.getItem("cb_client_access_token")).toBeNull();
     expect(hasClientSessionHint()).toBe(false);
   });
 });
