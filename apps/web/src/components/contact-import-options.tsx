@@ -1,8 +1,6 @@
 import { useRef, useState } from "react";
-import { Cloud, FileUp, UploadCloud } from "lucide-react";
-import { toast } from "sonner";
+import { FileUp, UploadCloud } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { cn } from "@/lib/utils";
@@ -27,15 +25,6 @@ type ContactImportOptionsProps = {
   onUploadVcf?: (file: File) => void | Promise<void>;
   isUploadingVcf?: boolean;
   vcfMeta?: string;
-  onImportIcloud?: (input: {
-    appleId: string;
-    appSpecificPassword: string;
-  }) => void | Promise<void>;
-  isImportingIcloud?: boolean;
-  onSyncIcloud?: () => void;
-  isSyncingIcloud?: boolean;
-  icloudConnected?: boolean;
-  icloudMeta?: string;
 };
 
 export function ContactImportOptions({
@@ -52,20 +41,11 @@ export function ContactImportOptions({
   onUploadVcf,
   isUploadingVcf = false,
   vcfMeta,
-  onImportIcloud,
-  isImportingIcloud = false,
-  onSyncIcloud,
-  isSyncingIcloud = false,
-  icloudConnected = false,
-  icloudMeta,
   className,
   hideGoogle = false,
 }: ContactImportOptionsProps) {
   const vcfInputRef = useRef<HTMLInputElement | null>(null);
   const [isDraggingVcf, setIsDraggingVcf] = useState(false);
-  const [icloudOpen, setIcloudOpen] = useState(false);
-  const [appleId, setAppleId] = useState("");
-  const [appSpecificPassword, setAppSpecificPassword] = useState("");
 
   const handleVcfFileChange = (file: File | undefined) => {
     if (!file || !onUploadVcf) {
@@ -74,30 +54,6 @@ export function ContactImportOptions({
     void onUploadVcf(file);
     if (vcfInputRef.current) {
       vcfInputRef.current.value = "";
-    }
-  };
-
-  const submitIcloudImport = async () => {
-    if (!onImportIcloud) {
-      return;
-    }
-
-    const trimmedAppleId = appleId.trim();
-    const trimmedPassword = appSpecificPassword.trim();
-    if (!trimmedAppleId || !trimmedPassword) {
-      toast.error("Enter your Apple ID and an app-specific password.");
-      return;
-    }
-
-    try {
-      await onImportIcloud({
-        appleId: trimmedAppleId,
-        appSpecificPassword: trimmedPassword,
-      });
-      setAppSpecificPassword("");
-      setIcloudOpen(false);
-    } catch {
-      // Parent handler logs and toasts.
     }
   };
 
@@ -241,99 +197,6 @@ export function ContactImportOptions({
         >
           {isUploadingVcf ? "Uploading…" : "Upload file"}
         </Button>
-      </div>
-
-      <div className="border-t border-border" role="separator" />
-
-      <div className="px-4 py-3.5 sm:px-5">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border bg-surface text-foreground">
-            <Cloud className="h-4 w-4" aria-hidden="true" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="text-sm font-semibold text-foreground">
-                iCloud Contacts
-              </p>
-              {icloudConnected ? (
-                <StatusBadge variant="connected">Connected</StatusBadge>
-              ) : null}
-            </div>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              {icloudMeta ??
-                "Import with Apple ID, then sync for incremental updates"}
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-1.5">
-            {icloudConnected && onSyncIcloud ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="shrink-0 rounded-full"
-                disabled={isSyncingIcloud || isImportingIcloud}
-                onClick={onSyncIcloud}
-              >
-                {isSyncingIcloud ? "Syncing…" : "Sync"}
-              </Button>
-            ) : null}
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="shrink-0 rounded-full"
-              disabled={isImportingIcloud || !onImportIcloud}
-              onClick={() => setIcloudOpen((current) => !current)}
-            >
-              {icloudOpen
-                ? "Close"
-                : icloudConnected
-                  ? "Re-import"
-                  : "Connect"}
-            </Button>
-          </div>
-        </div>
-
-        {icloudOpen ? (
-          <div className="mt-4 space-y-3 border-t border-border pt-4">
-            <Input
-              type="email"
-              value={appleId}
-              onChange={(event) => setAppleId(event.target.value)}
-              placeholder="Apple ID email"
-              autoComplete="username"
-              disabled={isImportingIcloud}
-              aria-label="Apple ID email"
-            />
-            <Input
-              type="password"
-              value={appSpecificPassword}
-              onChange={(event) => setAppSpecificPassword(event.target.value)}
-              placeholder="App-specific password"
-              autoComplete="current-password"
-              disabled={isImportingIcloud}
-              aria-label="App-specific password"
-            />
-            <p className="text-xs text-muted-foreground">
-              Generate an app-specific password in your Apple ID account
-              settings.
-            </p>
-            <Button
-              type="button"
-              size="sm"
-              className="w-full sm:w-auto"
-              disabled={
-                isImportingIcloud ||
-                !onImportIcloud ||
-                !appleId.trim() ||
-                !appSpecificPassword.trim()
-              }
-              onClick={() => void submitIcloudImport()}
-            >
-              {isImportingIcloud ? "Importing…" : "Import from iCloud"}
-            </Button>
-          </div>
-        ) : null}
       </div>
     </Panel>
   );

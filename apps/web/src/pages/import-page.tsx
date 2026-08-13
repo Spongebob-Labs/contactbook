@@ -12,9 +12,7 @@ import {
   fetchAllContacts,
   fetchImportSummary,
   googleSummaryHasConnection,
-  icloudSummaryHasConnection,
   importGoogleContacts,
-  importIcloudContacts,
   syncContacts,
 } from "@/lib/contacts-api";
 import { friendlyErrorMessages, logUiError } from "@/lib/friendly-errors";
@@ -76,8 +74,6 @@ export default function ImportPage() {
   const [isFullImportingGoogle, setIsFullImportingGoogle] = useState(false);
   const [isDisconnectingGoogle, setIsDisconnectingGoogle] = useState(false);
   const [isUploadingVcf, setIsUploadingVcf] = useState(false);
-  const [isImportingIcloud, setIsImportingIcloud] = useState(false);
-  const [isSyncingIcloud, setIsSyncingIcloud] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [vcfError, setVcfError] = useState<string | null>(null);
   const [hasConnectedGoogle, setHasConnectedGoogle] = useState(false);
@@ -168,20 +164,6 @@ export default function ImportPage() {
     }
   }, [loadImports]);
 
-  const syncIcloud = useCallback(async () => {
-    setIsSyncingIcloud(true);
-    try {
-      const result = await syncContacts("ICLOUD");
-      toast.success(`Synced ${result.processedCount} iCloud contacts.`);
-      await loadImports();
-    } catch (err) {
-      logUiError("Could not sync iCloud contacts", err);
-      toast.error(friendlyErrorMessages.sync);
-    } finally {
-      setIsSyncingIcloud(false);
-    }
-  }, [loadImports]);
-
   const connectGoogle = useCallback(async () => {
     setIsConnectingGoogle(true);
     try {
@@ -223,31 +205,6 @@ export default function ImportPage() {
       setIsUploadingVcf(false);
     }
   }, [loadImports]);
-
-  const importIcloud = useCallback(
-    async (input: { appleId: string; appSpecificPassword: string }) => {
-      setIsImportingIcloud(true);
-      try {
-        const result = await importIcloudContacts(input);
-        const importedCount = getContactImportCount(result);
-        toast.success(
-          importedCount === null || importedCount === 0
-            ? "iCloud import completed."
-            : `Imported ${importedCount} contacts from iCloud.`,
-        );
-        await loadImports();
-      } catch (err) {
-        logUiError("Could not import iCloud contacts", err);
-        toast.error(
-          "We couldn't import your iCloud contacts. Check your credentials and try again.",
-        );
-        throw err;
-      } finally {
-        setIsImportingIcloud(false);
-      }
-    },
-    [loadImports],
-  );
 
   useEffect(() => {
     void loadImports();
@@ -311,15 +268,9 @@ export default function ImportPage() {
   const totalContacts = summary?.totalActive ?? imports.length;
   const googleCount = googleSummary?.activeCount ?? 0;
   const vcfCount = vcfSummary?.activeCount ?? 0;
-  const icloudSummary = summary?.bySource.find((item) => item.source === "ICLOUD");
-  const icloudCount = icloudSummary?.activeCount ?? 0;
-  const hasConnectedIcloud = icloudSummaryHasConnection(summary);
   const lastActivity = formatDate(getLastImportActivity(summary));
   const googleLastSync = formatDate(
     googleSummary?.lastSync?.at ?? googleSummary?.lastSyncAt ?? null,
-  );
-  const icloudLastSync = formatDate(
-    icloudSummary?.lastSync?.at ?? icloudSummary?.lastSyncAt ?? null,
   );
 
   return (
@@ -410,16 +361,6 @@ export default function ImportPage() {
         }
         onUploadVcf={uploadVcf}
         isUploadingVcf={isUploadingVcf}
-        onImportIcloud={importIcloud}
-        isImportingIcloud={isImportingIcloud}
-        onSyncIcloud={() => void syncIcloud()}
-        isSyncingIcloud={isSyncingIcloud}
-        icloudConnected={hasConnectedIcloud}
-        icloudMeta={
-          hasConnectedIcloud
-            ? `${icloudCount} contacts · Last sync ${icloudLastSync}`
-            : undefined
-        }
         vcfMeta={
           vcfCount > 0
             ? `${vcfCount} contacts · Last activity ${formatDate(
