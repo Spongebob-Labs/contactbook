@@ -15,6 +15,7 @@ import {
   Link as LinkIcon,
   Mail,
   MapPin,
+  Palette,
   Phone,
   Share2,
   Smartphone,
@@ -30,10 +31,6 @@ import { MobileCardPreview } from "@/components/cards/mobile-card-preview";
 import { Alert } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  MultiSelect,
-  type MultiSelectOption,
-} from "@/components/ui/multi-select";
 import { Panel } from "@/components/ui/panel";
 import { ShareSheet, type ShareSheetOptionId } from "@/components/ui/share-sheet";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -47,25 +44,15 @@ import {
   normalizeDialCode,
   resolveTemplate,
 } from "@/lib/card-maker";
-import { ApiError } from "@/lib/api";
 import {
   addCardFieldMapping,
   deleteCard,
   generateCardVcard,
   getCard,
-  listCardShares,
   removeCardFieldMapping,
-  resendCardShareRecipient,
-  shareCardBatch,
   updateCard,
-  type CardShareBatch,
-  type CardShareRecipientInput,
 } from "@/lib/cards-api";
-import { getContactName, getPrimaryPhone } from "@/lib/contact-display";
-import { fetchAllContacts } from "@/lib/contacts-api";
-import { DIAL_COUNTRIES } from "@/lib/dial-countries";
 import { friendlyErrorMessages, logUiError } from "@/lib/friendly-errors";
-import { parsePhoneParts } from "@/lib/phone";
 import { fetchProfileMe } from "@/lib/profile-api";
 import type {
   ContactCard,
@@ -73,7 +60,6 @@ import type {
   ContactCardTemplate,
   ContactCardTheme,
   ContactCardType,
-  ContactDetail,
   ProfileMeResponse,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -83,9 +69,6 @@ const CARD_TYPE_OPTIONS: Array<{ value: ContactCardType; label: string }> = [
   { value: "BUSINESS", label: "Business" },
   { value: "CUSTOM", label: "Custom" },
 ];
-
-/** Matches the API's `MAX_SHARE_CARD_RECIPIENTS`. */
-const MAX_SHARE_RECIPIENTS = 50;
 
 const cardTypeLabels: Record<ContactCardType, string> = {
   BUSINESS: "Business",
@@ -456,40 +439,9 @@ export default function CardDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
-  const [whatsappShareOpen, setWhatsappShareOpen] = useState(false);
-  const [shareCountryCode, setShareCountryCode] = useState("+91");
-  const [shareNote, setShareNote] = useState("");
-  const [isSharingWhatsapp, setIsSharingWhatsapp] = useState(false);
-  const [shareContacts, setShareContacts] = useState<ContactDetail[]>([]);
-  const [selectedShareContactIds, setSelectedShareContactIds] = useState<
-    string[]
-  >([]);
-  const [isLoadingShareContacts, setIsLoadingShareContacts] = useState(false);
-  const [shareContactsError, setShareContactsError] = useState<string | null>(
-    null,
-  );
-  const [shareBatches, setShareBatches] = useState<CardShareBatch[]>([]);
-  const [sharesError, setSharesError] = useState<string | null>(null);
-  const [resendBusyId, setResendBusyId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editType, setEditType] = useState<ContactCardType>("PERSONAL");
   const [editSensitive, setEditSensitive] = useState(false);
-
-  const refreshShares = async (id: string) => {
-    try {
-      const response = await listCardShares(id, { page: 1, limit: 10 });
-      setShareBatches(response.batches ?? []);
-      setSharesError(null);
-    } catch (err) {
-      logUiError("Could not load card shares", err);
-      setShareBatches([]);
-      setSharesError(
-        err instanceof ApiError && err.message
-          ? err.message
-          : "Could not load recent WhatsApp shares.",
-      );
-    }
-  };
 
   useEffect(() => {
     let isMounted = true;
@@ -513,7 +465,6 @@ export default function CardDetailPage() {
           setEditType(data.type);
           setEditSensitive(Boolean(data.isSensitive));
         }
-        await refreshShares(cardId);
       } catch (err) {
         if (isMounted) {
           logUiError("Could not load card", err);
@@ -545,57 +496,6 @@ export default function CardDetailPage() {
       isMounted = false;
     };
   }, [cardId]);
-
-  // Recipients come from the user's vCard-imported contacts; load lazily the
-  // first time the WhatsApp share dialog opens.
-  useEffect(() => {
-    if (!whatsappShareOpen || shareContacts.length > 0) {
-      return;
-    }
-
-    let isMounted = true;
-    const loadShareContacts = async () => {
-      setIsLoadingShareContacts(true);
-      setShareContactsError(null);
-      try {
-        const contacts = await fetchAllContacts({ source: "VCARD" });
-        if (isMounted) {
-          setShareContacts(contacts);
-        }
-      } catch (err) {
-        if (isMounted) {
-          logUiError("Could not load contacts for card share", err);
-          setShareContacts([]);
-          setShareContactsError(
-            err instanceof ApiError && err.message
-              ? err.message
-              : "Could not load your imported contacts.",
-          );
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoadingShareContacts(false);
-        }
-      }
-    };
-
-    void loadShareContacts();
-    return () => {
-      isMounted = false;
-    };
-  }, [shareContacts.length, whatsappShareOpen]);
-
-  const shareContactOptions = useMemo<MultiSelectOption[]>(
-    () =>
-      shareContacts
-        .filter((contact) => getPrimaryPhone(contact).trim())
-        .map((contact) => ({
-          value: contact.id,
-          label: getContactName(contact),
-          description: getPrimaryPhone(contact),
-        })),
-    [shareContacts],
-  );
 
   const mappableFields = useMemo(
     () => listMappableFinancialFields(profile),
@@ -699,101 +599,12 @@ export default function CardDetailPage() {
     if (!card) {
       return;
     }
-    if (option === "whatsapp") {
-      setWhatsappShareOpen(true);
-    }
-  };
-
-  const handleWhatsappShare = async () => {
-    if (!cardId || !card) {
+    if (option === "copy-link") {
+      void copyCardLink(card);
       return;
     }
-    const fallbackDial = shareCountryCode.trim();
-    if (!/^\+\d{1,4}$/.test(fallbackDial)) {
-      toast.error("Select a valid country code.");
-      return;
-    }
-    if (selectedShareContactIds.length === 0) {
-      toast.error("Select at least one contact.");
-      return;
-    }
-
-    const recipients: CardShareRecipientInput[] = [];
-    const unusableContacts: string[] = [];
-
-    for (const contactId of selectedShareContactIds) {
-      const contact = shareContacts.find((item) => item.id === contactId);
-      if (!contact) {
-        continue;
-      }
-      const parts = parsePhoneParts(getPrimaryPhone(contact), fallbackDial);
-      if (!parts) {
-        unusableContacts.push(getContactName(contact));
-        continue;
-      }
-      recipients.push({ ...parts, contactId: contact.id });
-    }
-
-    if (recipients.length === 0) {
-      toast.error(
-        "None of the selected contacts have a valid phone number to share with.",
-      );
-      return;
-    }
-    if (unusableContacts.length > 0) {
-      toast.warning(
-        `Skipping ${unusableContacts.length} contact(s) without a valid phone number: ${unusableContacts.join(", ")}.`,
-      );
-    }
-
-    setIsSharingWhatsapp(true);
-    try {
-      const batch = await shareCardBatch(cardId, {
-        recipients,
-        note: shareNote,
-      });
-      toast.success(
-        recipients.length === 1
-          ? `WhatsApp share queued for ${recipients[0].countryCode} ${recipients[0].phone}.`
-          : `WhatsApp share queued for ${recipients.length} contacts.`,
-      );
-      setWhatsappShareOpen(false);
-      setSelectedShareContactIds([]);
-      setShareNote("");
-      setShareBatches((current) => [batch, ...current].slice(0, 10));
-      await refreshShares(cardId);
-    } catch (err) {
-      logUiError("Could not share card via WhatsApp", err);
-      toast.error(
-        err instanceof ApiError && err.message
-          ? err.message
-          : "We couldn't share this card right now.",
-      );
-    } finally {
-      setIsSharingWhatsapp(false);
-    }
-  };
-
-  const handleResendRecipient = async (
-    batchId: string,
-    recipientId: string,
-  ) => {
-    setResendBusyId(recipientId);
-    try {
-      await resendCardShareRecipient(batchId, recipientId);
-      toast.success("Resend queued.");
-      if (cardId) {
-        await refreshShares(cardId);
-      }
-    } catch (err) {
-      logUiError("Could not resend card share", err);
-      toast.error(
-        err instanceof ApiError && err.message
-          ? err.message
-          : "Could not resend this share.",
-      );
-    } finally {
-      setResendBusyId(null);
+    if (option === "save-contact") {
+      void downloadCardVcard(card, fieldsFromCard(card, profile));
     }
   };
 
@@ -811,6 +622,13 @@ export default function CardDetailPage() {
         </div>
         {card && (
           <div className="flex flex-wrap items-center gap-2 self-start">
+            <Link
+              to={`/dashboard/cards/${card.id}/edit`}
+              className={cn(buttonVariants({ size: "sm" }))}
+            >
+              <Palette className="h-4 w-4" aria-hidden="true" />
+              Design card
+            </Link>
             <Button
               type="button"
               variant="outline"
@@ -938,96 +756,6 @@ export default function CardDetailPage() {
           </Panel>
 
           <Panel className="mt-4 space-y-4 p-5">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h2 className="text-base font-semibold text-foreground">
-                  WhatsApp shares
-                </h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Recent share batches for this card (
-                  <code className="text-xs">GET /cards/:id/shares</code>).
-                </p>
-              </div>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  if (cardId) {
-                    void refreshShares(cardId);
-                  }
-                }}
-              >
-                Refresh
-              </Button>
-            </div>
-            {sharesError ? (
-              <p className="text-sm text-muted-foreground">{sharesError}</p>
-            ) : null}
-            {shareBatches.length === 0 && !sharesError ? (
-              <p className="text-sm text-muted-foreground">
-                No WhatsApp shares yet. Use Share → WhatsApp to send this card.
-              </p>
-            ) : (
-              <ul className="space-y-3">
-                {shareBatches.map((batch) => (
-                  <li
-                    key={batch.id}
-                    className="rounded-lg border border-border px-3 py-3"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-sm font-medium text-foreground">
-                        {formatDate(batch.createdAt)}
-                        {batch.note ? ` · ${batch.note}` : ""}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {batch.recipients.length} recipient
-                        {batch.recipients.length === 1 ? "" : "s"}
-                      </p>
-                    </div>
-                    <ul className="mt-2 space-y-2">
-                      {batch.recipients.map((recipient) => (
-                        <li
-                          key={recipient.id}
-                          className="flex flex-wrap items-center justify-between gap-2 text-sm"
-                        >
-                          <span className="text-foreground">
-                            {recipient.countryCode} {recipient.phone}
-                            <span className="ml-2 text-xs text-muted-foreground">
-                              {recipient.dispatchStatus}
-                              {recipient.deliveryStatus
-                                ? ` · ${recipient.deliveryStatus}`
-                                : ""}
-                            </span>
-                          </span>
-                          {recipient.dispatchStatus === "FAILED" ? (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              disabled={resendBusyId === recipient.id}
-                              onClick={() =>
-                                void handleResendRecipient(
-                                  batch.id,
-                                  recipient.id,
-                                )
-                              }
-                            >
-                              {resendBusyId === recipient.id
-                                ? "Resending…"
-                                : "Resend"}
-                            </Button>
-                          ) : null}
-                        </li>
-                      ))}
-                    </ul>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Panel>
-
-          <Panel className="mt-4 space-y-4 p-5">
             <div>
               <h2 className="text-base font-semibold text-foreground">
                 Profile fields on this card
@@ -1096,107 +824,6 @@ export default function CardDetailPage() {
         />
       ) : null}
 
-      {whatsappShareOpen && card ? (
-        <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4">
-          <button
-            type="button"
-            aria-label="Close WhatsApp share"
-            className="absolute inset-0 bg-foreground/40 backdrop-blur-sm"
-            onClick={() => setWhatsappShareOpen(false)}
-          />
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label="Share card on WhatsApp"
-            className="relative z-10 max-h-[85vh] w-full max-w-md space-y-4 overflow-y-auto overscroll-contain rounded-t-xl border border-border bg-surface p-5 sm:max-h-[calc(100vh-2rem)] sm:rounded-xl"
-          >
-            <div>
-              <h2 className="text-base font-semibold text-foreground">
-                Share via WhatsApp
-              </h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Sends an approved WhatsApp template, then the contact file when
-                the recipient taps Get Contact.
-              </p>
-            </div>
-            <div className="flex flex-col gap-2 text-sm font-medium">
-              <span id="share-contacts-label">Contacts</span>
-              <MultiSelect
-                aria-labelledby="share-contacts-label"
-                options={shareContactOptions}
-                value={selectedShareContactIds}
-                onValueChange={setSelectedShareContactIds}
-                placeholder="Select imported contacts"
-                searchPlaceholder="Search contacts"
-                loadingMessage="Loading contacts…"
-                emptyMessage={
-                  shareContactsError
-                    ? "Contacts could not be loaded"
-                    : "No imported contacts with a phone number"
-                }
-                isLoading={isLoadingShareContacts}
-                disabled={isSharingWhatsapp}
-                maxSelected={MAX_SHARE_RECIPIENTS}
-              />
-              {shareContactsError ? (
-                <p className="text-xs font-normal text-destructive">
-                  {shareContactsError}
-                </p>
-              ) : (
-                <p className="text-xs font-normal text-muted-foreground">
-                  Numbers come from your imported vCard contacts.
-                </p>
-              )}
-            </div>
-            <label className="flex flex-col gap-2 text-sm font-medium">
-              <span>Country code for numbers saved without one</span>
-              <select
-                className="flex h-10 w-full rounded-md border border-border bg-surface px-3 text-sm"
-                value={shareCountryCode}
-                onChange={(event) => setShareCountryCode(event.target.value)}
-                disabled={isSharingWhatsapp}
-              >
-                {DIAL_COUNTRIES.map((country) => (
-                  <option key={`${country.iso2}-${country.dial}`} value={country.dial}>
-                    {country.name} ({country.dial})
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-2 text-sm font-medium">
-              <span>Note (optional)</span>
-              <Input
-                maxLength={300}
-                placeholder="Great meeting you!"
-                value={shareNote}
-                onChange={(event) => setShareNote(event.target.value)}
-                disabled={isSharingWhatsapp}
-              />
-            </label>
-            <div className="flex gap-3 pt-1">
-              <Button
-                type="button"
-                variant="outline"
-                className="flex-1"
-                disabled={isSharingWhatsapp}
-                onClick={() => setWhatsappShareOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                className="flex-1"
-                disabled={
-                  isSharingWhatsapp || selectedShareContactIds.length === 0
-                }
-                onClick={() => void handleWhatsappShare()}
-              >
-                {isSharingWhatsapp ? "Sending…" : "Send"}
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </AppShell>
   );
 }

@@ -7,6 +7,7 @@ import { ProtectedRoute } from "@/components/protected-route";
 const AuthPage = lazy(() => import("@/pages/auth-page"));
 const AuthCallbackPage = lazy(() => import("@/pages/auth-callback-page"));
 const AboutPage = lazy(() => import("@/pages/about-page"));
+const CardBuilderPage = lazy(() => import("@/pages/card-builder-page"));
 const CardDetailPage = lazy(() => import("@/pages/card-detail-page"));
 const CardsPage = lazy(() => import("@/pages/cards-page"));
 const ContactDetailPage = lazy(() => import("@/pages/contact-detail-page"));
@@ -16,12 +17,10 @@ const DashboardPage = lazy(() => import("@/pages/dashboard-page"));
 const ImportPage = lazy(() => import("@/pages/import-page"));
 const LandingPage = lazy(() => import("@/pages/landing-page"));
 const PrivacyPage = lazy(() => import("@/pages/privacy-page"));
+const PublicCardPage = lazy(() => import("@/pages/public-card-page"));
 const ProfilePage = lazy(() => import("@/pages/profile-page"));
 const TermsPage = lazy(() => import("@/pages/terms-page"));
 const ThemePreviewPage = lazy(() => import("@/pages/theme-preview-page"));
-const WhatsappTemplatesPage = lazy(
-  () => import("@/pages/whatsapp-templates-page"),
-);
 const ConnectionsPage = lazy(() => import("@/pages/connections-page"));
 
 function pageTitleForPath(pathname: string) {
@@ -58,6 +57,9 @@ function pageTitleForPath(pathname: string) {
   if (pathname === "/dashboard/cards") {
     return "My Cards | ContactBook";
   }
+  if (pathname.startsWith("/dashboard/cards/") && pathname.endsWith("/edit")) {
+    return "Edit Card | ContactBook";
+  }
   if (pathname.startsWith("/dashboard/cards/")) {
     return "Card Details | ContactBook";
   }
@@ -69,9 +71,6 @@ function pageTitleForPath(pathname: string) {
   }
   if (pathname === "/dashboard/import") {
     return "Import Contacts | ContactBook";
-  }
-  if (pathname === "/dashboard/whatsapp-templates") {
-    return "WhatsApp Templates | ContactBook";
   }
   if (pathname === "/dashboard/connections") {
     return "Connections | ContactBook";
@@ -125,6 +124,11 @@ export default function App() {
           <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/terms" element={<TermsPage />} />
           <Route path="/auth" element={<AuthPage />} />
+
+          {/* Public shared card. Deliberately outside <Protected> — this is
+              the one route strangers reach, and it must never redirect to
+              login. Declared above the catch-all for the same reason. */}
+          <Route path="/c/:slug" element={<PublicCardPage />} />
           <Route path="/auth/callback" element={<AuthCallbackPage />} />
 
           <Route
@@ -184,6 +188,14 @@ export default function App() {
             }
           />
           <Route
+            path="/dashboard/cards/:cardId/edit"
+            element={
+              <Protected>
+                <CardBuilderPage />
+              </Protected>
+            }
+          />
+          <Route
             path="/dashboard/cards/:cardId"
             element={
               <Protected>
@@ -212,14 +224,6 @@ export default function App() {
             element={
               <Protected>
                 <ImportPage />
-              </Protected>
-            }
-          />
-          <Route
-            path="/dashboard/whatsapp-templates"
-            element={
-              <Protected>
-                <WhatsappTemplatesPage />
               </Protected>
             }
           />

@@ -1,15 +1,22 @@
 import { NestFactory } from "@nestjs/core";
 import { ValidationPipe, VersioningType } from "@nestjs/common";
+import type { NestExpressApplication } from "@nestjs/platform-express";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import { AppModule } from "./app.module";
 import { GcpJsonLogger } from "./common/logger/gcp-json-logger.service";
 
 async function bootstrap(): Promise<void> {
   const logger = new GcpJsonLogger();
-  const app = await NestFactory.create(AppModule, {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     rawBody: true,
     logger,
   });
+
+  // Published card snapshots inline the profile photo as a data URL, which
+  // Express's 100kb JSON default rejects outright. Raising the ceiling only
+  // permits larger bodies; parsing semantics (and rawBody capture for the
+  // Twilio webhooks) are unchanged.
+  app.useBodyParser("json", { limit: "2mb" });
 
   const allowedOrigins = (
     process.env.CORS_ORIGIN ??

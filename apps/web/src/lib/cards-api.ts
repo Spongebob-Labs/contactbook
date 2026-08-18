@@ -5,6 +5,7 @@ import {
   setCardPresentation,
   type CardPresentation,
 } from "@/lib/card-presentation";
+import type { CardSnapshot } from "@/lib/card-schema";
 import type {
   ContactCard,
   ContactCardFields,
@@ -21,6 +22,10 @@ export type ApiContactCard = {
   isSensitive?: boolean;
   createdAt: string;
   updatedAt: string;
+  slug?: string | null;
+  publishedAt?: string | null;
+  /** Detail endpoint only; the list endpoint omits it. */
+  publishedSnapshot?: unknown;
 };
 
 export type CardFieldMapping = {
@@ -59,6 +64,11 @@ function mergeCard(
     updatedAt: apiCard.updatedAt,
     ...(apiCard.isSensitive !== undefined
       ? { isSensitive: apiCard.isSensitive }
+      : {}),
+    slug: apiCard.slug ?? null,
+    publishedAt: apiCard.publishedAt ?? null,
+    ...(apiCard.publishedSnapshot !== undefined
+      ? { publishedSnapshot: apiCard.publishedSnapshot }
       : {}),
     ...(local?.fields ? { fields: local.fields } : {}),
     ...(local?.theme ? { theme: local.theme } : {}),
@@ -206,40 +216,6 @@ export type CardVcardAsset = {
   contentHash: string;
 };
 
-export type CardShareRecipientInput = {
-  countryCode: string;
-  phone: string;
-  /** Links the recipient to one of the user's synced contacts, when picked from the contact list. */
-  contactId?: string;
-};
-
-export type CardShareRecipient = {
-  id: string;
-  countryCode: string;
-  phone: string;
-  dispatchStatus: "PENDING" | "DISPATCHED" | "FAILED" | string;
-  deliveryStatus?: "SENT" | "DELIVERED" | "READ" | "FAILED" | string | null;
-  sentAt?: string | null;
-  vcfSentAt?: string | null;
-  vcfMessageSid?: string | null;
-};
-
-export type CardShareBatch = {
-  id: string;
-  cardId: string;
-  cardName?: string;
-  note?: string | null;
-  createdAt: string;
-  recipients: CardShareRecipient[];
-};
-
-export type CardShareListResponse = {
-  batches: CardShareBatch[];
-  total: number;
-  page: number;
-  limit: number;
-};
-
 export async function generateCardVcard(
   cardId: string,
   fieldTypes?: string[],
@@ -250,54 +226,59 @@ export async function generateCardVcard(
   });
 }
 
-export async function shareCardBatch(
+/** A card plus its publish state. `slug` is null until the first publish. */
+export type ApiPublishedCard = ApiContactCard & {
+  slug: string | null;
+  publishedAt: string | null;
+};
+
+/** What `GET /v1/public/cards/:slug` returns — snapshot only, no owner data. */
+export type PublicCardResponse = {
+  slug: string;
+  /** Unvalidated on the wire; run it through `parseCardSnapshot` before use. */
+  snapshot: unknown;
+  publishedAt: string | null;
+};
+
+/**
+ * Publish or re-publish. Idempotent: the slug is minted once and then reused,
+ * so a card's public URL never moves once it has been shared.
+ */
+export async function publishCard(
   cardId: string,
-  input: {
-    recipients: CardShareRecipientInput[];
-    note?: string;
-    templateKey?: string;
-    fieldTypes?: string[];
-  },
-): Promise<CardShareBatch> {
-  return apiFetch<CardShareBatch>(`/v1/cards/${cardId}/share`, {
-    method: "POST",
-    body: {
-      recipients: input.recipients,
-      ...(input.note?.trim() ? { note: input.note.trim() } : {}),
-      ...(input.templateKey ? { templateKey: input.templateKey } : {}),
-      ...(input.fieldTypes?.length ? { fieldTypes: input.fieldTypes } : {}),
-    },
+  snapshot: CardSnapshot,
+): Promise<ApiPublishedCard> {
+  return apiFetch<ApiPublishedCard>(`/v1/cards/${cardId}/publish`, {
+    method: "PUT",
+    body: { snapshot },
   });
 }
 
-export async function listCardShares(
+/** Take the card offline. The slug stays reserved for a later republish. */
+export async function unpublishCard(
   cardId: string,
-  query: { page?: number; limit?: number } = {},
-): Promise<CardShareListResponse> {
-  // Live API validates `page >= 1` (1-indexed), not 0-indexed.
-  const page = Math.max(1, query.page ?? 1);
-  const limit = Math.max(1, query.limit ?? 20);
-  const params = new URLSearchParams({
-    page: String(page),
-    limit: String(limit),
+): Promise<ApiPublishedCard> {
+  return apiFetch<ApiPublishedCard>(`/v1/cards/${cardId}/publish`, {
+    method: "DELETE",
   });
-  return apiFetch<CardShareListResponse>(
-    `/v1/cards/${cardId}/shares?${params.toString()}`,
+}
+
+/**
+ * Unauthenticated read for the public card page.
+ *
+ * `retry: false` because a stranger has no session to refresh — a 404 here is
+ * a real answer (unknown or unpublished slug), not an expired token.
+ */
+export async function fetchPublicCard(
+  slug: string,
+): Promise<PublicCardResponse> {
+  return apiFetch<PublicCardResponse>(
+    `/v1/public/cards/${encodeURIComponent(slug)}`,
+    { retry: false },
   );
 }
 
-export async function getCardShareBatch(
-  batchId: string,
-): Promise<CardShareBatch> {
-  return apiFetch<CardShareBatch>(`/v1/card-shares/${batchId}`);
-}
-
-export async function resendCardShareRecipient(
-  batchId: string,
-  recipientId: string,
-): Promise<CardShareRecipient> {
-  return apiFetch<CardShareRecipient>(
-    `/v1/card-shares/${batchId}/recipients/${recipientId}/resend`,
-    { method: "POST" },
-  );
+/** The URL that goes on a QR code and inside a Wallet pass barcode. */
+export function cardShareUrl(slug: string): string {
+  return `${window.location.origin}/c/${slug}`;
 }

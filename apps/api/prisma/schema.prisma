@@ -248,6 +248,15 @@ model ContactCard {
   type        CardType       @default(CUSTOM)
   isSensitive Boolean        @default(false)
 
+  /// Public share slug, e.g. "vansh-work-k7Qm". Minted on first publish and
+  /// kept reserved after unpublish so republishing restores the same URL.
+  slug String? @unique
+  /// Whole published card as one frontend-owned versioned JSON blob.
+  /// NULL means the card is not currently public.
+  publishedSnapshot Json?
+  /// When the current snapshot went public. NULL whenever publishedSnapshot is.
+  publishedAt DateTime?
+
   fieldMappings CardFieldMapping[]
   requesterSharedConnections Connection[] @relation("RequesterSharedCard")
   receiverSharedConnections  Connection[] @relation("ReceiverSharedCard")

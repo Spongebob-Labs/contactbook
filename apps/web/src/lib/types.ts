@@ -117,6 +117,16 @@ export type ContactCard = {
   template?: ContactCardTemplate;
   /** Profile field UUIDs mapped on the server when available. */
   mappedFieldIds?: string[];
+  /** Public share slug; null until the card has been published once. */
+  slug?: string | null;
+  /** When the live snapshot was published; null while unpublished. */
+  publishedAt?: string | null;
+  /**
+   * The live published snapshot. Only present on `GET /cards/:id` — the list
+   * endpoint omits it so a page of cards does not ship a photo each.
+   * Run it through `parseCardSnapshot` before use.
+   */
+  publishedSnapshot?: unknown;
 };
 
 export type ContactImportSummary = {

@@ -7,6 +7,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   UseGuards,
   UseFilters,
 } from "@nestjs/common";
@@ -23,6 +24,7 @@ import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { CardService } from "./card.service";
 import { AddCardFieldMappingDto } from "./dto/add-card-field-mapping.dto";
 import { CreateContactCardDto } from "./dto/create-contact-card.dto";
+import { PublishCardDto } from "./dto/publish-card.dto";
 import { UpdateContactCardDto } from "./dto/update-contact-card.dto";
 import { ApiExceptionFilter } from "../common/filters/api-exception.filter";
 
@@ -206,5 +208,54 @@ export class CardController {
   ): Promise<{ ok: true }> {
     await this.cards.removeMapping(user.sub, cardId, fieldId);
     return { ok: true };
+  }
+
+  @Put(":cardId/publish")
+  @ApiOperation({
+    summary: "Publish this card to its public link",
+    description:
+      "Idempotent. Mints the slug on first publish and reuses it forever after, so links and Wallet passes already distributed keep resolving.",
+  })
+  @ApiOkResponse({
+    description: "Card published",
+    schema: {
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        slug: { type: "string", example: "vansh-work-k7qm9x2r" },
+        publishedAt: { type: "string", format: "date-time" },
+      },
+    },
+  })
+  publish(
+    @CurrentUser() user: JwtUserPayload,
+    @Param("cardId", ParseUUIDPipe) cardId: string,
+    @Body() dto: PublishCardDto,
+  ) {
+    return this.cards.publishCard(user.sub, cardId, dto.snapshot);
+  }
+
+  @Delete(":cardId/publish")
+  @ApiOperation({
+    summary: "Take this card offline",
+    description:
+      "The slug stays reserved, so re-publishing restores the same public URL.",
+  })
+  @ApiOkResponse({
+    description: "Card unpublished; slug retained",
+    schema: {
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        slug: { type: "string", nullable: true },
+        publishedAt: { type: "string", format: "date-time", nullable: true },
+      },
+    },
+  })
+  unpublish(
+    @CurrentUser() user: JwtUserPayload,
+    @Param("cardId", ParseUUIDPipe) cardId: string,
+  ) {
+    return this.cards.unpublishCard(user.sub, cardId);
   }
 }

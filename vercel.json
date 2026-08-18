@@ -5,6 +5,21 @@
   "framework": "vite",
   "rewrites": [
     {
+      "source": "/c/:slug/manifest.webmanifest",
+      "destination": "/api/card-manifest?slug=:slug"
+    },
+    {
+      "source": "/c/:slug",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(facebookexternalhit|WhatsApp|Twitterbot|Slackbot|LinkedInBot|TelegramBot|Discordbot|Pinterest|redditbot|Applebot|SkypeUriPreview|vkShare|W3C_Validator|Iframely|Embedly|bingbot|Googlebot).*"
+        }
+      ],
+      "destination": "/api/card-og?slug=:slug"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

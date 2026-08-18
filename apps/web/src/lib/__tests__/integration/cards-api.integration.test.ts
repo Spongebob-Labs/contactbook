@@ -4,12 +4,8 @@ import {
   deleteCard,
   generateCardVcard,
   getCard,
-  getCardShareBatch,
   listCardFieldMappings,
-  listCardShares,
   listCards,
-  resendCardShareRecipient,
-  shareCardBatch,
   updateCard,
 } from "@/lib/cards-api";
 import { clearGetCache } from "@/lib/api";
@@ -62,7 +58,7 @@ describe("cards-api integration", () => {
     expect(calls[0]?.body).toEqual({ name: "Personal", type: "CUSTOM" });
   });
 
-  it("updates, deletes, mappings, vcard, share flows", async () => {
+  it("updates, deletes, mappings, and vcard flows", async () => {
     const { calls } = mockFetchSequence([
       { status: 200, body: apiCard },
       { status: 200, body: { ok: true } },
@@ -76,64 +72,19 @@ describe("cards-api integration", () => {
           contentHash: "h",
         },
       },
-      {
-        status: 200,
-        body: {
-          id: "batch-1",
-          cardId: "card-1",
-          createdAt: "t",
-          recipients: [],
-        },
-      },
-      {
-        status: 200,
-        body: { batches: [], total: 0, page: 1, limit: 20 },
-      },
-      {
-        status: 200,
-        body: {
-          id: "batch-1",
-          cardId: "card-1",
-          createdAt: "t",
-          recipients: [],
-        },
-      },
-      {
-        status: 200,
-        body: {
-          id: "r1",
-          countryCode: "+91",
-          phone: "999",
-          dispatchStatus: "PENDING",
-        },
-      },
     ]);
 
     await updateCard("card-1", { name: "New" });
     await deleteCard("card-1");
     await listCardFieldMappings("card-1");
     await generateCardVcard("card-1", ["EMAIL"]);
-    await shareCardBatch("card-1", {
-      recipients: [{ countryCode: "+91", phone: "9999999999" }],
-      note: " hi ",
-    });
-    await listCardShares("card-1", { page: 0, limit: 20 });
-    await getCardShareBatch("batch-1");
-    await resendCardShareRecipient("batch-1", "r1");
 
     expect(calls[0]?.method).toBe("PATCH");
     expect(calls[1]?.method).toBe("DELETE");
+    expect(pathFromUrl(calls[2]?.url ?? "")).toBe(
+      "/api/v1/cards/card-1/field-mappings",
+    );
     expect(pathFromUrl(calls[3]?.url ?? "")).toBe("/api/v1/cards/card-1/vcard");
     expect(calls[3]?.body).toEqual({ fieldTypes: ["EMAIL"] });
-    expect(pathFromUrl(calls[4]?.url ?? "")).toBe("/api/v1/cards/card-1/share");
-    expect(calls[4]?.body).toMatchObject({
-      recipients: [{ countryCode: "+91", phone: "9999999999" }],
-      note: "hi",
-    });
-    expect(pathFromUrl(calls[5]?.url ?? "")).toContain("page=1");
-    expect(pathFromUrl(calls[6]?.url ?? "")).toBe("/api/v1/card-shares/batch-1");
-    expect(pathFromUrl(calls[7]?.url ?? "")).toBe(
-      "/api/v1/card-shares/batch-1/recipients/r1/resend",
-    );
   });
 });

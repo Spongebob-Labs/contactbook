@@ -51,14 +51,6 @@ export const FRONTEND_API_CONTRACT = {
     detail: { method: "GET", pathPrefix: "/v1/cards/" },
     fieldMappings: { methodSuffix: "/field-mappings" },
     vcard: { method: "POST", pathSuffix: "/vcard" },
-    share: { method: "POST", pathSuffix: "/share" },
-    shares: { method: "GET", pathIncludes: "/shares?" },
-    shareBatch: { method: "GET", pathPrefix: "/v1/card-shares/" },
-    resendRecipient: {
-      method: "POST",
-      pathIncludes: "/recipients/",
-      pathSuffix: "/resend",
-    },
   },
   connections: {
     list: { method: "GET", path: "/v1/connections" },
@@ -68,10 +60,6 @@ export const FRONTEND_API_CONTRACT = {
       pathPrefix: "/v1/connections/requests/",
       pathSuffix: "/resend",
     },
-  },
-  whatsappTemplates: {
-    list: { method: "GET", pathPrefix: "/v1/whatsapp-templates" },
-    create: { method: "POST", path: "/v1/whatsapp-templates" },
   },
 } as const;
 
@@ -96,6 +84,5 @@ export function allContractPaths(): string[] {
     FRONTEND_API_CONTRACT.cards.list.path,
     FRONTEND_API_CONTRACT.connections.list.path,
     FRONTEND_API_CONTRACT.connections.request.path,
-    FRONTEND_API_CONTRACT.whatsappTemplates.create.path,
   ];
 }
