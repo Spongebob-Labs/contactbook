@@ -1,23 +1,21 @@
 packages:
   - "apps/*"
   - "packages/*"
+
 allowBuilds:
-  '@nestjs/core': true
-  '@prisma/engines': true
-  '@scarf/scarf': true
-  bcrypt: true
-  esbuild: true
-  msw: true
-  prisma: true
-  sharp: true
-  unrs-resolver: true
+  '@nestjs/core': set this to true or false
+  '@prisma/client': set this to true or false
+  '@prisma/engines': set this to true or false
+  prisma: set this to true or false
+  sharp: set this to true or false
+  unrs-resolver: set this to true or false
+
 onlyBuiltDependencies:
   - "@nestjs/core"
+  - "@prisma/client"
   - "@prisma/engines"
-  - "@scarf/scarf"
-  - bcrypt
+  - "@tailwindcss/oxide"
   - esbuild
-  - msw
   - prisma
   - sharp
   - unrs-resolver

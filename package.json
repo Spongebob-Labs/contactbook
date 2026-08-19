@@ -3,13 +3,13 @@
   "private": true,
   "scripts": {
     "dev": "pnpm --parallel -r dev",
+    "dev:web": "pnpm --filter web dev",
+    "dev:api": "pnpm --filter api dev",
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
-    "validate:api": "bash scripts/validate-api.sh",
-    "migrate:api": "bash scripts/migrate-api.sh",
-    "migrate:api:dev": "bash scripts/migrate-api.sh --dev",
-    "test:web": "pnpm -C apps/web test",
-    "test:web:live": "pnpm -C apps/web test:live"
+    "test": "pnpm -r test",
+    "prisma:generate": "pnpm --filter api prisma:generate",
+    "prisma:migrate": "pnpm --filter api prisma:migrate"
   },
   "engines": {
     "node": ">=20",

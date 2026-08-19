@@ -1,30 +1,36 @@
-# API CI on pull requests only (tests). No image push, no deploy.
-#
-# Push to main uses deploy.yml (test → build → push to Docker Hub → deploy to VM).
-#
-# ESLint is not run in CI; run ./scripts/validate-api.sh locally before pushing.
-#
-# Env for tests is rendered from individual GitHub secrets (secrets: inherit).
-
 name: CI
 
 on:
+  push:
+    branches: [main, rebuild-nextjs-nestjs]
   pull_request:
-    branches: [main, dev]
-    paths:
-      - ".github/workflows/ci.yml"
-      - ".github/workflows/deploy.yml"
-      - ".github/workflows/api-test.yml"
-      - "pnpm-lock.yaml"
-      - "pnpm-workspace.yaml"
-      - "package.json"
-      - "apps/api/**"
-      - "packages/**"
-      - "scripts/**"
 
 jobs:
-  test:
-    uses: ./.github/workflows/api-test.yml
-    secrets: inherit
-    with:
-      fetch_depth: 1
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter api prisma:generate
+
+      - name: Lint
+        run: pnpm -r lint
+
+      - name: Build
+        run: pnpm -r build
+
+      - name: Test
+        run: pnpm -r test
