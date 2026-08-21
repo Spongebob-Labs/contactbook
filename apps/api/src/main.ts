@@ -1,5 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, VersioningType } from '@nestjs/common';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
@@ -37,6 +38,33 @@ async function bootstrap() {
 
   app.enableShutdownHooks();
 
+  if (config.swaggerEnabled) {
+    const document = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder()
+        .setTitle('ContactBook API')
+        .setDescription(
+          'Every error response uses one envelope: {statusCode, code, message, requestId, details?}. ' +
+            'Branch on `code`, not on `message` — see docs/architecture/lld.md §3.',
+        )
+        .setVersion('1.0')
+        .addBearerAuth(
+          { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
+          'access-token',
+        )
+        .addCookieAuth('cb_access_token', {
+          type: 'apiKey',
+          in: 'cookie',
+          description:
+            'Set automatically by POST /auth/otp/verify. This is how the browser dashboard authenticates.',
+        })
+        .build(),
+    );
+    // Nest also serves the raw document at `${path}-json` automatically —
+    // useful for generating a typed client.
+    SwaggerModule.setup('api/docs', app, document);
+  }
+
   await app.listen(config.port, '0.0.0.0');
 
   logger.info('app.started', {
@@ -44,6 +72,7 @@ async function bootstrap() {
     env: config.appEnv,
     nodeEnv: config.nodeEnv,
     taskTransport: config.tasks.transport,
+    swaggerEnabled: config.swaggerEnabled,
   });
 }
 

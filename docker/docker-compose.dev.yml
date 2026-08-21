@@ -1,0 +1,35 @@
+# Local development database only. The API runs on the host via `pnpm dev:api`.
+#
+#   docker compose -f docker/docker-compose.dev.yml up -d
+#   docker compose -f docker/docker-compose.dev.yml down       # keeps data
+#   docker compose -f docker/docker-compose.dev.yml down -v    # DESTROYS data
+#
+# Credentials here are deliberately weak and deliberately committed: this
+# database is bound to 127.0.0.1 and holds nothing but seed data.
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: contactbook-dev-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: contactbook
+      POSTGRES_PASSWORD: localdev
+      POSTGRES_DB: contactbook
+      # Deterministic collation so index behaviour matches production.
+      POSTGRES_INITDB_ARGS: "--locale=C --encoding=UTF8"
+    ports:
+      # Bound to loopback, not 0.0.0.0 — otherwise this is reachable from
+      # anything else on your network.
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - contactbook_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U contactbook -d contactbook"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  contactbook_pgdata:
+    name: contactbook_pgdata

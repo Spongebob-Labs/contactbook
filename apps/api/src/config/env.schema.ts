@@ -1,3 +1,4 @@
+import * as dotenv from 'dotenv';
 import { z } from 'zod';
 
 /**
@@ -32,6 +33,10 @@ const base = z.object({
   TWILIO_ACCOUNT_SID: z.string().optional(),
   TWILIO_AUTH_TOKEN: z.string().optional(),
   TWILIO_WHATSAPP_FROM: z.string().optional(),
+  // Approved Content Template SID for the OTP message. Required to actually
+  // send in production; absent locally, the dev-fallback path returns the
+  // code in the API response instead of calling Twilio.
+  TWILIO_OTP_CONTENT_SID: z.string().optional(),
 
   GCP_PROJECT_ID: z.string().optional(),
   GCP_REGION: z.string().default('europe-west2'),
@@ -50,6 +55,21 @@ const base = z.object({
 
   CORS_ORIGIN: z.string().default('http://localhost:3000'),
   SHARE_BASE_URL: z.string().url().default('http://localhost:3000'),
+
+  // Undefined = "use the environment's default": on outside production, off
+  // in it. Publishing full endpoint shapes is a minor info leak with no
+  // upside once real users exist, so production requires an explicit opt-in
+  // rather than inheriting whatever the default happened to be.
+  SWAGGER_ENABLED: z
+    .enum(['true', 'false'])
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v === 'true')),
+
+  // 'none' is required for the cross-site Vercel-web / VM-api split, but
+  // browsers reject SameSite=None without Secure — which breaks plain-http
+  // localhost. Default 'lax' locally, set 'none' in production.
+  AUTH_COOKIE_SAME_SITE: z.enum(['lax', 'none', 'strict']).default('lax'),
+  AUTH_COOKIE_DOMAIN: z.string().optional(),
 
   SENTRY_DSN: z.string().optional(),
 });
@@ -70,6 +90,7 @@ const REQUIRED_IN_PRODUCTION = [
   'TASKS_TARGET_BASE_URL',
   'TASKS_OIDC_AUDIENCE',
   'TASKS_INVOKER_SA',
+  'TWILIO_OTP_CONTENT_SID',
 ] as const;
 
 export const envSchema = base.superRefine((env, ctx) => {
@@ -108,8 +129,31 @@ export const envSchema = base.superRefine((env, ctx) => {
 
 export type Env = z.infer<typeof base>;
 
+/** dotenv gives every declared var a string, so `FOO=` in a .env file is "",
+ *  not absent. Without this, every `.optional()` field in the schema above
+ *  rejects a blank line as an invalid value instead of treating it as unset —
+ *  which is what every .env.example in this repo assumes blank lines mean. */
+function blankToUndefined(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const cleaned: Record<string, string | undefined> = {};
+  for (const [key, value] of Object.entries(source)) {
+    cleaned[key] = value === '' ? undefined : value;
+  }
+  return cleaned;
+}
+
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
-  const parsed = envSchema.safeParse(source);
+  // Explicit, rather than assumed. Historically @prisma/client's own import
+  // side-effect loaded .env into process.env for free, which is why the app
+  // "just worked" against a real Twilio account with no visible loading step
+  // anywhere in this codebase. Prisma 7 dropped that side effect, which would
+  // have silently broken every deploy the moment that upgrade landed had this
+  // not been made explicit here — the one place env is read.
+  //
+  // `override: false` (the default) never clobbers a var the environment
+  // already set — real deploys inject secrets via GitHub Actions / the shell,
+  // not a committed .env, and those must always win.
+  dotenv.config();
+  const parsed = envSchema.safeParse(blankToUndefined(source));
 
   if (!parsed.success) {
     // Deliberately not a Nest logger call: this runs before DI exists, and the

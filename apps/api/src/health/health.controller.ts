@@ -4,6 +4,7 @@ import {
   HttpCode,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { ApiExcludeController } from '@nestjs/swagger';
 import { PrismaService } from '../prisma/prisma.service';
 
 /**
@@ -12,7 +13,11 @@ import { PrismaService } from '../prisma/prisma.service';
  * The previous implementation had a single /health that returned HTTP 200 with
  * `status: "degraded"` when a dependency was down — so the container healthcheck
  * could never fail on a dependency outage, only on a dead process.
+ *
+ * Excluded from the public doc — this is infra plumbing (the uptime check, the
+ * deploy script's gate) rather than a route any API consumer calls.
  */
+@ApiExcludeController()
 @Controller({ path: 'health', version: '1' })
 export class HealthController {
   constructor(private readonly prisma: PrismaService) {}

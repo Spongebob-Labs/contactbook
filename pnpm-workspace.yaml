@@ -8,11 +8,16 @@ packages:
 # protobufjs (via @google-cloud/tasks -> google-gax) is denied: its postinstall
 # returns immediately unless `versionScheme` is set, and even then only prints
 # advice about ^ vs ~ dependency prefixes. It writes no files and builds nothing.
+#
+# @scarf/scarf (via swagger-ui-dist, pulled in by @nestjs/swagger) is denied:
+# its postinstall pings a telemetry endpoint. Not needed for the UI to work.
 allowBuilds:
   "@nestjs/core": true
   "@prisma/client": true
   "@prisma/engines": true
+  "@scarf/scarf": false
   "@tailwindcss/oxide": true
+  bcrypt: true
   esbuild: true
   prisma: true
   protobufjs: false
