@@ -58,6 +58,13 @@ production concurrency.
 `ProfileField.value` is the user's actual contact data. Log field ids and labels; never values.
 Phone numbers go through `maskPhone()`.
 
+**6. Financial field values are encrypted at rest.**
+`BANK_ACCOUNT`, `DIGITAL_WALLET`, `CRYPTO_WALLET` — AES-256-GCM via
+`src/crypto/field-encryption.util.ts`, AAD bound to `userId:fieldId:type` so a ciphertext
+copied onto a different row fails to decrypt instead of silently succeeding. `type` is
+immutable after a field is created for exactly this reason — changing it would strand a value
+under the wrong encryption treatment.
+
 ## Conventions
 
 - NestJS modules are domain-shaped (`sharing/`, `broadcast/`, `recipients/`), not layer-shaped.

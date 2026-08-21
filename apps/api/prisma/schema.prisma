@@ -31,6 +31,7 @@ model User {
   updatedAt   DateTime @updatedAt
 
   refreshTokens RefreshToken[]
+  profileFields ProfileField[]
 
   @@map("users")
 }
@@ -69,6 +70,86 @@ model RefreshToken {
   @@index([userId, revokedAt])
   @@index([familyId])
   @@map("refresh_tokens")
+}
+
+// ==========================================
+// PROFILE
+// ==========================================
+
+/// Groups fields for display — which section of the profile editor a field
+/// sits in. Orthogonal to FieldType: a CUSTOM-typed field can belong to any
+/// category, and a PHONE-typed field is usually PERSONAL or WORK depending on
+/// which number it is.
+enum FieldCategory {
+  IDENTITY
+  PERSONAL
+  WORK
+  BUSINESS
+  SOCIAL
+  FINANCIAL
+  CUSTOM
+}
+
+/// What KIND of data the field holds — governs input validation on the client
+/// and, for the three financial types, whether the value is encrypted at rest.
+enum FieldType {
+  PHONE
+  LANDLINE
+  FAX
+  EMAIL
+  ADDRESS
+  URL
+  SOCIAL_LINK
+  PHOTO
+  TEXT
+  DATE
+  JOB_TITLE
+  COMPANY
+  REG_NUMBER
+  DEPARTMENT
+  RELATION
+  STATUS
+  LOCATION_TRACKING
+  BANK_ACCOUNT
+  DIGITAL_WALLET
+  CRYPTO_WALLET
+  CUSTOM
+}
+
+/// A single entry in a user's profile. There is no fixed "Profile" row with
+/// nullable columns for phone/email/etc — a user's profile IS this list, and
+/// every field on it is optional by construction: it either exists or it
+/// doesn't, rather than existing-but-empty. This is also what makes cards
+/// possible later: a Card is just a chosen subset of a user's ProfileFields.
+///
+/// PHOTO is a field type like any other, but its value can only be set via
+/// the upload endpoint (POST /profile/photo) — the value is a GCS object URL,
+/// never a client-supplied string, since there is no meaningful "type a photo
+/// URL yourself" path we want to support.
+model ProfileField {
+  id          String        @id @default(uuid())
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category    FieldCategory
+  type        FieldType
+  label       String
+  /// Encrypted at rest (AES-256-GCM, AAD bound to userId+fieldId+type) when
+  /// `type` is BANK_ACCOUNT, DIGITAL_WALLET, or CRYPTO_WALLET. See
+  /// src/crypto/field-encryption.util.ts. Never logged at any level — the
+  /// logger's redact() drops any key literally named `value`.
+  value       String
+  isEncrypted Boolean       @default(false)
+  position    Int           @default(0)
+  /// Soft delete. An archived field vanishes from the live profile and from
+  /// any card that included it, but is never hard-deleted — a card's
+  /// historical "what did I share" record should survive the source field
+  /// being removed.
+  archivedAt  DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([userId, archivedAt, position])
+  @@map("profile_fields")
 }
 
 // ==========================================

@@ -24,6 +24,7 @@ import { VerifyOtpDto } from './dto/verify-otp.dto';
 import {
   MeResponseDto,
   OkResponseDto,
+  RefreshResponseDto,
   RequestOtpResponseDto,
   VerifyOtpResponseDto,
 } from './dto/auth-responses.dto';
@@ -80,7 +81,9 @@ export class AuthController {
     description:
       'Creates the User on first-ever verification for a phone number (passwordless signup ' +
       'and login are the same operation). On success, sets httpOnly cb_access_token and ' +
-      'cb_refresh_token cookies — the access JWT is never returned in the response body.',
+      'cb_refresh_token cookies AND returns the access token in the body — every endpoint ' +
+      'accepts either the cookie or an Authorization: Bearer header, so a non-browser client ' +
+      'can authenticate purely off this response with no cookie jar at all.',
   })
   @ApiResponse({ status: 200, type: VerifyOtpResponseDto })
   @ApiResponse({
@@ -102,7 +105,7 @@ export class AuthController {
     const { userId } = await this.otp.verify(dto.phoneE164, dto.code);
     const issued = await this.tokens.issueForUser(userId, dto.phoneE164);
     setAuthCookies(res, this.config, issued);
-    return { userId };
+    return { userId, accessToken: issued.accessToken };
   }
 
   @Post('refresh')
@@ -113,9 +116,10 @@ export class AuthController {
       'Body is optional and normally omitted — the refresh token is read from the ' +
       'cb_refresh_token cookie. Reusing an already-rotated token revokes the whole token ' +
       'family (REFRESH_REUSE_DETECTED), not just the presented token — this is the reuse-of-a-' +
-      'stolen-token detection.',
+      'stolen-token detection. Returns a fresh access token in the body, same as ' +
+      '/auth/otp/verify.',
   })
-  @ApiResponse({ status: 200, type: OkResponseDto })
+  @ApiResponse({ status: 200, type: RefreshResponseDto })
   @ApiResponse({
     status: 403,
     type: ApiErrorResponseDto,
@@ -137,7 +141,7 @@ export class AuthController {
     }
     const issued = await this.tokens.rotate(presented);
     setAuthCookies(res, this.config, issued);
-    return { ok: true };
+    return { accessToken: issued.accessToken };
   }
 
   @Post('logout')

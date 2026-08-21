@@ -18,6 +18,7 @@ const PROD_BASE = {
   TASKS_OIDC_AUDIENCE: 'https://api.example.com',
   TASKS_INVOKER_SA: 'invoker@p.iam.gserviceaccount.com',
   TWILIO_OTP_CONTENT_SID: 'HX' + '0'.repeat(32),
+  GCS_PROFILE_PHOTOS_BUCKET: 'contactbook-profile-photos',
 };
 
 describe('envSchema', () => {

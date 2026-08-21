@@ -14,7 +14,14 @@ import { ApiError } from '../common/errors/api-error';
   imports: [JwtModule.register({}), MessagingModule],
   controllers: [AuthController],
   providers: [OtpService, TokenService, JwtAuthGuard],
-  exports: [JwtAuthGuard],
+  // JwtModule is re-exported alongside the guard: JwtAuthGuard's own
+  // constructor needs JwtService, and Nest resolves an exported provider's
+  // dependencies from the CONSUMING module's import graph — a module that
+  // imports AuthModule only for the guard (e.g. ProfileModule) would
+  // otherwise fail to satisfy JwtService with "not available in the X
+  // module", since exporting JwtAuthGuard alone doesn't carry its own
+  // dependencies along with it.
+  exports: [JwtModule, JwtAuthGuard],
 })
 export class AuthModule implements OnModuleInit {
   constructor(

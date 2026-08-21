@@ -30,6 +30,8 @@ field removes it immediately.
 4. Every `@Cron` takes a Postgres advisory lock — `@nestjs/schedule` does not prevent a job
    overlapping itself, and a deploy briefly runs two containers.
 5. `ProfileField.value` never appears in logs, diffs, or audit metadata.
+6. `ProfileField.value` for `BANK_ACCOUNT`/`DIGITAL_WALLET`/`CRYPTO_WALLET` is encrypted at
+   rest (AES-256-GCM, AAD bound to `userId:fieldId:type`) — never stored in the clear.
 
 ## Commands
 

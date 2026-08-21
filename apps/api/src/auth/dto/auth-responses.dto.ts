@@ -17,6 +17,27 @@ export class RequestOtpResponseDto {
 export class VerifyOtpResponseDto {
   @ApiProperty({ example: '28dac79d-8053-493f-a81b-9135b8a6966e' })
   userId!: string;
+
+  @ApiProperty({
+    example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+    description:
+      'Same token as the cb_access_token cookie, returned here too so non-browser clients ' +
+      '(mobile apps, scripts, Postman) can use it directly as an Authorization: Bearer header ' +
+      'instead of relying on cookies. 15-minute lifetime. The refresh token is deliberately ' +
+      'NOT included here — it is long-lived (30 days) and stays httpOnly-cookie-only to limit ' +
+      'its exposure to XSS; only the short-lived access token trades that protection for ' +
+      'portability.',
+  })
+  accessToken!: string;
+}
+
+export class RefreshResponseDto {
+  @ApiProperty({
+    example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+    description:
+      'A freshly issued access token — see VerifyOtpResponseDto for why only this one is returned.',
+  })
+  accessToken!: string;
 }
 
 export class OkResponseDto {

@@ -41,6 +41,15 @@ const base = z.object({
   GCP_PROJECT_ID: z.string().optional(),
   GCP_REGION: z.string().default('europe-west2'),
 
+  // Profile photo storage. Uniform bucket-level access with allUsers granted
+  // objectViewer — every uploaded object is public-read by design, since a
+  // profile photo needs to render on public share pages. No signed URLs, no
+  // per-object ACL calls needed.
+  GCS_PROFILE_PHOTOS_BUCKET: z.string().optional(),
+  // Overridable because a bucket can sit behind a CDN/custom domain; defaults
+  // to the bucket's own public URL when unset.
+  GCS_PUBLIC_BASE_URL: z.string().url().optional(),
+
   // 'inline' runs the task handler in-process on the next tick — used by local
   // dev and integration tests so neither needs a public URL or ngrok.
   TASK_TRANSPORT: z.enum(['cloud_tasks', 'inline']).default('inline'),
@@ -91,6 +100,7 @@ const REQUIRED_IN_PRODUCTION = [
   'TASKS_OIDC_AUDIENCE',
   'TASKS_INVOKER_SA',
   'TWILIO_OTP_CONTENT_SID',
+  'GCS_PROFILE_PHOTOS_BUCKET',
 ] as const;
 
 export const envSchema = base.superRefine((env, ctx) => {
