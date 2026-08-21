@@ -3,10 +3,16 @@
 pnpm monorepo. `apps/web` (Next.js 16, App Router) + `apps/api` (NestJS 11, Prisma, Postgres),
 with shared `packages/types` and `packages/utils`.
 
-The tree is currently a bare scaffold. The system being built is documented in
-**[docs/architecture/](docs/architecture/README.md)** — read that before writing feature code.
-The `contactbook-architecture` skill summarises the invariants and points at the right doc for
-a given task.
+Deploys across three vendors: the **`contactbook-server` GCE VM** (Docker + Caddy) with
+**Cloud Tasks** for outbound message dispatch, **Supabase** (Postgres — connect via the
+Supavisor pooler, never directly, except for migrations), and **Vercel** (web). Secrets are
+GitHub Actions secrets rendered to a `.env` on the VM. Terraform in `iac/` manages the small
+GCP surface; the VM is referenced read-only, not imported.
+
+The system being built is documented in `docs/architecture/` (HLD, LLD, messaging reliability,
+observability, IaC, sprint plan). **That directory is gitignored on purpose — it is not in the
+repository.** If it is absent from your clone, the `contactbook-architecture` skill carries the
+committed invariants and conventions; ask the maintainer for the docs themselves.
 
 ## What the product does
 
@@ -21,7 +27,8 @@ field removes it immediately.
 2. The public page and vCard resolve from current data at request time. Never from a snapshot.
 3. Outbound messaging goes through the Postgres outbox, written in the same transaction as the
    domain change. Never call Twilio from a request handler.
-4. No `@Cron` — Cloud Run runs many instances. Scheduled work is an endpoint Cloud Scheduler calls.
+4. Every `@Cron` takes a Postgres advisory lock — `@nestjs/schedule` does not prevent a job
+   overlapping itself, and a deploy briefly runs two containers.
 5. `ProfileField.value` never appears in logs, diffs, or audit metadata.
 
 ## Commands

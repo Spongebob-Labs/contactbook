@@ -1,12 +1,21 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
+import { APP_FILTER } from '@nestjs/core';
+import { AppConfigModule } from './config/config.module';
+import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
+import { AppLogger } from './common/logging/app-logger.service';
+import { LoggingModule } from './common/logging/logging.module';
+import { HealthModule } from './health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true }), PrismaModule],
-  controllers: [AppController],
-  providers: [AppService],
+  imports: [AppConfigModule, LoggingModule, PrismaModule, HealthModule],
+  providers: [
+    {
+      // Exactly one global filter. Not @UseFilters per controller.
+      provide: APP_FILTER,
+      useFactory: (logger: AppLogger) => new AllExceptionsFilter(logger),
+      inject: [AppLogger],
+    },
+  ],
 })
 export class AppModule {}

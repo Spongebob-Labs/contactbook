@@ -1,0 +1,3 @@
+project_id        = "project-c74d38dd-7e12-4d3f-bbf"
+region            = "asia-south1"
+state_bucket_name = "cb-tfstate-c74d38dd"

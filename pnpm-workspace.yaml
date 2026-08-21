@@ -2,20 +2,19 @@ packages:
   - "apps/*"
   - "packages/*"
 
+# pnpm 11 blocks dependency install scripts by default — one can execute arbitrary
+# code on your machine — so each is an explicit true/false decision.
+#
+# protobufjs (via @google-cloud/tasks -> google-gax) is denied: its postinstall
+# returns immediately unless `versionScheme` is set, and even then only prints
+# advice about ^ vs ~ dependency prefixes. It writes no files and builds nothing.
 allowBuilds:
-  '@nestjs/core': set this to true or false
-  '@prisma/client': set this to true or false
-  '@prisma/engines': set this to true or false
-  prisma: set this to true or false
-  sharp: set this to true or false
-  unrs-resolver: set this to true or false
-
-onlyBuiltDependencies:
-  - "@nestjs/core"
-  - "@prisma/client"
-  - "@prisma/engines"
-  - "@tailwindcss/oxide"
-  - esbuild
-  - prisma
-  - sharp
-  - unrs-resolver
+  "@nestjs/core": true
+  "@prisma/client": true
+  "@prisma/engines": true
+  "@tailwindcss/oxide": true
+  esbuild: true
+  prisma: true
+  protobufjs: false
+  sharp: true
+  unrs-resolver: true
