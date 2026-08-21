@@ -6,7 +6,7 @@ description: Architecture reference for ContactBook's dynamic card-sharing syste
 # ContactBook architecture
 
 The design docs live in `docs/architecture/`. Read the one that matches the work rather than
-all five.
+all six.
 
 | Working on… | Read |
 | --- | --- |
@@ -15,6 +15,7 @@ all five.
 | Schema, endpoints, state machines, the resolver | [lld.md](../../../docs/architecture/lld.md) |
 | Sending, retries, webhooks, the outbox, failures | [messaging-reliability.md](../../../docs/architecture/messaging-reliability.md) |
 | Logging, metrics, alerts, the audit log | [observability.md](../../../docs/architecture/observability.md) |
+| GCP resources, Terraform, deploy runbook | [iac.md](../../../docs/architecture/iac.md) |
 | Estimating, scoping, "can we fit X" | [sprint-plan.md](../../../docs/architecture/sprint-plan.md) |
 
 ## The five invariants
@@ -36,9 +37,16 @@ Never call Twilio from a request handler or from inside `$transaction`. Write an
 `OutboxMessage` in the same transaction as the domain change; enqueue the Cloud Task after
 commit, best-effort.
 
-**4. No in-process cron.**
-Cloud Run runs many instances. `@Cron` runs once per instance with no locking. All scheduled
-work is an HTTP endpoint invoked by Cloud Scheduler.
+**4. Every `@Cron` takes a Postgres advisory lock.**
+In-process cron is fine on a single VM, but `@nestjs/schedule` does not prevent a job
+overlapping itself and `docker compose up -d` briefly runs two containers. Wrap each job in
+`pg_try_advisory_lock`, release in `finally`, skip the run if not acquired.
+
+**4b. Postgres is Supabase, reached through the Supavisor pooler.**
+`DATABASE_URL` is the transaction pooler on `:6543` with `pgbouncer=true&connection_limit=1`;
+`DIRECT_URL` is session mode on `:5432` and is used only by `prisma migrate`. Omitting
+`pgbouncer=true` produces `prepared statement already exists` failures that appear only under
+production concurrency.
 
 **5. Field values never reach logs, diffs, or audit metadata.**
 `ProfileField.value` is the user's actual contact data. Log field ids and labels; never values.

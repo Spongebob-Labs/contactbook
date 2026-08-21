@@ -1,0 +1,23 @@
+env            = "prod"
+project_id     = "project-c74d38dd-7e12-4d3f-bbf"
+project_number = "451167332513"
+
+# Confirmed from `gcloud compute instances list`:
+#   contactbook-server  europe-west2-c  RUNNING  34.142.45.208
+# Cloud Tasks region MUST match the VM's region — a deleted queue name cannot be
+# reused for 7 days, so getting this wrong is expensive to undo.
+region  = "europe-west2"
+zone    = "europe-west2-c"
+vm_name = "contactbook-server"
+
+# DNS already resolves here (api.getcontactbook.com -> 34.142.45.208).
+# Cloud Tasks refuses bare IPs and invalid certs, so HTTPS must work before
+# the first dispatch. Port 443 is currently NOT responding — see iac.md §5.3.
+api_base_url = "https://api.getcontactbook.com"
+
+# REQUIRED: a real address. A placeholder creates a notification channel that
+# silently never delivers, which is worse than having no alert at all.
+alert_email = "CHANGE-ME@example.com"
+
+enable_alerts                  = true
+outbound_dispatches_per_second = 10
