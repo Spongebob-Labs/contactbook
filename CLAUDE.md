@@ -9,10 +9,10 @@ Supavisor pooler, never directly, except for migrations), and **Vercel** (web). 
 GitHub Actions secrets rendered to a `.env` on the VM. Terraform in `iac/` manages the small
 GCP surface; the VM is referenced read-only, not imported.
 
-The tree is currently a bare scaffold. The system being built is documented in
-**[docs/architecture/](docs/architecture/README.md)** — read that before writing feature code.
-The `contactbook-architecture` skill summarises the invariants and points at the right doc for
-a given task.
+The system being built is documented in `docs/architecture/` (HLD, LLD, messaging reliability,
+observability, IaC, sprint plan). **That directory is gitignored on purpose — it is not in the
+repository.** If it is absent from your clone, the `contactbook-architecture` skill carries the
+committed invariants and conventions; ask the maintainer for the docs themselves.
 
 ## What the product does
 

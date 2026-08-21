@@ -5,8 +5,14 @@ description: Architecture reference for ContactBook's dynamic card-sharing syste
 
 # ContactBook architecture
 
-The design docs live in `docs/architecture/`. Read the one that matches the work rather than
-all six.
+## Where the detail lives
+
+The design docs are in `docs/architecture/`, which is **deliberately gitignored** — they exist
+on the maintainer's machine, not in the repository. On a fresh clone those files will be absent
+and the table below will not resolve. The invariants and conventions in this file are the
+committed source of truth; treat the docs as the expanded version when they are present.
+
+Read the one that matches the work rather than all six.
 
 | Working on… | Read |
 | --- | --- |
