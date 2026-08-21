@@ -1,4 +1,4 @@
-import { envSchema } from './env.schema';
+import { envSchema, loadEnv } from './env.schema';
 
 const PROD_BASE = {
   NODE_ENV: 'production',
@@ -17,6 +17,7 @@ const PROD_BASE = {
   TASKS_TARGET_BASE_URL: 'https://api.example.com',
   TASKS_OIDC_AUDIENCE: 'https://api.example.com',
   TASKS_INVOKER_SA: 'invoker@p.iam.gserviceaccount.com',
+  TWILIO_OTP_CONTENT_SID: 'HX' + '0'.repeat(32),
 };
 
 describe('envSchema', () => {
@@ -40,6 +41,21 @@ describe('envSchema', () => {
     expect(paths).toEqual(
       expect.arrayContaining(['TWILIO_AUTH_TOKEN', 'GCP_PROJECT_ID']),
     );
+  });
+
+  // Regression: dotenv turns `FOO=` (a blank line) into "", not undefined.
+  // Every .env.example in this repo ships optional vars blank on purpose, and
+  // z.string().url().optional() rejects "" as neither absent nor a valid URL
+  // — loadEnv() must treat a blank string as unset before validating.
+  it('treats blank env values as unset rather than as invalid', () => {
+    const withBlanks = loadEnv({
+      NODE_ENV: 'development',
+      TASKS_TARGET_BASE_URL: '',
+      TASKS_INVOKER_SA: '',
+      DATABASE_URL: '',
+    });
+    expect(withBlanks.TASKS_TARGET_BASE_URL).toBeUndefined();
+    expect(withBlanks.TASKS_INVOKER_SA).toBeUndefined();
   });
 
   // inline transport runs handlers in-process; in production that would drop

@@ -28,6 +28,19 @@ export class AppConfigService {
     return this.env.SHARE_BASE_URL;
   }
 
+  /**
+   * The transaction pooler (:6543), not the direct/session URL. Migrate uses
+   * DIRECT_URL instead, via prisma.config.ts — this getter is only ever
+   * consumed by PrismaService for the running app's own connection pool.
+   */
+  get databaseUrl(): string | undefined {
+    return this.env.DATABASE_URL;
+  }
+
+  get swaggerEnabled(): boolean {
+    return this.env.SWAGGER_ENABLED ?? !this.isProduction;
+  }
+
   get corsOrigins(): string[] {
     return this.env.CORS_ORIGIN.split(',')
       .map((o) => o.trim())
@@ -57,6 +70,17 @@ export class AppConfigService {
       accountSid: this.env.TWILIO_ACCOUNT_SID,
       authToken: this.env.TWILIO_AUTH_TOKEN,
       whatsappFrom: this.env.TWILIO_WHATSAPP_FROM,
+      otpContentSid: this.env.TWILIO_OTP_CONTENT_SID,
+    };
+  }
+
+  get authCookie() {
+    return {
+      sameSite: this.env.AUTH_COOKIE_SAME_SITE,
+      domain: this.env.AUTH_COOKIE_DOMAIN,
+      // SameSite=None is only valid alongside Secure; localhost http breaks
+      // if we force Secure there, so it follows sameSite rather than isProduction.
+      secure: this.env.AUTH_COOKIE_SAME_SITE === 'none',
     };
   }
 

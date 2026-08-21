@@ -6,9 +6,18 @@ import { AppLogger } from './common/logging/app-logger.service';
 import { LoggingModule } from './common/logging/logging.module';
 import { HealthModule } from './health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { OutboxModule } from './outbox/outbox.module';
+import { AuthModule } from './auth/auth.module';
 
 @Module({
-  imports: [AppConfigModule, LoggingModule, PrismaModule, HealthModule],
+  imports: [
+    AppConfigModule,
+    LoggingModule,
+    PrismaModule,
+    OutboxModule,
+    HealthModule,
+    AuthModule,
+  ],
   providers: [
     {
       // Exactly one global filter. Not @UseFilters per controller.

@@ -1,11 +1,159 @@
-// Prisma schema — starting from zero.
-// Define your models below, then run `pnpm --filter api prisma:migrate`.
+// Scope note: this is NOT the full schema from docs/architecture/lld.md yet.
+// It carries only what auth + outbound messaging need (User, OTP, refresh
+// tokens, the outbox, the message ledger). Card/ShareLink/Recipient/Broadcast
+// land when that work starts — see docs/architecture/sprint-plan.md.
 
 generator client {
   provider = "prisma-client-js"
 }
 
+// Prisma 7: no connection URL here. Migrate reads its connection from
+// prisma.config.ts; the running app passes a driver adapter to the
+// PrismaClient constructor (see src/prisma/prisma.service.ts). Both still
+// read DATABASE_URL / DIRECT_URL from the environment — just not from this file.
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+}
+
+// ==========================================
+// AUTH
+// ==========================================
+
+/// Passwordless: verifying an OTP for a phone number that has never been seen
+/// creates the User. displayName is nullable because at that moment we
+/// genuinely don't have one yet — profile setup happens afterward.
+model User {
+  id          String   @id @default(uuid())
+  phoneE164   String   @unique
+  displayName String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  refreshTokens RefreshToken[]
+
+  @@map("users")
+}
+
+/// One row per OTP request. The code itself is never stored — only its bcrypt
+/// hash. `attempts` bounds brute force against a single 6-digit code.
+model OtpChallenge {
+  id         String    @id @default(uuid())
+  phoneE164  String
+  codeHash   String
+  attempts   Int       @default(0)
+  consumedAt DateTime?
+  expiresAt  DateTime
+  createdAt  DateTime  @default(now())
+
+  @@index([phoneE164, expiresAt])
+  @@map("otp_challenges")
+}
+
+/// Rotating refresh tokens. `tokenHash` is SHA-256 (deterministic — looked up
+/// by exact match), unlike the OTP's bcrypt hash which is only ever compared,
+/// never searched by. Reusing an already-rotated token (replacedById set)
+/// revokes the whole family: that pattern is how a stolen refresh token gets
+/// detected after the legitimate client already rotated past it.
+model RefreshToken {
+  id           String    @id @default(uuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash    String    @unique
+  familyId     String
+  replacedById String?
+  revokedAt    DateTime?
+  expiresAt    DateTime
+  createdAt    DateTime  @default(now())
+
+  @@index([userId, revokedAt])
+  @@index([familyId])
+  @@map("refresh_tokens")
+}
+
+// ==========================================
+// OUTBOUND MESSAGING
+// ==========================================
+
+enum OutboxStatus {
+  PENDING
+  CLAIMED
+  SENT
+  DEFERRED // throttled by the provider; availableAt pushed out
+  FAILED // terminal
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum MessagePurpose {
+  OTP
+  // CARD_SHARE, CARD_UPDATE, SCAN_REPLY land with the sharing feature.
+}
+
+enum MessageStatus {
+  PENDING
+  SENT
+  DELIVERED
+  READ
+  UNDELIVERED
+  FAILED
+}
+
+/// Transactional outbox. Written in the SAME transaction as the domain change
+/// (e.g. the OtpChallenge insert), so an enqueue can never be lost — a crash
+/// between commit and task creation just leaves this row PENDING for the
+/// sweeper to pick up later, rather than silently dropping the message.
+///
+/// `payload` briefly holds plaintext the send handler needs (e.g. an OTP code)
+/// that only ever existed as a hash elsewhere. It is scrubbed after a
+/// successful send. This is a deliberate, narrow exception to "never store an
+/// OTP in the clear" — anywhere that reads this row into a log line still
+/// gets it redacted, since `redact()` matches the `code` key regardless of
+/// where it appears.
+model OutboxMessage {
+  id          String       @id @default(uuid())
+  dedupeKey   String       @unique
+  kind        String
+  payload     Json
+  status      OutboxStatus @default(PENDING)
+  attempts    Int          @default(0)
+  availableAt DateTime     @default(now())
+  claimedAt   DateTime?
+  lastError   String?
+  completedAt DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([status, availableAt])
+  @@index([status, claimedAt])
+  @@map("outbox_messages")
+}
+
+/// Canonical send ledger. One row per outbound (or inbound) WhatsApp message.
+model Message {
+  id                String           @id @default(uuid())
+  provider          String           @default("twilio")
+  providerMessageId String?          @unique
+  direction         MessageDirection
+  purpose           MessagePurpose
+  phoneE164         String
+  correlationId     String?
+  status            MessageStatus    @default(PENDING)
+  errorCode         String?
+  errorMessage      String?
+  errorClass        String? // PERMANENT | THROTTLED | TRANSIENT | CONFIG
+  sentAt            DateTime?
+  deliveredAt       DateTime?
+  readAt            DateTime?
+  failedAt          DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  @@index([phoneE164, createdAt(sort: Desc)])
+  @@index([status, createdAt])
+  @@index([correlationId])
+  @@map("messages")
 }

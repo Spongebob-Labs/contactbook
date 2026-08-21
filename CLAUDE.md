@@ -54,6 +54,11 @@ pnpm prisma:generate
 - Log dotted event names (`broadcast.enqueued`) with structured fields, never interpolated
   strings. Phone numbers go through `maskPhone()`.
 - Tests gate merges. `--passWithNoTests` is banned.
+- Every controller method gets Swagger docs: `@ApiOperation` describing behavior (not
+  restating the name), one `@ApiResponse` per distinct status code, referencing the shared
+  `ApiErrorResponseDto` for failures. Every DTO field gets `@ApiProperty` with a realistic
+  `example`. Internal-only routes (`/internal/*`, `/health/*`) get `@ApiExcludeController()`.
+  Served at `/api/docs`; on in dev by default, off in production unless `SWAGGER_ENABLED=true`.
 
 ## History
 

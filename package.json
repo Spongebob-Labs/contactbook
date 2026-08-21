@@ -9,7 +9,11 @@
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
     "prisma:generate": "pnpm --filter api prisma:generate",
-    "prisma:migrate": "pnpm --filter api prisma:migrate"
+    "prisma:migrate": "pnpm --filter api prisma:migrate",
+    "db:up": "docker compose -f docker/docker-compose.dev.yml up -d",
+    "db:down": "docker compose -f docker/docker-compose.dev.yml down",
+    "db:logs": "docker compose -f docker/docker-compose.dev.yml logs -f postgres",
+    "db:psql": "docker exec -it contactbook-dev-db psql -U contactbook -d contactbook"
   },
   "engines": {
     "node": ">=20",
