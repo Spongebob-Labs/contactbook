@@ -24,7 +24,7 @@ Read the one that matches the work rather than all six.
 | GCP resources, Terraform, deploy runbook | [iac.md](../../../docs/architecture/iac.md) |
 | Estimating, scoping, "can we fit X" | [sprint-plan.md](../../../docs/architecture/sprint-plan.md) |
 
-## The five invariants
+## The invariants
 
 Violating any of these breaks the product's core promise. Check them in every review.
 
@@ -64,6 +64,14 @@ Phone numbers go through `maskPhone()`.
 copied onto a different row fails to decrypt instead of silently succeeding. `type` is
 immutable after a field is created for exactly this reason — changing it would strand a value
 under the wrong encryption treatment.
+
+**7. `phoneE164` is never a writable profile input, and onboarding is one-shot.**
+It is the OTP-verified identity, not data the owner types in — no DTO (onboarding, profile
+field, or otherwise) accepts it, and `ValidationPipe`'s `forbidNonWhitelisted` is what actually
+enforces that at the API boundary, not just convention. `POST /profile/onboarding` is gated by
+`User.profileOnboardingCompletedAt`: it runs once and returns `409 ONBOARDING_ALREADY_COMPLETED`
+on replay. Later edits — adding a business, a bank account, a phone number — go through the
+field and group endpoints, never by resubmitting onboarding.
 
 ## Conventions
 

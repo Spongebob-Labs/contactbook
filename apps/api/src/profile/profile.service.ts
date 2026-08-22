@@ -1,21 +1,26 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
-import { FieldCategory, FieldType, type Prisma } from '@prisma/client';
+import {
+  FieldCategory,
+  FieldGroupCategory,
+  FieldType,
+  type Prisma,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AppConfigService } from '../config/app-config.service';
 import { AppLogger } from '../common/logging/app-logger.service';
 import { ApiError } from '../common/errors/api-error';
 import {
-  decryptFieldValue,
-  encryptFieldValue,
-  isFinancialFieldType,
-} from '../crypto/field-encryption.util';
+  decryptFieldValueForRead,
+  prepareFieldValueForWrite,
+} from './profile-field-value.util';
 import { ProfilePhotoStorageService } from './profile-photo-storage.service';
 import type { CreateProfileFieldDto } from './dto/create-profile-field.dto';
 import type { UpdateProfileFieldDto } from './dto/update-profile-field.dto';
 import type { ProfileFieldResponseDto } from './dto/profile-field-response.dto';
-
-const DECRYPTION_FAILED_PLACEHOLDER = '[decryption failed — contact support]';
+import type { CreateProfileFieldGroupDto } from './dto/create-profile-field-group.dto';
+import type { UpdateProfileFieldGroupDto } from './dto/update-profile-field-group.dto';
+import type { ProfileFieldGroupResponseDto } from './dto/profile-field-group-response.dto';
 
 /**
  * Every query here is scoped by userId at the DATABASE level — `findFirst({
@@ -32,6 +37,8 @@ export class ProfileService {
     private readonly photoStorage: ProfilePhotoStorageService,
     private readonly logger: AppLogger,
   ) {}
+
+  // ---------------------------------------------------------------- fields
 
   async list(
     userId: string,
@@ -71,12 +78,15 @@ export class ProfileService {
       );
     }
 
+    if (dto.groupId) {
+      await this.assertGroupOwnership(userId, dto.groupId);
+    }
+
     const fieldId = randomUUID(); // generated up front: encryption's AAD needs it before the row exists
     const position = dto.position ?? (await this.nextPosition(userId));
-    const { value, isEncrypted } = this.prepareValueForWrite(
-      userId,
-      fieldId,
-      dto.type,
+    const { value, isEncrypted } = prepareFieldValueForWrite(
+      this.config.fieldEncryptionKey,
+      { userId, fieldId, type: dto.type },
       dto.value,
     );
 
@@ -90,6 +100,7 @@ export class ProfileService {
         value,
         isEncrypted,
         position,
+        groupId: dto.groupId,
       },
     });
 
@@ -97,6 +108,7 @@ export class ProfileService {
       userId,
       fieldId: row.id,
       type: row.type,
+      groupId: row.groupId,
     });
     return this.toResponseDto(userId, row);
   }
@@ -129,10 +141,9 @@ export class ProfileService {
     };
 
     if (dto.value !== undefined) {
-      const prepared = this.prepareValueForWrite(
-        userId,
-        existing.id,
-        existing.type,
+      const prepared = prepareFieldValueForWrite(
+        this.config.fieldEncryptionKey,
+        { userId, fieldId: existing.id, type: existing.type },
         dto.value,
       );
       data.value = prepared.value;
@@ -208,6 +219,8 @@ export class ProfileService {
     });
   }
 
+  // ----------------------------------------------------------------- photo
+
   /** Upsert-by-type: a user has at most one active PHOTO field. Replacing an
    *  existing photo deletes the old GCS object once the new one is stored. */
   async upsertPhoto(
@@ -254,8 +267,118 @@ export class ProfileService {
     await this.archive(userId, existing.id);
   }
 
-  private async nextPosition(userId: string): Promise<number> {
-    const last = await this.prisma.profileField.findFirst({
+  // ----------------------------------------------------------------- groups
+
+  async listGroups(
+    userId: string,
+    opts: { category?: FieldGroupCategory; includeArchived?: boolean },
+  ): Promise<ProfileFieldGroupResponseDto[]> {
+    const groups = await this.prisma.profileFieldGroup.findMany({
+      where: {
+        userId,
+        archivedAt: opts.includeArchived ? undefined : null,
+        category: opts.category,
+      },
+      orderBy: { position: 'asc' },
+      include: {
+        fields: {
+          where: { archivedAt: opts.includeArchived ? undefined : null },
+          orderBy: { position: 'asc' },
+        },
+      },
+    });
+    return groups.map((g) => this.toGroupResponseDto(userId, g));
+  }
+
+  async createGroup(
+    userId: string,
+    dto: CreateProfileFieldGroupDto,
+  ): Promise<ProfileFieldGroupResponseDto> {
+    const position = await this.nextGroupPosition(userId);
+    const group = await this.prisma.profileFieldGroup.create({
+      data: { userId, category: dto.category, tag: dto.tag, position },
+      include: { fields: true },
+    });
+    this.logger.info('profile.group_created', {
+      userId,
+      groupId: group.id,
+      category: group.category,
+    });
+    return this.toGroupResponseDto(userId, group);
+  }
+
+  async updateGroup(
+    userId: string,
+    id: string,
+    dto: UpdateProfileFieldGroupDto,
+  ): Promise<ProfileFieldGroupResponseDto> {
+    await this.assertGroupOwnership(userId, id);
+    const group = await this.prisma.profileFieldGroup.update({
+      where: { id },
+      data: { category: dto.category, tag: dto.tag },
+      include: {
+        fields: { where: { archivedAt: null }, orderBy: { position: 'asc' } },
+      },
+    });
+    this.logger.info('profile.group_updated', { userId, groupId: id });
+    return this.toGroupResponseDto(userId, group);
+  }
+
+  /** Archives the group AND every one of its currently-active fields, in one
+   *  transaction. The schema's onDelete: Cascade on ProfileField.groupId only
+   *  fires on a real row deletion — since groups are soft-deleted like
+   *  everything else here, the field-level archive has to be done explicitly,
+   *  or a user could "remove" a job and still have its phone/email show up as
+   *  loose, ungrouped fields on their live profile. */
+  async archiveGroup(userId: string, id: string): Promise<void> {
+    const group = await this.assertGroupOwnership(userId, id);
+
+    const photoFields = await this.prisma.profileField.findMany({
+      where: { groupId: id, type: FieldType.PHOTO, archivedAt: null },
+    });
+
+    await this.prisma.$transaction([
+      this.prisma.profileFieldGroup.update({
+        where: { id },
+        data: { archivedAt: new Date() },
+      }),
+      this.prisma.profileField.updateMany({
+        where: { groupId: id, archivedAt: null },
+        data: { archivedAt: new Date() },
+      }),
+    ]);
+
+    // Best-effort, outside the transaction: GCS is not transactional with
+    // Postgres, so this can only ever be "delete after the DB commit succeeds".
+    for (const photo of photoFields) {
+      await this.photoStorage.deleteByUrl(photo.value);
+    }
+
+    this.logger.info('profile.group_archived', {
+      userId,
+      groupId: id,
+      category: group.category,
+    });
+  }
+
+  /** Throws PROFILE_FIELD_GROUP_NOT_FOUND if the group does not exist or
+   *  belongs to someone else — the two cases are deliberately indistinguishable
+   *  to the caller, same reasoning as every other ownership check here. */
+  private async assertGroupOwnership(userId: string, groupId: string) {
+    const group = await this.prisma.profileFieldGroup.findFirst({
+      where: { id: groupId, userId },
+    });
+    if (!group) {
+      throw ApiError.notFound(
+        'PROFILE_FIELD_GROUP_NOT_FOUND',
+        'No such profile field group.',
+      );
+    }
+    return group;
+  }
+
+  private async nextGroupPosition(userId: string): Promise<number> {
+    const last = await this.prisma.profileFieldGroup.findFirst({
       where: { userId, archivedAt: null },
       orderBy: { position: 'desc' },
       select: { position: true },
@@ -263,24 +386,34 @@ export class ProfileService {
     return (last?.position ?? -1) + 1;
   }
 
-  private prepareValueForWrite(
+  private toGroupResponseDto(
     userId: string,
-    fieldId: string,
-    type: string,
-    plaintext: string,
-  ): { value: string; isEncrypted: boolean } {
-    if (!isFinancialFieldType(type))
-      return { value: plaintext, isEncrypted: false };
+    group: {
+      id: string;
+      category: string;
+      tag: string | null;
+      position: number;
+      fields: Parameters<ProfileService['toResponseDto']>[1][];
+    },
+  ): ProfileFieldGroupResponseDto {
+    return {
+      id: group.id,
+      category: group.category,
+      tag: group.tag,
+      position: group.position,
+      fields: group.fields.map((f) => this.toResponseDto(userId, f)),
+    } as ProfileFieldGroupResponseDto;
+  }
 
-    const key = this.config.fieldEncryptionKey;
-    if (!key) {
-      throw ApiError.conflict(
-        'FIELD_ENCRYPTION_NOT_CONFIGURED',
-        'Financial field types require FIELD_ENCRYPTION_KEY to be configured.',
-      );
-    }
-    const value = encryptFieldValue(key, { userId, fieldId, type }, plaintext);
-    return { value, isEncrypted: true };
+  // ---------------------------------------------------------------- shared
+
+  private async nextPosition(userId: string): Promise<number> {
+    const last = await this.prisma.profileField.findFirst({
+      where: { userId, archivedAt: null },
+      orderBy: { position: 'desc' },
+      select: { position: true },
+    });
+    return (last?.position ?? -1) + 1;
   }
 
   /** Builds the response DTO EXPLICITLY, field by field — never spreads the
@@ -298,31 +431,23 @@ export class ProfileService {
       value: string;
       isEncrypted: boolean;
       position: number;
+      groupId: string | null;
       createdAt: Date;
       updatedAt: Date;
     },
   ): ProfileFieldResponseDto {
-    let value = row.value;
-
-    if (row.isEncrypted) {
-      const key = this.config.fieldEncryptionKey;
-      try {
-        if (!key) throw new Error('FIELD_ENCRYPTION_KEY not configured');
-        value = decryptFieldValue(
-          key,
-          { userId, fieldId: row.id, type: row.type },
-          row.value,
-        );
-      } catch (err) {
-        // Never let one corrupted/unrotated row 500 the whole profile list.
+    const value = decryptFieldValueForRead(
+      this.config.fieldEncryptionKey,
+      { userId, fieldId: row.id, type: row.type },
+      row.value,
+      row.isEncrypted,
+      (err) =>
         this.logger.error('profile.field_decryption_failed', {
           userId,
           fieldId: row.id,
           err: err instanceof Error ? err.message : String(err),
-        });
-        value = DECRYPTION_FAILED_PLACEHOLDER;
-      }
-    }
+        }),
+    );
 
     return {
       id: row.id,
@@ -331,6 +456,7 @@ export class ProfileService {
       label: row.label,
       value,
       position: row.position,
+      groupId: row.groupId,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     } as ProfileFieldResponseDto;

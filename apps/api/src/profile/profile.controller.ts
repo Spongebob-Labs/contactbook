@@ -33,7 +33,15 @@ import { ReorderProfileFieldsDto } from './dto/reorder-profile-fields.dto';
 import { ListProfileFieldsQueryDto } from './dto/list-profile-fields-query.dto';
 import { ProfileFieldResponseDto } from './dto/profile-field-response.dto';
 import { PhotoResponseDto } from './dto/photo-response.dto';
+import { CreateProfileFieldGroupDto } from './dto/create-profile-field-group.dto';
+import { UpdateProfileFieldGroupDto } from './dto/update-profile-field-group.dto';
+import { ListProfileFieldGroupsQueryDto } from './dto/list-profile-field-groups-query.dto';
+import { ProfileFieldGroupResponseDto } from './dto/profile-field-group-response.dto';
 import { ProfileService } from './profile.service';
+import { ProfileOnboardingService } from './profile-onboarding.service';
+import { CompleteOnboardingDto } from './dto/onboarding/complete-onboarding.dto';
+import { OnboardingResponseDto } from './dto/onboarding/onboarding-response.dto';
+import { MeResponseDto } from './dto/me-response.dto';
 import { MAX_PHOTO_BYTES } from './profile-photo-storage.service';
 
 /**
@@ -48,7 +56,53 @@ import { MAX_PHOTO_BYTES } from './profile-photo-storage.service';
 @UseGuards(JwtAuthGuard)
 @Controller({ path: 'profile', version: '1' })
 export class ProfileController {
-  constructor(private readonly profile: ProfileService) {}
+  constructor(
+    private readonly profile: ProfileService,
+    private readonly onboarding: ProfileOnboardingService,
+  ) {}
+
+  @Get('me')
+  @ApiOperation({
+    summary: 'Get your full profile, nested',
+    description:
+      'identity + personal + work[] + business[] + socials[] + financial.* — the same shape ' +
+      'POST /profile/onboarding accepts and returns. This is the read model for a profile screen; ' +
+      'GET /profile/fields is the flat list used by the field editor.',
+  })
+  @ApiResponse({ status: 200, type: MeResponseDto })
+  async getMe(@Req() req: Request) {
+    return this.onboarding.getMe(req.user!.id);
+  }
+
+  @Post('onboarding')
+  @ApiOperation({
+    summary: 'Complete first-time profile setup',
+    description:
+      'One-shot — 409 if onboarding has already been completed. Only identity (firstName, ' +
+      'lastName, primaryEmail) is required; every other section is optional and can be filled ' +
+      'in later through the field and group endpoints instead. Do not send primaryPhone (it is ' +
+      'your OTP-verified number, not a new input) or profilePhoto (use POST /profile/photo ' +
+      'separately) — both are rejected as unknown properties by the request validator.',
+  })
+  @ApiResponse({ status: 201, type: OnboardingResponseDto })
+  @ApiResponse({
+    status: 409,
+    type: ApiErrorResponseDto,
+    description: 'ONBOARDING_ALREADY_COMPLETED',
+  })
+  @ApiResponse({
+    status: 400,
+    type: ApiErrorResponseDto,
+    description:
+      'CUSTOM_FIELDS_TOO_MANY, CUSTOM_FIELD_KEY_TOO_LONG, or CUSTOM_FIELD_VALUE_TOO_LONG.',
+  })
+  @HttpCode(201)
+  async completeOnboarding(
+    @Req() req: Request,
+    @Body() dto: CompleteOnboardingDto,
+  ) {
+    return this.onboarding.complete(req.user!.id, dto);
+  }
 
   @Get('fields')
   @ApiOperation({
@@ -153,6 +207,75 @@ export class ProfileController {
   ): Promise<void> {
     await this.profile.reorder(req.user!.id, dto.orderedIds);
   }
+
+  // ---------------------------------------------------------------- groups
+
+  @Get('groups')
+  @ApiOperation({
+    summary: 'List your profile field groups',
+    description:
+      'Each group includes its own fields, already ordered — a job with its phone/email/title nested together, not a flat list you have to regroup client-side.',
+  })
+  @ApiResponse({ status: 200, type: [ProfileFieldGroupResponseDto] })
+  async listGroups(
+    @Req() req: Request,
+    @Query() query: ListProfileFieldGroupsQueryDto,
+  ) {
+    return this.profile.listGroups(req.user!.id, query);
+  }
+
+  @Post('groups')
+  @ApiOperation({
+    summary: 'Add a profile field group',
+    description:
+      "One instance of a repeatable thing — a specific job, business, bank account, or social profile. Add fields into it afterward via POST /profile/fields with this group's id.",
+  })
+  @ApiResponse({ status: 201, type: ProfileFieldGroupResponseDto })
+  @HttpCode(201)
+  async createGroup(
+    @Req() req: Request,
+    @Body() dto: CreateProfileFieldGroupDto,
+  ) {
+    return this.profile.createGroup(req.user!.id, dto);
+  }
+
+  @Patch('groups/:id')
+  @ApiOperation({ summary: 'Rename or recategorize a profile field group' })
+  @ApiResponse({ status: 200, type: ProfileFieldGroupResponseDto })
+  @ApiResponse({
+    status: 404,
+    type: ApiErrorResponseDto,
+    description: 'PROFILE_FIELD_GROUP_NOT_FOUND',
+  })
+  async updateGroup(
+    @Req() req: Request,
+    @Param('id') id: string,
+    @Body() dto: UpdateProfileFieldGroupDto,
+  ) {
+    return this.profile.updateGroup(req.user!.id, id, dto);
+  }
+
+  @Delete('groups/:id')
+  @ApiOperation({
+    summary: 'Remove a profile field group',
+    description:
+      'Archives the group AND every field in it — removing a job takes its phone/email/title with it, not just the job label.',
+  })
+  @HttpCode(204)
+  @ApiResponse({ status: 204, description: 'Archived.' })
+  @ApiResponse({
+    status: 404,
+    type: ApiErrorResponseDto,
+    description: 'PROFILE_FIELD_GROUP_NOT_FOUND',
+  })
+  async removeGroup(
+    @Req() req: Request,
+    @Param('id') id: string,
+  ): Promise<void> {
+    await this.profile.archiveGroup(req.user!.id, id);
+  }
+
+  // ----------------------------------------------------------------- photo
 
   @Post('photo')
   @ApiOperation({

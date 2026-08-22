@@ -32,6 +32,9 @@ field removes it immediately.
 5. `ProfileField.value` never appears in logs, diffs, or audit metadata.
 6. `ProfileField.value` for `BANK_ACCOUNT`/`DIGITAL_WALLET`/`CRYPTO_WALLET` is encrypted at
    rest (AES-256-GCM, AAD bound to `userId:fieldId:type`) — never stored in the clear.
+7. `phoneE164` is never a writable profile input — it's the OTP-verified identity, enforced by
+   `forbidNonWhitelisted`, not just convention. `POST /profile/onboarding` is one-shot (409 on
+   replay); later edits go through the field/group endpoints.
 
 ## Commands
 

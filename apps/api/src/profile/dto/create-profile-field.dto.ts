@@ -5,6 +5,7 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  IsUUID,
   MaxLength,
   MinLength,
 } from 'class-validator';
@@ -43,4 +44,16 @@ export class CreateProfileFieldDto {
   @IsOptional()
   @IsInt()
   position?: number;
+
+  @ApiProperty({
+    required: false,
+    example: 'b7e1c2a3-...',
+    description:
+      'Attaches this field to one instance of a repeatable thing (a specific job, bank ' +
+      'account, etc). Must belong to you — the id of a group belonging to another user is ' +
+      'rejected, not silently ignored. Omit for a "loose" field like a personal phone number.',
+  })
+  @IsOptional()
+  @IsUUID()
+  groupId?: string;
 }

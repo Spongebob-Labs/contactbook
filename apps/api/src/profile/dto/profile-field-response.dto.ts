@@ -25,6 +25,15 @@ export class ProfileFieldResponseDto {
   @ApiProperty({ example: 0 })
   position!: number;
 
+  @ApiProperty({
+    required: false,
+    nullable: true,
+    example: null,
+    description:
+      'Set when this field belongs to one instance of a repeatable thing (a specific job, bank account, etc).',
+  })
+  groupId!: string | null;
+
   @ApiProperty({ example: '2026-08-21T18:00:00.000Z' })
   createdAt!: Date;
 
