@@ -1,14 +1,10 @@
 # VM deployment. Copied to the VM by the deploy workflow alongside a rendered
-# .env (chmod 600) and the Caddyfile.
+# .env (chmod 600), the Supabase root cert, and the Caddyfile.
 #
-# PREREQUISITE if you run Postgres here: a SEPARATE persistent disk mounted at
-# /mnt/pgdata. Do not skip this. See docs/architecture/iac.md.
-#
-#   gcloud compute disks create contactbook-pgdata --size=20GB --type=pd-balanced \
-#     --zone=europe-west2-c
-#   gcloud compute instances attach-disk contactbook-server \
-#     --disk=contactbook-pgdata --zone=europe-west2-c
-#   # then on the VM: mkfs.ext4 (first time only), mount, add to /etc/fstab
+# No local Postgres here on purpose — Postgres is Supabase, reached over the
+# network via the Supavisor pooler (see CLAUDE.md / docs/architecture/hld.md
+# "Data store"). An earlier version of this file ran Postgres on the VM
+# itself; that predates the Supabase decision and was never updated to match.
 #
 # Traffic: internet -> Caddy (:80/:443, Let's Encrypt) -> api:8080 on an
 # internal network. The app port is never published to the host.
@@ -17,6 +13,7 @@ services:
     image: caddy:2-alpine
     container_name: contactbook-caddy
     restart: unless-stopped
+    env_file: [.env] # for CADDY_API_DOMAIN, substituted into the Caddyfile
     ports:
       - "80:80"
       - "443:443"
@@ -35,34 +32,12 @@ services:
     environment:
       NODE_ENV: production
       PORT: "8080"
-    depends_on:
-      postgres:
-        condition: service_healthy
-    # No published ports: only Caddy reaches this, over the internal network.
-
-  postgres:
-    image: postgres:16-alpine
-    container_name: contactbook-db
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_INITDB_ARGS: "--locale=C --encoding=UTF8"
     volumes:
-      # A BIND MOUNT to the attached disk, deliberately not a named volume.
-      # `docker compose down -v` deletes named volumes; it cannot touch this.
-      # On a host that now holds the only copy of production data, that
-      # difference is worth the slightly uglier config.
-      - /mnt/pgdata:/var/lib/postgresql/data
-    # Never published to the host, let alone the internet. The API reaches it
-    # over the internal Docker network as `postgres:5432`.
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
+      # Supabase's pooler chains through a project-specific root CA absent
+      # from every public trust store — sslrootcert in DATABASE_URL/DIRECT_URL
+      # points at this container path. See docs/architecture/iac.md §5.2.
+      - ./supabase-ca.crt:/etc/contactbook/supabase-ca.crt:ro
+    # No published ports: only Caddy reaches this, over the internal network.
 
 volumes:
   caddy_data:
