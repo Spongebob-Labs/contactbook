@@ -23,15 +23,17 @@ Read the one that matches the work rather than all six.
 | Logging, metrics, alerts, the audit log | [observability.md](../../../docs/architecture/observability.md) |
 | GCP resources, Terraform, deploy runbook | [iac.md](../../../docs/architecture/iac.md) |
 | Estimating, scoping, "can we fit X" | [sprint-plan.md](../../../docs/architecture/sprint-plan.md) |
+| Building the public share page in `apps/web` | the `contactbook-share-page` skill |
 
 ## The invariants
 
 Violating any of these breaks the product's core promise. Check them in every review.
 
-**1. A share link is stable per (card, recipient).**
-`ShareLink` is unique on `(cardId, recipientId)`. Sharing the same card to the same person
+**1. A share link is stable per (card, contact).**
+`ShareLink` is unique on `(cardId, contactId)`. Sharing the same card to the same person
 again must return the *existing* token. Never mint a second link for a pair that already has
 one — the entire "resend the link and the update shows up" behaviour depends on this.
+(`Contact` was named `Recipient` before 2026-08-23 — renamed to match product usage.)
 
 **2. Nothing renders from a snapshot.**
 The public page and the vCard both resolve from current data at request time. No cached HTML,
@@ -75,7 +77,7 @@ field and group endpoints, never by resubmitting onboarding.
 
 ## Conventions
 
-- NestJS modules are domain-shaped (`sharing/`, `broadcast/`, `recipients/`), not layer-shaped.
+- NestJS modules are domain-shaped (`sharing/`, `broadcast/`, `contacts/`), not layer-shaped.
 - Prisma types stop at the repository boundary — never in a controller signature.
 - One global `APP_FILTER` exception filter; the error envelope always carries `requestId`.
 - `process.env` is read only by the zod-validated config module, which fails the boot on a
