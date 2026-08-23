@@ -148,11 +148,15 @@ export class CardsService {
           },
         }),
       ),
-      // Bumps Card.updatedAt via Prisma's automatic @updatedAt handling even
-      // though no Card column is actually changing — the public payload
-      // reports this as "when the field selection last changed," which
-      // otherwise only CardField rows would reflect.
-      this.prisma.card.update({ where: { id: cardId }, data: {} }),
+      // Bumps Card.updatedAt explicitly — verified live that Prisma's
+      // @updatedAt auto-bump does NOT fire on an empty `data: {}` update
+      // (nothing to generate a SET clause from, so the row is untouched).
+      // The public payload reports this as "when the field selection last
+      // changed," which otherwise only CardField rows would reflect.
+      this.prisma.card.update({
+        where: { id: cardId },
+        data: { updatedAt: new Date() },
+      }),
     ]);
 
     const row = await this.prisma.card.findUniqueOrThrow({
