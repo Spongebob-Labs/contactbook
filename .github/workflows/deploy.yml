@@ -40,6 +40,11 @@ jobs:
   migrate:
     needs: test
     runs-on: ubuntu-latest
+    # Environment-scoped so `main` and this branch can each hold their own
+    # value under the SAME secret name (DATABASE_URL, TASKS_TARGET_BASE_URL,
+    # ...) without colliding — set these under Settings → Environments →
+    # staging, not as repository-wide secrets.
+    environment: staging
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -61,6 +66,7 @@ jobs:
   build-and-push:
     needs: migrate
     runs-on: ubuntu-latest
+    environment: staging
     outputs:
       image: ${{ steps.image.outputs.tag }}
     steps:
@@ -85,11 +91,12 @@ jobs:
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
+    environment: staging
     steps:
       - uses: actions/checkout@v4
       - name: Render .env from secrets
         env:
-          APP_ENV: production
+          APP_ENV: staging
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DIRECT_URL: ${{ secrets.DIRECT_URL }}
           JWT_ACCESS_SECRET: ${{ secrets.JWT_ACCESS_SECRET }}
