@@ -51,10 +51,17 @@ overlapping itself and `docker compose up -d` briefly runs two containers. Wrap 
 `pg_try_advisory_lock`, release in `finally`, skip the run if not acquired.
 
 **4b. Postgres is Supabase, reached through the Supavisor pooler.**
-`DATABASE_URL` is the transaction pooler on `:6543` with `pgbouncer=true&connection_limit=1`;
-`DIRECT_URL` is session mode on `:5432` and is used only by `prisma migrate`. Omitting
-`pgbouncer=true` produces `prepared statement already exists` failures that appear only under
-production concurrency.
+`DATABASE_URL` is the transaction pooler on `:6543` with
+`pgbouncer=true&connection_limit=10&sslmode=verify-full&sslrootcert=<path>`; `DIRECT_URL` is
+session mode on `:5432` with `sslmode=verify-full&sslrootcert=<path>`, used only by
+`prisma migrate`. Both use the pooler host (`aws-0-<region>.pooler.supabase.com`), never
+`db.<ref>.supabase.co` (IPv6-only without the paid add-on). Omitting `pgbouncer=true` produces
+`prepared statement already exists` failures under production concurrency. `sslrootcert` is
+not optional either — verified against a real project: Supabase's pooler chains through a
+project-specific cert absent from every public trust store, so `verify-full` fails
+(`self-signed certificate in certificate chain`) without a project-specific root cert
+downloaded from the dashboard's Connect panel (no fixed public URL for it) and referenced by
+path. See [iac.md §5.2](../../../docs/architecture/iac.md#52-supabase).
 
 **5. Field values never reach logs, diffs, or audit metadata.**
 `ProfileField.value` is the user's actual contact data. Log field ids and labels; never values.
