@@ -8,6 +8,9 @@ import { HealthModule } from './health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { OutboxModule } from './outbox/outbox.module';
 import { AuthModule } from './auth/auth.module';
+import { ProfileModule } from './profile/profile.module';
+import { ContactsModule } from './contacts/contacts.module';
+import { SharingModule } from './sharing/sharing.module';
 
 @Module({
   imports: [
@@ -17,6 +20,9 @@ import { AuthModule } from './auth/auth.module';
     OutboxModule,
     HealthModule,
     AuthModule,
+    ProfileModule,
+    ContactsModule,
+    SharingModule,
   ],
   providers: [
     {

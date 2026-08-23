@@ -96,6 +96,17 @@ export class AppConfigService {
   get fieldEncryptionKey(): string | undefined {
     return this.env.FIELD_ENCRYPTION_KEY;
   }
+
+  get gcs() {
+    return {
+      profilePhotosBucket: this.env.GCS_PROFILE_PHOTOS_BUCKET,
+      publicBaseUrl:
+        this.env.GCS_PUBLIC_BASE_URL ??
+        (this.env.GCS_PROFILE_PHOTOS_BUCKET
+          ? `https://storage.googleapis.com/${this.env.GCS_PROFILE_PHOTOS_BUCKET}`
+          : undefined),
+    };
+  }
   get sentryDsn(): string | undefined {
     return this.env.SENTRY_DSN;
   }

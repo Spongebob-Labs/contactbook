@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { MessagePurpose } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AppLogger } from '../common/logging/app-logger.service';
 import { TwilioClient } from './twilio-client';
@@ -14,11 +15,24 @@ export interface SendResult {
   errorMessage?: string;
 }
 
+export interface SendTemplateInput {
+  purpose: MessagePurpose;
+  toE164: string;
+  contentSid: string;
+  variables: Record<string, string>;
+  correlationId: string;
+}
+
 /**
  * Records a Message row FIRST (PENDING), then attempts the send, then patches
  * the row with the outcome. The ledger exists even if the send never
  * completes — a crash mid-send leaves an honestly-PENDING row rather than no
  * record at all.
+ *
+ * One generic method for every template-based purpose (OTP, CARD_SHARE, ...)
+ * rather than one method per purpose — the Twilio mechanics (ContentSid +
+ * ContentVariables) don't vary by purpose, only which template gets resolved
+ * upstream of this call.
  */
 @Injectable()
 export class WhatsappService {
@@ -32,16 +46,11 @@ export class WhatsappService {
     return this.twilio.isConfigured();
   }
 
-  async sendOtpTemplate(input: {
-    toE164: string;
-    contentSid: string;
-    variables: Record<string, string>;
-    correlationId: string;
-  }): Promise<SendResult> {
+  async sendTemplate(input: SendTemplateInput): Promise<SendResult> {
     const message = await this.prisma.message.create({
       data: {
         direction: 'OUTBOUND',
-        purpose: 'OTP',
+        purpose: input.purpose,
         phoneE164: input.toE164,
         correlationId: input.correlationId,
         status: 'PENDING',
@@ -64,9 +73,9 @@ export class WhatsappService {
         },
       });
 
-      this.logger.info('whatsapp.otp_sent', {
+      this.logger.info('whatsapp.template_sent', {
         messageId: message.id,
-        purpose: 'OTP',
+        purpose: input.purpose,
       });
       return { ok: true };
     } catch (err) {
@@ -90,7 +99,7 @@ export class WhatsappService {
       const logFn = errorClass === 'CONFIG' ? 'error' : 'warn';
       this.logger[logFn]('whatsapp.send_failed', {
         messageId: message.id,
-        purpose: 'OTP',
+        purpose: input.purpose,
         errorClass,
         errorCode: twilioErr.twilioCode,
       });
