@@ -22,7 +22,7 @@ import { RefreshDto } from './dto/refresh.dto';
 import { RequestOtpDto } from './dto/request-otp.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import {
-  MeResponseDto,
+  AuthMeResponseDto,
   OkResponseDto,
   RefreshResponseDto,
   RequestOtpResponseDto,
@@ -165,11 +165,15 @@ export class AuthController {
   @ApiBearerAuth('access-token')
   @ApiCookieAuth('cb_access_token')
   @ApiOperation({
-    summary: 'Get the signed-in user',
+    summary: 'Check whether the caller is signed in',
     description:
-      'Accepts the access token either as the cb_access_token cookie or an Authorization: Bearer header.',
+      'Accepts the access token either as the cb_access_token cookie or an Authorization: ' +
+      "Bearer header. Returns only the token's identity claims — id and phoneE164. For the " +
+      "owner's actual profile data (name, email, onboarding status, fields), use " +
+      'GET /profile/me instead; auth stays scoped to "who is this token for", not "what do ' +
+      'we know about them".',
   })
-  @ApiResponse({ status: 200, type: MeResponseDto })
+  @ApiResponse({ status: 200, type: AuthMeResponseDto })
   @ApiResponse({
     status: 401,
     type: ApiErrorResponseDto,
@@ -182,7 +186,6 @@ export class AuthController {
     return {
       id: user.id,
       phoneE164: user.phoneE164,
-      displayName: user.displayName,
     };
   }
 }

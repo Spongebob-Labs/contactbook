@@ -45,17 +45,10 @@ export class OkResponseDto {
   ok!: boolean;
 }
 
-export class MeResponseDto {
+export class AuthMeResponseDto {
   @ApiProperty({ example: '28dac79d-8053-493f-a81b-9135b8a6966e' })
   id!: string;
 
   @ApiProperty({ example: '+919347243575' })
   phoneE164!: string;
-
-  @ApiProperty({
-    nullable: true,
-    example: null,
-    description: 'Null until the owner completes profile setup.',
-  })
-  displayName!: string | null;
 }
