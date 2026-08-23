@@ -9,7 +9,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { OutboxModule } from './outbox/outbox.module';
 import { AuthModule } from './auth/auth.module';
 import { ProfileModule } from './profile/profile.module';
-import { RecipientsModule } from './recipients/recipients.module';
+import { ContactsModule } from './contacts/contacts.module';
 import { SharingModule } from './sharing/sharing.module';
 
 @Module({
@@ -21,7 +21,7 @@ import { SharingModule } from './sharing/sharing.module';
     HealthModule,
     AuthModule,
     ProfileModule,
-    RecipientsModule,
+    ContactsModule,
     SharingModule,
   ],
   providers: [

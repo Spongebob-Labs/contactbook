@@ -1,10 +1,13 @@
 // Scope note: this is NOT the full schema from docs/architecture/lld.md yet.
-// Card/ShareLink/Recipient/WhatsAppTemplate landed 2026-08-23 (curation +
-// live public resolver). Still missing: CardVersion (diffing, needs the
-// notify-on-update feature), Broadcast/BroadcastTarget (batch send +
-// per-target delivery tracking — v1 shares to one recipient at a time and
-// doesn't send via WhatsApp yet), ShareLinkFieldOverride (per-recipient
-// field hiding), ScanCode, LinkEvent. See docs/architecture/sprint-plan.md.
+// Card/ShareLink/Contact/WhatsAppTemplate landed 2026-08-23 (curation, a
+// contact registry with bulk import, live public resolver, and the actual
+// WhatsApp send wired through the outbox). Contact is named Recipient in
+// lld.md's original draft — renamed to match product usage; a card is
+// still shared by contactId, one at a time. Still missing: CardVersion
+// (diffing, needs the notify-on-update feature), Broadcast/BroadcastTarget
+// (batch send + per-target delivery tracking across many contacts at once),
+// ShareLinkFieldOverride (per-contact field hiding), ScanCode, LinkEvent.
+// See docs/architecture/sprint-plan.md.
 
 generator client {
   provider = "prisma-client-js"
@@ -51,7 +54,7 @@ model User {
   profileFields ProfileField[]
   fieldGroups   ProfileFieldGroup[]
   cards         Card[]
-  recipients    Recipient[]
+  contacts      Contact[]
 
   @@map("users")
 }
@@ -277,24 +280,29 @@ model CardField {
   @@map("card_fields")
 }
 
-enum RecipientSource {
+enum ContactSource {
+  MANUAL // added one at a time via POST /contacts
+  IMPORTED // bulk-imported via POST /contacts/import, e.g. from the device address book
   QR_SCAN
-  MANUAL
   INBOUND
 }
 
 /// A person the owner has shared with. Scoped to the owner, not global — the
-/// same phone number is a separate Recipient row for each owner who shares
+/// same phone number is a separate Contact row for each owner who shares
 /// with them. Deliberately no global "person" entity: that would leak one
 /// owner's contacts into another owner's data.
-model Recipient {
-  id          String          @id @default(uuid())
+///
+/// Sharing a card requires an existing contactId (see ShareLink below) —
+/// POST /cards/:id/share no longer accepts an inline phone number. The
+/// expected flow is import-then-share, not type-a-number-then-share.
+model Contact {
+  id          String        @id @default(uuid())
   ownerId     String
-  owner       User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  owner       User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   phoneE164   String
-  displayName String? // owner-supplied; recipients have no accounts of their own
-  notes       String? // owner's private notes, never shown to the recipient
-  source      RecipientSource @default(MANUAL)
+  displayName String? // owner-supplied, or whatever the imported source called them
+  notes       String? // owner's private notes, never shown to the contact
+  source      ContactSource @default(MANUAL)
   optedOutAt  DateTime? // set on STOP; blocks future sends, existing links stay live
 
   createdAt DateTime @default(now())
@@ -304,7 +312,7 @@ model Recipient {
 
   @@unique([ownerId, phoneE164])
   @@index([ownerId, createdAt])
-  @@map("recipients")
+  @@map("contacts")
 }
 
 enum ShareLinkStatus {
@@ -312,7 +320,7 @@ enum ShareLinkStatus {
   REVOKED
 }
 
-/// THE central entity for live sharing. Unique on (cardId, recipientId):
+/// THE central entity for live sharing. Unique on (cardId, contactId):
 /// sharing the same card with the same person again returns the SAME token,
 /// never a new one — see the architecture skill's invariant #1. Re-sending
 /// shows updated info because the token was never tied to a snapshot in the
@@ -322,13 +330,13 @@ enum ShareLinkStatus {
 /// re-copy the exact same URL to resend it — see lld.md §5 for why that's an
 /// acceptable tradeoff given the token's 128 bits of entropy.
 model ShareLink {
-  id          String          @id @default(uuid())
-  token       String          @unique
-  cardId      String
-  card        Card            @relation(fields: [cardId], references: [id], onDelete: Cascade)
-  recipientId String
-  recipient   Recipient       @relation(fields: [recipientId], references: [id], onDelete: Cascade)
-  status      ShareLinkStatus @default(ACTIVE)
+  id        String          @id @default(uuid())
+  token     String          @unique
+  cardId    String
+  card      Card            @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  contactId String
+  contact   Contact         @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  status    ShareLinkStatus @default(ACTIVE)
 
   firstViewedAt DateTime?
   lastViewedAt  DateTime?
@@ -338,8 +346,8 @@ model ShareLink {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([cardId, recipientId])
-  @@index([recipientId, status])
+  @@unique([cardId, contactId])
+  @@index([contactId, status])
   @@index([cardId, status])
   @@map("share_links")
 }

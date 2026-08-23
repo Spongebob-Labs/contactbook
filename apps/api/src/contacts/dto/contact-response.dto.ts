@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { RecipientSource } from '@prisma/client';
+import { ContactSource } from '@prisma/client';
 
-export class RecipientResponseDto {
+export class ContactResponseDto {
   @ApiProperty({ example: '9c1a1b2c-3d4e-4f5a-8b6c-7d8e9f0a1b2c' })
   id!: string;
 
@@ -17,14 +17,14 @@ export class RecipientResponseDto {
   })
   notes!: string | null;
 
-  @ApiProperty({ enum: RecipientSource, example: RecipientSource.MANUAL })
-  source!: RecipientSource;
+  @ApiProperty({ enum: ContactSource, example: ContactSource.MANUAL })
+  source!: ContactSource;
 
   @ApiProperty({
     nullable: true,
     example: null,
     description:
-      'Set when this recipient has texted STOP. Blocks future sends; existing links stay live.',
+      'Set when this contact has texted STOP. Blocks future sends; existing links stay live.',
   })
   optedOutAt!: Date | null;
 

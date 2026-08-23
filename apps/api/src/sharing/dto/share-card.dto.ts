@@ -1,25 +1,14 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import {
-  IsOptional,
-  IsPhoneNumber,
-  IsString,
-  MaxLength,
-} from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
+import { IsUUID } from 'class-validator';
 
 export class ShareCardDto {
   @ApiProperty({
-    example: '+919876543210',
-    description: 'E.164 format. Upserted into your recipient registry if new.',
+    example: 'b7e1c2a3-1234-4f5a-8b6c-7d8e9f0a1b2c',
+    description:
+      'Must be one of your own Contact ids — add it first via POST /contacts or ' +
+      'POST /contacts/import. A contact belonging to another user is rejected, not silently ' +
+      'ignored.',
   })
-  @IsString()
-  @IsPhoneNumber(undefined, {
-    message: 'recipientPhoneE164 must be a valid phone number in E.164 format',
-  })
-  recipientPhoneE164!: string;
-
-  @ApiPropertyOptional({ example: 'Priya', maxLength: 120 })
-  @IsOptional()
-  @IsString()
-  @MaxLength(120)
-  recipientDisplayName?: string;
+  @IsUUID()
+  contactId!: string;
 }

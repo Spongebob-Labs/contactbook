@@ -6,7 +6,7 @@ import {
   MaxLength,
 } from 'class-validator';
 
-export class UpsertRecipientDto {
+export class UpsertContactDto {
   @ApiProperty({
     example: '+919876543210',
     description: 'E.164 format, including the leading +.',
@@ -26,7 +26,7 @@ export class UpsertRecipientDto {
   @ApiPropertyOptional({
     example: 'Met at DevFest, potential investor',
     maxLength: 2000,
-    description: 'Private to you — never shown to the recipient.',
+    description: 'Private to you — never shown to the contact.',
   })
   @IsOptional()
   @IsString()

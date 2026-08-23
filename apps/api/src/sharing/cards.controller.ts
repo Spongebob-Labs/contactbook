@@ -142,18 +142,20 @@ export class CardsController {
 
   @Post(':id/share')
   @ApiOperation({
-    summary: 'Share this card with a recipient',
+    summary: 'Share this card with a contact',
     description:
       'Mints (or reuses — see architecture invariant #1) the ShareLink for this (card, ' +
-      'recipient) pair and returns its live URL. Does NOT send a WhatsApp message yet — that ' +
-      'lands once a CARD_SHARE template is registered and approved (POST /templates). Copy the ' +
-      'returned url manually for now.',
+      'contact) pair and enqueues a WhatsApp send via the outbox. The send only actually goes ' +
+      'out once a CARD_SHARE WhatsAppTemplate is registered and approved (POST /templates) — ' +
+      'until then it fails cleanly with CARD_SHARE_TEMPLATE_NOT_CONFIGURED, but the returned ' +
+      'url is real and live regardless, so copying it manually always works. Calling this ' +
+      'again on an already-active link is a no-op on the messaging side — nothing re-sends.',
   })
   @ApiResponse({ status: 201, type: ShareLinkResponseDto })
   @ApiResponse({
     status: 404,
     type: ApiErrorResponseDto,
-    description: 'CARD_NOT_FOUND',
+    description: 'CARD_NOT_FOUND or CONTACT_NOT_FOUND',
   })
   @HttpCode(201)
   async share(

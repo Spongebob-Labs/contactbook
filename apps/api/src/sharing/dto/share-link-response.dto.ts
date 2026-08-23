@@ -19,13 +19,13 @@ export class ShareLinkResponseDto {
   cardName!: string;
 
   @ApiProperty({ example: '9c1a1b2c-3d4e-4f5a-8b6c-7d8e9f0a1b2c' })
-  recipientId!: string;
+  contactId!: string;
 
   @ApiProperty({ example: '+919876543210' })
-  recipientPhoneE164!: string;
+  contactPhoneE164!: string;
 
   @ApiProperty({ nullable: true, example: 'Priya' })
-  recipientDisplayName!: string | null;
+  contactDisplayName!: string | null;
 
   @ApiProperty({ enum: ShareLinkStatus, example: ShareLinkStatus.ACTIVE })
   status!: ShareLinkStatus;

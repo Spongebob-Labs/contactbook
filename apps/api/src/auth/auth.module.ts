@@ -50,7 +50,8 @@ export class AuthModule implements OnModuleInit {
         );
       }
 
-      const result = await this.whatsapp.sendOtpTemplate({
+      const result = await this.whatsapp.sendTemplate({
+        purpose: 'OTP',
         toE164: phoneE164,
         contentSid,
         variables: { '1': code },
