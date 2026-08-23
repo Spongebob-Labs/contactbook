@@ -1,7 +1,10 @@
 // Scope note: this is NOT the full schema from docs/architecture/lld.md yet.
-// It carries only what auth + outbound messaging need (User, OTP, refresh
-// tokens, the outbox, the message ledger). Card/ShareLink/Recipient/Broadcast
-// land when that work starts — see docs/architecture/sprint-plan.md.
+// Card/ShareLink/Recipient/WhatsAppTemplate landed 2026-08-23 (curation +
+// live public resolver). Still missing: CardVersion (diffing, needs the
+// notify-on-update feature), Broadcast/BroadcastTarget (batch send +
+// per-target delivery tracking — v1 shares to one recipient at a time and
+// doesn't send via WhatsApp yet), ShareLinkFieldOverride (per-recipient
+// field hiding), ScanCode, LinkEvent. See docs/architecture/sprint-plan.md.
 
 generator client {
   provider = "prisma-client-js"
@@ -20,8 +23,7 @@ datasource db {
 // ==========================================
 
 /// Passwordless: verifying an OTP for a phone number that has never been seen
-/// creates the User. displayName is nullable because at that moment we
-/// genuinely don't have one yet — profile setup happens afterward.
+/// creates the User, with every identity field null until onboarding.
 ///
 /// firstName/lastName/email live here, not as ProfileFields, because they are
 /// account identity rather than a shareable/removable fact — collected once
@@ -48,6 +50,8 @@ model User {
   refreshTokens RefreshToken[]
   profileFields ProfileField[]
   fieldGroups   ProfileFieldGroup[]
+  cards         Card[]
+  recipients    Recipient[]
 
   @@map("users")
 }
@@ -210,9 +214,176 @@ model ProfileField {
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
 
+  cardFields CardField[]
+
   @@index([userId, archivedAt, position])
   @@index([groupId, position])
   @@map("profile_fields")
+}
+
+// ==========================================
+// SHARING
+// ==========================================
+
+enum CardKind {
+  WORK
+  PERSONAL
+  PAYMENT
+  CUSTOM
+}
+
+/// A named, curated subset of the owner's ProfileFields — "what I show this
+/// group of people." A Card holds no values itself; CardField just points at
+/// which ProfileFields are included, so editing a ProfileField updates every
+/// card (and every live ShareLink) that includes it automatically.
+///
+/// Deliberately missing vs. the fuller docs/architecture/lld.md draft:
+/// `slug`/`theme` (no dashboard UI to route/theme yet) and `currentVersion`
+/// (no CardVersion table yet — that lands with the notify-on-update feature).
+model Card {
+  id         String    @id @default(uuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String
+  kind       CardKind  @default(CUSTOM)
+  archivedAt DateTime? // cascades to REVOKE every ShareLink on this card — see SharingService.archiveCard
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  fields     CardField[]
+  shareLinks ShareLink[]
+
+  @@index([userId, archivedAt])
+  @@map("cards")
+}
+
+/// Membership of one ProfileField on one Card, plus card-scoped presentation.
+/// `visible=false` is a soft hide: the owner can toggle a field off without
+/// losing its position or label override. `fieldId` must belong to the same
+/// owner as the card — enforced in SharingService, not by the schema (Prisma
+/// can't express a cross-row same-owner constraint).
+model CardField {
+  cardId        String
+  fieldId       String
+  card          Card         @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  field         ProfileField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  visible       Boolean      @default(true)
+  position      Int          @default(0)
+  labelOverride String?
+
+  @@id([cardId, fieldId])
+  @@index([cardId, visible, position])
+  @@map("card_fields")
+}
+
+enum RecipientSource {
+  QR_SCAN
+  MANUAL
+  INBOUND
+}
+
+/// A person the owner has shared with. Scoped to the owner, not global — the
+/// same phone number is a separate Recipient row for each owner who shares
+/// with them. Deliberately no global "person" entity: that would leak one
+/// owner's contacts into another owner's data.
+model Recipient {
+  id          String          @id @default(uuid())
+  ownerId     String
+  owner       User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  phoneE164   String
+  displayName String? // owner-supplied; recipients have no accounts of their own
+  notes       String? // owner's private notes, never shown to the recipient
+  source      RecipientSource @default(MANUAL)
+  optedOutAt  DateTime? // set on STOP; blocks future sends, existing links stay live
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  shareLinks ShareLink[]
+
+  @@unique([ownerId, phoneE164])
+  @@index([ownerId, createdAt])
+  @@map("recipients")
+}
+
+enum ShareLinkStatus {
+  ACTIVE
+  REVOKED
+}
+
+/// THE central entity for live sharing. Unique on (cardId, recipientId):
+/// sharing the same card with the same person again returns the SAME token,
+/// never a new one — see the architecture skill's invariant #1. Re-sending
+/// shows updated info because the token was never tied to a snapshot in the
+/// first place; GET /public/links/:token always resolves current data.
+///
+/// `token` is stored in plaintext (never hashed) because the owner needs to
+/// re-copy the exact same URL to resend it — see lld.md §5 for why that's an
+/// acceptable tradeoff given the token's 128 bits of entropy.
+model ShareLink {
+  id          String          @id @default(uuid())
+  token       String          @unique
+  cardId      String
+  card        Card            @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  recipientId String
+  recipient   Recipient       @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  status      ShareLinkStatus @default(ACTIVE)
+
+  firstViewedAt DateTime?
+  lastViewedAt  DateTime?
+  viewCount     Int       @default(0)
+  revokedAt     DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([cardId, recipientId])
+  @@index([recipientId, status])
+  @@index([cardId, status])
+  @@map("share_links")
+}
+
+// ==========================================
+// WHATSAPP TEMPLATES
+// ==========================================
+
+enum TemplateStatus {
+  APPROVED
+  PENDING
+  REJECTED
+  UNKNOWN
+}
+
+/// Registry of Twilio Content templates, keyed by our own semantic `key`
+/// rather than the raw contentSid — DB-backed rather than env-var-backed so
+/// a template can rotate (new wording, re-approval) without a deploy.
+///
+/// Empty until a real template is created in Twilio Console and its
+/// contentSid registered here. Nothing sends through a template whose
+/// approvalStatus isn't APPROVED — see messaging/whatsapp-template.service.ts.
+/// A reconciler that syncs approvalStatus from Twilio (the "template
+/// reconcile, 10m" cron in lld.md §3) is not built yet; for now a human
+/// updates approvalStatus after checking Twilio Console.
+model WhatsAppTemplate {
+  id              String         @id @default(uuid())
+  key             String         @unique // "card_share_initial_en"
+  purpose         MessagePurpose
+  contentSid      String         @unique
+  locale          String         @default("en")
+  bodyPreview     String
+  buttonLabel     String?
+  variableSchema  Json // {"1":"ownerName","2":"linkToken"} — documents Twilio's ContentVariables mapping
+  approvalStatus  TemplateStatus @default(UNKNOWN)
+  rejectionReason String?
+  isActive        Boolean        @default(true)
+  syncedAt        DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([purpose, isActive, approvalStatus])
+  @@map("whatsapp_templates")
 }
 
 // ==========================================
@@ -234,7 +405,8 @@ enum MessageDirection {
 
 enum MessagePurpose {
   OTP
-  // CARD_SHARE, CARD_UPDATE, SCAN_REPLY land with the sharing feature.
+  CARD_SHARE
+  // CARD_UPDATE, SCAN_REPLY land with broadcast/notify and QR scanning.
 }
 
 enum MessageStatus {

@@ -9,6 +9,8 @@ import { PrismaModule } from './prisma/prisma.module';
 import { OutboxModule } from './outbox/outbox.module';
 import { AuthModule } from './auth/auth.module';
 import { ProfileModule } from './profile/profile.module';
+import { RecipientsModule } from './recipients/recipients.module';
+import { SharingModule } from './sharing/sharing.module';
 
 @Module({
   imports: [
@@ -19,6 +21,8 @@ import { ProfileModule } from './profile/profile.module';
     HealthModule,
     AuthModule,
     ProfileModule,
+    RecipientsModule,
+    SharingModule,
   ],
   providers: [
     {
