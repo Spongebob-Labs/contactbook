@@ -143,6 +143,15 @@ jobs:
       - name: Write Supabase root cert
         run: echo "${{ secrets.SUPABASE_CA_CERT }}" > ./rendered-supabase-ca.crt
 
+      - name: Loosen permissions for the SCP step's own container to read
+        # render-api-env.sh chmod 600s the file (correct for its life on the
+        # VM), but appleboy/scp-action tars it up from inside its own Docker
+        # container as a different effective user than the one that created
+        # it -- 600 blocks that read entirely. Re-tightened to 600 on the VM
+        # itself in the very next job step, so this is safe: this copy only
+        # ever exists on the ephemeral, single-use Actions runner.
+        run: chmod 644 rendered.env rendered-supabase-ca.crt
+
       - name: Copy deploy files to the VM
         uses: appleboy/scp-action@v0.1.7
         with:
