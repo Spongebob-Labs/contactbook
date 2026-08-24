@@ -2,9 +2,16 @@ node_modules
 **/node_modules
 .pnpm-store/
 
-.env
-.env.*
-!.env.example
+# Bare patterns in .dockerignore match ONLY the build-context root, unlike
+# .gitignore's recursive matching -- .env alone would silently let
+# apps/api/.env (real local secrets: DB creds, JWT signing keys, Twilio
+# token) get copied into the image by `COPY apps/api apps/api`. Confirmed
+# this actually happened in a local test build before this fix -- the
+# build log showed prisma generate reading a real 27-variable .env it had
+# no business seeing inside a Docker build.
+**/.env
+**/.env.*
+!**/.env.example
 
 dist
 **/dist

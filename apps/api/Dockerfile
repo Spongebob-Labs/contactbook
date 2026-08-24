@@ -31,6 +31,12 @@ RUN pnpm install --frozen-lockfile
 COPY apps/api apps/api
 COPY packages packages
 
+# prisma.config.ts calls env('DIRECT_URL') at config-LOAD time -- generate
+# itself never connects, it just needs the var to exist. This build stage
+# has no .env (see .dockerignore) and shouldn't: real credentials have no
+# business inside an image layer. ARG, not ENV -- doesn't persist into the
+# runtime stage, which never reads this build stage's env at all anyway.
+ARG DIRECT_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder"
 RUN pnpm --filter api prisma:generate
 RUN pnpm --filter api build
 

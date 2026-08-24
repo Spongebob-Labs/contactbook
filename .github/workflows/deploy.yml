@@ -22,6 +22,12 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # prisma.config.ts calls env('DIRECT_URL') at config-LOAD time (every
+    # prisma CLI invocation, including plain `generate`) — it only checks the
+    # var is set, generate itself never connects. A placeholder is enough;
+    # only the real `migrate` job below needs the actual Supabase URL.
+    env:
+      DIRECT_URL: "postgresql://placeholder:placeholder@localhost:5432/placeholder"
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -56,7 +62,13 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile --filter api
       - name: Write Supabase root cert
-        run: echo "${{ secrets.SUPABASE_CA_CERT }}" > /tmp/supabase-ca.crt
+        # Same path already baked into the DIRECT_URL secret's sslrootcert=
+        # (the one meant for the VM's container) -- writing it here too means
+        # the same secret value works unmodified in both places, rather than
+        # needing a CI-specific DIRECT_URL that only differs by this path.
+        run: |
+          sudo mkdir -p /etc/contactbook
+          echo "${{ secrets.SUPABASE_CA_CERT }}" | sudo tee /etc/contactbook/supabase-ca.crt > /dev/null
       - name: Run migrations against Supabase directly (session-mode URL, not the pooler)
         working-directory: apps/api
         env:
