@@ -152,15 +152,31 @@ jobs:
         # ever exists on the ephemeral, single-use Actions runner.
         run: chmod 644 rendered.env rendered-supabase-ca.crt
 
-      - name: Copy deploy files to the VM
+      # Two separate copies, not one with strip_components: 1 -- the docker/*
+      # files and the rendered.* files sit at different path depths (one has
+      # a directory prefix to strip, the other doesn't), and a single
+      # strip_components value applied uniformly strips the ROOT-level
+      # files' own filename instead of a directory. Confirmed live: the
+      # combined version reported success (scp itself didn't error) while
+      # silently failing to land rendered.env at all.
+      - name: Copy docker-compose + Caddyfile to the VM
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_KEY }}
-          source: "docker/docker-compose.prod.yml,docker/Caddyfile,rendered.env,rendered-supabase-ca.crt"
+          source: "docker/docker-compose.prod.yml,docker/Caddyfile"
           target: "~/contactbook-api-staging"
           strip_components: 1
+
+      - name: Copy rendered .env + cert to the VM
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          source: "rendered.env,rendered-supabase-ca.crt"
+          target: "~/contactbook-api-staging"
 
       - name: Restart containers on the VM
         uses: appleboy/ssh-action@v1.0.3
