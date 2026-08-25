@@ -132,6 +132,7 @@ jobs:
           SHARE_BASE_URL: ${{ secrets.SHARE_BASE_URL }}
           GCS_PROFILE_PHOTOS_BUCKET: ${{ secrets.GCS_PROFILE_PHOTOS_BUCKET }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          SWAGGER_ENABLED: ${{ secrets.SWAGGER_ENABLED }}
         run: OUTPUT_PATH=./rendered.env bash scripts/render-api-env.sh
 
       - name: Append container-internal sslrootcert paths
