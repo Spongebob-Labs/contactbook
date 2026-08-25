@@ -79,8 +79,6 @@ jobs:
     needs: migrate
     runs-on: ubuntu-latest
     environment: staging
-    outputs:
-      image: ${{ steps.image.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -89,14 +87,20 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
-      - id: image
-        run: echo "tag=${{ secrets.DOCKER_USERNAME }}/contactbook-api:${{ github.sha }}" >> "$GITHUB_OUTPUT"
       - uses: docker/build-push-action@v6
         with:
           context: .
           file: apps/api/Dockerfile
           push: true
-          tags: ${{ steps.image.outputs.tag }}
+          # Not passed via a job output on purpose -- GitHub redacts a
+          # secret (DOCKER_USERNAME) wherever an output containing it gets
+          # READ in another job, which turned this into an empty value in
+          # `deploy` below rather than a partially-masked one. Confirmed
+          # live: docker-compose failed with "service api has neither an
+          # image nor a build context specified". Both DOCKER_USERNAME and
+          # github.sha are already available directly in any job that
+          # needs them -- there was never a reason to relay this one.
+          tags: ${{ secrets.DOCKER_USERNAME }}/contactbook-api:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -184,13 +188,16 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_KEY }}
+          # Built the same way build-and-push's tag is, directly from
+          # DOCKER_USERNAME + github.sha -- not relayed via a job output,
+          # since that's what produced an unusable empty value before.
           script: |
             set -euo pipefail
             cd ~/contactbook-api-staging
             mv rendered.env .env
             mv rendered-supabase-ca.crt supabase-ca.crt
             chmod 600 .env supabase-ca.crt
-            export API_IMAGE=${{ needs.build-and-push.outputs.image }}
+            export API_IMAGE=${{ secrets.DOCKER_USERNAME }}/contactbook-api:${{ github.sha }}
             docker compose -f docker-compose.prod.yml pull
             docker compose -f docker-compose.prod.yml up -d --remove-orphans
             docker image prune -f
