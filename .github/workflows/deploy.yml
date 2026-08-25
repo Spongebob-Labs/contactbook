@@ -197,6 +197,15 @@ jobs:
             mv rendered.env .env
             mv rendered-supabase-ca.crt supabase-ca.crt
             chmod 600 .env supabase-ca.crt
+            # The pre-rebuild API is still running on this VM under these
+            # exact container names, unmanaged by this (or any) compose
+            # project -- docker compose can't "recreate" a container it
+            # doesn't own, so `up` fails on a naming conflict instead.
+            # Confirmed live. This is the rebuild's first deploy tearing it
+            # down, exactly as docs/architecture/README.md's confirmed
+            # constraints already called out as the expected first-deploy
+            # behavior -- not a surprise, not a workaround.
+            docker rm -f contactbook-api contactbook-caddy 2>/dev/null || true
             export API_IMAGE=${{ secrets.DOCKER_USERNAME }}/contactbook-api:${{ github.sha }}
             docker compose -f docker-compose.prod.yml pull
             docker compose -f docker-compose.prod.yml up -d --remove-orphans
