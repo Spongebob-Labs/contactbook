@@ -11,6 +11,12 @@ packages:
 #
 # @scarf/scarf (via swagger-ui-dist, pulled in by @nestjs/swagger) is denied:
 # its postinstall pings a telemetry endpoint. Not needed for the UI to work.
+#
+# ⚠ `onlyBuiltDependencies` below is kept alongside this key, not instead of it. pnpm 11.14+
+# reads `allowBuilds`; 11.13 and earlier read `onlyBuiltDependencies`, and
+# `apps/web/package.json` still pins `pnpm@11.13.1`. It mirrors exactly the entries set to
+# `true` here — a package allowed in one list and missing from the other builds on one machine
+# and is blocked on the next.
 allowBuilds:
   "@nestjs/core": true
   "@prisma/client": true
@@ -23,3 +29,16 @@ allowBuilds:
   protobufjs: false
   sharp: true
   unrs-resolver: true
+
+# The pre-11.14 spelling of the `true` entries above. Denials are simply absent — this key is an
+# allowlist and has no way to express one.
+onlyBuiltDependencies:
+  - "@nestjs/core"
+  - "@prisma/client"
+  - "@prisma/engines"
+  - "@tailwindcss/oxide"
+  - bcrypt
+  - esbuild
+  - prisma
+  - sharp
+  - unrs-resolver

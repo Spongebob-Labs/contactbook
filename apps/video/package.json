@@ -1,0 +1,25 @@
+{
+  "name": "video",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "dev": "remotion studio",
+    "studio": "remotion studio",
+    "render": "remotion render HeroLoop ../web/public/hero/hero-loop.mp4 --codec=h264 --crf=18",
+    "render:webm": "remotion render HeroLoop ../web/public/hero/hero-loop.webm --codec=vp8 --crf=14",
+    "still": "remotion still HeroLoop ../web/public/hero/hero-poster.jpg --frame=36 --image-format=jpeg --jpeg-quality=88"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.399",
+    "@remotion/google-fonts": "4.0.399",
+    "remotion": "4.0.399",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.2",
+    "typescript": "5.9.3",
+    "@types/qrcode": "^1.5.6"
+  }
+}

@@ -1,0 +1,60 @@
+/* ============================================================================
+   Marketing motion.
+
+   THE PAGE HAS ONE AUTHORED MOMENT AND IT IS THE HERO FILM.
+
+   That is a decision, not an omission. Scattered scroll reveals — every section
+   fading up on an intersection observer — are the motion failure mode: they
+   read as a template with a plugin attached, they punish anyone who lands
+   mid-page with a screen of invisible content, and they make twelve different
+   sections behave identically, which is the opposite of art direction.
+
+   So the sky, the meadow and the pass stack are all present on first paint. The
+   only thing that moves on its own is the film, and the film is the product.
+
+   What remains here is INTERACTION motion, which is a different thing: it is
+   feedback, it happens because a person did something, and its absence is felt
+   as the interface being broken rather than as the page being calm.
+
+   ── Removed, and why ────────────────────────────────────────────────────────
+   `[data-template-scrub]` drove a horizontal parallax on the template rail and
+   `[data-scan-sweep]` drove a scan line over a card in the old card section.
+   Both components are gone: the page carries exactly one card now, in the film,
+   where the scan is animated properly in Remotion rather than approximated with
+   a CSS keyframe over a static render. Leaving dead selectors behind is how a
+   stylesheet becomes archaeology.
+   ============================================================================ */
+
+/* The FAQ answer's height.
+
+   Time-based rather than scroll-driven, so the central `prefers-reduced-motion`
+   override in `globals.css` — which zeroes the duration tokens — reaches it.
+   Radix supplies `--radix-accordion-content-height` at runtime; a CSS height
+   transition cannot animate to `auto`, which is why this is a keyframe pair and
+   not a transition. */
+
+@keyframes marketing-faq-open {
+  from {
+    height: 0;
+  }
+  to {
+    height: var(--radix-accordion-content-height);
+  }
+}
+
+@keyframes marketing-faq-close {
+  from {
+    height: var(--radix-accordion-content-height);
+  }
+  to {
+    height: 0;
+  }
+}
+
+[data-faq-answer][data-state="open"] {
+  animation: marketing-faq-open var(--mk-dur-lift) var(--mk-ease);
+}
+
+[data-faq-answer][data-state="closed"] {
+  animation: marketing-faq-close var(--mk-dur-tap) var(--mk-ease-in);
+}

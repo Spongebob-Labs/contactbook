@@ -1,0 +1,769 @@
+{
+  "run_id": "2026-08-23-contactbook-frontend-revamp",
+  "problem_statement": "Full frontend revamp of Contact Book 2.0. Analyze hinge.co/en-gb, hinge.co/en-gb/brand-resources and linktr.ee/s/templates as design references, then produce a design system + screen-by-screen frontend build spec covering every web app screen, the marketing site, the auth flow, card templates/themes, the card builder, public cards, and all system states. Every card template must include a QR code.",
+  "stage": "EXECUTE_PAUSED",
+  "questions_asked": 32,
+  "spec_approved": true,
+  "execute_authorized": true,
+  "round": 1,
+  "max_rounds": 5,
+  "paths": {
+    "spec": "docs/specs/2026-08-23-contactbook-frontend-revamp-spec.md",
+    "plan": "docs/plans/2026-08-23-contactbook-frontend-revamp/00-overview.md",
+    "run_log": "docs/runs/2026-08-23-contactbook-frontend-revamp/run-log.md",
+    "report": "docs/runs/2026-08-23-contactbook-frontend-revamp/final-report.md"
+  },
+  "tracks": [
+    {
+      "id": "T01",
+      "title": "Toolchain, dependencies & test harness",
+      "status": "done",
+      "depends_on": [],
+      "owns_files": [
+        "apps/web/package.json",
+        "apps/web/tsconfig.json",
+        "apps/web/eslint.config.mjs",
+        "apps/web/next.config.ts",
+        "apps/web/.gitignore",
+        "apps/web/vitest.config.ts",
+        "apps/web/playwright.config.ts",
+        "apps/web/tests/setup.ts",
+        "apps/web/tests/helpers/render.tsx",
+        "apps/web/tests/helpers/e2e.ts",
+        "apps/web/tests/helpers/qr-decode.ts",
+        "apps/web/tests/helpers/pixels.ts",
+        "apps/web/tests/helpers/routes.ts",
+        "apps/web/tests/unit/harness.test.ts",
+        "apps/web/tests/e2e/harness.spec.ts"
+      ],
+      "summary": "Toolchain + full \u00a79.3 deps + tests/helpers/** harness. 5/5 gates exit 0. 24 tests green."
+    },
+    {
+      "id": "T02",
+      "title": "Design tokens, fonts, root layout, base CSS",
+      "status": "done",
+      "depends_on": [
+        "T01"
+      ],
+      "owns_files": [
+        "apps/web/src/styles/tokens.css",
+        "apps/web/src/styles/globals.css",
+        "apps/web/src/lib/tokens.ts",
+        "apps/web/src/lib/cn.ts",
+        "apps/web/src/lib/contrast.ts",
+        "apps/web/src/app/layout.tsx",
+        "apps/web/src/app/globals.css",
+        "apps/web/src/app/page.tsx",
+        "apps/web/public/file.svg",
+        "apps/web/public/globe.svg",
+        "apps/web/public/next.svg",
+        "apps/web/public/vercel.svg",
+        "apps/web/public/window.svg",
+        "apps/web/tests/unit/contrast.test.ts",
+        "apps/web/tests/contract/tokens.test.ts",
+        "apps/web/tests/contract/contrast-sweep.test.ts"
+      ],
+      "summary": "119 CSS custom props, Newsreader+Hanken via next/font, WCAG sweep 91 tests. All gates 0."
+    },
+    {
+      "id": "T03",
+      "title": "Domain types & CardTemplate schema",
+      "status": "done",
+      "depends_on": [
+        "T01"
+      ],
+      "owns_files": [
+        "apps/web/src/types/domain.ts",
+        "apps/web/src/card/template-types.ts",
+        "apps/web/tests/contract/domain-types.test.ts"
+      ],
+      "summary": "Domain types + CardTemplate schema. qrZone non-optional (AC-07 proven by 3 reverted mutations). 26 contract tests."
+    },
+    {
+      "id": "T04",
+      "title": "Fixtures, fixture gateway, formatters, auth context",
+      "status": "done",
+      "depends_on": [
+        "T03"
+      ],
+      "owns_files": [
+        "apps/web/src/fixtures/user.ts",
+        "apps/web/src/fixtures/profile.ts",
+        "apps/web/src/fixtures/cards.ts",
+        "apps/web/src/fixtures/contacts.ts",
+        "apps/web/src/fixtures/extremes.ts",
+        "apps/web/src/fixtures/index.ts",
+        "apps/web/src/lib/fixture-gateway.tsx",
+        "apps/web/src/lib/fixture-auth.tsx",
+        "apps/web/src/lib/format.ts",
+        "apps/web/src/lib/screen-state.ts",
+        "apps/web/public/portraits/priyanka.png",
+        "apps/web/public/portraits/arjun.png",
+        "apps/web/public/portraits/mei.png",
+        "apps/web/tests/unit/format.test.ts",
+        "apps/web/tests/unit/fixture-gateway.test.tsx",
+        "apps/web/tests/contract/fixtures.test.ts"
+      ],
+      "summary": "Fixtures (9 cards, 35 fields, all 21 FieldTypes), gateway, formatters, sim auth. 182 assertions."
+    },
+    {
+      "id": "T05",
+      "title": "Core primitives (Button, Input, Select, \u2026)",
+      "status": "done",
+      "depends_on": [
+        "T02"
+      ],
+      "owns_files": [
+        "apps/web/src/components/primitives/button.tsx",
+        "apps/web/src/components/primitives/input.tsx",
+        "apps/web/src/components/primitives/textarea.tsx",
+        "apps/web/src/components/primitives/select.tsx",
+        "apps/web/src/components/primitives/checkbox.tsx",
+        "apps/web/src/components/primitives/radio-group.tsx",
+        "apps/web/src/components/primitives/switch.tsx",
+        "apps/web/src/components/primitives/label.tsx",
+        "apps/web/src/components/primitives/chip.tsx",
+        "apps/web/src/components/primitives/badge.tsx",
+        "apps/web/src/components/primitives/avatar.tsx",
+        "apps/web/src/components/primitives/skeleton.tsx",
+        "apps/web/src/components/primitives/rule.tsx",
+        "apps/web/src/components/primitives/index.ts",
+        "apps/web/tests/unit/primitives.test.tsx"
+      ],
+      "summary": "13 primitives on Radix + own styling. 72 assertions. Fixed own code to pass AC-13, not the test."
+    },
+    {
+      "id": "T06",
+      "title": "QR geometry + `<QrZone>`",
+      "status": "done",
+      "depends_on": [
+        "T02",
+        "T03"
+      ],
+      "owns_files": [
+        "apps/web/src/card/qr-geometry.ts",
+        "apps/web/src/card/qr-zone.tsx",
+        "apps/web/tests/unit/qr-geometry.test.ts"
+      ],
+      "summary": "QR geometry + <QrZone>. 52 tests, 8 mutations verified. Real reserved box 206px at v5 (spec's 196 is nominal)."
+    },
+    {
+      "id": "T07",
+      "title": "Template registry \u2014 8 templates + art assets",
+      "status": "done",
+      "depends_on": [
+        "T02",
+        "T03"
+      ],
+      "owns_files": [
+        "apps/web/src/card/templates/index.ts",
+        "apps/web/src/card/templates/palette.ts",
+        "apps/web/src/card/templates/ledger.ts",
+        "apps/web/src/card/templates/chapter.ts",
+        "apps/web/src/card/templates/foundry.ts",
+        "apps/web/src/card/templates/marquee.ts",
+        "apps/web/src/card/templates/atrium.ts",
+        "apps/web/src/card/templates/almanac.ts",
+        "apps/web/src/card/templates/terminal.ts",
+        "apps/web/src/card/templates/passage.ts",
+        "apps/web/public/templates/foundry-workshop.png",
+        "apps/web/public/templates/atrium-portrait.png",
+        "apps/web/public/templates/passage-travel.png",
+        "apps/web/tests/contract/templates.test.ts"
+      ],
+      "summary": "8 templates, no two sharing a taxonomy signature. TEMPLATE_ART sidecar. 30 contract tests. 3 PLACEHOLDER-ART backgrounds."
+    },
+    {
+      "id": "T08",
+      "title": "Overlay components (the only `--elevation-1/2` zone)",
+      "status": "done",
+      "depends_on": [
+        "T05"
+      ],
+      "owns_files": [
+        "apps/web/src/components/overlay/dialog.tsx",
+        "apps/web/src/components/overlay/confirm-dialog.tsx",
+        "apps/web/src/components/overlay/popover.tsx",
+        "apps/web/src/components/overlay/dropdown-menu.tsx",
+        "apps/web/src/components/overlay/tooltip.tsx",
+        "apps/web/src/components/overlay/toast.tsx",
+        "apps/web/src/components/overlay/sheet.tsx",
+        "apps/web/src/components/overlay/index.ts",
+        "apps/web/tests/unit/overlay.test.tsx"
+      ],
+      "summary": "7 overlay components, sole elevation zone. [data-elevation] attribute rule proven against T05's real Select. 55 assertions."
+    },
+    {
+      "id": "T09",
+      "title": "App shell \u2014 layout components + `(app)` group layout",
+      "status": "done",
+      "depends_on": [
+        "T04",
+        "T05",
+        "T10"
+      ],
+      "owns_files": [
+        "apps/web/src/components/layout/app-shell.tsx",
+        "apps/web/src/components/layout/sidebar.tsx",
+        "apps/web/src/components/layout/bottom-bar.tsx",
+        "apps/web/src/components/layout/page-header.tsx",
+        "apps/web/src/components/layout/split-view.tsx",
+        "apps/web/src/components/layout/skip-link.tsx",
+        "apps/web/src/components/layout/index.ts",
+        "apps/web/src/app/(app)/layout.tsx",
+        "apps/web/src/app/(app)/error.tsx",
+        "apps/web/tests/unit/app-shell.test.tsx"
+      ],
+      "summary": "App shell: 240px rail, bottom bar, SplitView, skip link. ToastProvider mounted. 40 assertions, 4 mutations."
+    },
+    {
+      "id": "T10",
+      "title": "Data-state components (loading/empty/error/table)",
+      "status": "done",
+      "depends_on": [
+        "T05"
+      ],
+      "owns_files": [
+        "apps/web/src/components/data/empty-state.tsx",
+        "apps/web/src/components/data/empty-filtered-state.tsx",
+        "apps/web/src/components/data/error-panel.tsx",
+        "apps/web/src/components/data/not-found-panel.tsx",
+        "apps/web/src/components/data/loading-skeleton.tsx",
+        "apps/web/src/components/data/filter-bar.tsx",
+        "apps/web/src/components/data/search-field.tsx",
+        "apps/web/src/components/data/data-table.tsx",
+        "apps/web/src/components/data/screen-state-root.tsx",
+        "apps/web/src/components/data/index.ts",
+        "apps/web/tests/unit/data-components.test.tsx"
+      ],
+      "summary": "9 data-state components + ScreenStateRoot (data-screen-state contract). 57 assertions; suite 642."
+    },
+    {
+      "id": "T11",
+      "title": "`resolveCard` + `buildVcf`",
+      "status": "done",
+      "depends_on": [
+        "T03",
+        "T04",
+        "T07"
+      ],
+      "owns_files": [
+        "apps/web/src/card/resolve-card.ts",
+        "apps/web/src/card/build-vcf.ts",
+        "apps/web/src/card/errors.ts",
+        "apps/web/tests/unit/resolve-card.test.ts",
+        "apps/web/tests/unit/build-vcf.test.ts"
+      ],
+      "summary": "resolveCard + buildVcf + errors. 73-byte regression proven closed by mutation. canBuildVcf is the E-01/E-02 guard. 97 assertions."
+    },
+    {
+      "id": "T12",
+      "title": "Field renderer registry (all 21 `FieldType`s)",
+      "status": "done",
+      "depends_on": [
+        "T03",
+        "T04"
+      ],
+      "owns_files": [
+        "apps/web/src/card/field-renderers.tsx",
+        "apps/web/tests/contract/field-renderers.test.tsx"
+      ],
+      "summary": "Total Record<FieldType,FieldRenderer> (21, no fallback, TS2741-proven). safeHttpHref + masked-href leak closed. 45 assertions."
+    },
+    {
+      "id": "T13",
+      "title": "`<CardRenderer>` + card sub-components",
+      "status": "done",
+      "depends_on": [
+        "T06",
+        "T07",
+        "T11",
+        "T12"
+      ],
+      "owns_files": [
+        "apps/web/src/card/card-renderer.tsx",
+        "apps/web/src/card/card-frame.tsx",
+        "apps/web/src/card/card-avatar.tsx",
+        "apps/web/src/card/card-button-stack.tsx",
+        "apps/web/src/card/card-field-row.tsx",
+        "apps/web/src/card/card-social-row.tsx",
+        "apps/web/src/card/card-fonts.ts",
+        "apps/web/tests/unit/card-renderer.test.tsx"
+      ],
+      "summary": "CardRenderer + 6 sub-components. 96 assertions, 26/26 mutations. Measured button boundaries: 16/16 clear 3:1."
+    },
+    {
+      "id": "T14",
+      "title": "Public shells \u2014 root error/not-found, `(marketing)` chrome",
+      "status": "done",
+      "depends_on": [
+        "T05",
+        "T10"
+      ],
+      "owns_files": [
+        "apps/web/src/app/not-found.tsx",
+        "apps/web/src/app/error.tsx",
+        "apps/web/src/app/(marketing)/layout.tsx",
+        "apps/web/src/app/(marketing)/error.tsx",
+        "apps/web/src/components/marketing/pill-nav.tsx",
+        "apps/web/src/components/marketing/site-footer.tsx",
+        "apps/web/tests/unit/marketing-chrome.test.tsx"
+      ],
+      "summary": "Root 404/error, (marketing) chrome, PillNav, SiteFooter. OverlayStyles mounted+proven in Chromium. 67 assertions."
+    },
+    {
+      "id": "T15",
+      "title": "PNG export (`exportCardPng`)",
+      "status": "done",
+      "depends_on": [
+        "T13"
+      ],
+      "owns_files": [
+        "apps/web/src/card/export-card-png.ts",
+        "apps/web/tests/unit/export-card-png.test.ts"
+      ],
+      "summary": "exportCardPng 800x1720. Node attached, proved inside rasteriser. 30 assertions, 28/28 mutants. ExportBusyError approved (D8)."
+    },
+    {
+      "id": "T16",
+      "title": "`(auth)` group \u2014 six one-question screens",
+      "status": "done",
+      "depends_on": [
+        "T04",
+        "T05",
+        "T13"
+      ],
+      "owns_files": [
+        "apps/web/src/app/(auth)/layout.tsx",
+        "apps/web/src/app/(auth)/error.tsx",
+        "apps/web/src/app/(auth)/signin/phone/page.tsx",
+        "apps/web/src/app/(auth)/signin/otp/page.tsx",
+        "apps/web/src/app/(auth)/signup/first-name/page.tsx",
+        "apps/web/src/app/(auth)/signup/last-name/page.tsx",
+        "apps/web/src/app/(auth)/signup/email/page.tsx",
+        "apps/web/src/app/(auth)/signup/done/page.tsx",
+        "apps/web/src/components/auth/auth-shell.tsx",
+        "apps/web/src/components/auth/auth-progress.tsx",
+        "apps/web/src/components/auth/otp-input.tsx",
+        "apps/web/src/components/auth/country-select.tsx",
+        "apps/web/src/components/auth/auth-step-form.tsx",
+        "apps/web/src/lib/auth-validation.ts",
+        "apps/web/src/lib/auth-flow-context.tsx",
+        "apps/web/tests/unit/auth-validation.test.ts",
+        "apps/web/tests/e2e/auth-flow.spec.ts"
+      ],
+      "summary": "(auth) 6 screens verified. All 6 failures were test defects (Next route announcer + Radix focus race). 75 e2e passed x3."
+    },
+    {
+      "id": "T17",
+      "title": "Shared app components (tiles, rows, field list, meter)",
+      "status": "done",
+      "depends_on": [
+        "T05",
+        "T08",
+        "T10",
+        "T11",
+        "T13"
+      ],
+      "owns_files": [
+        "apps/web/src/components/app/stat-row.tsx",
+        "apps/web/src/components/app/card-thumb-tile.tsx",
+        "apps/web/src/components/app/contact-row.tsx",
+        "apps/web/src/components/app/field-list.tsx",
+        "apps/web/src/components/app/field-count-meter.tsx",
+        "apps/web/src/components/app/card-type-chip.tsx",
+        "apps/web/src/components/app/source-card-link.tsx",
+        "apps/web/src/components/app/index.ts",
+        "apps/web/tests/unit/app-components.test.tsx"
+      ],
+      "summary": "7 shared app components. FieldCountMeter takes ResolvedCard not count. 58 assertions, 10/10 mutants killed."
+    },
+    {
+      "id": "T18",
+      "title": "Public card page `/c/[slug]`",
+      "status": "done",
+      "depends_on": [
+        "T05",
+        "T10",
+        "T11",
+        "T13"
+      ],
+      "owns_files": [
+        "apps/web/src/app/c/[slug]/page.tsx",
+        "apps/web/src/app/c/[slug]/loading.tsx",
+        "apps/web/src/app/c/[slug]/error.tsx",
+        "apps/web/src/app/c/[slug]/not-found.tsx",
+        "apps/web/src/app/c/[slug]/opengraph-image.tsx",
+        "apps/web/src/components/public-card/public-card-view.tsx",
+        "apps/web/src/components/public-card/save-to-contacts-button.tsx",
+        "apps/web/src/components/public-card/whatsapp-button.tsx",
+        "apps/web/tests/e2e/public-card.spec.ts"
+      ],
+      "summary": "Public card /c/[slug]. E-37 ruled soft-404 (D11), noindex asserted. 63/63 e2e. Found W6-08 flake."
+    },
+    {
+      "id": "T19",
+      "title": "Template gallery `/templates`",
+      "status": "done",
+      "depends_on": [
+        "T05",
+        "T07",
+        "T13",
+        "T14"
+      ],
+      "owns_files": [
+        "apps/web/src/app/(marketing)/templates/page.tsx",
+        "apps/web/src/app/(marketing)/templates/loading.tsx",
+        "apps/web/src/app/(marketing)/templates/error.tsx",
+        "apps/web/src/components/gallery/category-rail.tsx",
+        "apps/web/src/components/gallery/template-grid.tsx",
+        "apps/web/src/components/gallery/template-cell.tsx",
+        "apps/web/src/components/gallery/gallery-closing-band.tsx",
+        "apps/web/tests/e2e/gallery.spec.ts"
+      ],
+      "summary": "Gallery verified green, nothing changed. 42 e2e passed. Found D-A/D-B/D-C in T13/T07 files."
+    },
+    {
+      "id": "T20",
+      "title": "Dashboard `/dashboard`",
+      "status": "done",
+      "depends_on": [
+        "T09",
+        "T10",
+        "T17"
+      ],
+      "owns_files": [
+        "apps/web/src/app/(app)/dashboard/page.tsx",
+        "apps/web/src/app/(app)/dashboard/loading.tsx",
+        "apps/web/src/app/(app)/dashboard/error.tsx",
+        "apps/web/src/app/(app)/dashboard/dashboard-client.tsx",
+        "apps/web/tests/e2e/dashboard.spec.ts"
+      ],
+      "summary": "Dashboard. Correctly declined isFiltered per \u00a78D.3 n/a; made EmptyFilteredState unreachable. 7/7 mutants. Fallback carries no screen-state (structural W6-08 fix)."
+    },
+    {
+      "id": "T21",
+      "title": "Cards list `/cards`",
+      "status": "done",
+      "depends_on": [
+        "T09",
+        "T10",
+        "T17"
+      ],
+      "owns_files": [
+        "apps/web/src/app/(app)/cards/page.tsx",
+        "apps/web/src/app/(app)/cards/loading.tsx",
+        "apps/web/src/app/(app)/cards/error.tsx",
+        "apps/web/src/app/(app)/cards/cards-list-client.tsx",
+        "apps/web/tests/e2e/cards-list.spec.ts"
+      ],
+      "summary": "Cards list. Keeps updatedAt-desc sort so the empty card surfaces first, wearing its warning. 8/8 mutants. unit 1100."
+    },
+    {
+      "id": "T22",
+      "title": "Card detail `/cards/[cardId]` + share/export/delete",
+      "status": "done",
+      "depends_on": [
+        "T09",
+        "T10",
+        "T15",
+        "T17"
+      ],
+      "owns_files": [
+        "apps/web/src/app/(app)/cards/[cardId]/page.tsx",
+        "apps/web/src/app/(app)/cards/[cardId]/loading.tsx",
+        "apps/web/src/app/(app)/cards/[cardId]/error.tsx",
+        "apps/web/src/app/(app)/cards/[cardId]/not-found.tsx",
+        "apps/web/src/app/(app)/cards/[cardId]/card-detail-client.tsx",
+        "apps/web/src/components/share/share-sheet.tsx",
+        "apps/web/src/components/share/export-png-button.tsx",
+        "apps/web/src/components/share/delete-card-dialog.tsx",
+        "apps/web/tests/e2e/card-detail.spec.ts"
+      ],
+      "summary": "Card detail + share/export/delete. I-5 proved by reference identity. 9/10 mutants; M3 survivor reported honestly (pure fn, structurally undetectable)."
+    },
+    {
+      "id": "T23",
+      "title": "Card builder `/cards/new` + `/cards/[cardId]/edit`",
+      "status": "done",
+      "depends_on": [
+        "T09",
+        "T10",
+        "T17"
+      ],
+      "owns_files": [
+        "apps/web/src/app/(app)/cards/new/page.tsx",
+        "apps/web/src/app/(app)/cards/new/loading.tsx",
+        "apps/web/src/app/(app)/cards/[cardId]/edit/page.tsx",
+        "apps/web/src/app/(app)/cards/[cardId]/edit/loading.tsx",
+        "apps/web/src/components/builder/builder-split.tsx",
+        "apps/web/src/components/builder/builder-header.tsx",
+        "apps/web/src/components/builder/template-picker.tsx",
+        "apps/web/src/components/builder/field-picker.tsx",
+        "apps/web/src/components/builder/theme-controls.tsx",
+        "apps/web/src/components/builder/empty-card-warning.tsx",
+        "apps/web/src/components/builder/builder-reducer.ts",
+        "apps/web/tests/unit/builder-reducer.test.ts",
+        "apps/web/tests/e2e/builder.spec.ts"
+      ],
+      "summary": "Card builder. E-01 guard on canBuildVcf; 3/3 mutants. Found the app-shell 360px overflow."
+    },
+    {
+      "id": "T24",
+      "title": "Contacts list + contact detail",
+      "status": "done",
+      "depends_on": [
+        "T09",
+        "T10",
+        "T17"
+      ],
+      "owns_files": [
+        "apps/web/src/app/(app)/contacts/page.tsx",
+        "apps/web/src/app/(app)/contacts/loading.tsx",
+        "apps/web/src/app/(app)/contacts/error.tsx",
+        "apps/web/src/app/(app)/contacts/contacts-list-client.tsx",
+        "apps/web/src/app/(app)/contacts/[contactId]/page.tsx",
+        "apps/web/src/app/(app)/contacts/[contactId]/loading.tsx",
+        "apps/web/src/app/(app)/contacts/[contactId]/error.tsx",
+        "apps/web/src/app/(app)/contacts/[contactId]/not-found.tsx",
+        "apps/web/src/app/(app)/contacts/[contactId]/contact-detail-client.tsx",
+        "apps/web/tests/e2e/contacts.spec.ts"
+      ],
+      "summary": "Contacts list + detail. contact_vikram masking probed; narrowing ALWAYS_MASKED_TYPES would be caught. 12/12 mutants."
+    },
+    {
+      "id": "T25",
+      "title": "Profile + field-group editor",
+      "status": "done",
+      "depends_on": [
+        "T08",
+        "T09",
+        "T10",
+        "T17"
+      ],
+      "owns_files": [
+        "apps/web/src/app/(app)/profile/page.tsx",
+        "apps/web/src/app/(app)/profile/loading.tsx",
+        "apps/web/src/app/(app)/profile/error.tsx",
+        "apps/web/src/app/(app)/profile/profile-client.tsx",
+        "apps/web/src/app/(app)/profile/groups/[groupId]/page.tsx",
+        "apps/web/src/app/(app)/profile/groups/[groupId]/loading.tsx",
+        "apps/web/src/app/(app)/profile/groups/[groupId]/error.tsx",
+        "apps/web/src/app/(app)/profile/groups/[groupId]/not-found.tsx",
+        "apps/web/src/app/(app)/profile/groups/[groupId]/group-editor-client.tsx",
+        "apps/web/src/components/profile/identity-block.tsx",
+        "apps/web/src/components/profile/field-group-section.tsx",
+        "apps/web/src/components/profile/field-row.tsx",
+        "apps/web/src/components/profile/sensitive-toggle.tsx",
+        "apps/web/src/components/profile/add-field-popover.tsx",
+        "apps/web/tests/e2e/profile.spec.ts"
+      ],
+      "summary": "Profile + group editor. Reveal gates edit; masked value absent from outerHTML. 18/18 harness."
+    },
+    {
+      "id": "T26",
+      "title": "Marketing one-pager `/` \u2014 nine sections (CUT-FIRST)",
+      "status": "done",
+      "depends_on": [
+        "T13",
+        "T14",
+        "T25"
+      ],
+      "owns_files": [
+        "apps/web/src/app/(marketing)/page.tsx",
+        "apps/web/src/fixtures/marketing.ts",
+        "apps/web/src/styles/marketing-motion.css",
+        "apps/web/src/components/marketing/section.tsx",
+        "apps/web/src/components/marketing/hero.tsx",
+        "apps/web/src/components/marketing/step-list.tsx",
+        "apps/web/src/components/marketing/template-strip.tsx",
+        "apps/web/src/components/marketing/scan-demo.tsx",
+        "apps/web/src/components/marketing/quote-block.tsx",
+        "apps/web/src/components/marketing/field-catalogue.tsx",
+        "apps/web/src/components/marketing/faq-accordion.tsx",
+        "apps/web/src/components/marketing/pricing-columns.tsx",
+        "apps/web/src/components/marketing/final-cta.tsx",
+        "apps/web/tests/e2e/marketing.spec.ts"
+      ],
+      "summary": "Marketing one-pager, 9 sections. 16/16 mutants. Correctly declined cardFontsClassName per AC-17/N-3 (D15)."
+    },
+    {
+      "id": "T27",
+      "title": "QR contract suite \u2014 QR-T1\u2026QR-T6 (**the ground truth**)",
+      "status": "pending",
+      "depends_on": [
+        "T13",
+        "T15",
+        "T18",
+        "T21"
+      ],
+      "owns_files": [
+        "apps/web/tests/e2e/qr-geometry.spec.ts",
+        "apps/web/tests/e2e/qr-plate.spec.ts",
+        "apps/web/tests/e2e/qr-overlap.spec.ts",
+        "apps/web/tests/e2e/qr-occlusion.spec.ts",
+        "apps/web/tests/e2e/qr-scannability.spec.ts",
+        "apps/web/tests/e2e/qr-export.spec.ts",
+        "apps/web/tests/e2e/qr-thumb-exempt.spec.ts"
+      ],
+      "summary": "STOPPED by Vansh at ~90%. 6/7 spec files written, 159 assertions green incl. rotated-hero and export decode. Missing: qr-thumb-exempt.spec.ts + its structured report."
+    },
+    {
+      "id": "T28",
+      "title": "Per-template contrast, 80/20 pixel audit, perf",
+      "status": "pending",
+      "depends_on": [
+        "T18",
+        "T19",
+        "T20",
+        "T21",
+        "T26"
+      ],
+      "owns_files": [
+        "apps/web/tests/e2e/template-contrast.spec.ts",
+        "apps/web/tests/e2e/eighty-twenty.spec.ts",
+        "apps/web/tests/e2e/perf.spec.ts"
+      ],
+      "summary": ""
+    },
+    {
+      "id": "T29",
+      "title": "a11y (axe), keyboard traversal, state matrix",
+      "status": "pending",
+      "depends_on": [
+        "T16",
+        "T18",
+        "T19",
+        "T20",
+        "T21",
+        "T22",
+        "T23",
+        "T24",
+        "T25",
+        "T26"
+      ],
+      "owns_files": [
+        "apps/web/tests/e2e/a11y.spec.ts",
+        "apps/web/tests/e2e/keyboard.spec.ts",
+        "apps/web/tests/e2e/states.spec.ts"
+      ],
+      "summary": ""
+    },
+    {
+      "id": "T30",
+      "title": "Static contract sweeps \u2014 anti-AI lint, routes, scope wall",
+      "status": "pending",
+      "depends_on": [
+        "T16",
+        "T18",
+        "T19",
+        "T22",
+        "T23",
+        "T24",
+        "T25",
+        "T26"
+      ],
+      "owns_files": [
+        "apps/web/tests/contract/anti-ai-lint.test.ts",
+        "apps/web/tests/contract/routes.test.ts",
+        "apps/web/tests/contract/scope-wall.test.ts"
+      ],
+      "summary": ""
+    },
+    {
+      "id": "T31",
+      "title": "Edge-case suites \u2014 every \u00a711 row",
+      "status": "pending",
+      "depends_on": [
+        "T16",
+        "T18",
+        "T20",
+        "T21",
+        "T22",
+        "T23",
+        "T24",
+        "T25"
+      ],
+      "owns_files": [
+        "apps/web/tests/e2e/edge-content.spec.ts",
+        "apps/web/tests/e2e/edge-interaction.spec.ts",
+        "apps/web/tests/e2e/routes.spec.ts"
+      ],
+      "summary": ""
+    },
+    {
+      "id": "T32",
+      "title": "Final integration & gate verification (read-only)",
+      "status": "pending",
+      "depends_on": [
+        "T27",
+        "T28",
+        "T29",
+        "T30",
+        "T31"
+      ],
+      "owns_files": [
+        "\u2014 *(verification-only: writes nothing but its run-log block)*"
+      ],
+      "summary": ""
+    }
+  ],
+  "open_bugs": [
+    {
+      "id": "D7-not-found-panel-use-client",
+      "severity": "P2",
+      "location": "apps/web/src/components/data/not-found-panel.tsx",
+      "symptom": "missing \"use client\"; server import throws at runtime",
+      "status": "worked-around in consumers; root fix deferred to fix round"
+    },
+    {
+      "id": "DOB-MASK",
+      "severity": "P3",
+      "location": "src/card/field-renderers.tsx (maskTail on DATE)",
+      "symptom": "field_dob masks to \u2022\u2022\u2022\u20221991 \u2014 a sensitive DOB still surfaces the birth year",
+      "status": "final-report item, not actioned"
+    },
+    {
+      "id": "FAKE-QUOTES",
+      "severity": "P2",
+      "location": "src/fixtures/marketing.ts",
+      "symptom": "three fabricated testimonials attributed to invented people",
+      "status": "final-report item \u2014 must not ship to a real audience"
+    }
+  ],
+  "fixed_bugs": [
+    "W6-01",
+    "W6-02",
+    "W6-03",
+    "W6-04",
+    "W6-05",
+    "W6-06",
+    "D-A",
+    "D-B",
+    "D-C",
+    "W6-07",
+    "W6-08",
+    "W7-ROOT",
+    "W7-01",
+    "W7-02",
+    "W7-03",
+    "W7-04",
+    "D14"
+  ],
+  "escalations": [
+    {
+      "at": "wave 6",
+      "kind": "paused_by_user",
+      "detail": "Vansh paused for usage limit reset. T16/T18/T19 stopped via TaskStop after writing all files but before verifying. Tree verified healthy: typecheck/lint/build/test all exit 0, 1052 tests green.",
+      "resume": "Re-spawn T16, T18, T19 as verify-and-report (files exist). Run test:e2e FIRST \u2014 T19 flagged an unexplained e2e harness blocker. Then wave 7 = T20-T25."
+    },
+    {
+      "at": "wave 8",
+      "kind": "stopped_by_user",
+      "detail": "T27 killed mid-track. Orchestrator verified after stop: 159 QR assertions pass, incl. QR-T5 rotated hero and QR-T6 export decode. Tree clean, port freed, gates green.",
+      "resume": "Resume T27 for qr-thumb-exempt.spec.ts + structured report, or proceed to T31 treating AC-09h as covered by T19's gallery.spec.ts:221."
+    }
+  ],
+  "committed": false,
+  "updated": "2026-08-23"
+}
