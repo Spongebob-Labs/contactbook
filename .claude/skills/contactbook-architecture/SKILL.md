@@ -24,6 +24,7 @@ Read the one that matches the work rather than all six.
 | GCP resources, Terraform, deploy runbook | [iac.md](../../../docs/architecture/iac.md) |
 | Estimating, scoping, "can we fit X" | [sprint-plan.md](../../../docs/architecture/sprint-plan.md) |
 | Building the public share page in `apps/web` | the `contactbook-share-page` skill |
+| Building any other `apps/web` screen that calls the API | the `contactbook-api-integration` skill |
 
 ## The invariants
 
