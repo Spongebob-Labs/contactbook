@@ -95,6 +95,25 @@
   /* Headings inside the app shell only — see the note in app/layout.tsx. Body stays Geist. */
   --font-display: var(--font-space);
 
+  /* ⚠ **The app chrome's face, and the reason it is a THIRD token rather than a new value
+     for `--font-sans`.**
+
+     `--font-sans` is not the dashboard's font. `card-page.tsx` and `share-face.tsx` both pin
+     `font-family: var(--font-sans)` on their own roots — deliberately, so the display face
+     could never reach them — which means repointing it would re-type the public card page and
+     the 336×500 wallet face whose geometry five QR contract suites measure. The card's
+     typeface is a brand commitment (`PRODUCT.md`) and is not what was being changed here.
+
+     So the chrome gets its own token, applied on `[data-app-shell]` in `globals.css`, and the
+     card's existing pin does the rest of the work for free: the builder's preview sits *inside*
+     the shell and still renders in Geist, which is correct — the preview must match the page a
+     recipient opens, not the editor around it.
+
+     The fallback chain is Geist before `system-ui`. `next/font` supplies a metric-corrected
+     local fallback already; this is the second line of defence, and it lands on the family the
+     rest of the product uses rather than on whatever the OS offers. */
+  --font-app: var(--font-instrument), var(--font-geist), system-ui, -apple-system, sans-serif;
+
   /* ── Type scale ──────────────────────────────────────────────────────────
      Nine steps, down from fourteen. Every step below is used somewhere; a scale
      with unused steps is a scale nobody can hold in their head. Display steps

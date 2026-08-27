@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Space_Grotesk } from "next/font/google";
+import { Geist, Geist_Mono, Instrument_Sans, Space_Grotesk } from "next/font/google";
 
 import "@/styles/globals.css";
 
@@ -64,6 +64,44 @@ const spaceGrotesk = Space_Grotesk({
   display: "swap",
 });
 
+/**
+ * The **app chrome's** face — dashboard, cards list, builder, contacts, profile.
+ *
+ * ## ⚠ Loaded through `next/font`, not through the `<link>` tags it was requested as
+ *
+ * The brief arrived as a Google Fonts embed — two `preconnect`s and a stylesheet `<link>`.
+ * Pasting that in would have cost three things this file already buys: the font files are
+ * self-hosted from our own origin instead of fetched from `fonts.gstatic.com` on the critical
+ * path, the stylesheet request is gone entirely rather than render-blocking, and `next/font`
+ * generates a `size-adjust`-corrected local fallback so headings do not reflow when the real
+ * face swaps in. Same family, same axes — declared the way the other three already are.
+ *
+ * The URL also carried **Fraunces** and **Noto Sans**. Neither is loaded, because neither is
+ * used: the ask was *visual consistency*, and consistency is one family doing the work. A
+ * webfont nothing renders is bytes, a preconnect and a fallback-metric penalty for nothing.
+ * Fraunces is also a serif, which `PRODUCT.md`'s brand commitments rule out.
+ *
+ * ## Why one family, when the chrome had two
+ *
+ * The chrome ran Geist for body and Space Grotesk for `.text-h*`. Returning it to a single face
+ * is what was asked for, and it is also what the original brand commitment says: *"Personality
+ * comes from weight, tracking and case — not from loading a second family."* Instrument Sans is
+ * variable across 400–700 with a true italic, so the heading steps keep their event through
+ * weight and size rather than through a change of voice.
+ *
+ * **Geist stays loaded and is still the card's face** — see `--font-app` in `tokens.css` for
+ * why that separation is the point rather than an oversight. `Space_Grotesk` stays too: the
+ * marketing site's `--mk-font-display` reads `--font-space` directly and is untouched by this.
+ */
+const instrumentSans = Instrument_Sans({
+  subsets: ["latin"],
+  /* Both, matching the requested URL's `ital,wght@0,400..700;1,400..700`. The italic is a
+     drawn companion here, not a synthesised oblique, and it is worth the second file. */
+  style: ["normal", "italic"],
+  variable: "--font-instrument",
+  display: "swap",
+});
+
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
   title: {
@@ -78,7 +116,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${geist.variable} ${geistMono.variable} ${spaceGrotesk.variable} h-full antialiased`}
+      className={`${geist.variable} ${geistMono.variable} ${spaceGrotesk.variable} ${instrumentSans.variable} h-full antialiased`}
     >
       {/* ⚠ `suppressHydrationWarning` is here for **browser extensions**, and for nothing this
           app does.
