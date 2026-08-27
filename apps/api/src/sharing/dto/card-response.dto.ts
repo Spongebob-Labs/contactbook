@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { CardKind, FieldCategory, FieldType } from '@prisma/client';
 
 export class CardFieldResponseDto {
@@ -41,6 +41,35 @@ export class CardResponseDto {
 
   @ApiProperty({ enum: CardKind, example: CardKind.WORK })
   kind!: CardKind;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    example: 'meridian',
+    description: 'NULL means the owner never chose one.',
+  })
+  templateId!: string | null;
+
+  @ApiPropertyOptional({ nullable: true, example: 'sapphire' })
+  paletteId!: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    example: '#1B4F72',
+    description: 'Overrides paletteId when set.',
+  })
+  groundHex!: string | null;
+
+  @ApiPropertyOptional({ nullable: true, example: 'matte' })
+  finish!: string | null;
+
+  @ApiPropertyOptional({ nullable: true, example: 'none' })
+  texture!: string | null;
+
+  @ApiPropertyOptional({ nullable: true, example: 'subtle' })
+  texturePresence!: string | null;
+
+  @ApiPropertyOptional({ nullable: true, example: '1x' })
+  textureScale!: string | null;
 
   @ApiProperty({ type: [CardFieldResponseDto] })
   fields!: CardFieldResponseDto[];

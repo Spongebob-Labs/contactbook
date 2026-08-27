@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { CardKind, FieldType } from '@prisma/client';
 
 // No ids anywhere in this file, deliberately — see docs/architecture/lld.md
@@ -28,6 +28,36 @@ export class PublicCardMetaDto {
 
   @ApiProperty({ enum: CardKind, example: CardKind.WORK })
   kind!: CardKind;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    example: 'meridian',
+    description:
+      'NULL means the owner never chose one — derive a look from `kind` instead, same fallback the owner app itself uses.',
+  })
+  templateId!: string | null;
+
+  @ApiPropertyOptional({ nullable: true, example: 'sapphire' })
+  paletteId!: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    example: '#1B4F72',
+    description: 'Overrides paletteId when set.',
+  })
+  groundHex!: string | null;
+
+  @ApiPropertyOptional({ nullable: true, example: 'matte' })
+  finish!: string | null;
+
+  @ApiPropertyOptional({ nullable: true, example: 'none' })
+  texture!: string | null;
+
+  @ApiPropertyOptional({ nullable: true, example: 'subtle' })
+  texturePresence!: string | null;
+
+  @ApiPropertyOptional({ nullable: true, example: '1x' })
+  textureScale!: string | null;
 
   @ApiProperty({
     example: '2026-08-23T18:00:00.000Z',

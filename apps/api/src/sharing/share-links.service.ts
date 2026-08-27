@@ -248,6 +248,13 @@ export class ShareLinksService {
       card: {
         name: link.card.name,
         kind: link.card.kind,
+        templateId: link.card.templateId,
+        paletteId: link.card.paletteId,
+        groundHex: link.card.groundHex,
+        finish: link.card.finish,
+        texture: link.card.texture,
+        texturePresence: link.card.texturePresence,
+        textureScale: link.card.textureScale,
         updatedAt: link.card.updatedAt,
       },
       fields: link.card.fields

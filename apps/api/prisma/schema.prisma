@@ -251,6 +251,19 @@ model Card {
   kind       CardKind  @default(CUSTOM)
   archivedAt DateTime? // cascades to REVOKE every ShareLink on this card — see SharingService.archiveCard
 
+  // Appearance. All nullable and all NULL until the owner explicitly picks one —
+  // NULL is load-bearing, it means "derive the look from `kind` instead," the
+  // fallback both the owner app and the public page already implement. No
+  // backfill needed: an existing card with everything NULL renders exactly as
+  // it does today.
+  templateId      String? // "meridian" | "marigold"
+  paletteId       String? // "onyx" | "sapphire" | "emerald" | "oxblood" | "rust" | "amber" | "clay" | "pistachio" | "periwinkle"
+  groundHex       String? // free colour, #RRGGBB — overrides paletteId when set
+  finish          String? // surface finish, FE-owned value set
+  texture         String? // motif, FE-owned value set, "none" included
+  texturePresence String? // how strongly the texture reads, FE-owned value set
+  textureScale    String? // multiplier on the texture tile, FE-owned value set
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

@@ -48,7 +48,18 @@ export class CardsService {
 
   async create(userId: string, dto: CreateCardDto): Promise<CardResponseDto> {
     const row = await this.prisma.card.create({
-      data: { userId, name: dto.name, kind: dto.kind },
+      data: {
+        userId,
+        name: dto.name,
+        kind: dto.kind,
+        templateId: dto.templateId,
+        paletteId: dto.paletteId,
+        groundHex: dto.groundHex,
+        finish: dto.finish,
+        texture: dto.texture,
+        texturePresence: dto.texturePresence,
+        textureScale: dto.textureScale,
+      },
       include: CARD_WITH_FIELDS_INCLUDE,
     });
     return this.toResponseDto(userId, row);
@@ -65,6 +76,17 @@ export class CardsService {
       data: {
         ...(dto.name !== undefined && { name: dto.name }),
         ...(dto.kind !== undefined && { kind: dto.kind }),
+        ...(dto.templateId !== undefined && { templateId: dto.templateId }),
+        ...(dto.paletteId !== undefined && { paletteId: dto.paletteId }),
+        ...(dto.groundHex !== undefined && { groundHex: dto.groundHex }),
+        ...(dto.finish !== undefined && { finish: dto.finish }),
+        ...(dto.texture !== undefined && { texture: dto.texture }),
+        ...(dto.texturePresence !== undefined && {
+          texturePresence: dto.texturePresence,
+        }),
+        ...(dto.textureScale !== undefined && {
+          textureScale: dto.textureScale,
+        }),
       },
       include: CARD_WITH_FIELDS_INCLUDE,
     });
@@ -183,6 +205,13 @@ export class CardsService {
       id: card.id,
       name: card.name,
       kind: card.kind,
+      templateId: card.templateId,
+      paletteId: card.paletteId,
+      groundHex: card.groundHex,
+      finish: card.finish,
+      texture: card.texture,
+      texturePresence: card.texturePresence,
+      textureScale: card.textureScale,
       createdAt: card.createdAt,
       updatedAt: card.updatedAt,
       fields: card.fields.map((cf) => ({
