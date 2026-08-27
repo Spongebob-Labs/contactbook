@@ -220,6 +220,41 @@ test("every field button is full-width and thumb-sized", async ({ page }) => {
   }
 });
 
+/**
+ * ⚠ **The ground paints the whole screen, whatever the card carries.**
+ *
+ * `card.css` promotes `[data-card-ground]` to `position: fixed` only under
+ * `[data-card-page-surface]`. That attribute used to live on `<PublicCardView>` — a component
+ * this route does not render; it draws `<CardPage>` directly — so the marker was orphaned, the
+ * ground stayed `absolute`, and it pinned to the card article, whose height is exactly its
+ * content. A card sharing one or two fields therefore painted a short band of colour with the
+ * app's white canvas below it, on both phone and desktop.
+ *
+ * Field count is not a design axis. This asserts the opt-in is present and that the ground
+ * really does cover the viewport, so a future component swap cannot orphan it again in silence.
+ */
+test("the ground covers the viewport, however few fields the card shares", async ({ page }) => {
+  // The worst case on purpose: a card that maps nothing at all is the shortest article the
+  // route can produce, so it is where an `absolute` ground fails most visibly.
+  await gotoReady(page, CARD_WITH_NO_FIELDS);
+
+  await expect(page.locator("[data-card-page-surface]")).toHaveCount(1);
+
+  const ground = page.locator("[data-card-ground]").first();
+  await expect(ground).toHaveCSS("position", "fixed");
+
+  const covers = await ground.evaluate((node) => {
+    const box = node.getBoundingClientRect();
+    return {
+      wide: box.width >= window.innerWidth,
+      tall: box.height >= window.innerHeight,
+    };
+  });
+
+  expect(covers.wide, "the ground does not span the viewport's width").toBe(true);
+  expect(covers.tall, "the ground does not span the viewport's height").toBe(true);
+});
+
 test("renders the card's own templateId, not a default", async ({ page }) => {
   await gotoReady(page, CARD_WITH_PHONE);
   await expect(page.locator("[data-card-root]")).toHaveAttribute("data-template-id", "meridian");

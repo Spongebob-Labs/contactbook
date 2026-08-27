@@ -156,6 +156,19 @@ export default async function PublicCardPage({ params }: PageProps<"/c/[slug]">)
       data-public-shape={result.card.shape}
       // The two card typefaces are opted into only by routes that draw a card (§8.4, AC-17).
       data-card-fonts=""
+      /* ⚠ **THE OPT-IN THAT MAKES THE GROUND PAINT THE WHOLE SCREEN.**
+
+         `card.css` promotes `[data-card-ground]` to `position: fixed` only under this
+         attribute; without it the ground stays `absolute`, pinned to the card article, and the
+         article is exactly as tall as its content. A card sharing one field therefore painted a
+         short band of colour with the app's white canvas below it — the background looking like
+         a function of how many fields the owner mapped, which it is not.
+
+         It went missing because the attribute lived on `<PublicCardView>`, and this route does
+         not use that component — it renders `<CardPage>` directly. So the marker belongs here,
+         on the route that actually draws the card, where it cannot be orphaned by a component
+         swap again. `tests/e2e/public-card.spec.ts` asserts it. */
+      data-card-page-surface=""
       className="flex min-h-full flex-1 flex-col bg-canvas"
     >
       <PublicCardClient resolved={resolved} />
