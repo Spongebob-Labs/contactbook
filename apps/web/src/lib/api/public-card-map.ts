@@ -15,6 +15,7 @@ import "server-only";
  */
 
 import type { PublicCardPayload } from "@/lib/api/public-card";
+import { appearanceFields } from "@/lib/api/card-appearance";
 import { appearanceForKind, toApiCardKind } from "@/lib/api/map";
 import { resolveCard } from "@/card/resolve-card";
 import type {
@@ -123,34 +124,23 @@ export function resolvePublicCard(
   const cardType = cardTypeOf(payload.kind);
 
   /**
-   * ⚠ The card's look — **the owner's saved choice first, the `kind` derivation only as a
-   * fallback**, resolved axis by axis.
+   * ⚠ The card's look — the owner's saved choice first, the `kind` derivation only as a
+   * per-axis fallback. Both the rule and the fallback are **imported**, never written here.
    *
-   * ## Why per-axis and not all-or-nothing
-   * The axes are independent. A card that chose Emerald but never touched the finish must get
-   * Emerald *and* its template's finish — not the whole default look because one field was
-   * null, and not a bare template because only one field was set. `??` on each line is what
-   * makes "chose a colour, left the rest alone" render the way the owner left it.
+   * This was inline once: `cardType === "PERSONAL" ? "marigold" : "meridian"`, with no
+   * `paletteId` at all. A second, quietly different copy of a rule `map.ts` owns, and the two
+   * disagreed on half the kinds — a `CUSTOM` card was marigold + pistachio for its owner and
+   * meridian + sapphire here; a `PAYMENT` card lost its onyx. That is the exact drift this
+   * module exists to prevent, reintroduced one function lower down.
    *
-   * `templateId` falls back rather than being derived-then-overridden, because it is the one
-   * axis `resolveCard` cannot resolve without: `TEMPLATES[templateId]` must exist, and the
-   * template is also where an unset `paletteId` gets its default from.
-   *
-   * ## Why the fallback is imported, not written here
-   * It used to be spelled out inline — `cardType === "PERSONAL" ? "marigold" : "meridian"`,
-   * with no `paletteId` at all — a second, quietly different copy of a rule `map.ts` owns. The
-   * copies disagreed on half the kinds: a `CUSTOM` card was marigold + pistachio for its owner
-   * and meridian + sapphire here; a `PAYMENT` card lost its onyx. That is the exact drift this
-   * whole module exists to prevent, reintroduced one function lower down. `toApiCardKind`
-   * round-trips `BUSINESS`→`WORK` so the lookup is keyed the way `map.ts` keys it.
-   *
-   * ## `groundHex` has no fallback, and must not get one
-   * It is the owner's *free* colour, and `CardSurface`'s contract is that absent means "use the
-   * palette this card already resolves to". Substituting anything for a null here would repaint
-   * every card that never picked a custom colour.
+   * `toApiCardKind` round-trips `BUSINESS`→`WORK` so the fallback is keyed the way `map.ts`
+   * keys it, and `appearanceFields` is the same call `toContactCard` makes — so the owner's
+   * screen and the recipient's cannot dress the same card differently.
    */
-  const fallback = appearanceForKind(toApiCardKind(cardType));
-  const chosen = payload.appearance;
+  const appearance = appearanceFields(
+    payload.appearance,
+    appearanceForKind(toApiCardKind(cardType)),
+  );
 
   const card: ContactCard = {
     id: "public",
@@ -159,16 +149,7 @@ export function resolvePublicCard(
     type: cardType,
     isSensitive: false,
     slug: "public",
-    templateId: chosen.templateId ?? fallback.templateId,
-    /* `undefined`, not `null`: `paletteId` is optional on `ContactCard` and `resolveCard` reads
-       `card.paletteId ?? template.paletteId`, so undefined is how "wear the template's own
-       default" is spelled. A literal null would be a type error and a rendering bug. */
-    paletteId: chosen.paletteId ?? fallback.paletteId,
-    groundHex: chosen.groundHex ?? undefined,
-    finish: chosen.finish ?? undefined,
-    texture: chosen.texture ?? undefined,
-    texturePresence: chosen.texturePresence ?? undefined,
-    textureScale: chosen.textureScale ?? undefined,
+    ...appearance,
     fieldIds: fields.map((f) => f.id),
     updatedAt: new Date(0).toISOString(),
   };

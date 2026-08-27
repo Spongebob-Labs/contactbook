@@ -22,6 +22,7 @@ import {
   type ProfileFieldResponseDto,
   type ShareLinkResponseDto,
 } from "@/lib/api/schema";
+import { appearanceFields, readAppearance } from "@/lib/api/card-appearance";
 import type {
   CardType,
   Contact,
@@ -455,9 +456,9 @@ export function groupSharesByContact(
  * have no column behind them, and each is filled a different way:
  *
  * · **`slug`** — `slugForCard(id)`. Placeholder; see that function.
- * · **`templateId` / `paletteId`** — `appearanceForKind(kind)`. The decision recorded there: a
- *   deterministic look derived from something the API *does* store, so a card renders identically
- *   on every device with no backend change, and the design panel is honestly read-only.
+ * · **`templateId` / `paletteId` and the five surface axes** — the card's **own saved design**
+ *   now that the API stores it, with `appearanceForKind(kind)` as the per-axis fallback for a
+ *   card that never chose. See `card-appearance.ts` for why the merge is per-axis.
  * · **`isSensitive`** — derived from whether any mapped field is a payment type. It currently has
  *   no reader anywhere in the app; deriving it beats hard-coding `false`, because the day
  *   something does read it the answer will be right rather than merely quiet.
@@ -469,7 +470,11 @@ export function groupSharesByContact(
  * express; a future "temporarily hide" control would need this mapper to grow a third state.
  */
 export function toContactCard(dto: CardResponseDto, userId: string): ContactCard {
-  const appearance = appearanceForKind(dto.kind);
+  /* ⚠ The owner's saved design first, the `kind` default only where they never chose — the same
+     call `resolvePublicCard` makes, from the same module, so what the owner sees on `/cards/{id}`
+     and what a recipient opens at `/c/{token}` cannot be two different cards. Validated rather
+     than trusted: five of the seven columns are unchecked text server-side. */
+  const appearance = appearanceFields(readAppearance(dto), appearanceForKind(dto.kind));
 
   // Sorted, then filtered: `position` is the API's display order, and a hidden field still
   // occupies one, so ordering before dropping keeps the survivors in the right sequence.
@@ -483,8 +488,7 @@ export function toContactCard(dto: CardResponseDto, userId: string): ContactCard
     type: toCardType(dto.kind),
     isSensitive: visible.some((field) => isSensitiveType(field.type)),
     slug: slugForCard(dto.id),
-    templateId: appearance.templateId,
-    paletteId: appearance.paletteId,
+    ...appearance,
     fieldIds: visible.map((field) => field.fieldId),
     updatedAt: dto.updatedAt,
   };

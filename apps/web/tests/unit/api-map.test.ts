@@ -10,6 +10,7 @@
 import { describe, expect, it } from "vitest";
 
 import { appearanceForKind, slugForCard, toApiCardKind, toCardType, toUser } from "@/lib/api/map";
+import { toAppearanceDto } from "@/lib/api/card-appearance";
 import { dialPrefixOf, toE164 } from "@/lib/countries";
 import { API_CARD_KINDS, type MeResponseDto } from "@/lib/api/schema";
 
@@ -540,5 +541,102 @@ describe("toCardFieldEntries", () => {
 
   it("maps an empty set to an empty set, which is how a card is emptied", () => {
     expect(toCardFieldEntries([])).toEqual([]);
+  });
+});
+
+/**
+ * The design round trip — **the bug this whole integration closes**.
+ *
+ * An owner built a blue card, saved it, and got back a golden one. Two causes, both now gone:
+ * the design was never sent, and the reader re-derived a look from `kind` because there was no
+ * column to read. These pin both directions of the loop that replaced it.
+ */
+describe("card appearance — out on save, back on read", () => {
+  const DESIGN = {
+    templateId: "marigold",
+    paletteId: "emerald",
+    groundHex: "#1B4F72",
+    finish: "flat",
+    texture: "grid",
+    texturePresence: "subtle",
+    textureScale: "fine",
+  } as const;
+
+  const cardDto = (over: Record<string, unknown> = {}) => ({
+    id: "80d70484-ab6c-41b6-96fa-fbcb0cfe5513",
+    name: "Untitled card",
+    kind: "WORK" as const,
+    fields: [],
+    createdAt: "2026-08-26T16:44:06.146Z",
+    updatedAt: "2026-08-27T07:03:46.292Z",
+    ...over,
+  });
+
+  it("sends every axis, including the nulls that unmake a choice", () => {
+    // ⚠ `groundHex: null` is the point. PATCH leaves an omitted column alone, so a cleared
+    // custom colour must be sent as null or it comes back on the next read.
+    expect(toAppearanceDto({ templateId: "meridian", paletteId: "onyx" })).toEqual({
+      templateId: "meridian",
+      paletteId: "onyx",
+      groundHex: null,
+      finish: null,
+      texture: null,
+      texturePresence: null,
+      textureScale: null,
+    });
+  });
+
+  it("reads a saved design back instead of deriving one from kind", () => {
+    const card = toContactCard(cardDto(DESIGN), "user-1");
+
+    expect(card).toMatchObject(DESIGN);
+    // WORK would have derived meridian + sapphire. It did not.
+    expect(card.templateId).not.toBe(appearanceForKind("WORK").templateId);
+  });
+
+  it("survives the round trip byte for byte", () => {
+    // What the builder would send, fed back as what the API would return.
+    const sent = toAppearanceDto({ ...DESIGN });
+    const card = toContactCard(cardDto(sent), "user-1");
+
+    expect(toAppearanceDto(card)).toEqual(sent);
+  });
+
+  it("falls back to the kind's look when every axis is null", () => {
+    // The exact response staging returns for a card that never chose.
+    const card = toContactCard(
+      cardDto({
+        templateId: null, paletteId: null, groundHex: null,
+        finish: null, texture: null, texturePresence: null, textureScale: null,
+      }),
+      "user-1",
+    );
+
+    const owner = appearanceForKind("WORK");
+    expect(card.templateId).toBe(owner.templateId);
+    expect(card.paletteId).toBe(owner.paletteId);
+    expect(card.groundHex).toBeUndefined();
+  });
+
+  it("keeps the axes independent — one choice does not reset the others", () => {
+    const card = toContactCard(cardDto({ paletteId: "oxblood" }), "user-1");
+
+    expect(card.paletteId).toBe("oxblood");
+    // Untouched axes still come from the kind, not from a global default.
+    expect(card.templateId).toBe(appearanceForKind("WORK").templateId);
+  });
+
+  it("drops a value the API stored but this build cannot read", () => {
+    // Five of the seven columns are unvalidated text server-side, so the wire can carry
+    // anything. An unknown id reaching `resolveCard` throws — so it is stopped here.
+    const card = toContactCard(
+      cardDto({ paletteId: "chartreuse", finish: "glossy", texture: "grid" }),
+      "user-1",
+    );
+
+    expect(card.paletteId).toBe(appearanceForKind("WORK").paletteId);
+    expect(card.finish).toBeUndefined();
+    // The axes that were valid are untouched.
+    expect(card.texture).toBe("grid");
   });
 });

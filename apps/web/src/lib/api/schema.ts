@@ -396,7 +396,30 @@ export interface CardFieldResponseDto {
  * `patternId`, `headerLayout` and `slug` all exist on the UI's `ContactCard` and none of
  * them exist here. Appearance is derived from `kind` in `map.ts` for the demo.
  */
-export interface CardResponseDto {
+/**
+ * A card's saved design, as the API stores it — the seven axes of the material system.
+ *
+ * ⚠ `templateId` and `paletteId` are **enum-validated server-side** against exactly this build's
+ * vocabulary, so an unknown id is a 400, not a stored surprise. The remaining five are plain
+ * `text` columns with no server-side check: nothing stops a bad value being written, so the
+ * reader validates (`toContactCard`, `parsePublicCard`) rather than trusting the column.
+ *
+ * Every axis is independently optional. `null`/absent means "this card never chose", which the
+ * readers answer with `appearanceForKind(kind)` — so a card that picked only a colour keeps its
+ * template's finish instead of being reset to a global default.
+ */
+export interface CardAppearanceDto {
+  templateId?: string | null;
+  paletteId?: string | null;
+  /** `#RRGGBB`. Overrides `paletteId` when set. */
+  groundHex?: string | null;
+  finish?: string | null;
+  texture?: string | null;
+  texturePresence?: string | null;
+  textureScale?: string | null;
+}
+
+export interface CardResponseDto extends CardAppearanceDto {
   id: string;
   name: string;
   kind: ApiCardKind;
@@ -405,12 +428,12 @@ export interface CardResponseDto {
   updatedAt: string;
 }
 
-export interface CreateCardDto {
+export interface CreateCardDto extends CardAppearanceDto {
   name: string;
   kind?: ApiCardKind;
 }
 
-export interface UpdateCardDto {
+export interface UpdateCardDto extends CardAppearanceDto {
   name?: string;
   kind?: ApiCardKind;
 }

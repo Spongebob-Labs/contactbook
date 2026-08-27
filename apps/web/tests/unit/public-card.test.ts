@@ -220,26 +220,47 @@ describe("parsePublicCard — the owner's saved design", () => {
   });
 
   /**
-   * ⚠ The live contract mismatch, pinned rather than papered over.
+   * ⚠ The live contract mismatch, translated rather than dropped.
    *
-   * The API's own example sends `finish: "matte"` and `textureScale: "1x"`. This build's
-   * vocabulary is `flat | gradient | mesh` and `fine | regular | large`. Neither value exists
-   * here, so both are dropped and those axes fall back — the card renders in its default finish
-   * rather than throwing on a stranger's phone.
+   * The API sends `finish: "matte"` and `textureScale: "1x"`. This build's vocabulary is
+   * `flat | gradient | mesh` and `fine | regular | large`. Both are unambiguous synonyms of
+   * values we do have, so `ALIASES` maps them at the wire — otherwise a card that asked for a
+   * matte finish rendered as a gradient.
    *
-   * When the backend switches to the real enum strings this test should be updated, not deleted:
-   * the point it makes is that an unknown value degrades, and that stays worth asserting.
+   * Delete the aliases and this test when the API sends the real strings.
    */
-  it("discards values this build does not know, rather than passing them to the renderer", () => {
+  it("translates the API's spellings into this build's vocabulary", () => {
     const parsed = parsePublicCard({
       ...base,
       card: { name: "X", kind: "WORK", finish: "matte", textureScale: "1x", paletteId: "emerald" },
     });
 
+    expect(parsed?.appearance.finish).toBe("flat");
+    expect(parsed?.appearance.textureScale).toBe("regular");
+    expect(parsed?.appearance.paletteId).toBe("emerald");
+    // A translated value is understood, not tolerated — nothing to report.
+    expect(parsed?.appearanceRejected).toEqual([]);
+  });
+
+  /**
+   * ⚠ What happens to a spelling nobody has taught us.
+   *
+   * It is dropped — never passed to the renderer, which would throw on an unknown registry id
+   * on a stranger's phone — and **named**, so the next vocabulary drift arrives as a log line
+   * rather than as a card that is quietly the wrong colour. This is deliberately not a guess:
+   * `"2x"` is not aliased to `large` on the assumption that the scheme is what it looks like.
+   */
+  it("drops an unknown value and names it, rather than guessing", () => {
+    const parsed = parsePublicCard({
+      ...base,
+      card: { name: "X", finish: "glossy", textureScale: "2x", paletteId: "emerald" },
+    });
+
     expect(parsed?.appearance.finish).toBeNull();
     expect(parsed?.appearance.textureScale).toBeNull();
-    // The axes that *were* valid are untouched — one bad value does not poison the rest.
+    // One bad value does not poison the rest.
     expect(parsed?.appearance.paletteId).toBe("emerald");
+    expect(parsed?.appearanceRejected).toEqual(["finish=glossy", "textureScale=2x"]);
   });
 
   it("rejects a groundHex that is not #RRGGBB", () => {
@@ -370,6 +391,7 @@ describe("resolvePublicCard", () => {
     // The default for these cases: a card that never chose, which is what every card sent
     // before the API grew its appearance columns looks like.
     appearance: NO_APPEARANCE,
+    appearanceRejected: [],
     shape: "root",
   };
 

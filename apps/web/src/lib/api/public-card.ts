@@ -35,18 +35,11 @@ import "server-only";
 import { API_PREFIX, REQUEST_TIMEOUT_MS, apiBaseUrl } from "@/lib/api/config";
 import { logApiCall } from "@/lib/api/log";
 import {
-  FINISHES,
-  TEXTURES,
-  TEXTURE_PRESENCE,
-  TEXTURE_SCALE,
-  type Finish,
-  type Texture,
-  type TexturePresence,
-  type TextureScale,
-} from "@/card/card-surface";
-import { TEMPLATE_PALETTES, type PaletteId } from "@/card/template-palettes";
-import { TEMPLATES } from "@/card/templates";
-import type { TemplateId } from "@/card/template-types";
+  NO_APPEARANCE,
+  hasAppearance,
+  readAppearance,
+  type CardAppearance,
+} from "@/lib/api/card-appearance";
 
 /** One row on the card, as a stranger receives it. */
 export interface PublicField {
@@ -56,43 +49,14 @@ export interface PublicField {
 }
 
 /**
- * The owner's saved design, as the share-link payload carries it.
+ * ⚠ The design type and its validator live in `@/lib/api/card-appearance`, not here.
  *
- * ## Every member is nullable, and the three reasons are different
- * 1. **The card never chose.** A card created before the Design panel had anywhere to save to
- *    sends `null` on every axis. That is the common case and it is not an error — it means
- *    "dress me the way my `kind` says", which is what {@link appearanceForKind} answers.
- * 2. **The deploy has not landed.** Until the API ships these columns the keys are *absent*
- *    rather than null. Same handling: absent and null both mean "not chosen".
- * 3. **The value is not one this build knows.** See {@link oneOf} — a string the registries do
- *    not contain is discarded rather than passed on.
- *
- * ⚠ Do not widen these to `string`. `resolveCard` looks `templateId` and `paletteId` up in
- * registries and throws `UnknownRegistryIdError` on a miss, so an unrecognised value reaching
- * it takes down a stranger's page — the one page in the product with no session to recover
- * from and no owner watching. Validation belongs here, at the wire, not at the renderer.
+ * `map.ts` reads the same seven axes off `GET /cards/{id}` and the two must agree exactly, or
+ * the owner's card and the card their recipient opens are two different cards. That module is
+ * the one both import; this file only decides *where in the payload* to look.
  */
-export interface PublicAppearance {
-  templateId: TemplateId | null;
-  paletteId: PaletteId | null;
-  /** `#RRGGBB`. Overrides `paletteId` when set — see `CardSurface.groundHex`. */
-  groundHex: string | null;
-  finish: Finish | null;
-  texture: Texture | null;
-  texturePresence: TexturePresence | null;
-  textureScale: TextureScale | null;
-}
-
-/** Nothing chosen — a card on its `kind`'s default look. Also what an old payload yields. */
-export const NO_APPEARANCE: PublicAppearance = {
-  templateId: null,
-  paletteId: null,
-  groundHex: null,
-  finish: null,
-  texture: null,
-  texturePresence: null,
-  textureScale: null,
-};
+export type { CardAppearance } from "@/lib/api/card-appearance";
+export { NO_APPEARANCE } from "@/lib/api/card-appearance";
 
 export interface PublicCardPayload {
   /** The card's own name, e.g. "Work". Absent on a payload that only carries the person. */
@@ -106,7 +70,16 @@ export interface PublicCardPayload {
    * The owner's saved design. {@link NO_APPEARANCE} when the payload carries none — which is
    * both "this card never chose" and "this API build does not send it yet".
    */
-  appearance: PublicAppearance;
+  appearance: CardAppearance;
+  /**
+   * Axes the API sent that this build could not read, as `axis=value` — e.g. `finish=matte`.
+   *
+   * Empty on a healthy payload. Non-empty means the two sides' vocabularies have diverged, and
+   * the card is rendering a default where the owner chose something. Surfaced in the `[api]`
+   * log line so that shows up as a line to read rather than as a card that is quietly the
+   * wrong colour.
+   */
+  appearanceRejected: readonly string[];
   /**
    * Which layout matched, for diagnosis. Rendered as `data-public-shape` and logged, so the first
    * real link tells us what the API actually sends without guesswork.
@@ -155,51 +128,6 @@ function fieldsOf(source: Record<string, unknown> | null): PublicField[] | null 
     });
   }
   return fields;
-}
-
-/**
- * One value, accepted only if the registry that defines the vocabulary contains it.
- *
- * ⚠ Keyed off the registries themselves rather than a transcribed string union, so adding a
- * texture or a palette teaches this function about it automatically. A hand-written list here
- * would be a second copy of the vocabulary and the copy nobody updates — and its failure mode
- * is silently dropping a colour the owner really did pick.
- *
- * A miss returns `null`, never throws: an unrecognised value means this build and the API
- * disagree, and the right answer to that is the card's default look, not a crashed page.
- */
-function oneOf<T extends string>(value: unknown, registry: Record<T, unknown>): T | null {
-  return typeof value === "string" && Object.hasOwn(registry, value) ? (value as T) : null;
-}
-
-/** `#RRGGBB`, exactly. Anything else is discarded — see {@link oneOf}'s note. */
-function hex(value: unknown): string | null {
-  return typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value) ? value : null;
-}
-
-/**
- * The card's design, off whichever object the card itself was found in.
- *
- * Absent keys and explicit `null`s land in the same place, deliberately: an API that has not
- * shipped these columns and a card that never chose a colour both mean "use the default look",
- * and giving them separate code paths would be two ways to spell one outcome.
- */
-function appearanceOf(source: Record<string, unknown> | null): PublicAppearance {
-  if (source === null) return NO_APPEARANCE;
-  return {
-    templateId: oneOf<TemplateId>(source.templateId, TEMPLATES),
-    paletteId: oneOf<PaletteId>(source.paletteId, TEMPLATE_PALETTES),
-    groundHex: hex(source.groundHex),
-    finish: oneOf<Finish>(source.finish, FINISHES),
-    texture: oneOf<Texture>(source.texture, TEXTURES),
-    texturePresence: oneOf<TexturePresence>(source.texturePresence, TEXTURE_PRESENCE),
-    textureScale: oneOf<TextureScale>(source.textureScale, TEXTURE_SCALE),
-  };
-}
-
-/** Whether any axis survived validation — drives the `appearance=` marker in the API log. */
-export function hasAppearance(appearance: PublicAppearance): boolean {
-  return Object.values(appearance).some((value) => value !== null);
 }
 
 /**
@@ -319,9 +247,17 @@ export function parsePublicCard(body: unknown): PublicCardPayload | null {
 
     /* Same order, same reason — a design under `card` must not be dropped because the rows
        matched at the root. First layout carrying any axis wins; a card that genuinely chose
-       nothing falls through to NO_APPEARANCE. */
-    const appearance =
-      cardSources.map(appearanceOf).find(hasAppearance) ?? NO_APPEARANCE;
+       nothing falls through to NO_APPEARANCE.
+
+       Rejections are collected per layout and only the winning layout's are kept: a payload
+       shaped `{ card: {…} }` would otherwise report the root's absent keys as rejects too. */
+    const attempts = cardSources.map((candidate) => {
+      const rejected: string[] = [];
+      return { appearance: readAppearance(candidate, rejected), rejected };
+    });
+    const won =
+      attempts.find((attempt) => hasAppearance(attempt.appearance)) ??
+      attempts.find((attempt) => attempt.rejected.length > 0);
 
     return {
       cardName: attr("cardName", "name"),
@@ -329,7 +265,8 @@ export function parsePublicCard(body: unknown): PublicCardPayload | null {
       fullName: name ?? "",
       avatarUrl: avatar,
       fields,
-      appearance,
+      appearance: won?.appearance ?? NO_APPEARANCE,
+      appearanceRejected: won?.rejected ?? [],
       shape,
     };
   }
@@ -434,10 +371,14 @@ export async function fetchPublicCard(token: string): Promise<PublicCardResult> 
     return { kind: "error" };
   }
 
-  // `appearance=` is the one-glance answer to "did the design columns deploy yet".
+  /* `appearance=` is the one-glance answer to "did the design columns deploy yet", and
+     `rejected=` to "did the two vocabularies drift". Both belong on the success line rather
+     than behind a warning: they are facts about a 200, not failures. */
+  const rejected =
+    card.appearanceRejected.length > 0 ? ` rejected=${card.appearanceRejected.join(",")}` : "";
   report(
     `ok shape=${card.shape} fields=${card.fields.length} ` +
-      `appearance=${hasAppearance(card.appearance) ? "yes" : "none"}`,
+      `appearance=${hasAppearance(card.appearance) ? "yes" : "none"}${rejected}`,
   );
   return { kind: "ok", card };
 }

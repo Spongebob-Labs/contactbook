@@ -15,6 +15,7 @@ import { cn } from "@/lib/cn";
 import { cards as cardsApi, profile as profileApi } from "@/lib/api/browser";
 import { fetchCardDetail, fetchProfileData } from "@/lib/api/browser-loaders";
 import { toScreenError } from "@/lib/api/errors";
+import { toAppearanceDto } from "@/lib/api/card-appearance";
 import { toCardFieldEntries, toApiCardKind } from "@/lib/api/map";
 import type { ApiFieldCategory } from "@/lib/api/schema";
 import { useApiResource } from "@/lib/use-api";
@@ -480,9 +481,12 @@ function Builder({
    * only the card would understate what the owner just did — which is why `saveCardAction`
    * returns the count and this reads it back rather than guessing from local state.
    *
-   * ⚠ **What Save cannot persist: appearance.** `templateId`, `paletteId` and the three surface
-   * axes have no column (`docs/INTEGRATION.md` ask #2), so they are not sent and the Design panel
-   * says as much. A card's rendered look is derived from its `kind`.
+   * ⚠ **Appearance is persisted, and every axis is sent on every write.** `templateId`,
+   * `paletteId`, `groundHex` and the four surface axes now have columns, and `toAppearanceDto`
+   * sends all seven — `null` included. That last part is not padding: `PATCH` leaves an omitted
+   * column alone, so omitting "the owner cleared their custom colour" would be indistinguishable
+   * from "the owner did not touch it", and the cleared colour would return on the next read.
+   * Sending `null` is how a choice is unmade.
    *
    * A new card is two requests — create, then set fields — because `POST /cards` starts empty.
    * On success it navigates to the real card, which is also what replaces the `null` cardId.
@@ -510,6 +514,9 @@ function Builder({
           const created = await cardsApi.create({
             name: state.name.trim(),
             kind: toApiCardKind(state.cardType),
+            // The design the owner has been looking at in the preview, from the same state the
+            // preview renders from — so a card is created wearing what they built.
+            ...toAppearanceDto(state),
           });
           if (state.fieldIds.length > 0) {
             await cardsApi.setFields(created.id, {
@@ -527,6 +534,7 @@ function Builder({
         await cardsApi.update(state.cardId, {
           name: state.name.trim(),
           kind: toApiCardKind(state.cardType),
+          ...toAppearanceDto(state),
         });
         // ⚠ Replaces the whole set — everything to keep is sent, not just what changed.
         await cardsApi.setFields(state.cardId, { fields: toCardFieldEntries(state.fieldIds) });
@@ -673,22 +681,6 @@ function Builder({
                   />
                 ) : (
                   <PanelHead title={def.label} intro={def.intro} />
-                )}
-
-                {/* ⚠ Appearance has nowhere to go yet.
-                    `CardResponseDto` has no `templateId`, `paletteId`, `groundHex`, `finish` or
-                    `texture` column (`docs/INTEGRATION.md` ask #2), so Save does not send any of
-                    them and a reload shows the card's derived look — the one mapped from its
-                    `kind`. The controls stay live because previewing a design is genuinely
-                    useful; the notice is here so that usefulness is not mistaken for saving. */}
-                {def.id !== "design" ? null : (
-                  <p
-                    data-design-not-saved=""
-                    className="rounded-md border border-dashed border-line bg-surface-sunk px-4 py-3 text-sm text-ink-3"
-                  >
-                    Colour and finish preview here but are not saved yet — a card&rsquo;s look
-                    currently comes from its type. Fields and the name save normally.
-                  </p>
                 )}
 
                 {def.id !== "design" ? null : (
