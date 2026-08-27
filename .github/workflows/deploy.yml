@@ -206,4 +206,12 @@ jobs:
             export API_IMAGE=${{ secrets.DOCKER_USERNAME }}/contactbook-api:${{ github.sha }}
             docker compose -f docker-compose.prod.yml pull
             docker compose -f docker-compose.prod.yml up -d --remove-orphans
-            docker image prune -f
+            # -a, not just dangling: each deploy tags a new image by SHA, so
+            # last deploy's image is a properly-tagged, zero-container image
+            # once `up -d` swaps to the new one -- plain prune only ever
+            # touches untagged layers and leaves these to accumulate. This VM
+            # has a 9.7G disk; four leftover ~1.6G tags filled it completely
+            # and broke the next deploy's SCP step with no disk left to write
+            # to. The currently-running image is always safe here since `up
+            # -d` already has a container on it by this point.
+            docker image prune -a -f
