@@ -344,7 +344,7 @@ function CardDetailScreen({
 
                 <ShareSheet
                   resolved={resolved}
-                  vcf={vcf}
+                  sharesNothing={vcf === null}
                   editHref={editHref}
                   sendSlot={
                     <SendToContact

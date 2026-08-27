@@ -19,28 +19,30 @@ import { whatsappHref } from "@/lib/format";
 import type { ResolvedCard } from "@/types/domain";
 
 /**
- * The share panel of `/cards/[cardId]` — **the surface invariant I-5 is named after**
- * (spec §6.4, §6.9, §8D.3, plan T22).
+ * The share panel of `/cards/[cardId]` (spec §6.4, §6.9, §8D.3, plan T22).
  *
- * ## Why this component takes the `.vcf` as a prop instead of building it
- * §6.4 is explicit: *"the share panel must not re-derive"*. The old build's bug was that the
- * card a user previewed and the file they sent were produced by two separate derivations
- * that merely usually agreed. The structural fix is that the screen resolves the card once
- * and writes the vCard once, and hands **both** values down — so the text rendered in the
- * preview below and the bytes in the downloaded file are, literally, the same string. There
- * is no code path here that could produce a different one.
+ * ## ⚠ This panel shares a **link**, and nothing else
+ * §4.2's promise is that the recipient gets a link, not a file: the page they open resolves
+ * from live data, so an owner's edit reaches them without anything being re-sent and a
+ * revoked field disappears immediately. A downloaded `.vcf` is the opposite of that — a
+ * frozen copy that stops tracking the moment it lands.
  *
- * A weaker version of this component would take only `resolved` and call `buildVcf` twice —
- * once for the preview, once for the download. That would still pass today, because
- * `buildVcf` is pure. It would also be one careless edit away from the exact defect §6.4
- * exists to make impossible, which is why the prop is a `string` and not a `ResolvedCard`.
+ * So this panel used to carry a `.vcf` preview under the heading *"What people receive"* and
+ * a **Download .vcf** control beside Close. Both are gone. The heading was simply false —
+ * nobody on the receiving end of this dialog ever got that file — and the button offered the
+ * owner a download of their own contact details, which answers no question they had.
  *
- * ## `vcf === null` is not a rendering detail
- * `null` means `canBuildVcf(resolved)` said this card shares nothing — the single definition
- * of that (T11), never an inline field count. On such a card there is **no preview and no
- * download control at all**, because `buildVcf` throws `EmptyCardError` rather than writing
- * the old build's 73-byte name-only file (§11 E-01/E-02, §11.6). Absent, not disabled: a
- * control that exists only to refuse is a worse answer than no control.
+ * The vCard itself is still the product's (`CLAUDE.md` non-negotiable #2), on the two
+ * surfaces where somebody actually wants it: the public card's **Save to contacts**, pressed
+ * by the recipient, and its mirror on the owner's own card preview. Both write their file
+ * through `useVcfDownload` below, from the one `ResolvedCard` the screen resolved — the I-5
+ * seam moved with them, it was not dropped.
+ *
+ * ## `sharesNothing` is not a rendering detail
+ * It is `canBuildVcf(resolved) === false` as decided by the screen — the single definition of
+ * an empty card (T11), never an inline field count. Such a card has a link like any other,
+ * but the link opens on a name and nothing else, so the panel says that plainly instead of
+ * pretending the share is complete (§11 E-01/E-02, §11.6).
  *
  * ## The link is either live or a local guess, and the panel must say which
  * `GET /public/links/{token}` resolves a minted link (INTEGRATION ask #1, since resolved), so a
@@ -60,12 +62,14 @@ import type { ResolvedCard } from "@/types/domain";
  * server-side WhatsApp send is switched off, so **the owner is the delivery mechanism** — hence a
  * copy control, a `wa.me` deep link aimed at the recipient the link was just minted for, and the
  * platform share sheet where the browser has one.
- *
- * ## The `.vcf` is shown, not just offered
- * §4.2's whole promise is that the person scanning gets what the owner chose. Printing the
- * file the reader is about to hand out is the cheapest possible way to make that checkable,
- * and it is what makes the identity above observable in a test rather than merely asserted
- * in a comment.
+ */
+
+/* ── the vCard download, used by the two "Save to contacts" controls ────────────────── */
+
+/**
+ * ⚠ `<ShareSheet>` below does **not** use this hook — see the module note. It lives in this
+ * file because both callers (`/c/{slug}` and `/cards/{id}`) already import from here, and a
+ * new module for one hook would be the more disruptive change, not the tidier one.
  */
 
 /** §6.9: the object URL is released well after the browser has taken the file. */
@@ -152,8 +156,8 @@ export function useVcfDownload(): VcfDownload {
 
 /** §11 E-01's consequence, in the owner's language — the count alone does not explain it. */
 const EMPTY_SHARE_NOTE =
-  "This card maps no profile fields yet, so there is no contact file to share. " +
-  "Add fields to it and the file appears here.";
+  "This card maps no profile fields yet, so anyone who opens the link sees your name and " +
+  "nothing else. Add fields to it and they appear on the shared card.";
 
 /**
  * WhatsApp's own deep link, with the message already written.
@@ -192,13 +196,16 @@ const hasNativeShare = () =>
   typeof navigator !== "undefined" && typeof navigator.share === "function";
 
 export interface ShareSheetProps {
-  /** The one `ResolvedCard` the preview, the `.vcf` and the PNG all share (I-5). */
+  /** The one `ResolvedCard` the card, the `.vcf` and the PNG all share (I-5). */
   resolved: ResolvedCard;
   /**
-   * The vCard the screen wrote from that same object, or `null` when `canBuildVcf` says the
-   * card shares nothing. Never rebuilt here — see the module note.
+   * Whether `canBuildVcf` said this card maps no fields worth sharing.
+   *
+   * Passed as the screen's answer rather than recomputed here, for the same reason as
+   * `linkIsLive`: one owner of the fact, so the meter, the card's own controls and this panel
+   * cannot disagree about whether a card is empty.
    */
-  vcf: string | null;
+  sharesNothing: boolean;
   /** Rendered inside the dialog's trigger. The screen owns the button's own attributes. */
   trigger: ReactNode;
   /** Where "Add fields" goes for a card that shares nothing (E-01's action). */
@@ -232,14 +239,13 @@ export interface ShareSheetProps {
 
 export function ShareSheet({
   resolved,
-  vcf,
+  sharesNothing,
   trigger,
   editHref,
   sendSlot,
   linkIsLive,
   lastSent,
 }: ShareSheetProps) {
-  const { savePending, downloadVcf } = useVcfDownload();
   const { toast } = useToast();
 
   const canNativeShare = useCanNativeShare();
@@ -275,24 +281,16 @@ export function ShareSheet({
           <DialogClose asChild>
             <Button variant="secondary">Close</Button>
           </DialogClose>
-          {vcf === null ? (
+          {/* The only other thing this panel can offer is the fix for an empty card. There is
+              no second control here on a card that shares fine — the link, and the ways to
+              send it, are in the body. */}
+          {sharesNothing ? (
             // §8D.7: an anchor wears the button skin rather than nesting a `<button>` inside
             // a link — that shape is invalid HTML and axe reports it as `nested-interactive`.
             <Link href={editHref} data-share-add-fields="" className={buttonClassName()}>
               Add fields
             </Link>
-          ) : (
-            <Button
-              data-share-download=""
-              loading={savePending}
-              loadingLabel="Saving…"
-              onClick={() => {
-                downloadVcf(resolved, vcf);
-              }}
-            >
-              Download .vcf
-            </Button>
-          )}
+          ) : null}
         </>
       }
     >
@@ -366,24 +364,11 @@ export function ShareSheet({
           ) : null}
         </div>
 
-        {vcf === null ? (
+        {sharesNothing ? (
           <p data-share-empty-note="" className="text-sm text-warning-ink">
             {EMPTY_SHARE_NOTE}
           </p>
-        ) : (
-          <div className="flex flex-col gap-1">
-            <p className="text-overline uppercase text-ink-3">What people receive</p>
-            <pre
-              data-vcf-preview=""
-              // `break-all` + `pre-wrap`: a folded vCard line is already 75 octets and a
-              // 60-character URL inside `NOTE` would otherwise scroll the dialog sideways
-              // (E-15). The file's own line breaks survive; only the soft wrap is added.
-              className="max-h-72 overflow-y-auto whitespace-pre-wrap break-all rounded-sm border border-line bg-surface-sunk p-4 text-xs text-ink"
-            >
-              {vcf}
-            </pre>
-          </div>
-        )}
+        ) : null}
       </div>
     </Dialog>
   );

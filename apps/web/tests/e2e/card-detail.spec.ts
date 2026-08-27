@@ -9,12 +9,17 @@ import { STATE_QUERIES, withState } from "../helpers/routes";
  *
  * ## The one architectural claim this file exists to check
  * `card-detail-client.tsx` calls `resolveCard` **once** and `buildVcf` **once**, and passes
- * those two values down to the renderer, the share sheet's preview, the share sheet's
- * download and the in-card "Save to contacts" control. That is invariant I-5, and the
- * observable consequence is the assertion in "the previewed .vcf is byte-identical to the
- * downloaded .vcf": if either surface re-derived, the two would be two objects that merely
- * usually agree — which is exactly the old build's "previewed file differs from sent file"
- * bug (§6.4).
+ * those two values down to the renderer, the PNG export and the in-card "Save to contacts"
+ * control. That is invariant I-5, and its observable consequence is that the field types
+ * listed on the screen are exactly the properties in the saved file (AC-22) — if either
+ * surface re-derived, the two would be objects that merely usually agree, which is the old
+ * build's "previewed file differs from sent file" bug (§6.4).
+ *
+ * ⚠ The share sheet is no longer one of those consumers. It used to print the `.vcf` under
+ * "What people receive" and offer a Download button; both were removed, because what a
+ * recipient receives is a **link** (§4.2) and that heading said otherwise. See the section
+ * below — the I-5 assertions moved to "Save to contacts", and a guard test keeps the file
+ * from reappearing in the panel.
  *
  * ## What this file owns
  * · **the wallet vertical** — the share face is presented *as a wallet pass*, captioned, with
@@ -192,50 +197,46 @@ test("masks financial values and offers no reveal control (AC-33)", async ({ pag
 
 /* ── the share sheet, and the I-5 seam (AC-29) ────────────────────────────────────── */
 
-test("the previewed .vcf is byte-identical to the downloaded .vcf (I-5, AC-29)", async ({
-  page,
-}) => {
-  await gotoReady(page, CARD);
-
-  await page.locator('[data-card-detail-action="share"]').click();
-  const sheet = page.locator("[data-share-sheet]");
-  await expect(sheet).toBeVisible();
-
-  const previewed = await sheet.locator("[data-vcf-preview]").innerText();
-  expect(previewed).toContain("BEGIN:VCARD");
-  expect(previewed).toContain("FN:Priyanka Raghunathan");
-  expect(previewed).toContain("END:VCARD");
-
-  // The download control lives in the dialog's footer, which is a sibling of the
-  // `[data-share-sheet]` body — so it is addressed from the page, not from the body.
+/**
+ * ⚠ The `.vcf` used to be *previewed inside the share sheet*, under the heading
+ * "What people receive", next to a **Download .vcf** button. Both are gone, and AC-29 moved
+ * with them rather than being deleted.
+ *
+ * The heading was false. A recipient of this dialog receives a **link** — §4.2's whole point
+ * is that the page resolves live, so an edit reaches them with nothing re-sent — and the file
+ * that button wrote went to the owner's own downloads folder and nowhere near anybody else.
+ *
+ * So the one vCard is now proved at the control that actually writes one: the card's own
+ * **Save to contacts**, the owner-side mirror of what a recipient presses on `/c/{slug}`. The
+ * invariant is unchanged — one `resolveCard`, one `buildVcf`, and the bytes that leave the
+ * screen are those. What changed is that there is only one surface left to check.
+ */
+async function saveToContacts(page: Page): Promise<{ filename: string; body: string }> {
   const [download] = await Promise.all([
     page.waitForEvent("download"),
-    page.locator("[data-share-download]").click(),
+    page.locator('[data-card-action="save"]').click(),
   ]);
-
-  expect(download.suggestedFilename()).toBe("Priyanka Raghunathan.vcf");
 
   const stream = await download.createReadStream();
   const chunks: Buffer[] = [];
   for await (const chunk of stream) chunks.push(Buffer.from(chunk));
-  const downloaded = Buffer.concat(chunks).toString("utf8");
 
-  // `innerText` is a rendered-text view: it drops the trailing blank line and may or may not
-  // carry the `\r` of a CRLF, so the comparison is over logical lines rather than raw bytes.
-  // What is being proved is that no surface re-derived — one `resolveCard`, one `buildVcf`,
-  // two consumers — and the raw-byte assertions below cover the file's own format.
-  const logical = (value: string): string[] =>
-    value
-      .replace(/\r/g, "")
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0);
+  return { filename: download.suggestedFilename(), body: Buffer.concat(chunks).toString("utf8") };
+}
 
-  expect(logical(previewed)).toEqual(logical(downloaded));
+test("Save to contacts writes the one vCard, and its raw bytes (§6.9, I-5, AC-29)", async ({
+  page,
+}) => {
+  await gotoReady(page, CARD);
+
+  const { filename, body } = await saveToContacts(page);
+
+  expect(filename).toBe("Priyanka Raghunathan.vcf");
+  expect(body).toContain("FN:Priyanka Raghunathan");
 
   // The file really is a vCard, with CRLF endings, and the raw bytes are the ones §6.7 pins.
-  expect(downloaded.startsWith("BEGIN:VCARD\r\n")).toBe(true);
-  expect(downloaded.endsWith("END:VCARD\r\n")).toBe(true);
+  expect(body.startsWith("BEGIN:VCARD\r\n")).toBe(true);
+  expect(body.endsWith("END:VCARD\r\n")).toBe(true);
 });
 
 test("the .vcf carries exactly the field types the screen shows (AC-22)", async ({ page }) => {
@@ -245,8 +246,7 @@ test("the .vcf carries exactly the field types the screen shows (AC-22)", async 
     .locator("[data-field-list] [data-field-row]")
     .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-field-type")));
 
-  await page.locator('[data-card-detail-action="share"]').click();
-  const previewed = await page.locator("[data-vcf-preview]").innerText();
+  const { body } = await saveToContacts(page);
 
   const expectedProperty: Record<string, string> = {
     PHONE: "TEL;TYPE=CELL:",
@@ -259,11 +259,11 @@ test("the .vcf carries exactly the field types the screen shows (AC-22)", async 
   for (const type of visible) {
     const property = expectedProperty[type ?? ""];
     expect(property, `no vCard property mapped for ${type}`).toBeDefined();
-    expect(previewed).toContain(property);
+    expect(body).toContain(property);
   }
 
   // Nothing the screen does not show: no ADDRESS row, no ADR property.
-  expect(previewed).not.toContain("ADR");
+  expect(body).not.toContain("ADR");
 });
 
 test("the share sheet publishes the same link the QR encodes", async ({ page }) => {
@@ -276,15 +276,30 @@ test("the share sheet publishes the same link the QR encodes", async ({ page }) 
   await expect(link.locator("a")).toHaveAttribute("href", "/c/prya-hq");
 });
 
-test("the in-card Save to contacts downloads the same file (§6.9, I-5)", async ({ page }) => {
+/**
+ * The regression guard for the removal above.
+ *
+ * This panel hands over a link. It must not grow a file back — not a `.vcf` dump, not a
+ * download control, and above all not a heading claiming the recipient gets one. A card that
+ * shares plenty is used deliberately: on an empty card the controls were always absent, so
+ * only a full card can tell "removed" apart from "gated".
+ */
+test("the share sheet offers a link and no file at all (§4.2)", async ({ page }) => {
   await gotoReady(page, CARD);
 
-  const [download] = await Promise.all([
-    page.waitForEvent("download"),
-    page.locator('[data-card-action="save"]').click(),
-  ]);
+  await page.locator('[data-card-detail-action="share"]').click();
+  await expect(page.locator("[data-share-sheet]")).toBeVisible();
 
-  expect(download.suggestedFilename()).toBe("Priyanka Raghunathan.vcf");
+  await expect(page.locator("[data-vcf-preview]")).toHaveCount(0);
+  await expect(page.locator("[data-share-download]")).toHaveCount(0);
+
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).not.toContainText("BEGIN:VCARD");
+  await expect(dialog).not.toContainText(/what people receive/i);
+  await expect(dialog).not.toContainText(/\.vcf/i);
+
+  // The link, and the ways to send it, are what is left.
+  await expect(page.locator("[data-share-link]")).toBeVisible();
 });
 
 /* ── the wallet pass ──────────────────────────────────────────────────────────────── */
@@ -493,11 +508,11 @@ test("a zero-field card offers no .vcf at all and says why (E-01, AC-36)", async
   await page.locator('[data-card-detail-action="share"]').click();
   await expect(page.locator("[data-share-sheet]")).toBeVisible();
 
-  // Not disabled — absent. `buildVcf` throws `EmptyCardError`, so a rendered control would
-  // be a crash waiting to happen and the 73-byte name-only `.vcf` would be reachable.
-  await expect(page.locator("[data-share-download]")).toHaveCount(0);
-  await expect(page.locator("[data-vcf-preview]")).toHaveCount(0);
+  // The panel says why rather than showing a share that looks complete. `Add fields` is the
+  // only control it offers besides Close — E-01's action, not a disabled button that exists
+  // solely to refuse.
   await expect(page.locator("[data-share-empty-note]")).toBeVisible();
+  await expect(page.locator("[data-share-add-fields]")).toBeVisible();
 
   // Nothing threw: `buildVcf` was never called.
   expect(errors).toEqual([]);

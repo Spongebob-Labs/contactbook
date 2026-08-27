@@ -5,7 +5,7 @@ import { ToastProvider } from "@/components/overlay/toast";
 import { Button } from "@/components/primitives/button";
 import { ShareSheet, whatsappShareHref } from "@/components/share/share-sheet";
 import type { MintedLink } from "@/components/share/card-sharing";
-import { buildVcf, canBuildVcf } from "@/card/build-vcf";
+import { canBuildVcf } from "@/card/build-vcf";
 import { resolveCard } from "@/card/resolve-card";
 import { cardLedgerDemo } from "@/fixtures/cards";
 import { fixtureFields, fixtureGroups } from "@/fixtures/profile";
@@ -52,7 +52,7 @@ async function openLinkBlock(options: {
     <ToastProvider>
       <ShareSheet
         resolved={resolved}
-        vcf={canBuildVcf(resolved) ? buildVcf(resolved) : null}
+        sharesNothing={!canBuildVcf(resolved)}
         editHref="/cards/x/edit"
         linkIsLive={options.linkIsLive}
         lastSent={options.lastSent}
@@ -66,6 +66,26 @@ async function openLinkBlock(options: {
   const block = dialog.querySelector("[data-share-link]");
   if (block === null) throw new Error("the share panel rendered no link block");
   return block as HTMLElement;
+}
+
+/** The whole dialog, for the assertions that are about what the panel does *not* contain. */
+async function openDialog(): Promise<HTMLElement> {
+  const resolved = resolvedCard(LIVE_URL);
+  renderWithProviders(
+    <ToastProvider>
+      <ShareSheet
+        resolved={resolved}
+        sharesNothing={!canBuildVcf(resolved)}
+        editHref="/cards/x/edit"
+        linkIsLive
+        lastSent={SENT}
+        trigger={<Button>Share</Button>}
+      />
+    </ToastProvider>,
+  );
+
+  await userEvent.click(screen.getByRole("button", { name: "Share" }));
+  return (await screen.findByRole("dialog")) as HTMLElement;
 }
 
 describe("whatsappShareHref — the deep link the owner presses send on", () => {
@@ -179,5 +199,49 @@ describe("the share panel once a link exists", () => {
     expect(block.querySelector("[data-share-copy]")).not.toBeNull();
     // No recipient in hand, so no deep link to aim — the copy control is the whole offer.
     expect(block.querySelector("[data-share-whatsapp]")).toBeNull();
+  });
+});
+
+/**
+ * ⚠ The panel hands over a **link**, and must not grow a file back.
+ *
+ * It used to print the `.vcf` under the heading *"What people receive"* and offer a
+ * **Download .vcf** control beside Close. The heading was false — a recipient of this dialog
+ * receives a link, and §4.2's whole promise is that the page behind it resolves live, so an
+ * edit reaches them with nothing re-sent. The button wrote the owner their own contact
+ * details, answering no question they had.
+ *
+ * The vCard is still the product's (`CLAUDE.md` non-negotiable #2), on the two surfaces where
+ * someone actually wants it: the public card's **Save to contacts** and its mirror on the
+ * owner's card preview. Neither is this panel.
+ *
+ * A card that shares plenty is used deliberately: on an empty card these controls were always
+ * absent, so only a full card can tell "removed" apart from "gated".
+ */
+describe("the share panel offers a link and no file at all (§4.2)", () => {
+  it("renders no vCard preview and no download control", async () => {
+    const dialog = await openDialog();
+
+    expect(dialog.querySelector("[data-vcf-preview]")).toBeNull();
+    expect(dialog.querySelector("[data-share-download]")).toBeNull();
+  });
+
+  it("never claims the recipient receives a file", async () => {
+    const dialog = await openDialog();
+    const text = dialog.textContent ?? "";
+
+    expect(text).not.toContain("BEGIN:VCARD");
+    expect(text).not.toMatch(/what people receive/i);
+    expect(text).not.toMatch(/\.vcf/i);
+    expect(text).not.toMatch(/download/i);
+  });
+
+  it("leaves Close as the only footer control on a card that shares fine", async () => {
+    const dialog = await openDialog();
+
+    expect(dialog.querySelector("[data-share-add-fields]")).toBeNull();
+    // The link and the ways to send it are the whole offer.
+    expect(dialog.querySelector("[data-share-link]")).not.toBeNull();
+    expect(dialog.querySelector("[data-share-copy]")).not.toBeNull();
   });
 });
