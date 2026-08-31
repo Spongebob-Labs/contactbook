@@ -241,8 +241,10 @@ enum CardKind {
 /// card (and every live ShareLink) that includes it automatically.
 ///
 /// Deliberately missing vs. the fuller docs/architecture/lld.md draft:
-/// `slug`/`theme` (no dashboard UI to route/theme yet) and `currentVersion`
-/// (no CardVersion table yet — that lands with the notify-on-update feature).
+/// `theme` (no dashboard UI to theme yet) and `currentVersion` (no CardVersion
+/// table yet — that lands with the notify-on-update feature). `slug` never
+/// lands as such — `publicToken` below is what the QR/public-URL problem
+/// actually needed, not a human-readable slug.
 model Card {
   id         String    @id @default(uuid())
   userId     String
@@ -250,6 +252,15 @@ model Card {
   name       String
   kind       CardKind  @default(CUSTOM)
   archivedAt DateTime? // cascades to REVOKE every ShareLink on this card — see SharingService.archiveCard
+
+  /// The card's own public URL, independent of any recipient. Scanned via QR
+  /// before the card has ever been shared with anyone — resolves through the
+  /// same GET /public/links/:token as a ShareLink token (ShareLinksService
+  /// .resolvePublic falls back here on a miss), never a separate route. Never
+  /// tied to one contact: revoking a contact's ShareLink must not affect this.
+  /// 128-bit base62 via the same generateShareToken() ShareLink already uses —
+  /// one generator, one entropy guarantee, across both token namespaces.
+  publicToken String @unique
 
   // Appearance. All nullable and all NULL until the owner explicitly picks one —
   // NULL is load-bearing, it means "derive the look from `kind` instead," the
@@ -269,6 +280,7 @@ model Card {
 
   fields     CardField[]
   shareLinks ShareLink[]
+  scans      CardScan[]
 
   @@index([userId, archivedAt])
   @@map("cards")
@@ -363,6 +375,22 @@ model ShareLink {
   @@index([contactId, status])
   @@index([cardId, status])
   @@map("share_links")
+}
+
+/// An anonymous scan of Card.publicToken via GET /public/links/:token. No IP,
+/// no fingerprint, no UA string — a scan is a stranger, and this should not
+/// become a profile of one. Count + timestamp is enough to answer "has anyone
+/// scanned this card" for the sharing dashboard. Recorded on every resolve of
+/// the publicToken path, the same way ShareLink.viewCount is bumped on every
+/// resolve of a per-contact token — this is that mechanism's card-level twin.
+model CardScan {
+  id        String   @id @default(uuid())
+  cardId    String
+  card      Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([cardId, createdAt])
+  @@map("card_scans")
 }
 
 // ==========================================
