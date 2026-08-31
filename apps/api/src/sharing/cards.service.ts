@@ -5,6 +5,7 @@ import { AppConfigService } from '../config/app-config.service';
 import { AppLogger } from '../common/logging/app-logger.service';
 import { ApiError } from '../common/errors/api-error';
 import { decryptFieldValueForRead } from '../profile/profile-field-value.util';
+import { generateShareToken } from './share-token.util';
 import { CreateCardDto } from './dto/create-card.dto';
 import { UpdateCardDto } from './dto/update-card.dto';
 import { SetCardFieldsDto } from './dto/set-card-fields.dto';
@@ -52,6 +53,10 @@ export class CardsService {
         userId,
         name: dto.name,
         kind: dto.kind,
+        // The card's own public URL, independent of any recipient — never
+        // client-suppliable (no field on CreateCardDto for it) and immutable
+        // for the card's life; update() below deliberately cannot touch it.
+        publicToken: generateShareToken(),
         templateId: dto.templateId,
         paletteId: dto.paletteId,
         groundHex: dto.groundHex,
@@ -205,6 +210,11 @@ export class CardsService {
       id: card.id,
       name: card.name,
       kind: card.kind,
+      // Always the full URL, never the bare token — the frontend must never
+      // be the thing that knows how to assemble a public URL, that is how
+      // the two sides drift (see the now-dead `/c/{slug}` guess this
+      // replaces). Same construction ShareLinksService.buildUrl() uses.
+      publicUrl: `${this.config.shareBaseUrl.replace(/\/+$/, '')}/c/${card.publicToken}`,
       templateId: card.templateId,
       paletteId: card.paletteId,
       groundHex: card.groundHex,

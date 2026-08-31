@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
-import { ShareLink } from '@prisma/client';
+import { Prisma, ShareLink } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AppConfigService } from '../config/app-config.service';
 import { AppLogger } from '../common/logging/app-logger.service';
@@ -20,6 +20,20 @@ type ShareLinkWithContactAndCard = ShareLink & {
   card: { name: string };
   contact: { phoneE164: string; displayName: string | null };
 };
+
+/** The include shape both public-resolve paths (ShareLink and Card.publicToken) need. */
+const PUBLIC_CARD_INCLUDE = {
+  user: { select: { firstName: true, lastName: true } },
+  fields: {
+    where: { visible: true },
+    orderBy: { position: 'asc' as const },
+    include: { field: true },
+  },
+} satisfies Prisma.CardInclude;
+
+type CardForPublicResolve = Prisma.CardGetPayload<{
+  include: typeof PUBLIC_CARD_INCLUDE;
+}>;
 
 @Injectable()
 export class ShareLinksService {
@@ -181,62 +195,95 @@ export class ShareLinksService {
    * The live public resolver — no auth, no userId scoping. Every read here
    * happens at request time; nothing about this method may read from a
    * cache or a snapshot (architecture invariant #2). 404 for an unknown
-   * token, 410 (ApiError.gone) for a known-but-revoked one, so a recipient
-   * understands what happened rather than seeing a generic error either way.
+   * token, 410 (ApiError.gone) for a known-but-revoked/archived one, so a
+   * recipient understands what happened rather than seeing a generic error
+   * either way.
+   *
+   * Two token namespaces, one route: a per-contact ShareLink token is tried
+   * first (existing behaviour, unchanged); a miss falls back to a card's own
+   * `publicToken` — what its QR encodes before it's ever been shared with
+   * anyone. Putting a per-contact token in a QR would be wrong, not just a
+   * shortcut: revoking one contact would kill the printed QR for everyone,
+   * and a stranger's scan would inflate a real recipient's viewCount. Both
+   * namespaces are 128-bit base62 from the same generator, so cross-namespace
+   * collision is not a practical risk — no reason to expose this as two
+   * routes, which would just make the recipient's phone responsible for
+   * knowing which kind of link it's holding.
    */
   async resolvePublic(token: string): Promise<PublicCardResponseDto> {
     const link = await this.prisma.shareLink.findUnique({
       where: { token },
-      include: {
-        card: {
-          include: {
-            user: {
-              select: { firstName: true, lastName: true },
-            },
-            fields: {
-              where: { visible: true },
-              orderBy: { position: 'asc' },
-              include: { field: true },
-            },
-          },
-        },
-      },
+      include: { card: { include: PUBLIC_CARD_INCLUDE } },
     });
 
-    if (!link) {
+    if (link) {
+      if (link.status === 'REVOKED' || link.card.archivedAt !== null) {
+        // card.archivedAt is checked independently of status, even though
+        // CardsService.archive() always revokes every ShareLink in the same
+        // transaction — belt-and-suspenders per docs/architecture/lld.md §2,
+        // in case that invariant is ever violated by a bug or a future write
+        // path that forgets the cascade.
+        throw ApiError.gone(
+          'SHARE_LINK_REVOKED',
+          'This link has been revoked by its owner.',
+        );
+      }
+
+      await this.prisma.shareLink.update({
+        where: { id: link.id },
+        data: {
+          viewCount: { increment: 1 },
+          lastViewedAt: new Date(),
+          firstViewedAt: link.firstViewedAt ?? new Date(),
+        },
+      });
+
+      return this.assemblePublicCard(link.card);
+    }
+
+    const card = await this.prisma.card.findUnique({
+      where: { publicToken: token },
+      include: PUBLIC_CARD_INCLUDE,
+    });
+
+    if (!card) {
       throw ApiError.notFound(
         'SHARE_LINK_NOT_FOUND',
         'This link does not exist.',
       );
     }
-    if (link.status === 'REVOKED' || link.card.archivedAt !== null) {
-      // card.archivedAt is checked independently of status, even though
-      // CardsService.archive() always revokes every ShareLink in the same
-      // transaction — belt-and-suspenders per docs/architecture/lld.md §2,
-      // in case that invariant is ever violated by a bug or a future write
-      // path that forgets the cascade.
+    if (card.archivedAt !== null) {
       throw ApiError.gone(
         'SHARE_LINK_REVOKED',
         'This link has been revoked by its owner.',
       );
     }
 
-    await this.prisma.shareLink.update({
-      where: { id: link.id },
-      data: {
-        viewCount: { increment: 1 },
-        lastViewedAt: new Date(),
-        firstViewedAt: link.firstViewedAt ?? new Date(),
-      },
-    });
+    // Fire-and-forget, same style as the viewCount bump above — a scan is an
+    // anonymous stranger with no ShareLink row to increment, so this is
+    // CardScan's whole reason to exist. Never allowed to fail the page load.
+    void this.prisma.cardScan
+      .create({ data: { cardId: card.id } })
+      .catch((err) =>
+        this.logger.error('sharing.card_scan_write_failed', {
+          cardId: card.id,
+          err: err instanceof Error ? err.message : String(err),
+        }),
+      );
 
-    const ownerId = link.card.userId;
+    return this.assemblePublicCard(card);
+  }
+
+  private async assemblePublicCard(
+    card: CardForPublicResolve,
+  ): Promise<PublicCardResponseDto> {
+    const ownerId = card.userId;
     const photo = await this.prisma.profileField.findFirst({
       where: { userId: ownerId, type: 'PHOTO', archivedAt: null },
       select: { value: true },
     });
 
-    const name = [link.card.user.firstName, link.card.user.lastName]
+    const name = [card.user.firstName, card.user.lastName]
       .filter(Boolean)
       .join(' ');
 
@@ -246,18 +293,18 @@ export class ShareLinksService {
         photoUrl: photo?.value ?? null,
       },
       card: {
-        name: link.card.name,
-        kind: link.card.kind,
-        templateId: link.card.templateId,
-        paletteId: link.card.paletteId,
-        groundHex: link.card.groundHex,
-        finish: link.card.finish,
-        texture: link.card.texture,
-        texturePresence: link.card.texturePresence,
-        textureScale: link.card.textureScale,
-        updatedAt: link.card.updatedAt,
+        name: card.name,
+        kind: card.kind,
+        templateId: card.templateId,
+        paletteId: card.paletteId,
+        groundHex: card.groundHex,
+        finish: card.finish,
+        texture: card.texture,
+        texturePresence: card.texturePresence,
+        textureScale: card.textureScale,
+        updatedAt: card.updatedAt,
       },
-      fields: link.card.fields
+      fields: card.fields
         // Excludes a field that was archived after being added to the card
         // — CardField rows aren't cleaned up when their ProfileField is
         // archived, so this filters live rather than relying on a cascade.
@@ -272,7 +319,7 @@ export class ShareLinksService {
             cf.field.isEncrypted,
             (err) =>
               this.logger.error('sharing.public_field_decryption_failed', {
-                shareLinkId: link.id,
+                cardId: card.id,
                 fieldId: cf.field.id,
                 err: err instanceof Error ? err.message : String(err),
               }),

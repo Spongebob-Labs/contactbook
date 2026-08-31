@@ -42,6 +42,13 @@ export class CardResponseDto {
   @ApiProperty({ enum: CardKind, example: CardKind.WORK })
   kind!: CardKind;
 
+  @ApiProperty({
+    example: 'https://cards.contactbook.app/c/4f8Kq2mR7xJp1sN0vLtQ9a',
+    description:
+      'This card’s own public URL — what its QR code encodes. Independent of any recipient: it exists before the card has ever been shared with anyone, and revoking one recipient’s link never affects it. Resolves through the same public endpoint as a per-recipient share link.',
+  })
+  publicUrl!: string;
+
   @ApiPropertyOptional({
     nullable: true,
     example: 'meridian',
