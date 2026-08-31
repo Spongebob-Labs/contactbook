@@ -94,19 +94,30 @@ export class ShareLinksService {
     // invariant #3. The transport (this.enqueuer.enqueue) is deliberately
     // outside the transaction and fires only after it commits.
     const { link, outboxId } = await this.prisma.$transaction(async (tx) => {
+      // lastNotifiedVersion is set here on both branches, never left null for
+      // an active link — the initial share already hands the recipient a
+      // live link to current data, so if this stayed null a contact shared
+      // at version 5 would read as "5 versions behind" with nothing to
+      // compare against. null should mean "this link has never told anyone
+      // anything," a state that isn't reachable once a link is actually live.
       const linkRow = existing
         ? // Re-sharing a revoked link is how an owner un-revokes it for someone
           // — explicit intent to give them access again, restoring the SAME
           // token rather than minting a new one.
           await tx.shareLink.update({
             where: { id: existing.id },
-            data: { status: 'ACTIVE', revokedAt: null },
+            data: {
+              status: 'ACTIVE',
+              revokedAt: null,
+              lastNotifiedVersion: card.currentVersion,
+            },
           })
         : await tx.shareLink.create({
             data: {
               token: generateShareToken(),
               cardId,
               contactId: contact.id,
+              lastNotifiedVersion: card.currentVersion,
             },
           });
 

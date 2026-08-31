@@ -31,6 +31,9 @@ import { ShareCardDto } from './dto/share-card.dto';
 import { ListCardsQueryDto } from './dto/list-cards-query.dto';
 import { CardResponseDto } from './dto/card-response.dto';
 import { ShareLinkResponseDto } from './dto/share-link-response.dto';
+import { AudienceResponseDto } from './dto/audience-response.dto';
+import { NotifyCardDto } from './dto/notify-card.dto';
+import { NotifyResultDto } from './dto/notify-result.dto';
 
 @ApiTags('cards')
 @ApiBearerAuth('access-token')
@@ -164,5 +167,49 @@ export class CardsController {
     @Body() dto: ShareCardDto,
   ) {
     return this.shareLinks.share(req.user!.id, id, dto);
+  }
+
+  @Get(':id/audience')
+  @ApiOperation({
+    summary: 'List active recipients and how far behind each one is',
+    description:
+      'Active ShareLinks only — a revoked or never-shared contact has no link to notify. ' +
+      'versionsBehind is currentVersion minus the version each recipient was last told about, ' +
+      'via either the initial share or a previous notify.',
+  })
+  @ApiResponse({ status: 200, type: AudienceResponseDto })
+  @ApiResponse({
+    status: 404,
+    type: ApiErrorResponseDto,
+    description: 'CARD_NOT_FOUND',
+  })
+  async getAudience(@Req() req: Request, @Param('id') id: string) {
+    return this.cards.getAudience(req.user!.id, id);
+  }
+
+  @Post(':id/notify')
+  @ApiOperation({
+    summary:
+      'Send a generic "this card was updated" WhatsApp notice to chosen recipients',
+    description:
+      'The message carries no field-level diff — just a pointer at the live link. Each ' +
+      'shareLinkId must be an ACTIVE link on this card. Fails cleanly with ' +
+      'CARD_UPDATE_TEMPLATE_NOT_CONFIGURED until a CARD_UPDATE WhatsAppTemplate is registered ' +
+      'and approved (POST /templates). Re-notifying the same recipient about a version already ' +
+      'notified is a no-op, not a duplicate send.',
+  })
+  @ApiResponse({ status: 201, type: [NotifyResultDto] })
+  @ApiResponse({
+    status: 404,
+    type: ApiErrorResponseDto,
+    description: 'CARD_NOT_FOUND or SHARE_LINK_NOT_FOUND',
+  })
+  @HttpCode(201)
+  async notify(
+    @Req() req: Request,
+    @Param('id') id: string,
+    @Body() dto: NotifyCardDto,
+  ) {
+    return this.cards.notify(req.user!.id, id, dto);
   }
 }

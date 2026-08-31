@@ -241,10 +241,9 @@ enum CardKind {
 /// card (and every live ShareLink) that includes it automatically.
 ///
 /// Deliberately missing vs. the fuller docs/architecture/lld.md draft:
-/// `theme` (no dashboard UI to theme yet) and `currentVersion` (no CardVersion
-/// table yet — that lands with the notify-on-update feature). `slug` never
-/// lands as such — `publicToken` below is what the QR/public-URL problem
-/// actually needed, not a human-readable slug.
+/// `theme` (no dashboard UI to theme yet). `slug` never lands as such —
+/// `publicToken` below is what the QR/public-URL problem actually needed, not
+/// a human-readable slug.
 model Card {
   id         String    @id @default(uuid())
   userId     String
@@ -252,6 +251,15 @@ model Card {
   name       String
   kind       CardKind  @default(CUSTOM)
   archivedAt DateTime? // cascades to REVOKE every ShareLink on this card — see SharingService.archiveCard
+
+  /// Bumped by CardsService.setFields() only when the field/visibility/
+  /// position/label set actually changes — never by the appearance-only
+  /// PATCH (a palette swap isn't content a recipient can even perceive as
+  /// "the card changed"). Denormalized rather than derived from
+  /// MAX(CardVersion.version) so setFields() can compute the next version
+  /// from the row it already has in hand, in the same transaction it writes
+  /// the CardVersion row — never one without the other.
+  currentVersion Int @default(1)
 
   /// The card's own public URL, independent of any recipient. Scanned via QR
   /// before the card has ever been shared with anyone — resolves through the
@@ -281,6 +289,7 @@ model Card {
   fields     CardField[]
   shareLinks ShareLink[]
   scans      CardScan[]
+  versions   CardVersion[]
 
   @@index([userId, archivedAt])
   @@map("cards")
@@ -303,6 +312,28 @@ model CardField {
   @@id([cardId, fieldId])
   @@index([cardId, visible, position])
   @@map("card_fields")
+}
+
+/// Immutable snapshot written whenever CardsService.setFields() actually
+/// changes the field/visibility/position/label set — never on the
+/// appearance-only PATCH. `diff` is computed against version n-1 at write
+/// time (empty prior state on the very first version, so `added` is simply
+/// every field in the new set — one uniform code path, no special-casing).
+///
+/// diff shape: { added: [{fieldId,label,type}], removed: [...], changed: [...] }
+/// Never contains ProfileField.value — labels only (invariant #5).
+model CardVersion {
+  id        String   @id @default(uuid())
+  cardId    String
+  card      Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  version   Int
+  snapshot  Json // full resolved field list at this version: [{fieldId,label,type,visible,position}]
+  diff      Json
+  createdAt DateTime @default(now())
+
+  @@unique([cardId, version])
+  @@index([cardId, version(sort: Desc)])
+  @@map("card_versions")
 }
 
 enum ContactSource {
@@ -367,6 +398,16 @@ model ShareLink {
   lastViewedAt  DateTime?
   viewCount     Int       @default(0)
   revokedAt     DateTime?
+
+  /// The Card.currentVersion this contact was last told about, via either
+  /// the initial share or an explicit notify. Set on mint/restore in
+  /// ShareLinksService.share() — never left null while the link is live, so
+  /// "never notified" isn't a reachable state once a link exists; the
+  /// meaningful signal is edits happening *after* the last thing they were
+  /// told about. Bumped again only after a confirmed WhatsApp send in the
+  /// send_whatsapp_card_update outbox handler, not optimistically at enqueue
+  /// time — a failed send must still show as "behind."
+  lastNotifiedVersion Int?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -455,7 +496,8 @@ enum MessageDirection {
 enum MessagePurpose {
   OTP
   CARD_SHARE
-  // CARD_UPDATE, SCAN_REPLY land with broadcast/notify and QR scanning.
+  CARD_UPDATE
+  // SCAN_REPLY lands with QR scanning.
 }
 
 enum MessageStatus {

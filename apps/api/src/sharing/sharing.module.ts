@@ -4,6 +4,7 @@ import { MessagingModule } from '../messaging/messaging.module';
 import { WhatsappService } from '../messaging/whatsapp.service';
 import { WhatsAppTemplateService } from '../messaging/whatsapp-template.service';
 import { ContactsModule } from '../contacts/contacts.module';
+import { PrismaService } from '../prisma/prisma.service';
 import { TaskHandlerRegistry } from '../outbox/task-handler.registry';
 import { ApiError } from '../common/errors/api-error';
 import { CardsController } from './cards.controller';
@@ -28,6 +29,7 @@ export class SharingModule implements OnModuleInit {
     private readonly registry: TaskHandlerRegistry,
     private readonly whatsapp: WhatsappService,
     private readonly templates: WhatsAppTemplateService,
+    private readonly prisma: PrismaService,
   ) {}
 
   onModuleInit(): void {
@@ -72,6 +74,58 @@ export class SharingModule implements OnModuleInit {
         // says otherwise.
         throw new Error(result.errorMessage ?? 'WhatsApp send failed');
       }
+    });
+
+    // Additive alongside the registration above — TaskHandlerRegistry.register
+    // throws on a duplicate kind, so this must be a second, distinct call,
+    // never a change to 'send_whatsapp_card_share' itself.
+    this.registry.register('send_whatsapp_card_update', async (payload) => {
+      const {
+        shareLinkId,
+        contactPhoneE164,
+        ownerName,
+        shareToken,
+        notifyVersion,
+      } = payload as {
+        shareLinkId: string;
+        contactPhoneE164: string;
+        ownerName: string;
+        shareToken: string;
+        notifyVersion: number;
+      };
+
+      const template = await this.templates.findActive('CARD_UPDATE');
+      if (!template) {
+        throw ApiError.forbidden(
+          'CARD_UPDATE_TEMPLATE_NOT_CONFIGURED',
+          'No active, approved WhatsAppTemplate for purpose=CARD_UPDATE — register one via ' +
+            'POST /templates once it exists and is approved in Twilio Console.',
+        );
+      }
+
+      const result = await this.whatsapp.sendTemplate({
+        purpose: 'CARD_UPDATE',
+        toE164: contactPhoneE164,
+        contentSid: template.contentSid,
+        // Generic only — no field-level diff in the message, by product
+        // decision. Same positional shape as CARD_SHARE: {"1":"ownerName","2":"shareToken"}.
+        variables: { '1': ownerName, '2': shareToken },
+        correlationId: shareLinkId,
+      });
+
+      if (!result.ok) {
+        throw new Error(result.errorMessage ?? 'WhatsApp send failed');
+      }
+
+      // Bumped only here, on confirmed send — not optimistically when
+      // CardsService.notify() enqueues the row. A failed send must still
+      // read as "behind" on the next GET /cards/:id/audience; bumping at
+      // enqueue time would hide exactly the failure this feature exists to
+      // surface.
+      await this.prisma.shareLink.update({
+        where: { id: shareLinkId },
+        data: { lastNotifiedVersion: notifyVersion },
+      });
     });
   }
 }
