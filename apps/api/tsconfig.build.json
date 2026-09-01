@@ -1,8 +1,18 @@
 {
   "extends": "./tsconfig.json",
-  // prisma.config.ts is excluded: it's loaded directly by the Prisma CLI
-  // (its own TS loader, not this build), and including it widens tsc's
-  // inferred rootDir to the package root — which moves main.js from
-  // dist/main.js to dist/src/main.js and breaks `node dist/main.js`.
-  "exclude": ["node_modules", "test", "dist", "**/*spec.ts", "prisma.config.ts"]
+  // prisma.config.ts AND scripts/ are excluded for the same reason: anything
+  // outside src/ that this build compiles widens tsc's inferred rootDir to
+  // the package root, which moves main.js from dist/main.js to
+  // dist/src/main.js and breaks `node dist/main.js` (the Dockerfile's CMD,
+  // hardcoded) — reproduced live via 2026-09-02's incident when
+  // apps/api/scripts/*.ts (ops CLI scripts, run directly via ts-node, never
+  // meant to ship in the built image) landed without being added here.
+  "exclude": [
+    "node_modules",
+    "test",
+    "dist",
+    "**/*spec.ts",
+    "prisma.config.ts",
+    "scripts"
+  ]
 }
