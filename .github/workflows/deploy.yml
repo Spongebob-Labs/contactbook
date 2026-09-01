@@ -57,6 +57,20 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile --filter api
+      - name: Generate Prisma Client
+        # The backfill script below imports PrismaClient from @prisma/client
+        # — that package is a stub until this runs (unlike the `test` job,
+        # which already does this as its own step). migrate deploy itself
+        # doesn't need it (it only reads migration.sql files), but everything
+        # in this job now runs in one process, so generate has to happen
+        # before the first script that imports the client, not just before
+        # `migrate deploy`. Config-load time only (see prisma.config.ts) —
+        # this doesn't connect to the database, but still needs DIRECT_URL to
+        # be *set*, hence reusing the real secret rather than a placeholder.
+        working-directory: apps/api
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+        run: npx prisma generate
       - name: Write Supabase root cert
         # Same path already baked into the DIRECT_URL secret's sslrootcert=
         # (the one meant for the VM's container) -- writing it here too means
