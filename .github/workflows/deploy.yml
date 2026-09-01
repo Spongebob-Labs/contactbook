@@ -57,20 +57,6 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile --filter api
-      - name: Generate Prisma Client
-        # The backfill script below imports PrismaClient from @prisma/client
-        # — that package is a stub until this runs (unlike the `test` job,
-        # which already does this as its own step). migrate deploy itself
-        # doesn't need it (it only reads migration.sql files), but everything
-        # in this job now runs in one process, so generate has to happen
-        # before the first script that imports the client, not just before
-        # `migrate deploy`. Config-load time only (see prisma.config.ts) —
-        # this doesn't connect to the database, but still needs DIRECT_URL to
-        # be *set*, hence reusing the real secret rather than a placeholder.
-        working-directory: apps/api
-        env:
-          DIRECT_URL: ${{ secrets.DIRECT_URL }}
-        run: npx prisma generate
       - name: Write Supabase root cert
         # Same path already baked into the DIRECT_URL secret's sslrootcert=
         # (the one meant for the VM's container) -- writing it here too means
@@ -79,30 +65,6 @@ jobs:
         run: |
           sudo mkdir -p /etc/contactbook
           echo "${{ secrets.SUPABASE_CA_CERT }}" | sudo tee /etc/contactbook/supabase-ca.crt > /dev/null
-      - name: ONE-TIME — backfill NULL publicToken rows (remove this step after this deploy succeeds)
-        # Recovery for the 2026-08-28 incident: 20260828120100_add_card_public_token_required
-        # failed against this database because these rows predate the
-        # publicToken column and were never backfilled. Safe to run more than
-        # once (only touches rows where publicToken IS NULL) but has nothing
-        # to do after this deploy — delete this step once the migrate step
-        # below succeeds.
-        working-directory: apps/api
-        env:
-          DATABASE_URL: ${{ secrets.DIRECT_URL }}
-        run: npx ts-node scripts/backfill-card-public-tokens.ts
-      - name: ONE-TIME — resolve the failed migration from the 2026-08-28 incident (remove this step after this deploy succeeds)
-        # `prisma migrate deploy` refuses to apply anything further while a
-        # prior migration is marked FAILED in this database's migration
-        # history. The ALTER COLUMN ... SET NOT NULL it attempted never
-        # actually applied (Postgres rejects the whole statement on the
-        # first offending row), so "rolled back" is accurate here, not just
-        # convenient — there is nothing to undo. This step will ERROR on any
-        # future deploy once the migration is no longer in a failed state —
-        # it must not stay in this file past this one recovery run.
-        working-directory: apps/api
-        env:
-          DIRECT_URL: ${{ secrets.DIRECT_URL }}
-        run: npx prisma migrate resolve --rolled-back 20260828120100_add_card_public_token_required
       - name: Block deploy if a pending migration would fail on existing NULLs
         # Prevents a repeat of the 2026-08-28 incident: a migration doing
         # ALTER COLUMN ... SET NOT NULL reached this database before its
