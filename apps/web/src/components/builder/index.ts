@@ -113,7 +113,7 @@ export type { BuilderFieldRow } from "./field-rows";
 export {
   BUILDER_NEW_CARD_NAME,
   BUILDER_PREVIEW_CARD_ID,
-  BUILDER_PREVIEW_SLUG,
+  BUILDER_PREVIEW_PUBLIC_URL,
   applyFieldValues,
   builderCard,
   builderInitialState,

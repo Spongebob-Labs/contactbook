@@ -181,13 +181,19 @@ export interface ContactCard extends CardSurface {
   type: CardType;
   isSensitive: boolean;
   /**
-   * [ASSUMED — spec AS-03] A new field the API does not have yet. The public card URL needs a
-   * stable, short, non-enumerable id; ≤ 24 chars, `/^[a-z0-9-]+$/`, so the QR payload stays
-   * under 60 bytes and the symbol stays at or below version 6 (AC-08).
+   * The card's own public URL — `CardResponseDto.publicUrl`, passed through verbatim.
    *
-   * ⚠ Cross-boundary flag for the later integration run: the API will need a `slug` column.
+   * This is what the QR encodes, and it is **not** a per-recipient share link. The API mints a
+   * `Card.publicToken` at creation, so this exists before the card has been shared with anyone
+   * and survives revoking any individual recipient. Never assembled here: the API hands us the
+   * finished URL (see `CardResponseDto.publicUrl` for why).
+   *
+   * `null` means **not published yet** — the builder's unsaved card, which has no server row and
+   * therefore no token. A `null` here must render as an explicit "activates on save" state, never
+   * as a QR that looks live and resolves to nothing. It replaces the old assumed `slug` field,
+   * which guessed a URL against a column that never landed.
    */
-  slug: string;
+  publicUrl: string | null;
   /**
    * [ASSUMED — spec AS-02] A new field the API does not have yet. The old schema had no
    * template column, which is exactly why the old wizard taught a template choice and then
@@ -344,7 +350,8 @@ export interface ResolvedField {
 
 export interface ResolvedCard {
   cardId: string;
-  slug: string;
+  /** `ContactCard.publicUrl`, carried through. `null` until the card is saved. */
+  publicUrl: string | null;
   cardName: string;
   cardType: CardType;
   template: CardTemplate;
@@ -372,8 +379,21 @@ export interface ResolvedCard {
   fields: ResolvedField[];
   /** `SOCIAL_LINK` only, split out for the social row. */
   socialFields: ResolvedField[];
-  /** `${SITE_URL}/c/${slug}` — computed once, here, and read by everything downstream. */
-  qrPayload: string;
+  /**
+   * What the QR encodes: **always the card's own `publicUrl`**, never a recipient's share link.
+   *
+   * Computed once, here, and read by everything downstream — the share face, the vCard NOTE, the
+   * PNG export and the OpenGraph image — so they cannot disagree about where the card points.
+   *
+   * ⚠ This deliberately does *not* prefer the newest ACTIVE ShareLink, which is what it used to
+   * do. A QR is one-to-many: it gets printed, put on a lock screen and shown to strangers. Baking
+   * one recipient's private token into it means revoking that person kills the printed code for
+   * everyone, and a stranger's scan inflates that recipient's view count.
+   *
+   * `null` when the card has no server row yet (builder, pre-save). Renderers must show the
+   * pending state rather than encoding a placeholder.
+   */
+  qrPayload: string | null;
   /** Ids in `card.fieldIds` that are absent from the profile (I-2). */
   droppedFieldIds: string[];
   /** `fields.length + socialFields.length`. */

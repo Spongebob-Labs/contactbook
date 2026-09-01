@@ -70,7 +70,7 @@ const EMPTY = resolve(cardEmptyDemo);
 const SOCIAL_ONLY = resolve({
   ...cardLedgerDemo,
   id: "card_t17_social",
-  slug: "t17-social",
+  publicUrl: "https://card.example/c/1o2sidSvpWopexhIISCMdL",
   fieldIds: ["field_linkedin", "field_mastodon"],
 });
 
@@ -78,7 +78,7 @@ const SOCIAL_ONLY = resolve({
 const PAYMENTS = resolve({
   ...cardLedgerDemo,
   id: "card_t17_payments",
-  slug: "t17-pay",
+  publicUrl: "https://card.example/c/0ybwvPH7cJiJ3c0seoptAq",
   type: "PAYMENT",
   fieldIds: ["field_company", "field_bank", "field_upi", "field_crypto", "field_work_phone"],
 });
@@ -87,7 +87,7 @@ const PAYMENTS = resolve({
 const MIXED = resolve({
   ...cardLedgerDemo,
   id: "card_t17_mixed",
-  slug: "t17-mixed",
+  publicUrl: "https://card.example/c/3ZtRC6JO4ANWpv2ajrAuf4",
   fieldIds: ["field_job_title", "field_site_url", "field_mastodon", "field_work_email"],
 });
 
@@ -101,7 +101,7 @@ const LONG = resolveCard(
   {
     ...cardLedgerDemo,
     id: "card_t17_long",
-    slug: "t17-long",
+    publicUrl: "https://card.example/c/1pJlgBjPofikhfAFY6hvDI",
     name: "Conference handouts, printed batch two, autumn",
   },
   extremeUserLongName,
@@ -280,18 +280,18 @@ describe("CardThumbTile (§8D.3, E-13)", () => {
     expect(screen.getAllByRole("link")).toHaveLength(1);
   });
 
-  it("keeps the thumb QR a preview, encoding a dummy payload not the card's own", () => {
+  it("encodes the card's OWN payload in the thumb, not a dummy", () => {
     renderWithProviders(<CardThumbTile resolved={LEDGER} href="/cards/card_minimal_demo" />);
 
     const zone = document.querySelector("[data-qr-zone]");
     expect(zone).toHaveAttribute("data-qr-mode", "thumb");
-    expect(zone).toHaveAttribute("data-qr-preview", "true");
     expect(zone).toHaveAttribute("aria-hidden", "true");
-
-    /* A real, dense pattern — a tile is a picture of the finished card — but never the owner's
-       own URL, because a scanned gallery preview must not resolve to a real card. */
+    /* No `data-qr-preview` any more: the tile used to carry a fixed dummy string so a scanned
+       gallery preview could not resolve to a real card. The card in a tile is the viewer's
+       own, so resolving to it is correct — and a symbol encoding a lie is worse than a small
+       true one, because an enlarged or exported tile then decodes to nothing meaningful. */
+    expect(zone).not.toHaveAttribute("data-qr-preview");
     expect(document.querySelector("[data-qr-symbol]")).not.toBeNull();
-    expect(document.body.innerHTML).not.toContain(LEDGER.qrPayload);
   });
 
   it("renders a non-navigating tile when no href is given", () => {

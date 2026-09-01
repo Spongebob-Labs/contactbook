@@ -65,6 +65,20 @@ jobs:
         run: |
           sudo mkdir -p /etc/contactbook
           echo "${{ secrets.SUPABASE_CA_CERT }}" | sudo tee /etc/contactbook/supabase-ca.crt > /dev/null
+      - name: Block deploy if a pending migration would fail on existing NULLs
+        # Prevents a repeat of the 2026-08-28 incident: a migration doing
+        # ALTER COLUMN ... SET NOT NULL reached this database before its
+        # backfill script had ever been run against it, Postgres rejected the
+        # ALTER, and `prisma migrate deploy` left the migration history
+        # marked FAILED — blocking every later migration (unrelated ones
+        # included) until manually resolved. This step catches that class of
+        # failure before Prisma ever touches the database, with a message
+        # that names the exact table/column/migration instead of a bare
+        # Postgres error code.
+        working-directory: apps/api
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+        run: npx ts-node scripts/check-not-null-migrations.ts
       - name: Run migrations against Supabase directly (session-mode URL, not the pooler)
         working-directory: apps/api
         env:

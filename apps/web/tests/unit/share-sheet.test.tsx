@@ -37,8 +37,15 @@ const SENT: MintedLink = {
   templateMissing: false,
 };
 
-function resolvedCard(shareUrl?: string) {
-  return resolveCard(cardLedgerDemo, fixtureUser, fixtureGroups, fixtureFields, shareUrl);
+/**
+ * `resolveCard` no longer takes a share URL — the card's QR and its copyable link are
+ * `card.publicUrl`, never whichever ShareLink happened to be minted last. A test that wants a
+ * different link overrides the card's own publicUrl.
+ */
+function resolvedCard(publicUrl?: string) {
+  const card =
+    publicUrl === undefined ? cardLedgerDemo : { ...cardLedgerDemo, publicUrl };
+  return resolveCard(card, fixtureUser, fixtureGroups, fixtureFields);
 }
 
 /** Opens the sheet and returns its link block, which is what every assertion here is about. */

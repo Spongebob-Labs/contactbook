@@ -27,7 +27,7 @@ import { fetchCardDetail } from "@/lib/api/browser-loaders";
 import { toScreenError } from "@/lib/api/errors";
 import { useApiResource } from "@/lib/use-api";
 import { useToast } from "@/components/overlay";
-import { formatLongDate } from "@/lib/format";
+import { CARD_LINK_PENDING, formatLongDate } from "@/lib/format";
 import type {
   Contact,
   ContactCard,
@@ -70,9 +70,11 @@ import type {
  *
  * · **The pass.** The rigid 336×500 `<ShareFace>` in the left column, with its QR. It exists
  *   to be added to Apple Wallet or Google Wallet and held up to be scanned. Its QR encodes
- *   `qrPayload` — the *same* link the Share action sends — so the symbol is an accessibility
- *   shortcut to the link, not a second artefact carrying a second copy of the data.
- * · **The card.** The page that link opens, at `/c/{slug}`, which the builder previews.
+ *   `qrPayload` — the card's **own public URL**, minted by the API as `Card.publicToken` when
+ *   the card is created. ⚠ This is NOT the link the Share action sends: Share mints a
+ *   per-recipient `ShareLink`, revocable for that one person. A QR is one-to-many and gets
+ *   printed, so it must not carry a token that revoking one contact would kill.
+ * · **The card.** The page either link opens, at `/c/{token}`, which the builder previews.
  *
  * Until `<WalletPassBlock>` landed, the face was painted here with no caption and no
  * explanation, so it read as an unexplained smaller drawing of the same card, and nobody
@@ -192,19 +194,20 @@ function CardDetailScreen({
    * panel left — the user pressed a button and the link area did not change. This closes it, and
    * the re-read then confirms it.
    *
-   * It takes precedence over the list below rather than merely filling a hole: minting for a
-   * second person must move the QR, the vCard's `NOTE` and the panel *together*, and preferring
-   * the list would leave the card advertising the first recipient's link while the panel showed
-   * the second. §8A.6 is that they are never two different URLs.
+   * It takes precedence over the list below rather than merely filling a hole, so the panel
+   * always shows the most recent recipient rather than the first one.
+   *
+   * ⚠ It no longer moves the QR. Minting used to rewrite `qrPayload`, which meant sharing with
+   * one person repointed the printed symbol at their private, individually-revocable token.
+   * The QR is now `card.publicUrl` and is not a function of who has been sent the card.
    */
   const [minted, setMinted] = useState<MintedLink | null>(null);
 
-  /** ⚠ THE ONE RESOLUTION. Everything below takes this reference; nothing re-derives it. */
   /**
-   * The card's real, live link — the newest **active** one the API has minted for it.
+   * The newest **active** per-recipient link the API has minted for this card.
    *
-   * Revoked links are skipped: their public URL 410s, so encoding one into a QR would print a
-   * dead link onto whatever the card gets put on.
+   * Drives the share panel only — who this card was last sent to, and what went out in that
+   * WhatsApp message. Revoked links are skipped: their public URL 410s.
    */
   const shareUrl = useMemo(
     () => minted?.url ?? shares.find((share) => share.status === "ACTIVE")?.url,
@@ -212,10 +215,11 @@ function CardDetailScreen({
   );
 
   /**
-   * Whether the link on screen came from the API or is this app's local `/c/{slug}` guess.
+   * Whether this card has been sent to at least one recipient, so the panel can distinguish
+   * "shared with someone" from "never shared".
    *
-   * Decided here because this is the only place that knows — `resolveCard` collapses both into
-   * one `qrPayload` string, by design, so nothing downstream can tell them apart afterwards.
+   * No longer about whether the URL on screen is real — since the QR reads `card.publicUrl`,
+   * the card always has a genuine public link, shared or not.
    */
   const linkIsLive = shareUrl !== undefined;
 
@@ -225,8 +229,14 @@ function CardDetailScreen({
     () =>
       card === null || data === null
         ? null
-        : resolveCard(card, data.user, data.groups, data.fields, shareUrl),
-    [card, data, shareUrl],
+        /* ⚠ `shareUrl` is deliberately NOT passed. It used to be, and that meant the moment an
+           owner shared with one person, this card's QR silently switched to advertising that
+           person's private token. `resolveCard` now reads `card.publicUrl` — the card's own
+           one-to-many link — so the symbol is stable no matter who has been sent the card.
+           `shareUrl` still drives the share panel below, which is where a per-recipient link
+           genuinely belongs. */
+        : resolveCard(card, data.user, data.groups, data.fields),
+    [card, data],
   );
 
   /**
@@ -474,14 +484,19 @@ function CardDetailScreen({
                 </div>
 
                 {/* The exact string the QR encodes (§8A.6), so the printed card and this
-                    screen can never publish two different URLs. */}
+                    screen can never publish two different URLs. Absent until the card is
+                    saved — stated rather than rendered as a link to nowhere. */}
                 <p data-card-meta-link="" className="text-machine text-sm break-all text-ink-3">
-                  <Link
-                    href={`/c/${resolved.slug}`}
-                    className="text-ink underline underline-offset-4"
-                  >
-                    {resolved.qrPayload}
-                  </Link>
+                  {resolved.qrPayload === null ? (
+                    <span className="text-ink-3">{CARD_LINK_PENDING}</span>
+                  ) : (
+                    <Link
+                      href={resolved.qrPayload}
+                      className="text-ink underline underline-offset-4"
+                    >
+                      {resolved.qrPayload}
+                    </Link>
+                  )}
                 </p>
               </div>
 

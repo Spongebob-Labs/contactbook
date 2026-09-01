@@ -9,7 +9,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { appearanceForKind, slugForCard, toApiCardKind, toCardType, toUser } from "@/lib/api/map";
+import { appearanceForKind, toApiCardKind, toCardType, toUser } from "@/lib/api/map";
 import { toAppearanceDto } from "@/lib/api/card-appearance";
 import { dialPrefixOf, toE164 } from "@/lib/countries";
 import { API_CARD_KINDS, type MeResponseDto } from "@/lib/api/schema";
@@ -119,9 +119,13 @@ describe("appearanceForKind", () => {
   });
 });
 
-describe("slugForCard", () => {
-  it("stands in the card id, pending the API's slug column", () => {
-    expect(slugForCard("card_123")).toBe("card_123");
+describe("publicUrl", () => {
+  it("passes the API's URL through verbatim, assembling nothing", () => {
+    // The whole point of the column: the frontend used to guess `${SITE_URL}/c/${slug}` against
+    // a slug that never existed, and shipped a QR that 404s. Any transformation here — a
+    // re-based origin, a normalised path — reintroduces exactly that class of bug.
+    const url = "https://cards.contactbook.app/c/4f8Kq2mR7xJp1sN0vLtQ9a";
+    expect(toContactCard(apiCard({ publicUrl: url }), "user-1").publicUrl).toBe(url);
   });
 });
 
@@ -441,6 +445,7 @@ function apiCard(over: Partial<CardResponseDto> = {}): CardResponseDto {
     id: "card1",
     name: "Work",
     kind: "WORK",
+    publicUrl: "https://card.example/c/0000000000000000card1",
     fields: [],
     createdAt: "2026-08-01T00:00:00.000Z",
     updatedAt: "2026-08-02T00:00:00.000Z",
@@ -456,8 +461,8 @@ describe("toContactCard", () => {
     // Derived, not stored — ask #2. `WORK` tracks its template's default palette.
     expect(card.templateId).toBe("meridian");
     expect(card.paletteId).toBeUndefined();
-    // Placeholder until the API grows a slug column — ask #1.
-    expect(card.slug).toBe("card1");
+    // Straight through from the API — nothing is assembled on this side any more.
+    expect(card.publicUrl).toBe("https://card.example/c/0000000000000000card1");
     expect(card.userId).toBe("u1");
   });
 
@@ -566,6 +571,7 @@ describe("card appearance — out on save, back on read", () => {
     id: "80d70484-ab6c-41b6-96fa-fbcb0cfe5513",
     name: "Untitled card",
     kind: "WORK" as const,
+    publicUrl: "https://card.example/c/4f8Kq2mR7xJp1sN0vLtQ9a",
     fields: [],
     createdAt: "2026-08-26T16:44:06.146Z",
     updatedAt: "2026-08-27T07:03:46.292Z",

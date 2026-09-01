@@ -174,13 +174,14 @@ describe("domain entities (spec §5.2)", () => {
     expect(optedOutIsNullable).toBe(true);
   });
 
-  it("carries the two [ASSUMED] fields the API will need — slug (AS-03) and templateId (AS-02)", () => {
-    const slugIsString: Equals<ContactCard["slug"], string> = true;
+  it("carries publicUrl (the API-minted card link) and templateId (AS-02)", () => {
+    // Nullable by contract: an unsaved card has no server row, so no publicToken and no URL.
+    const publicUrlIsNullableString: Equals<ContactCard["publicUrl"], string | null> = true;
     // I-1: a card's templateId is exactly a registry key, so `TEMPLATES[card.templateId]`
     // can never be undefined.
     const templateIdIsTemplateId: Equals<ContactCard["templateId"], TemplateId> = true;
 
-    expect(slugIsString).toBe(true);
+    expect(publicUrlIsNullableString).toBe(true);
     expect(templateIdIsTemplateId).toBe(true);
   });
 
@@ -191,7 +192,7 @@ describe("domain entities (spec §5.2)", () => {
       name: "Work",
       type: "BUSINESS",
       isSensitive: false,
-      slug: "prya-hq",
+      publicUrl: "https://card.example/c/1eLRLR5KbYdbwSn0kHB1v1",
       templateId: "meridian",
       fieldIds: ["field_phone", "field_email"],
       updatedAt: "2026-08-01T09:00:00.000Z",
@@ -216,7 +217,7 @@ describe("domain entities (spec §5.2)", () => {
       name: "Work",
       type: "BUSINESS",
       isSensitive: false,
-      slug: "prya-hq",
+      publicUrl: "https://card.example/c/1eLRLR5KbYdbwSn0kHB1v1",
       templateId: "meridian",
       fieldIds: ["field_phone", "field_email"],
       updatedAt: "2026-08-01T09:00:00.000Z",

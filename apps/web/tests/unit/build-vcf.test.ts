@@ -147,17 +147,51 @@ function fieldTypesIn(vcf: string, resolved: ResolvedCard): Set<FieldType> {
   return found;
 }
 
+
+/**
+ * RFC 2426 §2.6 folding, octet-counted — the writer's half of the `unfold` helper above.
+ * Continuation lines open with a single space, and a multi-byte character is never split.
+ */
+function foldOctets(line: string, limit = MAX_LINE_OCTETS): string {
+  const bytes = new TextEncoder().encode(line);
+  if (bytes.length <= limit) return line;
+
+  const out: string[] = [];
+  let start = 0;
+  let budget = limit;
+  while (start < line.length) {
+    let end = start;
+    let used = 0;
+    while (end < line.length) {
+      const width = new TextEncoder().encode(line[end]).length;
+      if (used + width > budget) break;
+      used += width;
+      end += 1;
+    }
+    out.push(line.slice(start, end));
+    start = end;
+    budget = limit - 1; // the leading space on every continuation line
+  }
+  return out.join(`${CRLF} `);
+}
+
 /* ── the worked example (§6.7) ──────────────────────────────────────────────────────── */
 
 describe("buildVcf — the §6.7 worked output, byte for byte", () => {
   const resolved = resolve(cardLedgerDemo);
 
   /**
-   * Transcribed from spec §6.7 with one substitution: the spec prints the NOTE origin as
-   * `https://localhost:3000`, which contradicts §8A.6's normative default of
-   * `http://localhost:3000` (also AC-08's basis). The origin is not re-derived here — it is
-   * `resolved.qrPayload`, which is computed once in `resolveCard` (§8A.6).
+   * Transcribed from spec §6.7. The NOTE origin is not re-derived here — it is
+   * `resolved.qrPayload`, computed once in `resolveCard` (§8A.6).
+   *
+   * ⚠ The NOTE line is **folded**, and that is the assertion, not an artefact. Once the payload
+   * became a real API-minted URL rather than a short local slug, `NOTE:` plus the prefix plus a
+   * 22-character token crosses the 75-octet limit, so RFC 2426 §2.6 folding applies. Production
+   * URLs are this long too — the old fixture slug was simply short enough to hide the fold. The
+   * fold is computed rather than transcribed so a change to either the prefix or the token
+   * length cannot leave a stale literal behind.
    */
+  const noteLine = `NOTE:${VCARD_NOTE_PREFIX}${resolved.qrPayload}`;
   const EXPECTED =
     [
       "BEGIN:VCARD",
@@ -169,7 +203,7 @@ describe("buildVcf — the §6.7 worked output, byte for byte", () => {
       "TEL;TYPE=CELL:+919820115577",
       "EMAIL;TYPE=INTERNET:priyanka@fernwood.example",
       "URL:https://fernwood.example",
-      `NOTE:${VCARD_NOTE_PREFIX}${resolved.qrPayload}`,
+      foldOctets(noteLine),
       "END:VCARD",
     ].join(CRLF) + CRLF;
 
@@ -231,7 +265,7 @@ describe("buildVcf — a zero-field card cannot produce a name-only file", () =>
     } catch (error) {
       expect(error).toBeInstanceOf(EmptyCardError);
       expect((error as EmptyCardError).cardId).toBe("card_empty_demo");
-      expect((error as EmptyCardError).slug).toBe("prya-blank");
+      expect((error as EmptyCardError).cardName).toBe(cardEmptyDemo.name);
     }
   });
 
@@ -625,9 +659,9 @@ describe("buildVcf — the download contract (§6.9)", () => {
     expect(name).not.toMatch(/[\\/:*?"<>|]/);
   });
 
-  it("falls back to the slug when there is no name to use", () => {
+  it("falls back to the card's name when there is no person name to use", () => {
     const base = resolve(cardLedgerDemo);
-    expect(vcfFileName({ ...base, fullName: "   " })).toBe("prya-hq.vcf");
+    expect(vcfFileName({ ...base, fullName: "   " })).toBe(`${base.cardName}.vcf`);
   });
 });
 

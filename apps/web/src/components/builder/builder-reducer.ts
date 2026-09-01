@@ -81,14 +81,15 @@ import type { CardType, ContactCard, ProfileField } from "@/types/domain";
 export const BUILDER_NEW_CARD_NAME = "Untitled card";
 
 /**
- * The slug an unsaved card previews under.
+ * What an unsaved card's public URL is: nothing.
  *
- * A card that has not been saved has no public URL, so the QR in the preview has to encode
- * *something*. It encodes this, which keeps the symbol's density and byte budget honest (the
- * real thing is the same shape) while not pretending a URL exists — scanning a card mid-build
- * lands on a card that genuinely is not there yet, rather than on somebody else's.
+ * The API mints `Card.publicToken` on `POST /cards`, so there is genuinely no URL to encode
+ * until the first save. This constant used to name a `"preview"` path segment that the QR
+ * encoded anyway, producing a symbol that looked live and resolved to nothing. `null` is the
+ * honest representation — the renderer shows a pending plate rather than a scannable lie, and
+ * saving the card fills it in.
  */
-export const BUILDER_PREVIEW_SLUG = "preview";
+export const BUILDER_PREVIEW_PUBLIC_URL = null;
 
 /**
  * The id an unsaved card previews under.
@@ -105,7 +106,8 @@ export interface BuilderState {
   readonly userId: string;
   readonly name: string;
   readonly cardType: CardType;
-  readonly slug: string;
+  /** `null` until the card has been saved and the API has minted its token. */
+  readonly publicUrl: string | null;
   readonly templateId: TemplateId;
   /** Always concrete here. A picker with no selection has no tick to draw. */
   readonly paletteId: PaletteId;
@@ -204,7 +206,7 @@ export function builderInitialState({ card, userId, seed }: BuilderInit): Builde
       userId,
       name: BUILDER_NEW_CARD_NAME,
       cardType: seedCardType(DEFAULT_TEMPLATE_ID),
-      slug: BUILDER_PREVIEW_SLUG,
+      publicUrl: BUILDER_PREVIEW_PUBLIC_URL,
       templateId: DEFAULT_TEMPLATE_ID,
       paletteId: TEMPLATES[DEFAULT_TEMPLATE_ID].paletteId,
       groundHex: undefined,
@@ -226,7 +228,7 @@ export function builderInitialState({ card, userId, seed }: BuilderInit): Builde
     userId: card.userId,
     name: card.name,
     cardType: card.type,
-    slug: card.slug,
+    publicUrl: card.publicUrl,
     templateId: card.templateId,
     /* A card with no `paletteId` is wearing its template's default and has *not* chosen —
        so trying a different template still moves its colour, which is what somebody who
@@ -381,7 +383,7 @@ export function builderCard(state: BuilderState): ContactCard {
     name: state.name,
     type: state.cardType,
     isSensitive: false,
-    slug: state.slug,
+    publicUrl: state.publicUrl,
     templateId: state.templateId,
     paletteId: state.paletteId,
     /* ⚠ **The material system travels on the card, and that is the whole integration.**

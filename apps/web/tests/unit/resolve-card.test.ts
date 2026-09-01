@@ -29,8 +29,6 @@ import type { ContactCard, FieldGroup, ProfileField, ResolvedCard } from "@/type
  * Pure functions only: no DOM, no geometry (§14.6), no clock.
  */
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
-
 /** The ordinary profile, which is what every card except the extremes filters over. */
 function resolve(card: ContactCard): ResolvedCard {
   return resolveCard(card, fixtureUser, fixtureGroups, fixtureFields);
@@ -50,7 +48,7 @@ describe("resolveCard — shape and template lookup (spec §6.4, I-1)", () => {
     const resolved = resolve(cardLedgerDemo);
 
     expect(resolved.cardId).toBe("card_minimal_demo");
-    expect(resolved.slug).toBe("prya-hq");
+    expect(resolved.publicUrl).toBe("https://card.example/c/1eLRLR5KbYdbwSn0kHB1v1");
     expect(resolved.cardName).toBe("Work");
     expect(resolved.cardType).toBe("BUSINESS");
     expect(resolved.template).toBe(TEMPLATES.meridian);
@@ -435,13 +433,18 @@ describe("resolveCard — bio precedence (§5.3a, §11 E-05, E-06)", () => {
 });
 
 describe("resolveCard — qrPayload (spec §8A.6, AC-08)", () => {
-  it("is `${SITE_URL}/c/${slug}` and is computed here, once, for everything downstream", () => {
-    expect(resolve(cardLedgerDemo).qrPayload).toBe(`${SITE_URL}/c/prya-hq`);
+  it("is the card's own API-minted publicUrl, verbatim, for everything downstream", () => {
+    // ⚠ No longer assembled from an origin plus a slug. `resolveCard` reads `card.publicUrl`
+    // and does not transform it — a re-based origin here is how the dead `/c/{slug}` guess
+    // this replaces came about in the first place.
+    expect(resolve(cardLedgerDemo).qrPayload).toBe("https://card.example/c/1eLRLR5KbYdbwSn0kHB1v1");
   });
 
-  it("uses the documented default origin when NEXT_PUBLIC_SITE_URL is unset", () => {
+  it("reads no environment at all — the payload is a pure function of the card", () => {
     if (process.env.NEXT_PUBLIC_SITE_URL === undefined) {
-      expect(resolve(cardLedgerDemo).qrPayload).toBe("http://localhost:3000/c/prya-hq");
+      // The old behaviour fell back to `http://localhost:3000`, so a card built on a laptop
+      // advertised a URL nobody else could open. There is no origin to fall back to now.
+      expect(resolve(cardLedgerDemo).qrPayload).toBe(cardLedgerDemo.publicUrl);
     }
   });
 
@@ -449,17 +452,20 @@ describe("resolveCard — qrPayload (spec §8A.6, AC-08)", () => {
     // Both sets, and through the real resolver rather than a transcribed expression: the
     // budget is what keeps the symbol at version 6 or below at the 140px floor (§8A.6).
     for (const card of fixtureCards) {
-      expect(byteLength(resolve(card).qrPayload)).toBeLessThanOrEqual(60);
+      const payload = resolve(card).qrPayload;
+      expect(payload).not.toBeNull();
+      expect(byteLength(payload as string)).toBeLessThanOrEqual(60);
     }
     for (const card of extremeCards) {
       const resolved = resolveCard(card, fixtureUser, extremeGroups, extremeFields);
-      expect(byteLength(resolved.qrPayload)).toBeLessThanOrEqual(60);
+      expect(resolved.qrPayload).not.toBeNull();
+      expect(byteLength(resolved.qrPayload as string)).toBeLessThanOrEqual(60);
     }
     expect(extremeCards.length).toBeGreaterThan(0);
   });
 
   it("is produced for a zero-field card too — the QR resolves, the vCard does not", () => {
-    expect(resolve(cardEmptyDemo).qrPayload).toBe(`${SITE_URL}/c/prya-blank`);
+    expect(resolve(cardEmptyDemo).qrPayload).toBe("https://card.example/c/0g81sfFwyfSUCqeYInfGdS");
   });
 });
 
@@ -479,7 +485,7 @@ describe("resolveCard — the zero-field card (§11 E-01/E-02, AC-23, AC-36)", (
     // E-01: "the preview still renders (name only) so the consequence is visible".
     expect(resolved.fullName).toBe("Priyanka Raghunathan");
     expect(resolved.template).toBe(TEMPLATES.meridian);
-    expect(resolved.qrPayload).toContain("/c/prya-blank");
+    expect(resolved.qrPayload).toBe("https://card.example/c/0g81sfFwyfSUCqeYInfGdS");
   });
 
   it("is the newest card in the set, so any recency-sorted list surfaces it first", () => {

@@ -561,19 +561,18 @@ describe("every face is the same portrait shape", () => {
 });
 
 describe("thumb mode", () => {
-  it("renders a real QR pattern that is NOT the card's own payload", () => {
-    /* A thumbnail is transform-scaled to roughly 200px, putting the symbol near 80px — well
-       below the 140px floor a camera can read — so it can never be a working QR. It is still a
-       real, dense symbol rather than an abstract glyph, because a template picker is a picture
-       of the finished card and the old sparse placeholder made every tile read as a wireframe.
-       What it must never be is the owner's real URL: scanning a gallery preview must not
-       resolve to somebody's actual card. */
+  it("renders a real QR pattern carrying the card's own payload", () => {
+    /* A thumbnail is transform-scaled to roughly 200px, putting the symbol near 80px — below
+       the 140px floor a camera can read — so a tile is not a scanning target; the card page is.
+       That physical fact is unchanged. What changed is that the tile no longer *pretends*
+       otherwise by carrying a fixed dummy string: every QR in the product now encodes the
+       card's own URL, so an enlarged or exported tile decodes to something true. */
     const resolved = resolveFixture(RICHEST.id);
     const { container } = render(<ShareFace resolved={resolved} mode="thumb" thumbWidth={200} />);
 
     const zone = container.querySelector("[data-qr-zone]") as HTMLElement;
     expect(zone.dataset.qrMode).toBe("thumb");
-    expect(zone.dataset.qrPreview).toBe("true");
+    expect(zone.dataset.qrPreview).toBeUndefined();
     expect(zone.getAttribute("aria-hidden")).toBe("true");
 
     /* A real symbol is present... */
@@ -610,8 +609,15 @@ describe("the link line", () => {
        development would resolve to a domain that does not serve it. */
     const resolved = resolveFixture(RICHEST.id, "meridian");
     expect(resolved.qrPayload).toContain("/c/");
-    expect(formatCardLink(resolved.qrPayload)).toContain(CARD_LINK_DISPLAY_HOST);
-    expect(formatCardLink(resolved.qrPayload)).toContain(`/c/${resolved.slug}`);
+    /* The display line strips the protocol and clamps to 34 chars, so a realistic URL is
+       shown truncated — display only. What matters is that the clamp never reaches the
+       encoder: `qrPayload` above is the untouched publicUrl. */
+    const shown = formatCardLink(resolved.qrPayload);
+    expect(shown).not.toContain("https://");
+    expect(shown.startsWith(new URL(resolved.publicUrl as string).host)).toBe(true);
+    expect(resolved.qrPayload).toBe(resolved.publicUrl);
+    // The dev-host swap is still wired, on the one input it is for.
+    expect(formatCardLink("http://localhost:3000/c/abc")).toContain(CARD_LINK_DISPLAY_HOST);
   });
 
   it("leaves a real production host alone", () => {

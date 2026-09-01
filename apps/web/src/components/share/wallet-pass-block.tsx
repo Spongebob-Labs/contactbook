@@ -116,8 +116,15 @@ export const WALLET_PASS_LEDE =
  * missing from the screen is not a route to the URL — it is the *fact* that the symbol
  * resolves to that URL and to nothing else.
  */
-export function walletQrNote(qrPayload: string): string {
-  return `Scanning the QR opens ${qrPayload} — the same link Share sends.`;
+export function walletQrNote(qrPayload: string | null): string {
+  if (qrPayload === null) {
+    return "This card has no QR yet — save it and one is generated automatically.";
+  }
+  // ⚠ Deliberately no longer "the same link Share sends". Share sends a per-recipient link
+  // minted for one contact; this is the card's own public URL, which is what a QR — printed,
+  // on a lock screen, shown to strangers — has to be. Saying they are the same was true only
+  // while the QR was hijacking whichever ShareLink had most recently been minted.
+  return `Scanning the QR opens ${qrPayload} — this card's own public link.`;
 }
 
 /** Stated under the controls, before anyone presses one. See the module note. */

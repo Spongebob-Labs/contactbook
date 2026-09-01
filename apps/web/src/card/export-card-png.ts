@@ -117,9 +117,22 @@ export function exportPixelSize(
   };
 }
 
-/** §6.8's filename. The slug is already `[a-z0-9-]`, ≤ 24 chars (AC-08), so it is safe as-is. */
+/**
+ * §6.8's filename.
+ *
+ * Derived from the card's name rather than from an id: the slug this used to read was a
+ * human-readable stand-in that never existed server-side, and `cardId` is a uuid — a fine
+ * identifier and a terrible filename. Everything outside `[a-z0-9-]` collapses to a hyphen, so
+ * the result is safe on every filesystem; an unnameable card falls back to its id.
+ */
 export function exportFileName(resolved: ResolvedCard): string {
-  return `contact-book-${resolved.slug}.png`;
+  const stem =
+    resolved.cardName
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 40) || resolved.cardId;
+  return `contact-book-${stem}.png`;
 }
 
 /* ── E-43: the in-flight guard ──────────────────────────────────────────────── */
@@ -135,15 +148,15 @@ export function exportFileName(resolved: ResolvedCard): string {
  */
 export class ExportBusyError extends Error {
   /** The card whose export was skipped, so a caller can tell a stale tap from a live one. */
-  readonly slug: string;
+  readonly cardName: string;
 
-  constructor(slug: string) {
+  constructor(cardName: string) {
     super(
-      `An export is already in flight; the request for "${slug}" was ignored ` +
+      `An export is already in flight; the request for "${cardName}" was ignored ` +
         `(spec §11 E-43). Ask again once the running export settles.`,
     );
     this.name = "ExportBusyError";
-    this.slug = slug;
+    this.cardName = cardName;
   }
 }
 
@@ -331,7 +344,7 @@ export async function exportCardPng(
   resolved: ResolvedCard,
   options: ExportCardPngOptions = {},
 ): Promise<Blob> {
-  if (inFlight) throw new ExportBusyError(resolved.slug);
+  if (inFlight) throw new ExportBusyError(resolved.cardName);
   inFlight = true;
 
   try {

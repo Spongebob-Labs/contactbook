@@ -56,9 +56,10 @@ import type { ResolvedCard, ResolvedField } from "@/types/domain";
 export interface ShareFaceProps {
   resolved: ResolvedCard;
   /**
-   * `full` and `export` encode the card's real URL. `thumb` encodes a fixed dummy payload and
-   * scales the face down — see `PREVIEW_PAYLOAD` in `qr-zone.tsx` for why a gallery preview
-   * must never resolve to a real card.
+   * All three modes encode the card's real URL. `thumb` additionally scales the face down,
+   * which puts its symbol under `MIN_QR_SIZE_PX` — a tile is not a scanning target, the card
+   * page is. It no longer carries a *dummy* payload to make that point, though: see the mode's
+   * note in `qr-zone.tsx` for why a small true symbol beats a fixed lie.
    */
   mode: QrRenderMode;
   /** `thumb` only — the width to scale the design face into. */
@@ -275,6 +276,7 @@ export function ShareFace({
   /* The resolved palette — the card's own choice if it made one. Never looked up from the
      template here: that would ignore the owner's colour. */
   const palette = resolved.palette;
+  // `formatCardLink` renders an unsaved card's absent URL as CARD_LINK_PENDING.
   const link = formatCardLink(resolved.qrPayload, 34);
   const pairs = selectDetailPairs(resolved);
 

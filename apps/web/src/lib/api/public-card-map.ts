@@ -67,8 +67,9 @@ function cardTypeOf(kind: string | null): CardType {
 /**
  * Build a `ResolvedCard` from a public payload.
  *
- * @param shareUrl the link the reader is on — used as the card's own QR payload, so the code on
- * screen encodes the page it is already on rather than a fabricated origin.
+ * @param shareUrl the link the reader is on. Becomes the synthesized card's `publicUrl`, so the
+ * QR encodes the page it is already on rather than a fabricated origin — the public payload has
+ * no `publicUrl` of its own, and the URL in the address bar is by definition one that resolves.
  */
 export function resolvePublicCard(
   payload: PublicCardPayload,
@@ -148,11 +149,11 @@ export function resolvePublicCard(
     name: payload.cardName ?? `${payload.fullName}`.trim(),
     type: cardType,
     isSensitive: false,
-    slug: "public",
+    publicUrl: shareUrl,
     ...appearance,
     fieldIds: fields.map((f) => f.id),
     updatedAt: new Date(0).toISOString(),
   };
 
-  return resolveCard(card, user, groups, fields, shareUrl);
+  return resolveCard(card, user, groups, fields);
 }

@@ -31,16 +31,17 @@
 export class EmptyCardError extends Error {
   /** The card that shares nothing, so a caught error can name it in a log or a toast. */
   readonly cardId: string;
-  readonly slug: string;
+  /** The card's display name, for a log line or a toast. Was `slug`, which never existed. */
+  readonly cardName: string;
 
-  constructor(cardId: string, slug: string) {
+  constructor(cardId: string, cardName: string) {
     super(
       `Card "${cardId}" maps zero profile fields, so it has no contact details to write. ` +
         `Block the action upstream (spec §11 E-01/E-02) rather than writing a name-only vCard.`,
     );
     this.name = "EmptyCardError";
     this.cardId = cardId;
-    this.slug = slug;
+    this.cardName = cardName;
   }
 }
 

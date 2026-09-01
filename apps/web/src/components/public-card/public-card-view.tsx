@@ -168,7 +168,7 @@ export function PublicCardView({ card }: PublicCardViewProps) {
   return (
     <ScreenStateRoot
       state={screenState}
-      data-public-card={card.slug}
+      data-public-card={card.id}
       // §13.2's shape: which of the two actions this page is offering, so the E-02 and
       // E-56 assertions read a positive value instead of inferring from an absent node.
       data-public-card-actions={
