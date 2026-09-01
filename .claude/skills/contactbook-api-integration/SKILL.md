@@ -98,15 +98,22 @@ there is no "fetch user X's cards" surface anywhere in this API.
 
 ### Cards — `/cards/*`
 - `GET/POST/PATCH/DELETE /cards[/:id]` — `DELETE` archives (also revokes every active
-  ShareLink on that card, immediately).
+  ShareLink on that card, immediately). Every card response includes `publicUrl` — a full,
+  ready-to-encode-as-a-QR URL that resolves even before the card has ever been shared with
+  anyone (falls back through the same `/public/links/:token` resolver as a per-contact link).
 - `PUT /cards/:id/fields` — sets the card's curated field list. **Full replace, not a delta** —
   send the entire desired set every time, including fields that aren't changing, or they get
   dropped. `PHOTO`-type fields can't be added here (they render automatically on the public
-  page regardless of card curation).
+  page regardless of card curation). A real change here also writes a `CardVersion` behind the
+  scenes — see `GET /cards/:id/audience` below — but the response shape is unaffected.
 - `POST /cards/:id/share` `{contactId}` — mints (or reuses) the share link for this
   (card, contact) pair. `contactId` must already exist — this endpoint does not accept an
   inline phone number. Enqueues the actual WhatsApp send; the returned `url` is real and live
   either way, independent of whether the send itself succeeds.
+- `GET /cards/:id/audience`, `POST /cards/:id/notify` — the "tell recipients this card changed"
+  flow. Not built into any FE screen yet — full integration guide, request/response shapes, and
+  the important gotcha about what the `notify` response does and doesn't confirm:
+  **`contactbook-card-notifications`**.
 
 ### Share links — `/share-links/*`
 - `GET /share-links` — every link across all your cards, flat list.
@@ -139,13 +146,17 @@ by convention, but the spec is what's actually true right now.
 
 Don't build UI implying these exist:
 
-- **Card version history / "you're 2 versions behind."** No `CardVersion` model. Editing a
-  card just overwrites current state; there's no diff, no audit trail exposed to the owner.
-- **Update notifications.** Editing a shared card does not notify anyone who already has the
-  link — they only see the change if they open it again themselves. No `Broadcast` surface.
+- **Field-level diff in the notify flow.** `CardVersion.diff` is computed and stored on every
+  real field edit, but neither `GET /cards/:id/audience` nor the notify message itself exposes
+  it — see **`contactbook-card-notifications`** for what update notifications *do* cover (they
+  exist now, as of 2026-09-02) and exactly what they don't.
 - **Per-contact field visibility.** Every contact holding a link to the same card sees the
   exact same fields — no "hide this field from this one person" override yet.
-- **QR codes.** No `ScanCode` model or endpoints.
+- **QR scan-to-connect.** `Card.publicUrl` (a real, working QR target — see above) exists, but
+  there's no `ScanCode` model or inbound-scan tracking beyond the anonymous `CardScan` count the
+  public resolver writes on every hit. The "scan a badge, both parties get a WhatsApp message"
+  handshake is a separate, not-yet-built feature — don't build UI implying a scan captures the
+  scanner's identity or notifies the owner.
 - **Per-view analytics beyond a raw count.** `ShareLink` tracks `viewCount`/`firstViewedAt`/
   `lastViewedAt` only — no event-level detail (which field got tapped, vCard downloads, etc.).
 - **vCard download.** `GET /public/links/:token/vcard.vcf` is designed, not built. If you need
