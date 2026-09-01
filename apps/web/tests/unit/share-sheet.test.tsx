@@ -50,18 +50,20 @@ function resolvedCard(publicUrl?: string) {
 
 /** Opens the sheet and returns its link block, which is what every assertion here is about. */
 async function openLinkBlock(options: {
-  shareUrl?: string;
-  linkIsLive: boolean;
+  /** The card's own `publicUrl`. `null` models an unsaved card — the only linkless state now. */
+  publicUrl?: string | null;
   lastSent?: MintedLink;
 }): Promise<HTMLElement> {
-  const resolved = resolvedCard(options.shareUrl);
+  const resolved =
+    options.publicUrl === null
+      ? { ...resolvedCard(), publicUrl: null, qrPayload: null }
+      : resolvedCard(options.publicUrl);
   renderWithProviders(
     <ToastProvider>
       <ShareSheet
         resolved={resolved}
         sharesNothing={!canBuildVcf(resolved)}
         editHref="/cards/x/edit"
-        linkIsLive={options.linkIsLive}
         lastSent={options.lastSent}
         trigger={<Button>Share</Button>}
       />
@@ -84,7 +86,6 @@ async function openDialog(): Promise<HTMLElement> {
         resolved={resolved}
         sharesNothing={!canBuildVcf(resolved)}
         editHref="/cards/x/edit"
-        linkIsLive
         lastSent={SENT}
         trigger={<Button>Share</Button>}
       />
@@ -118,18 +119,20 @@ describe("whatsappShareHref — the deep link the owner presses send on", () => 
   });
 });
 
-describe("the share panel with no link minted yet", () => {
-  it("calls it a preview and says plainly that it is not shareable", async () => {
-    const block = await openLinkBlock({ linkIsLive: false });
+describe("the share panel for a card that has not been saved yet", () => {
+  it("says the link is not active and why, rather than showing an empty slot", async () => {
+    const block = await openLinkBlock({ publicUrl: null });
 
-    expect(block).toHaveTextContent("Preview link");
+    expect(block).toHaveTextContent("Link not active yet");
     expect(block.querySelector("[data-share-link-preview-note]")).not.toBeNull();
-    // The note has to point at the thing that fixes it, which is the field in the send slot.
-    expect(block.textContent).toContain("Create a link above");
+    expect(block.textContent).toContain("has not been saved yet");
+    /* ⚠ A bare `{null}` here rendered an empty line where the URL belongs — the slot must
+       always carry a sentence. */
+    expect(block.querySelector("[data-share-link-value]")?.textContent?.trim()).not.toBe("");
   });
 
   it("offers no copy or share control at all, rather than one that hands over a dead URL", async () => {
-    const block = await openLinkBlock({ linkIsLive: false });
+    const block = await openLinkBlock({ publicUrl: null });
 
     expect(block.querySelector("[data-share-copy]")).toBeNull();
     expect(block.querySelector("[data-share-whatsapp]")).toBeNull();
@@ -137,17 +140,35 @@ describe("the share panel with no link minted yet", () => {
   });
 });
 
-describe("the share panel once a link exists", () => {
-  it("publishes the minted URL and calls it live", async () => {
-    const block = await openLinkBlock({ shareUrl: LIVE_URL, linkIsLive: true, lastSent: SENT });
+describe("the share panel for a saved card nobody has been sent yet", () => {
+  /**
+   * ⚠ REGRESSION. The actions used to be gated on `linkIsLive` — "has this card been sent to
+   * anybody" — because before `Card.publicToken` an unshared card genuinely had no real URL.
+   * A saved card now always has a one-to-many public link, so gating Copy on having shared
+   * first hid a working link behind the exact friction the token was added to remove.
+   */
+  it("still offers the copy control, because the card's own link is already real", async () => {
+    const block = await openLinkBlock({ });
 
-    expect(block).toHaveTextContent("Live link");
+    expect(block).toHaveTextContent("Card link");
+    expect(block.querySelector("[data-share-copy]")).not.toBeNull();
+    expect(block.querySelector("[data-share-link-preview-note]")).toBeNull();
+    // Nobody has been sent it, so there is no recipient to aim a WhatsApp deep link at.
+    expect(block.querySelector("[data-share-whatsapp]")).toBeNull();
+  });
+});
+
+describe("the share panel once a link exists", () => {
+  it("publishes the card's URL and calls it a card link", async () => {
+    const block = await openLinkBlock({ publicUrl: LIVE_URL, lastSent: SENT });
+
+    expect(block).toHaveTextContent("Card link");
     expect(block.querySelector("[data-share-link-value]")?.textContent).toBe(LIVE_URL);
     expect(block.querySelector("[data-share-link-preview-note]")).toBeNull();
   });
 
   it("offers a copy control", async () => {
-    const block = await openLinkBlock({ shareUrl: LIVE_URL, linkIsLive: true, lastSent: SENT });
+    const block = await openLinkBlock({ publicUrl: LIVE_URL, lastSent: SENT });
 
     expect(block.querySelector("[data-share-copy]")).not.toBeNull();
   });
@@ -156,7 +177,7 @@ describe("the share panel once a link exists", () => {
     // The card's own name, read off the resolution rather than repeated as a literal — the
     // fixture is named "Work", and a hardcoded guess here tests the test, not the panel.
     const { cardName } = resolvedCard(LIVE_URL);
-    const block = await openLinkBlock({ shareUrl: LIVE_URL, linkIsLive: true, lastSent: SENT });
+    const block = await openLinkBlock({ publicUrl: LIVE_URL, lastSent: SENT });
 
     const wa = block.querySelector("[data-share-whatsapp]");
     expect(wa).not.toBeNull();
@@ -174,7 +195,7 @@ describe("the share panel once a link exists", () => {
    */
   it("sends, prints and encodes one single URL", async () => {
     const resolved = resolvedCard(LIVE_URL);
-    const block = await openLinkBlock({ shareUrl: LIVE_URL, linkIsLive: true, lastSent: SENT });
+    const block = await openLinkBlock({ publicUrl: LIVE_URL, lastSent: SENT });
 
     const printed = block.querySelector("[data-share-link-value]")?.textContent ?? "";
     const sent = new URL(
@@ -187,8 +208,7 @@ describe("the share panel once a link exists", () => {
 
   it("reports a link that was minted but not delivered, without calling it a failure", async () => {
     const block = await openLinkBlock({
-      shareUrl: LIVE_URL,
-      linkIsLive: true,
+      publicUrl: LIVE_URL,
       lastSent: { ...SENT, templateMissing: true },
     });
 
@@ -200,9 +220,9 @@ describe("the share panel once a link exists", () => {
   });
 
   it("still shows the link when nothing was minted this session — a link from a past send", async () => {
-    const block = await openLinkBlock({ shareUrl: LIVE_URL, linkIsLive: true });
+    const block = await openLinkBlock({ publicUrl: LIVE_URL });
 
-    expect(block).toHaveTextContent("Live link");
+    expect(block).toHaveTextContent("Card link");
     expect(block.querySelector("[data-share-copy]")).not.toBeNull();
     // No recipient in hand, so no deep link to aim — the copy control is the whole offer.
     expect(block.querySelector("[data-share-whatsapp]")).toBeNull();

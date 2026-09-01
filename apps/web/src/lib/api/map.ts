@@ -441,8 +441,9 @@ export function groupSharesByContact(
  * three entities: a name, a kind, and an ordered list of field references. Four domain properties
  * have no column behind them, and each is filled a different way:
  *
- * · **`publicUrl`** — `dto.publicUrl`, passed through verbatim. The API mints a per-card
- *   `publicToken` at creation and hands back the finished URL; we never assemble one.
+ * · **`publicUrl`** — `dto.publicUrl ?? null`, otherwise passed through verbatim. The API
+ *   mints a per-card `publicToken` at creation and hands back the finished URL; we never
+ *   assemble one. `null` covers both an unsaved card and a deployment predating the column.
  * · **`templateId` / `paletteId` and the five surface axes** — the card's **own saved design**
  *   now that the API stores it, with `appearanceForKind(kind)` as the per-axis fallback for a
  *   card that never chose. See `card-appearance.ts` for why the merge is per-axis.
@@ -474,7 +475,10 @@ export function toContactCard(dto: CardResponseDto, userId: string): ContactCard
     name: dto.name,
     type: toCardType(dto.kind),
     isSensitive: visible.some((field) => isSensitiveType(field.type)),
-    publicUrl: dto.publicUrl,
+    // `?? null`, not a bare read: the column is unshipped on staging, and the domain's
+    // `string | null` is exactly the vocabulary for "the API has no URL for this card".
+    // Every renderer already handles null; nothing handles undefined.
+    publicUrl: dto.publicUrl ?? null,
     ...appearance,
     fieldIds: visible.map((field) => field.fieldId),
     updatedAt: dto.updatedAt,
