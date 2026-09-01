@@ -241,10 +241,19 @@ describe("exportCardPng — the §6.8 contract", () => {
     expect(exportPixelSize(3)).toEqual({ width: 1008, height: 1500 });
   });
 
-  it("names the file contact-book-{slug}.png", () => {
-    expect(exportFileName(LEDGER)).toBe("contact-book-prya-hq.png");
-    expect(exportFileName({ ...LEDGER, slug: "acme-sales" })).toBe(
+  it("names the file from the card's name, not from an id", () => {
+    // Was `contact-book-{slug}.png`. The slug never existed server-side, and `cardId` is a
+    // uuid — a fine identifier and a terrible filename. The name is what the owner recognises.
+    expect(exportFileName({ ...LEDGER, cardName: "Acme Sales" })).toBe(
       "contact-book-acme-sales.png",
+    );
+    // Everything outside [a-z0-9-] collapses, so the result is filesystem-safe anywhere.
+    expect(exportFileName({ ...LEDGER, cardName: "Work / Personal?" })).toBe(
+      "contact-book-work-personal.png",
+    );
+    // An unnameable card still yields a file rather than a bare prefix.
+    expect(exportFileName({ ...LEDGER, cardName: "", cardId: "card_x" })).toBe(
+      "contact-book-card_x.png",
     );
   });
 });

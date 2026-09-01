@@ -6,7 +6,7 @@ import { seedFieldIds } from "@/card/template-seed";
 import { TEMPLATES } from "@/card/templates";
 import {
   BUILDER_NEW_CARD_NAME,
-  BUILDER_PREVIEW_SLUG,
+  BUILDER_PREVIEW_PUBLIC_URL,
   applyFieldValues,
   builderCard,
   builderProfileEdits,
@@ -145,7 +145,7 @@ describe("opening on an existing card (/cards/[cardId]/edit)", () => {
     expect(state.cardId).toBe(cardLedgerDemo.id);
     expect(state.name).toBe(cardLedgerDemo.name);
     expect(state.cardType).toBe(cardLedgerDemo.type);
-    expect(state.slug).toBe(cardLedgerDemo.slug);
+    expect(state.publicUrl).toBe(cardLedgerDemo.publicUrl);
     expect(state.templateId).toBe(cardLedgerDemo.templateId);
     expect(state.fieldIds).toEqual([...cardLedgerDemo.fieldIds]);
     expect(state.dirty).toBe(false);
@@ -687,7 +687,7 @@ describe("builderCard", () => {
   it("keeps an existing card's own id and slug", () => {
     const card = builderCard(editState());
     expect(card.id).toBe(cardLedgerDemo.id);
-    expect(card.slug).toBe(cardLedgerDemo.slug);
+    expect(card.publicUrl).toBe(cardLedgerDemo.publicUrl);
     expect(card.userId).toBe(cardLedgerDemo.userId);
   });
 
@@ -695,10 +695,13 @@ describe("builderCard", () => {
    * A card that has not been saved has no public URL, so the preview encodes a placeholder
    * rather than a URL that would 404 if somebody scanned it off the screen.
    */
-  it("gives an unsaved card a stable placeholder slug", () => {
+  it("gives an unsaved card no public URL at all", () => {
     const card = builderCard(newState());
-    expect(card.slug).toBe(BUILDER_PREVIEW_SLUG);
-    expect(BUILDER_PREVIEW_SLUG).toMatch(/^[a-z0-9-]{1,24}$/);
+    // ⚠ Not a placeholder. The API mints `Card.publicToken` on POST /cards, so before the
+    // first save there is genuinely nothing to encode — and a stand-in would render as a
+    // symbol that scans cleanly and resolves to nothing.
+    expect(card.publicUrl).toBeNull();
+    expect(BUILDER_PREVIEW_PUBLIC_URL).toBeNull();
     // It must not be addressable as a real card id either (§11 E-38, AC-05).
     expect(card.id.startsWith("card_")).toBe(true);
   });
@@ -710,8 +713,10 @@ describe("builderCard", () => {
       fixtureGroups,
       fixtureFields,
     );
-    expect(resolved.qrPayload).toContain(`/c/${BUILDER_PREVIEW_SLUG}`);
-    expect(new TextEncoder().encode(resolved.qrPayload).length).toBeLessThanOrEqual(60);
+    // ⚠ An unsaved card has no server row, so the API has minted no publicToken and there is
+    // no URL. This used to assert a `/c/preview` payload — a symbol that scanned cleanly and
+    // resolved to nothing. `null` is what makes the renderer show its pending plate instead.
+    expect(resolved.qrPayload).toBeNull();
   });
 
   it("hands back the state's ids without aliasing them", () => {

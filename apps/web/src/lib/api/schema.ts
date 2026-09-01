@@ -423,6 +423,16 @@ export interface CardResponseDto extends CardAppearanceDto {
   id: string;
   name: string;
   kind: ApiCardKind;
+  /**
+   * The card's own public URL — what its QR encodes. Independent of any recipient: it exists
+   * from the moment the card is created, before it has been shared with anyone, and revoking
+   * one recipient's link never affects it.
+   *
+   * Always the **full URL**, never a bare token. Assembling a public URL is the API's job, not
+   * ours — the previous `${SITE_URL}/c/${slug}` guess this replaces is exactly what happens
+   * when the two sides each hold half the answer.
+   */
+  publicUrl: string;
   fields: CardFieldResponseDto[];
   createdAt: string;
   updatedAt: string;

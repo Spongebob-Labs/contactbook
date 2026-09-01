@@ -451,7 +451,7 @@ describe("<QrZone> — caption and decoration (§8A.4)", () => {
   });
 });
 
-describe("<QrZone> — thumb mode encodes a dummy payload, never the real one", () => {
+describe("<QrZone> — thumb mode encodes the card's own payload, scaled down", () => {
   it("renders a real symbol rather than an abstract glyph", () => {
     /* A thumbnail is transform-scaled to roughly 200px, putting the symbol near 80px — well
        below the 140px floor a camera can read — so it can never be a working QR.
@@ -462,19 +462,21 @@ describe("<QrZone> — thumb mode encodes a dummy payload, never the real one", 
     const { container } = renderZone({ mode: "thumb" });
     const zone = container.querySelector("[data-qr-zone]") as HTMLElement;
     expect(zone.getAttribute("data-qr-mode")).toBe("thumb");
-    expect(zone.getAttribute("data-qr-preview")).toBe("true");
+    expect(zone.getAttribute("data-qr-preview")).toBeNull();
     expect(zone.getAttribute("aria-hidden")).toBe("true");
     expect(container.querySelector("[data-qr-symbol]")).not.toBeNull();
     expect(container.querySelector("[data-qr-glyph]")).toBeNull();
   });
 
-  it("carries no trace of the real payload in its markup", () => {
-    /* The assertion that matters most about a preview symbol: scanning a gallery tile must
-       not resolve to somebody real card. The pattern is genuine; the payload is a constant. */
-    const { container } = renderZone({ mode: "thumb" });
-    expect(container.innerHTML).not.toContain("priyanka-sharma");
-    expect(container.innerHTML).not.toContain(PAYLOAD);
-    expect(container.querySelector("[data-qr-zone]")?.getAttribute("data-qr-modules")).toBeNull();
+  it("shows the pending glyph, not a symbol, when there is no payload to encode", () => {
+    /* An unsaved card has no publicToken and therefore no URL. A shape rather than a hole —
+       and, unlike the fixed dummy string this mode used to carry, nothing a decoder can read a
+       false destination out of. */
+    const { container } = renderZone({ mode: "thumb", payload: null });
+    const zone = container.querySelector("[data-qr-zone]") as HTMLElement;
+    expect(zone.getAttribute("data-qr-pending")).toBe("true");
+    expect(container.querySelector("[data-qr-glyph]")).not.toBeNull();
+    expect(container.querySelector("[data-qr-symbol]")).toBeNull();
   });
 });
 

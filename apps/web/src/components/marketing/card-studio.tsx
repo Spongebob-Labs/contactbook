@@ -59,8 +59,11 @@ import { Prose } from "./type";
  * and every other product artefact below is server-rendered.
  *
  * ## ⚠ THE FACE'S QR IS DELIBERATELY `mode="thumb"`, AND THAT IS A SAFETY DECISION
- * `thumb` encodes `PREVIEW_PAYLOAD` — a fixed dummy — and scales the 336px design face down.
- * Both halves of that matter here:
+ * `thumb` scales the 336px design face down. It used to also swap in a fixed dummy payload;
+ * it now encodes the card's real URL like every other mode, and the safety property is carried
+ * by the **fixture** instead: every demo card's `publicUrl` is on `card.example`, an RFC 2606
+ * reserved domain nobody can own, asserted in `tests/contract/fixtures.test.ts`. So this page
+ * can print a true symbol that could never resolve to a real person's card. What remains true:
  *
  *   · **Scaled.** The face renders at `FACE_SCALE_WIDTH`, which puts its 141px symbol under
  *     `MIN_QR_SIZE_PX`. A symbol below the decode floor that carries a real card URL is a QR

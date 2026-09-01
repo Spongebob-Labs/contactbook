@@ -133,21 +133,7 @@ export function appearanceForKind(kind: ApiCardKind): DerivedAppearance {
   return APPEARANCE[kind];
 }
 
-/**
- * The public-URL slug for a card.
- *
- * ⚠ A placeholder, and the one mapping here that is knowingly wrong. `ContactCard.slug` wants
- * a short, non-enumerable id so the QR payload stays under 60 bytes; the API has no `slug`
- * column, so the card id stands in.
- *
- * This is harmless *today* only because there is no public endpoint to resolve a link against
- * (`docs/INTEGRATION.md` ask #1) — so nothing consumes the slug except a QR code pointing at a
- * page that is not live yet. When ask #1 and the `slug` column land, this function is the one
- * place to change.
- */
-export function slugForCard(cardId: string): string {
-  return cardId;
-}
+
 
 /* ── Profile: fields and groups ──────────────────────────────────────────────────────── */
 
@@ -455,7 +441,8 @@ export function groupSharesByContact(
  * three entities: a name, a kind, and an ordered list of field references. Four domain properties
  * have no column behind them, and each is filled a different way:
  *
- * · **`slug`** — `slugForCard(id)`. Placeholder; see that function.
+ * · **`publicUrl`** — `dto.publicUrl`, passed through verbatim. The API mints a per-card
+ *   `publicToken` at creation and hands back the finished URL; we never assemble one.
  * · **`templateId` / `paletteId` and the five surface axes** — the card's **own saved design**
  *   now that the API stores it, with `appearanceForKind(kind)` as the per-axis fallback for a
  *   card that never chose. See `card-appearance.ts` for why the merge is per-axis.
@@ -487,7 +474,7 @@ export function toContactCard(dto: CardResponseDto, userId: string): ContactCard
     name: dto.name,
     type: toCardType(dto.kind),
     isSensitive: visible.some((field) => isSensitiveType(field.type)),
-    slug: slugForCard(dto.id),
+    publicUrl: dto.publicUrl,
     ...appearance,
     fieldIds: visible.map((field) => field.fieldId),
     updatedAt: dto.updatedAt,

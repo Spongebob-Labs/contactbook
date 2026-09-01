@@ -33,7 +33,7 @@ export const cardLedgerDemo: ContactCard = {
   name: "Work",
   type: "BUSINESS",
   isSensitive: false,
-  slug: "prya-hq",
+  publicUrl: "https://card.example/c/1eLRLR5KbYdbwSn0kHB1v1",
   templateId: "meridian",
   fieldIds: [
     "field_job_title",
@@ -62,7 +62,7 @@ export const cardEmptyDemo: ContactCard = {
   name: "Blank card",
   type: "CUSTOM",
   isSensitive: false,
-  slug: "prya-blank",
+  publicUrl: "https://card.example/c/0g81sfFwyfSUCqeYInfGdS",
   templateId: "meridian",
   paletteId: "onyx",
   fieldIds: [],
@@ -77,7 +77,7 @@ export const fixtureCards: readonly ContactCard[] = [
     name: "Personal",
     type: "PERSONAL",
     isSensitive: true,
-    slug: "prya-me",
+    publicUrl: "https://card.example/c/0q8UZLbKr4Q4E7rYzgb5JB",
     templateId: "meridian",
     paletteId: "clay",
     fieldIds: [
@@ -95,7 +95,7 @@ export const fixtureCards: readonly ContactCard[] = [
     name: "Studio",
     type: "BUSINESS",
     isSensitive: false,
-    slug: "prya-studio",
+    publicUrl: "https://card.example/c/1RVVEpRCeQxr5MUaTRz1Kx",
     templateId: "meridian",
     paletteId: "emerald",
     fieldIds: [
@@ -115,7 +115,7 @@ export const fixtureCards: readonly ContactCard[] = [
     name: "Conference",
     type: "CUSTOM",
     isSensitive: false,
-    slug: "prya-stage",
+    publicUrl: "https://card.example/c/2A7p1aby44NMtuGw9UWoTp",
     templateId: "marigold",
     paletteId: "periwinkle",
     fieldIds: [
@@ -135,7 +135,7 @@ export const fixtureCards: readonly ContactCard[] = [
     name: "Payments",
     type: "PAYMENT",
     isSensitive: true,
-    slug: "prya-pay",
+    publicUrl: "https://card.example/c/0nTI4FJQ7k7Gwixe0gqZpr",
     templateId: "meridian",
     paletteId: "oxblood",
     fieldIds: [
@@ -153,7 +153,7 @@ export const fixtureCards: readonly ContactCard[] = [
     name: "Neighbours",
     type: "PERSONAL",
     isSensitive: false,
-    slug: "prya-notes",
+    publicUrl: "https://card.example/c/15iMDFQBeKgTgCKRhKPb9x",
     templateId: "marigold",
     paletteId: "pistachio",
     fieldIds: [
@@ -172,7 +172,7 @@ export const fixtureCards: readonly ContactCard[] = [
     name: "Open source",
     type: "CUSTOM",
     isSensitive: false,
-    slug: "prya-dev",
+    publicUrl: "https://card.example/c/2mrDzqonGf5zBxdJ3i1fOl",
     templateId: "marigold",
     paletteId: "rust",
     fieldIds: [
@@ -190,7 +190,7 @@ export const fixtureCards: readonly ContactCard[] = [
     name: "Travel",
     type: "PERSONAL",
     isSensitive: false,
-    slug: "prya-away",
+    publicUrl: "https://card.example/c/2XhhBoF6Lpf3nQ1hLzlJoI",
     templateId: "marigold",
     paletteId: "amber",
     fieldIds: [

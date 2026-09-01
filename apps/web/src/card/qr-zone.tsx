@@ -51,8 +51,15 @@ export interface QrMark {
 }
 
 export interface QrZoneProps {
-  /** `resolved.qrPayload`, computed once in `resolveCard` and never re-derived (§8A.6). */
-  payload: string;
+  /**
+   * `resolved.qrPayload`, computed once in `resolveCard` and never re-derived (§8A.6).
+   *
+   * `null` means the card has no public URL yet — it has not been saved, so the API has not
+   * minted its `publicToken`. That renders the pending plate below, never a symbol: a QR that
+   * looks live and resolves to nothing is worse than a visible absence, because the person
+   * holding the phone has no way to tell the difference until it fails.
+   */
+  payload: string | null;
   /**
    * A line BELOW the plate, outside the reserved region. Not template-driven any more — the
    * face never captions its symbol, and the scan page passes its own copy.
@@ -119,24 +126,6 @@ function encode(payload: string): EncodedSymbol | null {
   SYMBOL_CACHE.set(payload, symbol);
   return symbol;
 }
-
-/**
- * What a gallery thumbnail encodes.
- *
- * A thumbnail is `transform: scale()`-ed to roughly 200px, which puts the symbol near 80px —
- * far below the 140px floor at which a phone camera can reliably read one. So a thumbnail can
- * never be a working QR, and this constant is deliberately not the card's URL: scanning a
- * gallery preview must not resolve to somebody's real card.
- *
- * It is a REAL symbol, though, not the abstract corner-and-dots glyph that used to be here.
- * That glyph was honest about being decorative and useless for its actual job — judging how a
- * template looks. A template picker is a picture of the finished card, and a finished card has
- * a dense QR in it; the sparse placeholder made every tile read as a wireframe.
- *
- * `PlaceholderGlyph` survives as the fallback for the one case that matters: if the encoder
- * ever refuses this string, a tile shows a shape rather than a hole.
- */
-const PREVIEW_PAYLOAD = "CONTACT-BOOK-TEMPLATE-PREVIEW";
 
 /* ── shared styling ─────────────────────────────────────────────────────────── */
 
@@ -361,26 +350,78 @@ export function QrZone({
 }: QrZoneProps): ReactElement {
   const size = qrSizePx(cardWidth);
 
-  /* thumb — a real QR pattern, encoding a fixed dummy payload. See PREVIEW_PAYLOAD. */
+  /**
+   * thumb — the card's **real** payload, at thumbnail scale.
+   *
+   * This used to encode a fixed `CONTACT-BOOK-TEMPLATE-PREVIEW` string on the reasoning that a
+   * tile is `transform: scale()`-ed to roughly 200px, putting the symbol near 80px, below the
+   * 140px floor for a reliable arm's-length phone scan — so it could never work anyway, and a
+   * scanned gallery tile "must not resolve to somebody's real card".
+   *
+   * Both halves were wrong in practice. The card in a tile is the viewer's **own**, so
+   * resolving to it is correct rather than a leak; and a symbol that encodes a lie is worse
+   * than a small true one, because a tile enlarged, zoomed or exported then decodes to a
+   * string that means nothing. Every QR in this product now carries the card's own URL.
+   *
+   * The size caveat stands as a physical fact — a tile is not a scanning target, the card page
+   * is. What changed is that the tile no longer *pretends* otherwise by carrying fake data.
+   */
   if (mode === "thumb") {
-    const preview = encode(PREVIEW_PAYLOAD);
     const plateSide = size + 2 * MIN_QUIET_ZONE_PX;
+    const preview = payload === null ? null : encode(payload);
     return (
       <div
         data-qr-zone=""
         data-qr-mode="thumb"
-        data-qr-preview="true"
+        data-qr-pending={payload === null ? "true" : undefined}
         aria-hidden="true"
         className={className}
         style={ROOT_STYLE}
       >
         <div data-qr-plate="" style={plateStyle(plateSide)}>
           {preview === null ? (
+            /* No URL yet, or an encoder refusal. A shape rather than a hole — and, unlike a
+               fixed dummy string, nothing a decoder can read a false destination out of. */
             <PlaceholderGlyph size={size} />
           ) : (
             <QrSymbol symbol={preview} size={size} />
           )}
         </div>
+      </div>
+    );
+  }
+
+  /* Not saved yet — nothing to encode. An explicit, legible absence, sharing the error plate's
+     geometry so the card's composition does not reflow the moment the card is saved. */
+  if (payload === null) {
+    const plateSide = size + 2 * MIN_QUIET_ZONE_PX;
+    return (
+      <div
+        data-qr-zone=""
+        data-qr-mode={mode}
+        data-qr-pending="true"
+        className={className}
+        style={ROOT_STYLE}
+      >
+        <div data-qr-plate="" style={plateStyle(plateSide)}>
+          <span
+            style={{
+              color: MODULE_COLOUR,
+              fontSize: "var(--text-xs)",
+              lineHeight: "var(--text-xs-lh)",
+              textAlign: "center",
+              padding: "var(--space-3)",
+              opacity: 0.6,
+            }}
+          >
+            Save the card to activate its QR
+          </span>
+        </div>
+        {caption === null ? null : (
+          <span data-qr-caption="" style={{ ...CAPTION_STYLE, maxWidth: `${plateSide}px` }}>
+            {caption}
+          </span>
+        )}
       </div>
     );
   }

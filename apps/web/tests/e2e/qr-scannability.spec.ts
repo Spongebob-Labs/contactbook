@@ -117,10 +117,14 @@ for (const { template, card, resolved } of CARDS) {
 
     /* AC-08 / E-29, restated where it is observable: the string that actually came off the
        card is inside the byte cap that keeps the symbol at version 6 or below. */
-    expect(payloadByteLength(resolved.qrPayload)).toBeLessThanOrEqual(MAX_PAYLOAD_BYTES);
+    expect(resolved.qrPayload).not.toBeNull();
+    expect(payloadByteLength(resolved.qrPayload as string)).toBeLessThanOrEqual(
+      MAX_PAYLOAD_BYTES,
+    );
 
-    /* It is the slug's page, not some other card's. */
-    expect(decoded).toContain(`/c/${card.slug}`);
+    /* It is this card's page, not some other card's — the decoded symbol is byte-for-byte
+       the publicUrl the API minted for it. */
+    expect(decoded).toBe(card.publicUrl);
   });
 }
 
@@ -166,12 +170,13 @@ test("QR-T5 · the zero-field card's QR decodes (E-02, §8A)", async ({ page }) 
  *
  * · the exhibit is 141px — one pixel above `MIN_QR_SIZE_PX` — and carries the real payload,
  *   because it is captioned as something the reader may point a phone at right now;
- * · the wallet pass is scaled to ~91px, under the decode floor, so it carries `PREVIEW_PAYLOAD`.
- *   A symbol that *looks* scannable, is too small to resolve, and would open a real person's
- *   card if it were bigger is the one thing this page must not print.
+ * · the wallet pass is scaled to ~91px, under the decode floor. It carries the real payload
+ *   too, now that no symbol in the product encodes a dummy.
  *
- * Asserting the second is not decoration. It is the reason previews are allowed to be real
- * patterns rather than wireframes at all.
+ * The safety property that used to come from a fake payload now comes from the fixture: every
+ * demo card's `publicUrl` is on `card.example`, an RFC 2606 reserved domain nobody can own. So
+ * a symbol on this page is honest AND cannot resolve to a real person's card — which is the
+ * stronger guarantee, because it holds however large the symbol is rendered.
  */
 test("QR-T5 · the homepage's real symbol decodes and its preview carries no card URL", async ({
   page,
@@ -186,13 +191,11 @@ test("QR-T5 · the homepage's real symbol decodes and its preview carries no car
 
   await gotoReady(page, "/");
 
-  /* One real symbol and one preview. Counted rather than assumed: a second `mode="full"` render
-     appearing on this page is exactly the regression that would put a live card URL into a
-     thumbnail nobody could scan. */
-  const real = page.locator("[data-qr-zone]:not([data-qr-preview])");
-  const preview = page.locator("[data-qr-zone][data-qr-preview]");
+  /* One full-size symbol and one scaled thumb. Counted rather than assumed. */
+  const real = page.locator('[data-qr-zone][data-qr-mode="full"]');
+  const thumb = page.locator('[data-qr-zone][data-qr-mode="thumb"]');
   await expect(real).toHaveCount(1);
-  await expect(preview).toHaveCount(1);
+  await expect(thumb).toHaveCount(1);
 
   expect(
     await decodeZone(real),
@@ -200,10 +203,19 @@ test("QR-T5 · the homepage's real symbol decodes and its preview carries no car
       "something a reader may point a phone at, so a dead symbol there is a broken promise",
   ).toBe(exhibitPayload);
 
-  /* The guarantee that lets a preview be a real pattern: scanning one must never open
-     somebody's actual card. */
-  const previewHtml = await preview.evaluate((zone) => zone.outerHTML);
-  expect(previewHtml, "a preview symbol must not embed a real card URL").not.toContain("/c/");
+  /* ⚠ The guarantee, restated where it now lives. Every symbol on this page is real, so what
+     must hold is that no symbol here can resolve to a REAL person's card: the marketing page
+     renders fixtures, and every fixture URL is on an RFC 2606 reserved domain. */
+  for (const zone of [real, thumb]) {
+    const html = await zone.evaluate((node) => node.outerHTML);
+    expect(html, "a marketing symbol must not embed a resolvable production URL").not.toContain(
+      "contactbook.app",
+    );
+  }
+  expect(
+    exhibitPayload,
+    "the marketing fixture must sit on a domain nobody can own",
+  ).toContain(".example/");
 });
 
 /* ── the two tests that keep the eleven above honest ──────────────────────────────── */

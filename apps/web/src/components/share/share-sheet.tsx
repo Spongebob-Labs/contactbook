@@ -251,6 +251,9 @@ export function ShareSheet({
   const canNativeShare = useCanNativeShare();
 
   function copyLink() {
+    // Guarded rather than disabled-only: an unsaved card has no URL, and writing the string
+    // "null" to the clipboard is the kind of thing nobody notices until they paste it.
+    if (resolved.qrPayload === null) return;
     void navigator.clipboard
       ?.writeText(resolved.qrPayload)
       .then(() => toast({ title: "Link copied" }))
@@ -266,6 +269,7 @@ export function ShareSheet({
   function nativeShare() {
     // A cancelled share sheet rejects with `AbortError` — a user changing their mind, not a
     // failure, so it is swallowed rather than reported.
+    if (resolved.qrPayload === null) return;
     void navigator.share?.({ title: resolved.cardName, url: resolved.qrPayload }).catch(() => {});
   }
 
@@ -327,7 +331,7 @@ export function ShareSheet({
                   href={whatsappShareHref(
                     lastSent.recipientPhoneE164,
                     resolved.cardName,
-                    resolved.qrPayload,
+                    resolved.qrPayload ?? "",
                   )}
                   target="_blank"
                   rel="noopener noreferrer"

@@ -308,7 +308,7 @@ function nameComponents(displayName: string): { family: string; given: string } 
 
 /** RFC 2426 requires a non-empty `FN`, so an unnamed user falls back to the card's name. */
 function displayNameOf(resolved: ResolvedCard): string {
-  return resolved.fullName.trim() || resolved.cardName.trim() || resolved.slug;
+  return resolved.fullName.trim() || resolved.cardName.trim() || resolved.cardId;
 }
 
 /* ── the public surface ─────────────────────────────────────────────────────────────── */
@@ -332,7 +332,7 @@ export function vcfFileName(resolved: ResolvedCard): string {
   const clean = (value: string): string =>
     value.replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim();
 
-  return `${clean(resolved.fullName) || resolved.slug}.vcf`;
+  return `${clean(resolved.fullName) || clean(resolved.cardName) || resolved.cardId}.vcf`;
 }
 
 /**
@@ -343,7 +343,7 @@ export function vcfFileName(resolved: ResolvedCard): string {
  */
 export function buildVcf(resolved: ResolvedCard): string {
   if (!canBuildVcf(resolved)) {
-    throw new EmptyCardError(resolved.cardId, resolved.slug);
+    throw new EmptyCardError(resolved.cardId, resolved.cardName);
   }
 
   const displayName = displayNameOf(resolved);

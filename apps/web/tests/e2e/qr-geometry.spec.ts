@@ -226,7 +226,9 @@ for (const { template, card, resolved } of CARDS) {
     /* The symbol is the payload `resolveCard` computed, at the module count the encoder
        actually produced — the number QR-T5 then decodes. */
     expect(attrs.modules).toBeGreaterThan(0);
-    expect(resolved.qrPayload).toBe(`http://localhost:3000/c/${card.slug}`);
+    /* The payload is the card's own API-minted publicUrl, verbatim — no origin is
+       assembled here any more, so there is nothing for a dev host to get wrong. */
+    expect(resolved.qrPayload).toBe(card.publicUrl);
   });
 }
 
@@ -293,7 +295,7 @@ test("QR-T1 · the quiet zone tracks the module count, not a constant (§8A.3)",
     await gotoCardFace(page, card);
     const attrs = await zoneAttributes(page.locator("[data-qr-zone]"));
     measurements.push({
-      id: card.slug,
+      id: card.id,
       modules: attrs.modules,
       size: attrs.size,
       quiet: attrs.quiet,

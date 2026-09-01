@@ -13,9 +13,10 @@
  * build's "previewed file differs from sent file" bug — a convention would not have held.
  *
  * ## Purity (I-4)
- * No clock, no randomness, no `window`, no mutation of the four inputs. `SITE_URL` is read
- * once at module scope, where Next inlines `NEXT_PUBLIC_*` at build time, so a call is a
- * pure function of its arguments. The returned arrays are fresh and mutable by design
+ * No clock, no randomness, no `window`, no mutation of the four inputs — and, since the QR
+ * payload became `card.publicUrl` rather than a URL assembled from `NEXT_PUBLIC_SITE_URL`, no
+ * environment read either. A call is a pure function of its arguments in the strictest sense.
+ * The returned arrays are fresh and mutable by design
  * (§6.4) — they are built here, never aliased from the inputs.
  *
  * ## What it deliberately does NOT do
@@ -45,19 +46,6 @@ import type {
   ResolvedField,
   User,
 } from "@/types/domain";
-
-/**
- * §8A.6, verbatim. Read once at module scope: `process.env.NEXT_PUBLIC_*` is inlined at
- * build time by Next, so this is a constant by the time a card resolves — which is what
- * keeps `resolveCard` referentially transparent (I-4).
- *
- * Trailing slashes are stripped so a configured `https://example.com/` cannot produce
- * `https://example.com//c/slug` and quietly spend two bytes of the 60-byte budget (AC-08).
- */
-const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000").replace(
-  /\/+$/,
-  "",
-);
 
 /**
  * Declaration order **is** the sort order (§6.4). Both tables are transcribed from
@@ -218,22 +206,6 @@ export function resolveCard(
   user: User,
   groups: readonly FieldGroup[],
   fields: readonly ProfileField[],
-  /**
-   * The **API-minted** share link for this card, when one exists.
-   *
-   * ⚠ Prefer this over the constructed `${SITE_URL}/c/${slug}` whenever it is available, because
-   * the constructed form is a guess and this is the real thing. `ShareLinkResponseDto.url` is what
-   * actually went out in the WhatsApp message and what actually resolves — and on a machine where
-   * `NEXT_PUBLIC_SITE_URL` is unset, the guess is `http://localhost:3000/c/…`, which is a link
-   * nobody outside that laptop can open. A card showing that as its public link is worse than a
-   * card showing none.
-   *
-   * Left optional rather than required because two callers legitimately have no link to pass: the
-   * builder preview (the card may not exist yet) and the PNG export of a card nobody has been
-   * sent. Those fall back to the constructed form, which is honest for a *preview* in a way it is
-   * not for something presented as shareable.
-   */
-  shareUrl?: string,
 ): ResolvedCard {
   const fieldById = new Map(fields.map((field) => [field.id, field] as const));
   const categoryByGroupId = new Map(
@@ -356,7 +328,7 @@ export function resolveCard(
 
   return {
     cardId: card.id,
-    slug: card.slug,
+    publicUrl: card.publicUrl,
     cardName: card.name,
     cardType: card.type,
     template,
@@ -370,8 +342,15 @@ export function resolveCard(
     bio: resolveBio(rowFields),
     fields: rowFields,
     socialFields,
-    // The API's own link when there is one; the constructed guess only as a preview fallback.
-    qrPayload: shareUrl !== undefined && shareUrl.length > 0 ? shareUrl : `${SITE_URL}/c/${card.slug}`,
+    /* ⚠ The card's OWN public URL, and never a recipient's share link.
+       This used to prefer whichever ShareLink had most recently been minted, which meant the
+       moment an owner shared with one person their card's QR silently switched to advertising
+       that person's private token — revocable out from under the printed code, and counting a
+       stranger's scan against a real recipient. The API mints `Card.publicToken` at creation
+       precisely so there is a one-to-many link to encode here.
+       `null` propagates: an unsaved card has no server row, so renderers show the pending state
+       rather than a symbol that resolves to nothing. */
+    qrPayload: card.publicUrl,
     droppedFieldIds,
     fieldCount: rowFields.length + socialFields.length,
   };

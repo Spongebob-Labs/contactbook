@@ -48,8 +48,8 @@ import { fixtureUser, fixtureUserNoAvatar } from "@/fixtures/user";
  * (T11); this is the same expression, evaluated here so the fixtures are provably inside
  * the budget before any card renders.
  */
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
-const qrPayloadFor = (slug: string): string => `${SITE_URL}/c/${slug}`;
+/* No origin is assembled any more: a fixture card carries the whole publicUrl the API would
+   have minted, and the budget is asserted against that string directly. */
 const byteLength = (value: string): number => new TextEncoder().encode(value).length;
 
 const PUBLIC_DIR = join(process.cwd(), "public");
@@ -105,32 +105,34 @@ describe("AC-08 — slug and payload budget (spec §8A.6)", () => {
     expect(ALL_FIXTURE_CARDS.length).toBeGreaterThanOrEqual(fixtureCards.length + extremeCards.length);
   });
 
-  it.each(ALL_FIXTURE_CARDS.map((card) => [card.id, card.slug] as const))(
-    "%s — slug %s is <= 24 chars and matches /^[a-z0-9-]+$/",
-    (_id, slug) => {
-      expect(slug.length).toBeLessThanOrEqual(24);
-      expect(slug).toMatch(/^[a-z0-9-]+$/);
+  it.each(ALL_FIXTURE_CARDS.map((card) => [card.id, card.publicUrl] as const))(
+    "%s — publicUrl %s is an absolute URL on a reserved demo domain",
+    (_id, publicUrl) => {
+      expect(publicUrl).not.toBeNull();
+      // RFC 2606 reserves `.example`; a fixture must never name a domain someone could own.
+      expect(publicUrl as string).toMatch(/^https:\/\/[a-z0-9.-]+\.example\/c\/[0-9A-Za-z]{22}$/);
     },
   );
 
-  it.each(ALL_FIXTURE_CARDS.map((card) => [card.id, card.slug] as const))(
-    "%s — qrPayload for %s is <= 60 bytes",
-    (_id, slug) => {
-      expect(byteLength(qrPayloadFor(slug))).toBeLessThanOrEqual(60);
+  it.each(ALL_FIXTURE_CARDS.map((card) => [card.id, card.publicUrl] as const))(
+    "%s — publicUrl %s is <= 60 bytes, the QR payload budget (AC-08)",
+    (_id, publicUrl) => {
+      expect(byteLength(publicUrl as string)).toBeLessThanOrEqual(60);
     },
   );
 
-  it("keeps every slug unique — two cards resolving to one URL is a silent data loss", () => {
-    const slugs = ALL_FIXTURE_CARDS.map((card) => card.slug);
-    expect(new Set(slugs).size).toBe(slugs.length);
+  it("keeps every publicUrl unique — two cards resolving to one URL is a silent data loss", () => {
+    const urls = ALL_FIXTURE_CARDS.map((card) => card.publicUrl);
+    expect(new Set(urls).size).toBe(urls.length);
   });
 
-  it("carries no PII in a slug (§7.3): never the surname, never the phone digits", () => {
+  it("carries no PII in a publicUrl (§7.3): never the surname, never the phone digits", () => {
     const surname = fixtureUser.lastName.toLowerCase();
     const phoneDigits = fixtureUser.phone.replace(/\D/g, "");
     for (const card of ALL_FIXTURE_CARDS) {
-      expect(card.slug).not.toContain(surname);
-      expect(card.slug.replace(/\D/g, "")).not.toContain(phoneDigits);
+      const url = (card.publicUrl ?? "").toLowerCase();
+      expect(url).not.toContain(surname);
+      expect(url.replace(/\D/g, "")).not.toContain(phoneDigits);
     }
   });
 });
@@ -256,7 +258,7 @@ describe("cards.ts (spec §10.3, §11.6)", () => {
   });
 
   it("gives `card_minimal_demo` exactly the five fields the §6.7 vCard example prints", () => {
-    expect(cardLedgerDemo.slug).toBe("prya-hq");
+    expect(cardLedgerDemo.publicUrl).toBe("https://card.example/c/1eLRLR5KbYdbwSn0kHB1v1");
     expect(cardLedgerDemo.fieldIds).toHaveLength(5);
     const types = cardLedgerDemo.fieldIds
       .map((id) => fixtureFields.find((field) => field.id === id)?.type)

@@ -261,7 +261,15 @@ export const CARD_LINK_DISPLAY_HOST = "contactbook.app";
  * the caption are deliberately allowed to disagree in that one respect, because the alternative
  * is either a QR that does not work locally or a card that reads as broken.
  */
-export function formatCardLink(payload: string, max: number = URL_DISPLAY_MAX): string {
+export const CARD_LINK_PENDING = "Activates when you save";
+
+export function formatCardLink(
+  payload: string | null,
+  max: number = URL_DISPLAY_MAX,
+): string {
+  // No server row yet, so no token and no URL. One sentence, defined once, rather than each
+  // surface inventing its own way of saying "not yet".
+  if (payload === null) return CARD_LINK_PENDING;
   let host: string;
   let rest: string;
   try {
