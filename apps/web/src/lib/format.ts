@@ -105,6 +105,10 @@ function parseUrl(raw: string): URL | null {
 }
 
 export function formatUrlDisplay(raw: string, max: number = URL_DISPLAY_MAX): string {
+  // Defensive, and earned: an absent `publicUrl` from an API deployment predating the column
+  // reached `raw.trim()` here as `undefined` and took the whole card list down with a TypeError.
+  // A formatter is the wrong place to end a render — the caller decides what an absent URL means.
+  if (raw == null) return "";
   const url = parseUrl(raw);
   if (url === null) return clampText(raw.trim(), max);
 
@@ -264,12 +268,14 @@ export const CARD_LINK_DISPLAY_HOST = "contactbook.app";
 export const CARD_LINK_PENDING = "Activates when you save";
 
 export function formatCardLink(
-  payload: string | null,
+  payload: string | null | undefined,
   max: number = URL_DISPLAY_MAX,
 ): string {
   // No server row yet, so no token and no URL. One sentence, defined once, rather than each
   // surface inventing its own way of saying "not yet".
-  if (payload === null) return CARD_LINK_PENDING;
+  // `== null`, catching undefined too: see `formatUrlDisplay` below for why that distinction
+  // stopped being theoretical.
+  if (payload == null) return CARD_LINK_PENDING;
   let host: string;
   let rest: string;
   try {

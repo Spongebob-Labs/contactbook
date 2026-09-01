@@ -203,25 +203,7 @@ function CardDetailScreen({
    */
   const [minted, setMinted] = useState<MintedLink | null>(null);
 
-  /**
-   * The newest **active** per-recipient link the API has minted for this card.
-   *
-   * Drives the share panel only — who this card was last sent to, and what went out in that
-   * WhatsApp message. Revoked links are skipped: their public URL 410s.
-   */
-  const shareUrl = useMemo(
-    () => minted?.url ?? shares.find((share) => share.status === "ACTIVE")?.url,
-    [minted, shares],
-  );
 
-  /**
-   * Whether this card has been sent to at least one recipient, so the panel can distinguish
-   * "shared with someone" from "never shared".
-   *
-   * No longer about whether the URL on screen is real — since the QR reads `card.publicUrl`,
-   * the card always has a genuine public link, shared or not.
-   */
-  const linkIsLive = shareUrl !== undefined;
 
   const resolved = useMemo(
     // `card` is null while the read is in flight and on a failure — both are states this screen
@@ -229,12 +211,12 @@ function CardDetailScreen({
     () =>
       card === null || data === null
         ? null
-        /* ⚠ `shareUrl` is deliberately NOT passed. It used to be, and that meant the moment an
-           owner shared with one person, this card's QR silently switched to advertising that
-           person's private token. `resolveCard` now reads `card.publicUrl` — the card's own
-           one-to-many link — so the symbol is stable no matter who has been sent the card.
-           `shareUrl` still drives the share panel below, which is where a per-recipient link
-           genuinely belongs. */
+        /* ⚠ No per-recipient link is passed, deliberately. `resolveCard` used to take the
+           newest ACTIVE ShareLink URL, which meant the moment an owner shared with one person
+           this card's QR silently switched to advertising that person's private, individually
+           revocable token. It now reads `card.publicUrl` — the card's own one-to-many link —
+           so the symbol is stable no matter who has been sent the card. A per-recipient link
+           still exists and still matters; it just belongs to the send flow, not to the QR. */
         : resolveCard(card, data.user, data.groups, data.fields),
     [card, data],
   );
@@ -369,7 +351,6 @@ function CardDetailScreen({
                       }}
                     />
                   }
-                  linkIsLive={linkIsLive}
                   lastSent={minted ?? undefined}
                   trigger={
                     <Button variant="secondary" data-card-detail-action="share">
@@ -487,7 +468,7 @@ function CardDetailScreen({
                     screen can never publish two different URLs. Absent until the card is
                     saved — stated rather than rendered as a link to nowhere. */}
                 <p data-card-meta-link="" className="text-machine text-sm break-all text-ink-3">
-                  {resolved.qrPayload === null ? (
+                  {resolved.qrPayload == null ? (
                     <span className="text-ink-3">{CARD_LINK_PENDING}</span>
                   ) : (
                     <Link

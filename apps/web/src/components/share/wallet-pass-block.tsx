@@ -117,7 +117,7 @@ export const WALLET_PASS_LEDE =
  * resolves to that URL and to nothing else.
  */
 export function walletQrNote(qrPayload: string | null): string {
-  if (qrPayload === null) {
+  if (qrPayload == null) {
     return "This card has no QR yet — save it and one is generated automatically.";
   }
   // ⚠ Deliberately no longer "the same link Share sends". Share sends a per-recipient link

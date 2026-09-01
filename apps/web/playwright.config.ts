@@ -13,6 +13,14 @@ import { defineConfig, devices } from "@playwright/test";
 const PORT = 3100;
 const BASE_URL = `http://localhost:${PORT}`;
 
+/**
+ * The stub that puts a card of a known shape on `/c/{token}` (`tests/stubs/public-card-api.mjs`).
+ *
+ * `/c/[slug]` resolves server-side, so `page.route()` cannot reach it — without this the whole
+ * route is untestable, which is exactly how the ground regression shipped unseen.
+ */
+const STUB_API_PORT = 8788;
+
 export default defineConfig({
   testDir: "./tests/e2e",
   fullyParallel: true,
@@ -54,13 +62,24 @@ export default defineConfig({
   // Production build, not `next dev`: dev-mode HMR and on-demand compilation perturb
   // both layout timing and the raster jsqr reads. Server startup sits outside the
   // 10-minute suite budget (N-7), hence the generous timeout.
-  webServer: {
-    command: `pnpm exec next build && pnpm exec next start --port ${PORT}`,
+  webServer: [
+    {
+      command: `node tests/stubs/public-card-api.mjs`,
+      port: STUB_API_PORT,
+      env: { STUB_API_PORT: String(STUB_API_PORT) },
+      timeout: 30_000,
+      reuseExistingServer: true,
+    },
+    {
+      command: `pnpm exec next build && pnpm exec next start --port ${PORT}`,
+      // Points the Next server's server-side card fetch at the stub above.
+      env: { API_BASE_URL: `http://localhost:${STUB_API_PORT}` },
     // `port`, not `url`: Playwright's url probe treats 404 as "not ready", and `/`
     // legitimately 404s until the marketing page (T26) lands. Waiting on the port
     // accepting connections is route-independent and cannot be broken by build order.
-    port: PORT,
-    timeout: 240_000,
-    reuseExistingServer: true,
-  },
+      port: PORT,
+      timeout: 240_000,
+      reuseExistingServer: true,
+    },
+  ],
 });

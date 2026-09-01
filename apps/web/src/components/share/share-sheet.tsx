@@ -15,7 +15,7 @@ import Link from "next/link";
 import { Button, buttonClassName } from "@/components/primitives/button";
 import { Dialog, DialogClose, useToast } from "@/components/overlay";
 import type { MintedLink } from "@/components/share/card-sharing";
-import { whatsappHref } from "@/lib/format";
+import { CARD_LINK_PENDING, whatsappHref } from "@/lib/format";
 import type { ResolvedCard } from "@/types/domain";
 
 /**
@@ -216,7 +216,6 @@ export interface ShareSheetProps {
    * Passed rather than inferred — see the module note. It decides the heading, whether the copy
    * and share controls exist at all, and whether the warning below is shown.
    */
-  linkIsLive: boolean;
   /**
    * The link minted in this session, if one was. Its only job here is to aim the WhatsApp deep
    * link at the right number and to surface `templateMissing`; the URL itself arrives through
@@ -243,17 +242,34 @@ export function ShareSheet({
   trigger,
   editHref,
   sendSlot,
-  linkIsLive,
   lastSent,
 }: ShareSheetProps) {
   const { toast } = useToast();
 
   const canNativeShare = useCanNativeShare();
 
+  /**
+   * Whether there is an address to copy, share or print — i.e. whether the card is saved.
+   *
+   * ⚠ Deliberately NOT `linkIsLive`. That prop answers "has this card been sent to anybody",
+   * which used to be the same question because an unshared card had no real URL at all. Since
+   * `Card.publicToken`, a saved card always has one, so gating Copy on `linkIsLive` hid a
+   * working link behind "share with someone first" — the exact friction the token removed.
+   */
+  /**
+   * Whether there is an address to copy, share or print — i.e. whether the card is saved.
+   *
+   * ⚠ This replaced a `linkIsLive` prop meaning "has this card been sent to anybody". The two
+   * used to be the same question, because before `Card.publicToken` an unshared card had no
+   * real URL at all. A saved card now always has a one-to-many public link, so gating Copy on
+   * having shared first hid a working link behind the exact friction the token removed.
+   */
+  const link = resolved.qrPayload ?? null;
+
   function copyLink() {
     // Guarded rather than disabled-only: an unsaved card has no URL, and writing the string
     // "null" to the clipboard is the kind of thing nobody notices until they paste it.
-    if (resolved.qrPayload === null) return;
+    if (resolved.qrPayload == null) return;
     void navigator.clipboard
       ?.writeText(resolved.qrPayload)
       .then(() => toast({ title: "Link copied" }))
@@ -269,7 +285,7 @@ export function ShareSheet({
   function nativeShare() {
     // A cancelled share sheet rejects with `AbortError` — a user changing their mind, not a
     // failure, so it is swallowed rather than reported.
-    if (resolved.qrPayload === null) return;
+    if (resolved.qrPayload == null) return;
     void navigator.share?.({ title: resolved.cardName, url: resolved.qrPayload }).catch(() => {});
   }
 
@@ -308,15 +324,17 @@ export function ShareSheet({
 
         <div data-share-link="" className="flex flex-col gap-2">
           <p className="text-overline uppercase text-ink-3">
-            {linkIsLive ? "Live link" : "Preview link"}
+            {link !== null ? "Card link" : "Link not active yet"}
           </p>
           {/* The exact string the QR encodes (§8A.6), so what is printed on the card and what is
-              copied out of this panel can never be two different URLs. */}
+              copied out of this panel can never be two different URLs. Rendered through
+              `formatCardLink` when absent so the slot carries a sentence rather than collapsing
+              to an empty line, which is what a bare `{null}` did here. */}
           <p data-share-link-value="" className="text-machine text-sm break-all text-ink">
-            {resolved.qrPayload}
+            {link ?? CARD_LINK_PENDING}
           </p>
 
-          {linkIsLive ? (
+          {link !== null ? (
             <div data-share-link-actions="" className="flex flex-wrap items-center gap-x-4 gap-y-1">
               <Button variant="text-link" data-share-copy="" onClick={copyLink}>
                 Copy link
@@ -331,7 +349,7 @@ export function ShareSheet({
                   href={whatsappShareHref(
                     lastSent.recipientPhoneE164,
                     resolved.cardName,
-                    resolved.qrPayload ?? "",
+                    link,
                   )}
                   target="_blank"
                   rel="noopener noreferrer"
@@ -348,14 +366,16 @@ export function ShareSheet({
               ) : null}
             </div>
           ) : (
-            /* ⚠ Said plainly rather than dressed up as a working link. A link exists only once
-               this card has been minted for somebody: `ShareCardDto` requires a `contactId` and
-               the API has no anonymous spelling. What is shown is a local guess built from
-               NEXT_PUBLIC_SITE_URL — usually `http://localhost:3000`, which nobody else can open.
-               The field above turns it into a real one. */
+            /* ⚠ The old copy here said "this is a local preview, not a shareable address",
+               because the API genuinely had no way to mint a link without a recipient — every
+               `ShareCardDto` required a `contactId`, so an unshared card's URL was a local
+               `NEXT_PUBLIC_SITE_URL` guess that resolved to nothing.
+               `Card.publicToken` ended that: a saved card has a real, one-to-many public URL
+               from the moment it is created. The only remaining reason to have no link is that
+               the card has not been saved yet, which is a different sentence entirely. */
             <p data-share-link-preview-note="" className="text-sm text-warning-ink">
-              This is a local preview, not a shareable address. Create a link above — enter a
-              number, or pick a contact — and the real one appears here.
+              This card has not been saved yet, so it has no address to share. Save it and its
+              link — and its QR — activate straight away.
             </p>
           )}
 

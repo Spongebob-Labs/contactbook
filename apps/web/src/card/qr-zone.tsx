@@ -393,7 +393,7 @@ export function QrZone({
 
   /* Not saved yet — nothing to encode. An explicit, legible absence, sharing the error plate's
      geometry so the card's composition does not reflow the moment the card is saved. */
-  if (payload === null) {
+  if (payload == null) {
     const plateSide = size + 2 * MIN_QUIET_ZONE_PX;
     return (
       <div

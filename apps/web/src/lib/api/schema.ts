@@ -431,8 +431,16 @@ export interface CardResponseDto extends CardAppearanceDto {
    * Always the **full URL**, never a bare token. Assembling a public URL is the API's job, not
    * ours — the previous `${SITE_URL}/c/${slug}` guess this replaces is exactly what happens
    * when the two sides each hold half the answer.
+   *
+   * ⚠ **Optional on purpose.** `Card.publicToken` exists in the API repo but is not on staging
+   * yet, so a live `GET /cards` comes back without this key. Typing it as required made the
+   * compiler certify a guarantee the wire does not give, and a card list then crashed on
+   * `undefined` reaching the URL formatter. `toContactCard` coalesces it to `null` — the one
+   * boundary where the absence is turned into the domain's "not published yet".
+   *
+   * Make this required only once staging's `/api/docs-json` lists it.
    */
-  publicUrl: string;
+  publicUrl?: string;
   fields: CardFieldResponseDto[];
   createdAt: string;
   updatedAt: string;
