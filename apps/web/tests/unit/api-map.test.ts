@@ -120,6 +120,40 @@ describe("appearanceForKind", () => {
 });
 
 describe("publicUrl", () => {
+  /**
+   * ⚠ REGRESSION. `Card.publicToken` exists in the API repo but is not on staging, so a live
+   * `GET /cards` comes back with no `publicUrl` key at all. It was typed as required, so
+   * `undefined` flowed straight through the mapper, slipped past every `=== null` guard on the
+   * render path, and reached `formatUrlDisplay`'s `raw.trim()` — a TypeError that took out the
+   * whole card list behind "We couldn't load this".
+   *
+   * The mapper is the one boundary allowed to know the wire may be older than the client.
+   */
+  it("maps a missing publicUrl to null rather than letting undefined through", () => {
+    const dto = apiCard();
+    delete (dto as { publicUrl?: string }).publicUrl;
+
+    const card = toContactCard(dto, "user-1");
+    expect(card.publicUrl).toBeNull();
+    expect(card.publicUrl).not.toBeUndefined();
+  });
+
+  it("survives the whole resolve path with no publicUrl, rather than throwing", () => {
+    const dto = apiCard();
+    delete (dto as { publicUrl?: string }).publicUrl;
+    const card = toContactCard(dto, FIXTURE_DB.user.id);
+
+    const resolved = resolveCard(
+      card,
+      FIXTURE_DB.user,
+      FIXTURE_DB.groups,
+      FIXTURE_DB.fields,
+    );
+    expect(resolved.qrPayload).toBeNull();
+    // The display formatter is what actually threw. It must render the pending copy instead.
+    expect(formatCardLink(resolved.qrPayload)).toBe(CARD_LINK_PENDING);
+  });
+
   it("passes the API's URL through verbatim, assembling nothing", () => {
     // The whole point of the column: the frontend used to guess `${SITE_URL}/c/${slug}` against
     // a slug that never existed, and shipped a QR that 404s. Any transformation here — a
@@ -426,6 +460,9 @@ describe("toProfile", () => {
 
 import { toCardFieldEntries, toContactCard } from "@/lib/api/map";
 import type { CardFieldResponseDto, CardResponseDto } from "@/lib/api/schema";
+import { resolveCard } from "@/card/resolve-card";
+import { CARD_LINK_PENDING, formatCardLink } from "@/lib/format";
+import { FIXTURE_DB } from "@/fixtures";
 
 function cardField(over: Partial<CardFieldResponseDto> = {}): CardFieldResponseDto {
   return {
