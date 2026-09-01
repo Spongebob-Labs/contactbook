@@ -1,1 +1,0 @@
-ALTER TYPE "CardShareDispatchStatus" ADD VALUE 'PROCESSING';

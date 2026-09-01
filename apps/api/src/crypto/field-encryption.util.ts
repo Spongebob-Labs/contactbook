@@ -1,96 +1,112 @@
-import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
+import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 
-const PACK_PREFIX = "cbfe:v1:";
+const ALGORITHM = 'aes-256-gcm';
 const IV_BYTES = 12;
 const KEY_BYTES = 32;
-const ALGORITHM = "aes-256-gcm";
+const ENVELOPE_PREFIX = 'cbf1'; // key-generation marker — see rotation note below
 
-let cachedKey: Buffer | null = null;
+const FINANCIAL_TYPES = new Set([
+  'BANK_ACCOUNT',
+  'DIGITAL_WALLET',
+  'CRYPTO_WALLET',
+]);
 
-export function parseFinancialEncryptionKeyBase64(raw: string): Buffer {
-  const decoded = Buffer.from(raw, "base64");
-  if (decoded.length !== KEY_BYTES) {
-    throw new Error(
-      `Financial field encryption key must decode to ${KEY_BYTES} bytes, got ${decoded.length}`,
+export function isFinancialFieldType(type: string): boolean {
+  return FINANCIAL_TYPES.has(type);
+}
+
+export class FieldEncryptionError extends Error {}
+
+/**
+ * AES-256-GCM, envelope `cbf1.<ivB64url>.<tagB64url>.<ciphertextB64url>`.
+ *
+ * The AAD binding is the part that actually matters here. Without it, a
+ * ciphertext is portable: someone with write access to the DB could copy one
+ * user's encrypted account number into another user's row and it would
+ * decrypt cleanly, since GCM only authenticates the bytes you tell it to. AAD
+ * bound to `${userId}:${fieldId}:${type}` makes a moved ciphertext fail
+ * authentication instead of silently decrypting into the wrong person's data.
+ *
+ * Key rotation: `cbf1` is a key-generation marker in the envelope. Adding a
+ * `cbf2` scheme lets both decrypt during a rolling re-encrypt; remove the old
+ * key once no `cbf1` rows remain. There is no rotation tooling yet — this is
+ * the hook for it.
+ */
+function getKey(base64Key: string): Buffer {
+  const key = Buffer.from(base64Key, 'base64');
+  if (key.length !== KEY_BYTES) {
+    throw new FieldEncryptionError(
+      `FIELD_ENCRYPTION_KEY must decode to ${KEY_BYTES} bytes, got ${key.length}`,
     );
   }
-  return decoded;
+  return key;
 }
 
-function loadKey(): Buffer {
-  if (cachedKey) {
-    return cachedKey;
-  }
-  const raw = process.env.FINANCIAL_FIELD_ENCRYPTION_KEY_BASE64;
-  if (!raw) {
-    throw new Error(
-      "FINANCIAL_FIELD_ENCRYPTION_KEY_BASE64 is required to encrypt financial profile fields",
-    );
-  }
-  cachedKey = parseFinancialEncryptionKeyBase64(raw);
-  return cachedKey;
+function aadFor(userId: string, fieldId: string, type: string): Buffer {
+  return Buffer.from(`${userId}:${fieldId}:${type}`, 'utf8');
 }
 
-export function isEncryptedFieldValue(
-  stored: string | null | undefined,
-): boolean {
-  return typeof stored === "string" && stored.startsWith(PACK_PREFIX);
-}
-
-export function encryptFieldValue(plaintext: string): string {
-  const key = loadKey();
+export function encryptFieldValue(
+  base64Key: string,
+  ids: { userId: string; fieldId: string; type: string },
+  plaintext: string,
+): string {
+  const key = getKey(base64Key);
   const iv = randomBytes(IV_BYTES);
   const cipher = createCipheriv(ALGORITHM, key, iv);
+  cipher.setAAD(aadFor(ids.userId, ids.fieldId, ids.type));
+
   const ciphertext = Buffer.concat([
-    cipher.update(plaintext, "utf8"),
+    cipher.update(plaintext, 'utf8'),
     cipher.final(),
   ]);
   const tag = cipher.getAuthTag();
-  const packed = [
-    iv.toString("base64"),
-    tag.toString("base64"),
-    ciphertext.toString("base64"),
-  ].join(".");
-  return `${PACK_PREFIX}${packed}`;
+
+  return [
+    ENVELOPE_PREFIX,
+    iv.toString('base64url'),
+    tag.toString('base64url'),
+    ciphertext.toString('base64url'),
+  ].join('.');
 }
 
-export function decryptFieldValue(packed: string): string {
-  if (!packed.startsWith(PACK_PREFIX)) {
-    return packed;
+export function decryptFieldValue(
+  base64Key: string,
+  ids: { userId: string; fieldId: string; type: string },
+  envelope: string,
+): string {
+  const parts = envelope.split('.');
+  if (parts.length !== 4 || parts[0] !== ENVELOPE_PREFIX) {
+    throw new FieldEncryptionError(
+      'Malformed or unrecognised encryption envelope.',
+    );
   }
-  const key = loadKey();
-  const body = packed.slice(PACK_PREFIX.length);
-  const parts = body.split(".");
-  if (parts.length !== 3) {
-    throw new Error("Malformed encrypted field payload");
+  const [, ivPart, tagPart, ciphertextPart] = parts;
+
+  const key = getKey(base64Key);
+  const decipher = createDecipheriv(
+    ALGORITHM,
+    key,
+    Buffer.from(ivPart, 'base64url'),
+  );
+  decipher.setAuthTag(Buffer.from(tagPart, 'base64url'));
+  decipher.setAAD(aadFor(ids.userId, ids.fieldId, ids.type));
+
+  try {
+    const plaintext = Buffer.concat([
+      decipher.update(Buffer.from(ciphertextPart, 'base64url')),
+      decipher.final(),
+    ]);
+    return plaintext.toString('utf8');
+  } catch {
+    // GCM auth failure — wrong key, tampered ciphertext, or (the case this
+    // whole scheme exists to catch) a ciphertext moved to a different row.
+    throw new FieldEncryptionError(
+      'Failed to decrypt field value: authentication failed.',
+    );
   }
-  const [ivB64, tagB64, ciphertextB64] = parts;
-  const iv = Buffer.from(ivB64, "base64");
-  const tag = Buffer.from(tagB64, "base64");
-  const ciphertext = Buffer.from(ciphertextB64, "base64");
-  const decipher = createDecipheriv(ALGORITHM, key, iv);
-  decipher.setAuthTag(tag);
-  const plaintext = Buffer.concat([
-    decipher.update(ciphertext),
-    decipher.final(),
-  ]);
-  return plaintext.toString("utf8");
 }
 
-export function decryptFieldValueIfNeeded(
-  stored: string | null | undefined,
-): string | null {
-  if (stored == null || stored === "") {
-    return stored ?? null;
-  }
-  if (!isEncryptedFieldValue(stored)) {
-    return stored;
-  }
-  return decryptFieldValue(stored);
+export function isEncryptedEnvelope(value: string): boolean {
+  return value.startsWith(`${ENVELOPE_PREFIX}.`);
 }
-
-export const __fieldCryptoInternals = {
-  resetKeyCache(): void {
-    cachedKey = null;
-  },
-};

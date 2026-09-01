@@ -1,15 +1,8 @@
 {
   "extends": "./tsconfig.json",
-  "compilerOptions": {
-    "rootDir": "src",
-    "tsBuildInfoFile": "./dist/.tsbuildinfo"
-  },
-  "include": ["src/**/*.ts"],
-  "exclude": [
-    "node_modules",
-    "test",
-    "dist",
-    "prisma.config.ts",
-    "**/*spec.ts"
-  ]
+  // prisma.config.ts is excluded: it's loaded directly by the Prisma CLI
+  // (its own TS loader, not this build), and including it widens tsc's
+  // inferred rootDir to the package root — which moves main.js from
+  // dist/main.js to dist/src/main.js and breaks `node dist/main.js`.
+  "exclude": ["node_modules", "test", "dist", "**/*spec.ts", "prisma.config.ts"]
 }

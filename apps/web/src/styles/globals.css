@@ -1,0 +1,372 @@
+/* ============================================================================
+   Contact Book — global stylesheet.
+
+   Order, and why:
+     1. Tailwind, then the tokens. `tokens.css` is imported UNLAYERED so its
+        `:root` always beats Tailwind's `@layer theme` defaults regardless of
+        source order.
+     2. TWO `@theme inline` blocks — the bridges between our tokens and
+        Tailwind's utility namespaces. The app-chrome bridge is below; the
+        marketing bridge lives in `marketing.css` beside the tokens it maps,
+        and Tailwind merges the two. `inline` matters in both: utilities emit
+        `var(--our-token)` rather than a copied value, so the `:root` overrides
+        below still reach them.
+
+        The two are kept in separate files on purpose. `marketing.css` is a
+        THIRD colour system ("Micro"), scoped to `src/app/(marketing)/**` and
+        `src/components/marketing/**`, and every token and utility it defines
+        is prefixed `mk-`. That prefix is the boundary: an `mk-` utility
+        anywhere else is a layering bug, and app-chrome tokens must never
+        appear on a marketing surface. Keeping them in one file is how the
+        PREVIOUS build ended up with two palettes fighting inside one
+        stylesheet.
+     3. `:root` overrides (mobile type endpoints, reduced motion). These MUST
+        stay unlayered — a layered rule can never override an unlayered one.
+     4. `@layer base` — element defaults, overridable by any utility.
+     5. The single `:focus-visible` rule, deliberately UNLAYERED so no utility
+        (`focus:outline-none` included) can silently remove the ring.
+
+   App-chrome colour lives in `tokens.css`. TEMPLATE colour lives in
+   `src/card/template-palettes.ts` and is applied as inline custom properties on
+   the card root — it must never reach this file, because a template palette is
+   per-card data and this file is global.
+
+   No `.dark` block and no `prefers-color-scheme: dark` block yet: the app is
+   white by decision. The tokens are structured so a dark theme is a second
+   `:root` block later, not a rewrite.
+   ============================================================================ */
+
+@import "tailwindcss";
+@import "./tokens.css";
+@import "./marketing.css";
+
+/* ── 2. Token → Tailwind theme bridge ────────────────────────────────────────
+   A theme key must never share a name with the variable it points at:
+   `--radius-xl: var(--radius-xl)` is a self-reference that Tailwind emits
+   verbatim into `:root`, invalidating the property. That is why the font keys
+   point at the next/font names and the radius keys at the `-base` twins.
+
+   Deliberately NOT mapped:
+     · `--dur-*`  — `inline` would bake the value into utilities and defeat the
+       central reduced-motion override. Write `var(--dur-fast)` in a transition.
+     · `--ease-*` — same namespace as Tailwind's, so mapping self-references.
+       `tokens.css` already overrides `--ease-in`/`--ease-out` at `:root`, so the
+       stock `ease-in` / `ease-out` utilities resolve to OUR curves.
+     · `--elevation-*` — applied as `box-shadow: var(--elevation-1)`, never as a
+       `shadow-*` utility, so there is one grep-able site per elevation. */
+
+@theme inline {
+  /* Surfaces */
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-sunk: var(--surface-sunk);
+  --color-surface-raised: var(--surface-raised);
+
+  /* Ink */
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-ink-4: var(--ink-4);
+  --color-ink-inverse: var(--ink-inverse);
+
+  /* Lines */
+  --color-line: var(--line);
+  --color-line-control: var(--line-control);
+
+  /* Accent */
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-wash: var(--accent-wash);
+  --color-accent-ink: var(--accent-ink);
+
+  /* Signals */
+  --color-danger: var(--danger);
+  --color-danger-wash: var(--danger-wash);
+  --color-warning-ink: var(--warning-ink);
+  --color-warning-wash: var(--warning-wash);
+  --color-success: var(--success);
+  --color-success-wash: var(--success-wash);
+
+  /* QR optical constants */
+  --color-qr-module: var(--qr-module);
+  --color-qr-plate: var(--qr-plate);
+
+  /* Typefaces — point at the next/font variables, per the note above. */
+  --font-sans: var(--font-geist);
+  --font-mono: var(--font-geist-mono);
+
+  /* Type scale — nine steps */
+  --text-hero: var(--text-hero);
+  --text-hero--line-height: var(--text-hero-lh);
+  --text-hero--letter-spacing: var(--text-hero-tracking);
+
+  --text-h1: var(--text-h1);
+  --text-h1--line-height: var(--text-h1-lh);
+  --text-h1--letter-spacing: var(--text-h1-tracking);
+
+  --text-h2: var(--text-h2);
+  --text-h2--line-height: var(--text-h2-lh);
+  --text-h2--letter-spacing: var(--text-h2-tracking);
+
+  --text-h3: var(--text-h3);
+  --text-h3--line-height: var(--text-h3-lh);
+  --text-h3--letter-spacing: var(--text-h3-tracking);
+
+  --text-lg: var(--text-lg);
+  --text-lg--line-height: var(--text-lg-lh);
+  --text-lg--letter-spacing: var(--text-lg-tracking);
+
+  --text-base: var(--text-base);
+  --text-base--line-height: var(--text-base-lh);
+  --text-base--letter-spacing: var(--text-base-tracking);
+
+  --text-sm: var(--text-sm);
+  --text-sm--line-height: var(--text-sm-lh);
+  --text-sm--letter-spacing: var(--text-sm-tracking);
+
+  --text-xs: var(--text-xs);
+  --text-xs--line-height: var(--text-xs-lh);
+  --text-xs--letter-spacing: var(--text-xs-tracking);
+
+  --text-overline: var(--text-overline);
+  --text-overline--line-height: var(--text-overline-lh);
+  --text-overline--letter-spacing: var(--text-overline-tracking);
+
+  /* Weights */
+  --font-weight-normal: var(--weight-normal);
+  --font-weight-medium: var(--weight-medium);
+  --font-weight-semibold: var(--weight-semibold);
+  --font-weight-bold: var(--weight-bold);
+
+  /* Spacing — 4px base */
+  --spacing-1: var(--space-1);
+  --spacing-2: var(--space-2);
+  --spacing-3: var(--space-3);
+  --spacing-4: var(--space-4);
+  --spacing-5: var(--space-5);
+  --spacing-6: var(--space-6);
+  --spacing-8: var(--space-8);
+  --spacing-10: var(--space-10);
+  --spacing-12: var(--space-12);
+  --spacing-16: var(--space-16);
+  --spacing-20: var(--space-20);
+  --spacing-24: var(--space-24);
+  --spacing-32: var(--space-32);
+
+  /* Radius */
+  --radius-xs: var(--radius-xs-base);
+  --radius-sm: var(--radius-sm-base);
+  --radius-md: var(--radius-md-base);
+  --radius-lg: var(--radius-lg-base);
+  --radius-xl: var(--radius-xl-base);
+  --radius-2xl: var(--radius-2xl-base);
+  --radius-full: var(--radius-full-base);
+}
+
+/* ── 3a. Mobile type endpoints ───────────────────────────────────────────────
+   The three fluid steps clamp between 768px and 1024px. Below 768px the scale
+   changes leading and tracking as well as size, which one clamp cannot express.
+   The fixed steps are identical at all widths and are absent here on purpose. */
+
+@media (max-width: 767px) {
+  :root {
+    --text-hero: 2.25rem; /* 36px */
+    --text-hero-lh: 1.06;
+    --text-hero-tracking: -0.028em;
+
+    --text-h1: 1.875rem; /* 30px */
+    --text-h1-lh: 1.12;
+    --text-h1-tracking: -0.024em;
+
+    --text-h2: 1.375rem; /* 22px */
+    --text-h2-lh: 1.22;
+    --text-h2-tracking: -0.018em;
+  }
+}
+
+/* ── 3b. Reduced motion ──────────────────────────────────────────────────────
+   Implemented ONCE, centrally, by zeroing the duration tokens — so no component
+   has to remember and there is exactly one place to test. Do not add a second
+   reduced-motion block anywhere in this codebase. */
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-instant: 0ms;
+    --dur-fast: 0ms;
+    --dur-base: 0ms;
+    --dur-slow: 0ms;
+    --dur-editorial: 0ms;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ── 4. Base layer ────────────────────────────────────────────────────────── */
+
+/**
+ * The display face, and the machine-string face.
+ *
+ * ## Why these bind to utilities and not to tags
+ *
+ * `.text-h1/2/3` are the app chrome's heading steps and **nothing else uses them**. Cards set
+ * their own type with inline `font-size: var(--text-h*)` and pin `font-family: var(--font-sans)`
+ * on their root; the marketing site draws from the separate `--mk-*` scale. So binding the
+ * display face here reaches every app heading and is structurally incapable of reaching the two
+ * places it must not — which `h1, h2, h3 { … }` would have reached immediately.
+ *
+ * Unlayered on purpose, like the focus ring below: a heading must not lose its face because a
+ * utility elsewhere happened to win the cascade.
+ *
+ * ## `.text-machine`, and the rule the specimen taught
+ *
+ * The first plan was "all numbers go mono". Rendering it killed that: `1,204` in a monospace puts
+ * the comma in a full character cell and reads as `1 , 204`, and Geist Mono's slashed zero makes
+ * a field count of `0` look like an error state.
+ *
+ * So the split is by *kind*, not by digit:
+ *
+ * · **machine strings** — slugs, ids, hashes, timestamps — take `.text-machine`. They are read
+ *   character by character and compared down a column, which is exactly what a mono is for.
+ * · **quantities** — counts, totals, anything with a thousands separator — stay in Geist and take
+ *   Tailwind's `tabular-nums`. Aligned columns, correctly set numbers.
+ */
+.text-h1,
+.text-h2,
+.text-h3 {
+  font-family: var(--font-display);
+}
+
+.text-machine {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── The app chrome's face ─────────────────────────────────────────────────────────────
+ *
+ * One family across the whole signed-in product — `--font-app`, Instrument Sans. See the token
+ * in `tokens.css` for why it is a third token and not a new value for `--font-sans`.
+ *
+ * ## ⚠ Redefining `--font-display` here, and NOT `--font-sans`
+ *
+ * `--font-display` is used by exactly three utilities, all of them app-chrome heading steps, so
+ * overriding it on the shell reaches every heading and can reach nothing else. `--font-sans` is
+ * the opposite: the card page and the wallet face pin it on their own roots, so redefining it
+ * here would ride straight through the inheritance boundary those pins exist to hold. Leaving it
+ * alone is what keeps the builder's preview card in Geist while the editor around it is not —
+ * which is correct, because the preview has to match the page a recipient opens.
+ *
+ * ## ⚠ Why the portal hooks are in this selector list
+ *
+ * Radix portals render to `document.body`, **outside `[data-app-shell]`**. Without these, every
+ * dialog, dropdown, popover, tooltip and toast would inherit the `html` default and render in
+ * Geist while the screen behind them did not — one family on the page, another in every overlay,
+ * which is precisely the inconsistency this change exists to remove. `data-radix-popper-content-wrapper`
+ * is Radix's own stable hook for popper-positioned content; the `data-overlay-*` attributes are
+ * ours, from `components/overlay/`.
+ *
+ * A new portalled surface must add itself here. That is a real maintenance edge and it is still
+ * the better trade: the alternative is setting the face on `<body>`, which would also repaint
+ * the marketing site — whose type comes from the separate `--mk-*` scale and which is not part
+ * of this change.
+ */
+[data-app-shell],
+[data-radix-popper-content-wrapper],
+[data-overlay-scrim],
+[data-overlay-toast],
+[data-overlay-tooltip] {
+  font-family: var(--font-app);
+  --font-display: var(--font-app);
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    background: var(--canvas);
+    color: var(--ink);
+    /* Hyphenation off — a hyphenated ragged edge is the fastest way to make
+       typesetting look automatic. */
+    hyphens: none;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* Geist ships proportional figures by default; tabular figures in a contact
+       card make phone numbers and dates align down the column. */
+    font-variant-numeric: tabular-nums;
+  }
+
+  body {
+    font-size: var(--text-base);
+    line-height: var(--text-base-lh);
+    letter-spacing: var(--text-base-tracking);
+  }
+
+  /* ── Interactive elements say so under the pointer ─────────────────────────
+     ⚠ Tailwind v4's preflight does NOT restore `cursor: pointer` on buttons, and
+     nothing in this codebase was adding it — so **every `<button>` in the app
+     rendered with the arrow cursor** while every `<a>` rendered with the hand.
+     Measured, not assumed: Save, + Add, the field-row remove control and the
+     builder's hamburger all computed `cursor: default`.
+
+     One base rule rather than a `cursor-pointer` on ~40 call sites, because the
+     next button somebody writes would not have it either. It is in `@layer base`
+     on purpose: `<Button>`'s own `aria-disabled:cursor-not-allowed` is a utility
+     and utilities beat base, so a disabled control still refuses correctly.
+
+     `[role="button"]` covers the components Radix renders as something else, and
+     `summary` is the one native element with the same affordance and no cursor. */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  summary {
+    cursor: pointer;
+  }
+
+  /* One family throughout — headings differ by weight and tracking, not face.
+     `text-wrap: balance` keeps a two-line heading from leaving one orphan word. */
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-weight: var(--weight-semibold);
+    text-wrap: balance;
+  }
+
+  /* Body copy gets `pretty`: no orphans, no re-balancing of long paragraphs. */
+  p,
+  li,
+  dd,
+  figcaption {
+    text-wrap: pretty;
+  }
+
+  /* Field values are user data and may be a 60-character unbroken string. They
+     are the one place a mid-word break beats a horizontal scrollbar. */
+  [data-field-value] {
+    overflow-wrap: anywhere;
+  }
+
+  /* The measure cap — 68 characters. */
+  [data-prose] {
+    max-width: var(--prose-max);
+  }
+}
+
+/* ── 5. The single focus rule ────────────────────────────────────────────────
+   Two rings, never one. `--ink` alone measures 2.98:1 on the Cobalt template
+   ground and disappears; a white ring alone disappears on the canvas. The
+   ink → white → ground sandwich clears 3:1 on every ground in the system,
+   which `tests/contract/focus-ring.test.ts` proves against every palette.
+
+   Unlayered on purpose — no component reimplements this and no utility may
+   remove it. */
+
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--focus-offset);
+}

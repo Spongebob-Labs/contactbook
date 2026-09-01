@@ -1,97 +1,83 @@
-import { NestFactory } from "@nestjs/core";
-import { ValidationPipe, VersioningType } from "@nestjs/common";
-import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
-import { AppModule } from "./app.module";
-import { GcpJsonLogger } from "./common/logger/gcp-json-logger.service";
+import { NestFactory } from '@nestjs/core';
+import { ValidationPipe, VersioningType } from '@nestjs/common';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import helmet from 'helmet';
+import cookieParser from 'cookie-parser';
+import { AppModule } from './app.module';
+import { AppConfigService } from './config/app-config.service';
+import { AppLogger } from './common/logging/app-logger.service';
 
-async function bootstrap(): Promise<void> {
-  const logger = new GcpJsonLogger();
+async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
+    // Twilio signature verification needs the unparsed body. Retrofitting this
+    // later is painful, so it is on from the first commit.
     rawBody: true,
-    logger,
+    bufferLogs: true,
   });
 
-  const allowedOrigins = (
-    process.env.CORS_ORIGIN ??
-    [
-      "https://contactbookten.vercel.app",
-      "https://contactbook-staging.vercel.app",
-      "https://www.getcontactbook.com",
-      "http://localhost:3000",
-      "http://localhost:5173",
-      "http://localhost:8000",
-      "http://127.0.0.1:5173",
-      "http://192.168.1.18:5173",
-    ].join(",")
-  )
-    .split(",")
-    .map((origin) => origin.trim())
-    .filter((origin) => origin.length > 0);
+  const config = app.get(AppConfigService);
+  const logger = app.get(AppLogger);
+  app.useLogger(logger);
 
-  app.enableCors({
-    origin: allowedOrigins,
-    credentials: true,
-  });
+  app.setGlobalPrefix('api');
+  app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
 
-  app.setGlobalPrefix("api");
-  app.enableVersioning({
-    type: VersioningType.URI,
-  });
+  app.use(helmet());
+  app.use(cookieParser());
 
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle("ContactBook API")
-    .setDescription(
-      "HTTP API for ContactBook: sync professional and personal contacts via web and WhatsApp.",
-    )
-    .setVersion("1.0")
-    .addServer("http://localhost:8080", "Local (PORT=8080)")
-    .addServer("http://localhost:8001", "Local (default dev port)")
-    .addServer("http://34.147.177.94:8080", "VM Dev")
-    .addServer("https://uat.api.getcontactbook.com", "UAT")
-    .addServer("https://api.getcontactbook.com", "Production")
-    .addBearerAuth(
-      {
-        type: "http",
-        scheme: "bearer",
-        bearerFormat: "JWT",
-        description: "JWT access token from ContactBook auth endpoints.",
-      },
-      "access-token",
-    )
-    .build();
-
-  const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig, {
-    deepScanRoutes: true,
-    operationIdFactory: (controllerKey: string, methodKey: string) =>
-      `${controllerKey}_${methodKey}`,
-  });
-
-  SwaggerModule.setup("api/docs", app, swaggerDocument, {
-    customSiteTitle: "ContactBook API",
-    jsonDocumentUrl: "/api/openapi.json",
-    swaggerOptions: {
-      persistAuthorization: true,
-      tagsSorter: "alpha",
-      operationsSorter: "alpha",
-    },
-  });
+  app.enableCors({ origin: config.corsOrigins, credentials: true });
 
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
       forbidNonWhitelisted: true,
       transform: true,
+      transformOptions: { enableImplicitConversion: true },
     }),
   );
 
-  const port = Number(
-    process.env.PORT ?? (process.env.NODE_ENV === "production" ? 8080 : 8001),
-  );
-  await app.listen(port, "0.0.0.0");
+  app.enableShutdownHooks();
+
+  if (config.swaggerEnabled) {
+    const document = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder()
+        .setTitle('ContactBook API')
+        .setDescription(
+          'Every error response uses one envelope: {statusCode, code, message, requestId, details?}. ' +
+            'Branch on `code`, not on `message` — see docs/architecture/lld.md §3.',
+        )
+        .setVersion('1.0')
+        .addBearerAuth(
+          { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
+          'access-token',
+        )
+        .addCookieAuth('cb_access_token', {
+          type: 'apiKey',
+          in: 'cookie',
+          description:
+            'Set automatically by POST /auth/otp/verify. This is how the browser dashboard authenticates.',
+        })
+        .build(),
+    );
+    // Nest also serves the raw document at `${path}-json` automatically —
+    // useful for generating a typed client.
+    SwaggerModule.setup('api/docs', app, document);
+  }
+
+  await app.listen(config.port, '0.0.0.0');
+
+  logger.info('app.started', {
+    port: config.port,
+    env: config.appEnv,
+    nodeEnv: config.nodeEnv,
+    taskTransport: config.tasks.transport,
+    swaggerEnabled: config.swaggerEnabled,
+  });
 }
 
-bootstrap().catch((error: unknown) => {
-  const logger = new GcpJsonLogger();
-  logger.error("Failed to bootstrap application", error);
+void bootstrap().catch((err) => {
+  // DI may not exist yet, so this cannot use AppLogger.
+  console.error('Fatal error during bootstrap', err);
   process.exit(1);
 });

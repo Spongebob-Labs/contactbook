@@ -1,0 +1,300 @@
+/* ============================================================================
+   The card page — the rules that cannot be written as inline style.
+
+   Everything the card can express as a value on an element already is: colour
+   arrives through the `--c-*` custom properties `paletteVars()` writes on the
+   card root, and geometry is inline in `card-page.tsx`. What is left here is
+   the four things a `style` attribute cannot say:
+
+     1. the ground's positioning, including the ONE rule that turns it from a
+        pinned layer into a fixed one;
+     2. `@keyframes` and the staggered delay — the card's single authored
+        moment;
+     3. `:hover` / `:active` — response, not performance;
+     4. the browser's own surfaces: `::selection`, the scrollbar, the caret,
+        link underline metrics, tabular figures.
+
+   ── Scope ────────────────────────────────────────────────────────────────
+   Everything is keyed off `[data-card-root]`, `[data-card-variant="page"]` or
+   `[data-card-page-surface]`. Nothing here is a bare element selector and
+   nothing is a utility, so this file cannot reach the app chrome, the share
+   face, or a marketing surface even though it is loaded globally (it is
+   imported by `card-page.tsx`, which every consumer of the card page already
+   imports — that is deliberate: a route-scoped import would give the builder's
+   live preview a different card from the one the reader gets, which is exactly
+   the preview/payload drift Principle 1 exists to prevent).
+
+   ── What is NOT here ─────────────────────────────────────────────────────
+   · The focus ring. `globals.css` owns the single unlayered `:focus-visible`
+     rule, and it is an ink → white → ground sandwich precisely so it clears
+     3:1 on every palette — `tests/contract/focus-ring.test.ts` proves it.
+     DESIGN.md asks for "the palette's own focus ring"; the global sandwich
+     already IS that guarantee, and re-tinting it per card would replace a
+     proven contrast with a per-card one nothing checks.
+   · Any colour literal. Every colour below is a `var()` or a `color-mix()` of
+     one, except the neutral drop shadow, which is `--elevation-1`.
+   · Any `overflow`, any `height`. See the head of `card-page.tsx`.
+   ============================================================================ */
+
+/* ── 1. The ground ────────────────────────────────────────────────────────────
+
+   ⚠ **`absolute` is the default and `fixed` is opted into. Do not invert this.**
+
+   `position: fixed` is contained by an ancestor with a transform, a filter or
+   `contain`, and by NOTHING else — `overflow` does not make a containing block.
+   `<CardPage>` renders in three places and two of them are scrolled frames: the
+   builder's phone-width preview (`[data-preview-frame]`) and the marketing
+   page's card objects. A ground that were `fixed` by default would escape both
+   and paint the whole browser viewport the card's colour.
+
+   So the safe rendering is the default, and `[data-card-page-surface]` — which
+   `public-card-view.tsx` puts on the document-level card and nothing else does
+   — is what asks for the real thing. DESIGN.md's "the ground holds still" then
+   costs exactly one declaration.
+
+   `background-attachment: fixed` would have been the one-liner and is not used:
+   iOS Safari does not implement it dependably, and a phone browser is the only
+   surface this page is guaranteed to be read on. */
+
+/* ⚠ **Three positions, and the base one is `relative` rather than `absolute`.**
+
+   `<CardGround>` is not only the card page's ground. The builder's Design panel
+   renders it again inside each wallpaper swatch (`tests/e2e/builder.spec.ts`
+   reads `[data-card-ground]` inside every cell), and a swatch is a small box in
+   a grid, not a layer behind a page. An unscoped `position: absolute; inset: 0`
+   would collapse every one of those cells to zero height and, in any cell that
+   is not itself positioned, escape to the nearest ancestor that is.
+
+   So the base rule leaves the ground a box it can be sized in, and the two rules
+   below take over only where the ground really is a layer: inside a card page,
+   and — for the fixed treatment — only under the document-level marker. */
+[data-card-ground] {
+  position: relative;
+  /* Above the card root's own background, below every `position: relative`
+     content block. Not a negative index: the card root is not a stacking
+     context of its own, so `z-index: -1` would sink the ground behind the white
+     app canvas the page is standing on and paint nothing at all. */
+  z-index: 0;
+  pointer-events: none;
+}
+
+[data-card-variant="page"] > [data-card-ground] {
+  position: absolute;
+  inset: 0;
+}
+
+[data-card-page-surface] [data-card-variant="page"] > [data-card-ground] {
+  position: fixed;
+}
+
+/* The motif — `pattern` and `grain`. A child rather than a second background
+   layer on the ground itself, because the tint needs an `opacity` of its own
+   and a background layer cannot carry one. `card-ground.tsx` sets the image,
+   the tile size and that opacity; only the box is here. */
+[data-card-ground] > [data-card-ground-motif] {
+  position: absolute;
+  inset: 0;
+  display: block;
+  background-repeat: repeat;
+  pointer-events: none;
+}
+
+/* ── 2. Motion — the stack rises, once ────────────────────────────────────────
+
+   ⚠ **The final state is the DEFAULT and the animation is additive.** The e2e
+   harness injects a stylesheet that zeroes every duration and delay with
+   `!important` (`tests/helpers/e2e.ts`), and Playwright's own
+   `animations: "disabled"` finishes animations before a screenshot. A card
+   whose rows were invisible until an animation ran would therefore be invisible
+   in several hundred assertions that have nothing to do with motion. So the row
+   is fully painted with no animation at all, and the keyframe only describes
+   where it comes FROM. `animation-fill-mode: backwards` — not `forwards`, not
+   `both` — holds that start state during the stagger delay and then gets out of
+   the way.
+
+   Scoped to `[data-card-page-surface]`, i.e. the real card page. The builder's
+   preview and the marketing page render the same component and must not gain a
+   load animation: one re-runs on every keystroke that adds a row, and the other
+   has a stated two-moments-only motion policy in `marketing-motion.css`.
+
+   ~40ms apart, `--ease-out` (`cubic-bezier(0.16, 1, 0.3, 1)` — the exponential
+   curve DESIGN.md asks for), capped at 560ms so a twenty-five-field card does
+   not still be arriving a second after it loaded. */
+
+@keyframes cb-stack-rise {
+  from {
+    opacity: 0;
+    translate: 0 10px;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  [data-card-page-surface] [data-card-variant="page"] [data-card-actions] > *,
+  [data-card-page-surface] [data-card-variant="page"] [data-card-fields] > li {
+    animation: cb-stack-rise var(--dur-base) var(--ease-out) backwards;
+    animation-delay: min(calc(var(--cb-rise-index, 0) * 40ms), 560ms);
+  }
+
+  /* The two card actions are a slot, so their index cannot be written on them
+     from `card-page.tsx`. There are at most two and the order is fixed, so
+     `nth-child` is exact rather than a guess. Field rows carry the property
+     inline, continuing the count. */
+  [data-card-actions] > *:nth-child(1) {
+    --cb-rise-index: 0;
+  }
+  [data-card-actions] > *:nth-child(2) {
+    --cb-rise-index: 1;
+  }
+}
+
+/* ── 3. Response — hover lifts 1px, press returns flush ───────────────────────
+
+   ⚠ Two things here are shaped by what is already set inline, not by taste.
+
+   **The border brightens through an inset ring, not through `border-color`.**
+   A field button's `border` is an inline shorthand, and an inline declaration
+   beats any stylesheet rule that is not `!important`. Rather than spend an
+   `!important` on colour, the hover state draws a 1px `inset` box-shadow just
+   inside the existing border: same optical result — the edge reads brighter —
+   with the palette still owning the colour and no specificity fight.
+
+   **`transition` on `[data-card-action]` needs `!important`, and only there.**
+   `<CardActionButton>` is shared with `/cards/[cardId]` and the builder, it is
+   not this track's file, and it sets `transition: opacity …` inline. The
+   shorthand sets every transition longhand, so a stylesheet cannot ADD one; the
+   choice is `!important` or an unanimated 1px jump. `opacity` is re-declared in
+   the same list so the pending state it was written for keeps working.
+
+   Both are inside `prefers-reduced-motion: no-preference`; the states still
+   change under reduced motion, they just change instantly. `(hover: hover)`
+   keeps the lift off touch, where `:hover` sticks after a tap. */
+
+@media (prefers-reduced-motion: no-preference) {
+  [data-card-variant="page"] [data-card-action-button] {
+    transition:
+      translate var(--dur-instant) var(--ease-standard),
+      box-shadow var(--dur-fast) var(--ease-standard);
+  }
+
+  [data-card-variant="page"] [data-card-action] {
+    transition:
+      translate var(--dur-instant) var(--ease-standard),
+      box-shadow var(--dur-fast) var(--ease-standard),
+      opacity var(--dur-fast) var(--ease-standard) !important;
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  [data-card-variant="page"] [data-card-action-button]:hover,
+  [data-card-variant="page"] [data-card-action]:hover {
+    translate: 0 -1px;
+  }
+
+  /* `--elevation-1` is the house shadow: offset AND blur, neutral-tinted. A
+     zero-offset coloured halo is decoration, which DESIGN.md refuses. */
+  [data-card-variant="page"] [data-card-action]:hover {
+    box-shadow: var(--elevation-1);
+  }
+
+  [data-card-variant="page"] [data-card-action-button][data-card-row-surface="palette"]:hover {
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, var(--c-ink) 34%, transparent),
+      var(--elevation-1);
+  }
+
+  [data-card-variant="page"] [data-card-action-button][data-card-row-surface="canvas"]:hover {
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, var(--c-canvas-action-bg) 55%, transparent),
+      var(--elevation-1);
+  }
+}
+
+/* Press returns the control flush to the page — the lift is undone and the
+   shadow with it, so a pressed button reads as pushed IN rather than as a
+   hovered button that happens to be dark.
+
+   ⚠ `[data-card-row-surface]` is carried here for SPECIFICITY, not for matching.
+   A press happens while the pointer is still hovering, so this rule has to beat
+   the hover rule above it — and that one names the surface, which makes it
+   (0,4,0). Without the third attribute this rule is (0,3,0) and loses: the lift
+   would undo (that rule is (0,3,0) too and this comes later) while the shadow
+   stayed, which reads as a button that pressed halfway. */
+[data-card-variant="page"] [data-card-action-button][data-card-row-surface]:active,
+[data-card-variant="page"] [data-card-action]:active {
+  translate: 0 0;
+  box-shadow: none;
+}
+
+/* ── 4. Browser surfaces ──────────────────────────────────────────────────────
+
+   The parts we did not draw still ship as part of the card. Defaults here are
+   the cheapest signal that a page was assembled rather than built.
+
+   `::selection` is split by which ground the region is standing on, and that
+   split is not cosmetic: `--c-ink` is WHITE on the five deep palettes, so a
+   single ink-tinted selection rule would paint a white wash over white text
+   the moment the reader dragged across the `banner` layout's canvas body. The
+   canvas half uses `canvasActionBg`, the one palette colour `PALETTE_CONTRACT`
+   proves ≥3:1 against the app canvas. */
+
+[data-card-on-palette="true"]::selection,
+[data-card-on-palette="true"] ::selection {
+  background-color: color-mix(in srgb, var(--c-ink) 26%, transparent);
+  color: var(--c-ink);
+}
+
+[data-card-on-palette="false"]::selection,
+[data-card-on-palette="false"] ::selection {
+  background-color: color-mix(in srgb, var(--c-canvas-action-bg) 24%, transparent);
+  color: var(--ink);
+}
+
+[data-card-on-palette="true"] {
+  caret-color: var(--c-ink);
+}
+
+[data-card-on-palette="false"] {
+  caret-color: var(--c-canvas-action-bg);
+}
+
+/* Underline metrics, stated. A browser default underline sits on the baseline
+   and is one device pixel; both look like an accident next to Geist at 15px. */
+[data-card-page-surface] a {
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1.5px;
+  text-decoration-skip-ink: auto;
+}
+
+/* A phone number, an account number and a date are all read as data, and
+   proportional figures make two of them shift under the eye. */
+[data-card-variant="page"] [data-card-field-value] {
+  font-variant-numeric: tabular-nums;
+}
+
+/* The document scrollbar, while a card page is mounted.
+
+   It has to be `:root`: the viewport's scrollbar belongs to the document
+   element, not to the card, and the card's `--c-*` properties are declared on
+   the card root and cannot reach up. `public-card-view.tsx` therefore lifts two
+   resolved colours onto `documentElement` in an effect and removes them on
+   unmount — see the note there. Without that attribute this rule matches
+   nothing, which is the correct behaviour on every other route. */
+:root[data-card-page-scroll] {
+  scrollbar-width: thin;
+  scrollbar-color: var(--cb-scroll-thumb) var(--cb-scroll-track);
+}
+
+/* Safari and Chrome before 121 ignore the two properties above. The overlay
+   scrollbar they draw instead is the OS default, which is the thing this rule
+   exists to replace. */
+:root[data-card-page-scroll]::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+:root[data-card-page-scroll]::-webkit-scrollbar-track {
+  background: var(--cb-scroll-track);
+}
+:root[data-card-page-scroll]::-webkit-scrollbar-thumb {
+  background: var(--cb-scroll-thumb);
+  border-radius: var(--radius-full);
+}

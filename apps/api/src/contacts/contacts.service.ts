@@ -1,228 +1,144 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
-import { GroupsService } from "../groups/groups.service";
-import { PrismaService } from "../prisma/prisma.service";
-import { TagsService } from "../tags/tags.service";
-import { ContactProviderLinkService } from "./contact-provider-link.service";
-import { ContactSourceWritebackService } from "./contact-source-writeback.service";
-import type { UpdateContactDto } from "./dto/update-contact.dto";
-import {
-  buildContactsListOrderBy,
-  buildContactsListWhere,
-} from "./contacts-list.query";
-import { ContactSerializer } from "./contact.serializer";
-import { IMPORT_SUMMARY_SOURCES } from "./contact-import-summary.constants";
-import type { ContactImportSummaryDto } from "./dto/contact-import-summary.dto";
-import type { ContactListResponseDto } from "./dto/contact-list-response.dto";
-import type { ContactDetailDto } from "./dto/contact-response.dto";
-import type { ListContactsQueryDto } from "./dto/list-contacts-query.dto";
-
-const contactInclude = {
-  phones: { orderBy: { sortOrder: "asc" as const } },
-  emails: { orderBy: { sortOrder: "asc" as const } },
-  organizations: { orderBy: { sortOrder: "asc" as const } },
-  addresses: { orderBy: { sortOrder: "asc" as const } },
-  urls: { orderBy: { sortOrder: "asc" as const } },
-  tags: { orderBy: { name: "asc" as const } },
-  groups: { orderBy: { name: "asc" as const } },
-  providerLinks: { orderBy: { source: "asc" as const } },
-};
+import { Injectable } from '@nestjs/common';
+import { Contact } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
+import { ApiError } from '../common/errors/api-error';
+import { UpsertContactDto } from './dto/upsert-contact.dto';
+import { UpdateContactDto } from './dto/update-contact.dto';
+import { ImportContactsDto } from './dto/import-contacts.dto';
+import { ContactResponseDto } from './dto/contact-response.dto';
+import { ImportContactsResponseDto } from './dto/import-contacts-response.dto';
 
 @Injectable()
 export class ContactsService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly serializer: ContactSerializer,
-    private readonly tags: TagsService,
-    private readonly groups: GroupsService,
-    private readonly writeback: ContactSourceWritebackService,
-    private readonly providerLinks: ContactProviderLinkService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
-  async getImportSummary(userId: string): Promise<ContactImportSummaryDto> {
-    const [totalActive, totalDeleted, ...rows] = await Promise.all([
-      this.prisma.contact.count({
-        where: { userId, deletedAt: null },
-      }),
-      this.prisma.contact.count({
-        where: { userId, deletedAt: { not: null } },
-      }),
-      ...IMPORT_SUMMARY_SOURCES.map(async (source) => {
-        const [activeCount, deletedCount, integration] = await Promise.all([
-          this.prisma.contact.count({
-            where: { userId, source, deletedAt: null },
-          }),
-          this.prisma.contact.count({
-            where: { userId, source, deletedAt: { not: null } },
-          }),
-          this.prisma.integrationState.findUnique({
-            where: { userId_source: { userId, source } },
-          }),
-        ]);
-        const lastSync =
-          integration?.lastSyncAt != null
-            ? {
-                at: integration.lastSyncAt,
-                hasSyncToken: Boolean(integration.syncToken),
-                runStats: {
-                  added: integration.lastSyncAdded,
-                  updated: integration.lastSyncUpdated,
-                  deleted: integration.lastSyncDeleted,
-                  duplicatesFound: integration.lastSyncDuplicates,
-                },
-              }
-            : integration?.syncToken
-              ? {
-                  at: null,
-                  hasSyncToken: true,
-                }
-              : undefined;
-        return {
-          source,
-          activeCount,
-          deletedCount,
-          lastSync,
-        };
-      }),
-    ]);
-
-    return {
-      totalActive,
-      totalDeleted,
-      bySource: rows,
-    };
+  async list(ownerId: string): Promise<ContactResponseDto[]> {
+    const rows = await this.prisma.contact.findMany({
+      where: { ownerId },
+      orderBy: { createdAt: 'desc' },
+    });
+    return rows.map((r) => this.toResponseDto(r));
   }
 
-  async listPaginated(
-    userId: string,
-    query: ListContactsQueryDto,
-  ): Promise<ContactListResponseDto> {
-    const memberWhere = buildContactsListWhere(userId, query);
-    const matchingMembers = await this.prisma.contact.findMany({
-      where: memberWhere,
-      select: { id: true, mergeGroupId: true },
+  async getOne(ownerId: string, id: string): Promise<ContactResponseDto> {
+    const row = await this.findOwned(ownerId, id);
+    return this.toResponseDto(row);
+  }
+
+  /**
+   * The core primitive: "make sure this phone number is in my contact
+   * registry, with this display name/notes if it's new." Deliberately an
+   * upsert, not create-or-409 — Contact isn't a created-once resource the
+   * way a Card is, it's "make sure this contact exists."
+   */
+  async upsertByPhone(
+    ownerId: string,
+    dto: UpsertContactDto,
+  ): Promise<ContactResponseDto> {
+    const row = await this.prisma.contact.upsert({
+      where: { ownerId_phoneE164: { ownerId, phoneE164: dto.phoneE164 } },
+      create: {
+        ownerId,
+        phoneE164: dto.phoneE164,
+        displayName: dto.displayName,
+        notes: dto.notes,
+        source: 'MANUAL',
+      },
+      update: {
+        // Only overwrite fields actually sent.
+        ...(dto.displayName !== undefined && { displayName: dto.displayName }),
+        ...(dto.notes !== undefined && { notes: dto.notes }),
+      },
     });
+    return this.toResponseDto(row);
+  }
 
-    if (matchingMembers.length === 0) {
-      return {
-        items: [],
-        page: query.page,
-        limit: query.limit,
-        total: 0,
-        totalPages: 0,
-      };
-    }
+  /**
+   * Bulk add — the actual expected onboarding path for contacts, e.g. after
+   * the FE reads the device address book. Upserts each entry the same way
+   * upsertByPhone does, tagging newly-created rows `source: IMPORTED` so
+   * they're distinguishable from a one-at-a-time POST /contacts add. A
+   * phone already in the registry has its displayName refreshed but keeps
+   * its original `source` — re-importing doesn't rewrite how a contact was
+   * first added.
+   */
+  async import(
+    ownerId: string,
+    dto: ImportContactsDto,
+  ): Promise<ImportContactsResponseDto> {
+    // Last entry wins for a phone number repeated within the same batch —
+    // a client sending duplicates is a client bug, not something to 409 on.
+    const byPhone = new Map(dto.contacts.map((c) => [c.phoneE164, c]));
 
-    const mergeGroupIds = [
-      ...new Set(
-        matchingMembers
-          .map((row) => row.mergeGroupId)
-          .filter((id): id is string => id != null),
-      ),
-    ];
-    const primaryByGroup =
-      mergeGroupIds.length > 0
-        ? await this.providerLinks.findPrimaryContactIdsForMergeGroups(
-            userId,
-            mergeGroupIds,
-          )
-        : new Map<string, string>();
+    const existing = await this.prisma.contact.findMany({
+      where: { ownerId, phoneE164: { in: [...byPhone.keys()] } },
+      select: { phoneE164: true },
+    });
+    const existingPhones = new Set(existing.map((e) => e.phoneE164));
 
-    const primaryIds = [
-      ...new Set(
-        matchingMembers.map((row) => {
-          if (row.mergeGroupId) {
-            return primaryByGroup.get(row.mergeGroupId) ?? row.id;
-          }
-          return row.id;
+    const rows = await this.prisma.$transaction(
+      [...byPhone.values()].map((c) =>
+        this.prisma.contact.upsert({
+          where: { ownerId_phoneE164: { ownerId, phoneE164: c.phoneE164 } },
+          create: {
+            ownerId,
+            phoneE164: c.phoneE164,
+            displayName: c.displayName,
+            source: 'IMPORTED',
+          },
+          update: {
+            ...(c.displayName !== undefined && { displayName: c.displayName }),
+          },
         }),
       ),
-    ];
+    );
 
-    const orderBy = buildContactsListOrderBy(query);
-    const skip = (query.page - 1) * query.limit;
-
-    const [total, rows] = await Promise.all([
-      Promise.resolve(primaryIds.length),
-      this.prisma.contact.findMany({
-        where: { userId, deletedAt: null, id: { in: primaryIds } },
-        include: contactInclude,
-        orderBy,
-        skip,
-        take: query.limit,
-      }),
-    ]);
-
-    return {
-      items: rows.map((row) => this.serializer.toDetail(row)),
-      page: query.page,
-      limit: query.limit,
-      total,
-      totalPages: total === 0 ? 0 : Math.ceil(total / query.limit),
-    };
-  }
-
-  async get(userId: string, id: string): Promise<ContactDetailDto> {
-    const row = await this.prisma.contact.findFirst({
-      where: { id, userId },
-      include: contactInclude,
-    });
-    if (!row) {
-      throw new NotFoundException("Contact not found");
+    const created: ContactResponseDto[] = [];
+    const updated: ContactResponseDto[] = [];
+    for (const row of rows) {
+      (existingPhones.has(row.phoneE164) ? updated : created).push(
+        this.toResponseDto(row),
+      );
     }
-    return this.serializer.toDetail(row);
+    return { created, updated };
   }
 
-  async updateContact(
-    userId: string,
-    contactId: string,
+  async update(
+    ownerId: string,
+    id: string,
     dto: UpdateContactDto,
-  ): Promise<ContactDetailDto> {
-    await this.requireContact(userId, contactId);
-    if (dto.notes !== undefined) {
-      await this.prisma.contact.update({
-        where: { id: contactId },
-        data: { notes: dto.notes },
-      });
-    }
-    void this.writeback.writeBackContact(userId, contactId);
-    return this.get(userId, contactId);
-  }
-
-  async setContactTags(
-    userId: string,
-    contactId: string,
-    tagIds: string[],
-  ): Promise<ContactDetailDto> {
-    await this.requireContact(userId, contactId);
-    await this.tags.requireOwnedMany(userId, tagIds);
-    await this.prisma.contact.update({
-      where: { id: contactId },
-      data: { tags: { set: tagIds.map((id) => ({ id })) } },
+  ): Promise<ContactResponseDto> {
+    await this.findOwned(ownerId, id);
+    const row = await this.prisma.contact.update({
+      where: { id },
+      data: {
+        ...(dto.displayName !== undefined && { displayName: dto.displayName }),
+        ...(dto.notes !== undefined && { notes: dto.notes }),
+      },
     });
-    return this.get(userId, contactId);
+    return this.toResponseDto(row);
   }
 
-  async setContactGroups(
-    userId: string,
-    contactId: string,
-    groupIds: string[],
-  ): Promise<ContactDetailDto> {
-    await this.requireContact(userId, contactId);
-    await this.groups.requireOwnedMany(userId, groupIds);
-    await this.prisma.contact.update({
-      where: { id: contactId },
-      data: { groups: { set: groupIds.map((id) => ({ id })) } },
-    });
-    return this.get(userId, contactId);
-  }
-
-  private async requireContact(userId: string, contactId: string) {
+  /** IDOR guard: every read/write resolves through this, never a bare findUnique. */
+  async findOwned(ownerId: string, id: string): Promise<Contact> {
     const row = await this.prisma.contact.findFirst({
-      where: { id: contactId, userId, deletedAt: null },
+      where: { id, ownerId },
     });
     if (!row) {
-      throw new NotFoundException("Contact not found");
+      throw ApiError.notFound('CONTACT_NOT_FOUND', 'No contact with that id.');
     }
     return row;
+  }
+
+  private toResponseDto(row: Contact): ContactResponseDto {
+    return {
+      id: row.id,
+      phoneE164: row.phoneE164,
+      displayName: row.displayName,
+      notes: row.notes,
+      source: row.source,
+      optedOutAt: row.optedOutAt,
+      createdAt: row.createdAt,
+    };
   }
 }

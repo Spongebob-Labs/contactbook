@@ -2,248 +2,106 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
   Param,
-  ParseEnumPipe,
-  ParseUUIDPipe,
-  Post,
   Patch,
-  Put,
-  Query,
+  Post,
   Req,
-  UploadedFile,
-  UseFilters,
   UseGuards,
-  UseInterceptors,
-} from "@nestjs/common";
-import type { Request } from "express";
-import { FileInterceptor } from "@nestjs/platform-express";
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
-  ApiBody,
-  ApiConsumes,
-  ApiOkResponse,
+  ApiCookieAuth,
   ApiOperation,
-  ApiQuery,
+  ApiResponse,
   ApiTags,
-} from "@nestjs/swagger";
-import { ContactSource } from "@prisma/client";
-import type { Express } from "express";
-import type { JwtUserPayload } from "../common/decorators/current-user.decorator";
-import { CurrentUser } from "../common/decorators/current-user.decorator";
-import { JwtAuthGuard } from "../auth/jwt-auth.guard";
-import { OAuthTokenService } from "../oauth-tokens/oauth-token.service";
-import { MultipartBoundaryExceptionFilter } from "../common/filters/multipart-boundary.exception-filter";
-import { MulterUploadExceptionFilter } from "../common/filters/multer-upload.exception-filter";
-import { ContactsSyncService } from "./contacts-sync.service";
-import { ContactsService } from "./contacts.service";
-import { ContactImportResultDto } from "./dto/contact-import-result.dto";
-import { toContactImportResult } from "./contact-import-result.mapper";
-import { ContactImportSummaryDto } from "./dto/contact-import-summary.dto";
-import { ContactListResponseDto } from "./dto/contact-list-response.dto";
-import { ContactDetailDto } from "./dto/contact-response.dto";
-import { ContactSyncResponseDto } from "./dto/contact-sync-response.dto";
-import { SetContactGroupsDto } from "../groups/dto/group.dto";
-import { SetContactTagsDto } from "../tags/dto/tag.dto";
-import { IcloudImportDto } from "./dto/icloud-import.dto";
-import { ListContactsQueryDto } from "./dto/list-contacts-query.dto";
-import { UpdateContactDto } from "./dto/update-contact.dto";
-import { MAX_VCF_IMPORT_BYTES } from "./vcard-import.constants";
-import { VcardContactsImportService } from "./vcard-contacts-import.service";
-import { ApiExceptionFilter } from "../common/filters/api-exception.filter";
+} from '@nestjs/swagger';
+import type { Request } from 'express';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { ApiErrorResponseDto } from '../common/errors/api-error-response.dto';
+import { ContactsService } from './contacts.service';
+import { UpsertContactDto } from './dto/upsert-contact.dto';
+import { UpdateContactDto } from './dto/update-contact.dto';
+import { ImportContactsDto } from './dto/import-contacts.dto';
+import { ContactResponseDto } from './dto/contact-response.dto';
+import { ImportContactsResponseDto } from './dto/import-contacts-response.dto';
 
-@ApiTags("Contacts")
-@ApiBearerAuth("access-token")
+/**
+ * Your private registry of people you've shared with. There is no "list
+ * contacts for user X" — every route acts on the caller's own registry,
+ * scoped by req.user.id at the query level.
+ */
+@ApiTags('contacts')
+@ApiBearerAuth('access-token')
+@ApiCookieAuth('cb_access_token')
 @UseGuards(JwtAuthGuard)
-@UseFilters(ApiExceptionFilter)
-@Controller({ path: "contacts", version: "1" })
+@Controller({ path: 'contacts', version: '1' })
 export class ContactsController {
-  constructor(
-    private readonly contacts: ContactsService,
-    private readonly contactsSync: ContactsSyncService,
-    private readonly vcardImport: VcardContactsImportService,
-    private readonly oauthTokenService: OAuthTokenService,
-  ) {}
-
-  @Get("sync")
-  @ApiOperation({
-    summary: "Sync contacts from a provider",
-    description:
-      "Runs incremental provider sync when a sync token exists (Google, iCloud). On an expired token, falls back to the same full import as the provider import endpoint.",
-  })
-  @ApiQuery({
-    name: "source",
-    enum: [ContactSource.GOOGLE, ContactSource.ICLOUD],
-  })
-  @ApiOkResponse({ type: ContactSyncResponseDto })
-  sync(
-    @CurrentUser() user: JwtUserPayload,
-    @Query("source", new ParseEnumPipe(ContactSource)) source: ContactSource,
-  ) {
-    return this.contactsSync.sync(user.sub, source);
-  }
-
-  @Get("import/google")
-  @ApiOperation({
-    summary: "Import contacts from Google",
-    description:
-      "Runs a full Google import (never uses a stored sync token), then returns counts and last sync metadata.",
-  })
-  @ApiOkResponse({ type: ContactImportResultDto })
-  async importGoogle(@CurrentUser() user: JwtUserPayload) {
-    return this.contactsSync.import(user.sub, ContactSource.GOOGLE);
-  }
-
-  @Post("import/icloud")
-  @ApiOperation({
-    summary: "Import contacts from iCloud",
-    description:
-      "Accepts Apple credentials, secures them using AES-256-GCM at rest, discovers server shards, and executes a full contact import.",
-  })
-  @ApiBody({ type: IcloudImportDto })
-  @ApiOkResponse({ type: ContactImportResultDto })
-  async importIcloud(
-    @CurrentUser() user: JwtUserPayload,
-    @Body() body: IcloudImportDto,
-  ) {
-    await this.oauthTokenService.upsertForUser(user.sub, "icloud", {
-      accessToken: body.appleId,
-      refreshToken: body.appSpecificPassword,
-    });
-    return this.contactsSync.import(user.sub, ContactSource.ICLOUD);
-  }
-
-  @Post("import/vcf")
-  @ApiOperation({
-    summary: "Import contacts from a VCF file",
-    description:
-      "Upload a .vcf or .vcard file (max 50 MB). Parses vCards and upserts contacts with source VCARD.",
-  })
-  @ApiConsumes("multipart/form-data")
-  @ApiBody({
-    schema: {
-      type: "object",
-      required: ["file"],
-      properties: {
-        file: {
-          type: "string",
-          format: "binary",
-          description: "vCard export (.vcf / .vcard), up to 50 MB",
-        },
-      },
-    },
-  })
-  @ApiOkResponse({ type: ContactImportResultDto })
-  @UseFilters(MultipartBoundaryExceptionFilter, MulterUploadExceptionFilter)
-  @UseInterceptors(
-    FileInterceptor("file", {
-      limits: { fileSize: MAX_VCF_IMPORT_BYTES },
-    }),
-  )
-  async importVcf(
-    @CurrentUser() user: JwtUserPayload,
-    @UploadedFile() file: Express.Multer.File | undefined,
-    @Req() req: Request,
-  ) {
-    const run = await this.vcardImport.importFromFile(user.sub, file, {
-      contentType: String(req.headers["content-type"] ?? ""),
-    });
-    return toContactImportResult(run);
-  }
-
-  @Get("import/summary")
-  @ApiOperation({ summary: "Import counts and last sync metadata by source" })
-  @ApiOkResponse({ type: ContactImportSummaryDto })
-  importSummary(@CurrentUser() user: JwtUserPayload) {
-    return this.contacts.getImportSummary(user.sub);
-  }
+  constructor(private readonly contacts: ContactsService) {}
 
   @Get()
-  @ApiOperation({
-    summary: "List contacts",
-    description:
-      "Paginated normalized contact records (phones, emails, organizations, addresses, urls) for the current user. Optional search matches first name, last name, and nickname.",
-  })
-  @ApiQuery({ name: "page", required: false, type: Number })
-  @ApiQuery({ name: "limit", required: false, type: Number })
-  @ApiQuery({
-    name: "search",
-    required: false,
-    description:
-      "Matches first name, last name, and nickname (case-insensitive).",
-  })
-  @ApiQuery({ name: "source", enum: ContactSource, required: false })
-  @ApiQuery({
-    name: "tagIds",
-    required: false,
-    description: "Comma-separated tag UUIDs (AND filter)",
-  })
-  @ApiQuery({
-    name: "groupIds",
-    required: false,
-    description: "Comma-separated group UUIDs (AND filter)",
-  })
-  @ApiQuery({
-    name: "sort",
-    required: false,
-    enum: ["name", "updatedAt", "source"],
-  })
-  @ApiQuery({
-    name: "sortOrder",
-    required: false,
-    enum: ["asc", "desc"],
-  })
-  @ApiOkResponse({ type: ContactListResponseDto })
-  list(
-    @CurrentUser() user: JwtUserPayload,
-    @Query() query: ListContactsQueryDto,
-  ) {
-    return this.contacts.listPaginated(user.sub, query);
+  @ApiOperation({ summary: 'List your contacts' })
+  @ApiResponse({ status: 200, type: [ContactResponseDto] })
+  async list(@Req() req: Request) {
+    return this.contacts.list(req.user!.id);
   }
 
-  @Patch(":id")
-  @ApiOperation({
-    summary: "Update a contact",
-    description:
-      "Updates ContactBook-managed fields and triggers provider write-back for Google/iCloud contacts when write scope is available.",
+  @Get(':id')
+  @ApiOperation({ summary: 'Get one contact' })
+  @ApiResponse({ status: 200, type: ContactResponseDto })
+  @ApiResponse({
+    status: 404,
+    type: ApiErrorResponseDto,
+    description: 'CONTACT_NOT_FOUND',
   })
-  @ApiOkResponse({ type: ContactDetailDto })
-  update(
-    @CurrentUser() user: JwtUserPayload,
-    @Param("id", ParseUUIDPipe) id: string,
+  async getOne(@Req() req: Request, @Param('id') id: string) {
+    return this.contacts.getOne(req.user!.id, id);
+  }
+
+  @Post()
+  @ApiOperation({
+    summary: 'Add a contact, or update one that already exists',
+    description:
+      'Upserts on (you, phoneE164) — calling this again for a number already in your ' +
+      'registry updates displayName/notes rather than erroring. For adding many at once ' +
+      '(e.g. a device address book), use POST /contacts/import instead.',
+  })
+  @ApiResponse({ status: 200, type: ContactResponseDto })
+  async upsert(@Req() req: Request, @Body() dto: UpsertContactDto) {
+    return this.contacts.upsertByPhone(req.user!.id, dto);
+  }
+
+  @Post('import')
+  @ApiOperation({
+    summary: 'Bulk-add contacts',
+    description:
+      'The expected way contacts actually enter the registry — hand over an address book ' +
+      'export in one call instead of one POST /contacts per person. Each entry upserts the ' +
+      'same way POST /contacts does; newly-created rows are tagged source=IMPORTED.',
+  })
+  @ApiResponse({ status: 201, type: ImportContactsResponseDto })
+  @HttpCode(201)
+  async import(@Req() req: Request, @Body() dto: ImportContactsDto) {
+    return this.contacts.import(req.user!.id, dto);
+  }
+
+  @Patch(':id')
+  @ApiOperation({
+    summary: 'Update a contact’s display name or notes',
+    description:
+      'phoneE164 is not editable here — it is the identity a contact is matched by.',
+  })
+  @ApiResponse({ status: 200, type: ContactResponseDto })
+  @ApiResponse({
+    status: 404,
+    type: ApiErrorResponseDto,
+    description: 'CONTACT_NOT_FOUND',
+  })
+  async update(
+    @Req() req: Request,
+    @Param('id') id: string,
     @Body() dto: UpdateContactDto,
   ) {
-    return this.contacts.updateContact(user.sub, id, dto);
-  }
-
-  @Put(":id/tags")
-  @ApiOperation({ summary: "Replace tags on a contact" })
-  @ApiOkResponse({ type: ContactDetailDto })
-  setTags(
-    @CurrentUser() user: JwtUserPayload,
-    @Param("id", ParseUUIDPipe) id: string,
-    @Body() dto: SetContactTagsDto,
-  ) {
-    return this.contacts.setContactTags(user.sub, id, dto.tagIds);
-  }
-
-  @Put(":id/groups")
-  @ApiOperation({ summary: "Replace groups on a contact" })
-  @ApiOkResponse({ type: ContactDetailDto })
-  setGroups(
-    @CurrentUser() user: JwtUserPayload,
-    @Param("id", ParseUUIDPipe) id: string,
-    @Body() dto: SetContactGroupsDto,
-  ) {
-    return this.contacts.setContactGroups(user.sub, id, dto.groupIds);
-  }
-
-  @Get(":id")
-  @ApiOperation({ summary: "Get one contact" })
-  @ApiOkResponse({ type: ContactDetailDto })
-  get(
-    @CurrentUser() user: JwtUserPayload,
-    @Param("id", ParseUUIDPipe) id: string,
-  ) {
-    return this.contacts.get(user.sub, id);
+    return this.contacts.update(req.user!.id, id, dto);
   }
 }

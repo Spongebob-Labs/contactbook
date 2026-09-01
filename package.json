@@ -1,15 +1,20 @@
 {
   "name": "@contactbook/contactbook",
   "private": true,
+  "packageManager": "pnpm@11.13.1",
   "scripts": {
     "dev": "pnpm --parallel -r dev",
+    "dev:web": "pnpm --filter web dev",
+    "dev:api": "pnpm --filter api dev",
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
-    "validate:api": "bash scripts/validate-api.sh",
-    "migrate:api": "bash scripts/migrate-api.sh",
-    "migrate:api:dev": "bash scripts/migrate-api.sh --dev",
-    "test:web": "pnpm -C apps/web test",
-    "test:web:live": "pnpm -C apps/web test:live"
+    "test": "pnpm -r test",
+    "prisma:generate": "pnpm --filter api prisma:generate",
+    "prisma:migrate": "pnpm --filter api prisma:migrate",
+    "db:up": "docker compose -f docker/docker-compose.dev.yml up -d",
+    "db:down": "docker compose -f docker/docker-compose.dev.yml down",
+    "db:logs": "docker compose -f docker/docker-compose.dev.yml logs -f postgres",
+    "db:psql": "docker exec -it contactbook-dev-db psql -U contactbook -d contactbook"
   },
   "engines": {
     "node": ">=20",

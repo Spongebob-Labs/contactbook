@@ -1,22 +1,17 @@
-import { Module } from "@nestjs/common";
-import { StorageModule } from "../storage/storage.module";
-import { SyncModule } from "../sync/sync.module";
-import { PhotoController } from "./photo.controller";
-import { ProfileController } from "./profile.controller";
-import { ProfileMeSerializerService } from "./profile-me.serializer";
-import { ProfileMeUpsertService } from "./profile-me.upsert.service";
-import { ProfilePersistenceService } from "./profile-persistence.service";
-import { ProfilePhotoService } from "./profile-photo.service";
+import { Module } from '@nestjs/common';
+import { AuthModule } from '../auth/auth.module';
+import { ProfileController } from './profile.controller';
+import { ProfilePhotoStorageService } from './profile-photo-storage.service';
+import { ProfileService } from './profile.service';
+import { ProfileOnboardingService } from './profile-onboarding.service';
 
 @Module({
-  imports: [SyncModule, StorageModule],
-  controllers: [ProfileController, PhotoController],
+  imports: [AuthModule], // for JwtAuthGuard
+  controllers: [ProfileController],
   providers: [
-    ProfilePersistenceService,
-    ProfileMeSerializerService,
-    ProfileMeUpsertService,
-    ProfilePhotoService,
+    ProfileService,
+    ProfilePhotoStorageService,
+    ProfileOnboardingService,
   ],
-  exports: [ProfileMeSerializerService],
 })
 export class ProfileModule {}

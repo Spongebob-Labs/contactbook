@@ -4,180 +4,328 @@ import {
   Delete,
   Get,
   HttpCode,
-  HttpStatus,
+  Param,
   Patch,
   Post,
+  Put,
+  Query,
+  Req,
+  UploadedFile,
   UseGuards,
-  UseFilters,
-} from "@nestjs/common";
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiBearerAuth,
   ApiBody,
-  ApiCreatedResponse,
-  ApiOkResponse,
+  ApiConsumes,
+  ApiCookieAuth,
   ApiOperation,
+  ApiResponse,
   ApiTags,
-} from "@nestjs/swagger";
-import type { JwtUserPayload } from "../common/decorators/current-user.decorator";
-import { CurrentUser } from "../common/decorators/current-user.decorator";
-import { JwtAuthGuard } from "../auth/jwt-auth.guard";
-import { ProfileDeleteGroupDto } from "./dto/profile-delete-group.dto";
-import { ProfileMeOnboardingDto } from "./dto/profile-me-onboarding.dto";
-import { ProfileMePatchDto } from "./dto/profile-me-upsert.dto";
-import {
-  ProfileMeResponseDto,
-  ProfileOnboardingResponseDto,
-} from "./dto/profile-me-response.dto";
-import { ProfileMeSerializerService } from "./profile-me.serializer";
-import { ProfileMeUpsertService } from "./profile-me.upsert.service";
-import { ProfilePersistenceService } from "./profile-persistence.service";
-import type { ProfileMeResponse } from "./profile-me.types";
-import { ApiExceptionFilter } from "../common/filters/api-exception.filter";
-import { ProfileFieldResponseDto } from "./dto/profile-field-response.dto";
+} from '@nestjs/swagger';
+import type { Request } from 'express';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { ApiErrorResponseDto } from '../common/errors/api-error-response.dto';
+import { CreateProfileFieldDto } from './dto/create-profile-field.dto';
+import { UpdateProfileFieldDto } from './dto/update-profile-field.dto';
+import { ReorderProfileFieldsDto } from './dto/reorder-profile-fields.dto';
+import { ListProfileFieldsQueryDto } from './dto/list-profile-fields-query.dto';
+import { ProfileFieldResponseDto } from './dto/profile-field-response.dto';
+import { PhotoResponseDto } from './dto/photo-response.dto';
+import { CreateProfileFieldGroupDto } from './dto/create-profile-field-group.dto';
+import { UpdateProfileFieldGroupDto } from './dto/update-profile-field-group.dto';
+import { ListProfileFieldGroupsQueryDto } from './dto/list-profile-field-groups-query.dto';
+import { ProfileFieldGroupResponseDto } from './dto/profile-field-group-response.dto';
+import { ProfileService } from './profile.service';
+import { ProfileOnboardingService } from './profile-onboarding.service';
+import { CompleteOnboardingDto } from './dto/onboarding/complete-onboarding.dto';
+import { OnboardingResponseDto } from './dto/onboarding/onboarding-response.dto';
+import { MeResponseDto } from './dto/me-response.dto';
+import { MAX_PHOTO_BYTES } from './profile-photo-storage.service';
 
-@ApiTags("Profile")
-@ApiBearerAuth("access-token")
+/**
+ * Every route here acts on the CALLER's own profile — there is no "list
+ * fields for user X" endpoint, and every service call is scoped by
+ * req.user.id. Reading someone else's profile happens through the (separate,
+ * not-yet-built) public share-link resolver, never through this controller.
+ */
+@ApiTags('profile')
+@ApiBearerAuth('access-token')
+@ApiCookieAuth('cb_access_token')
 @UseGuards(JwtAuthGuard)
-@UseFilters(ApiExceptionFilter)
-@Controller({ path: "profile", version: "1" })
+@Controller({ path: 'profile', version: '1' })
 export class ProfileController {
   constructor(
-    private readonly profileMe: ProfileMeSerializerService,
-    private readonly profileMeUpsert: ProfileMeUpsertService,
-    private readonly profilePersistence: ProfilePersistenceService,
+    private readonly profile: ProfileService,
+    private readonly onboarding: ProfileOnboardingService,
   ) {}
 
-  @Post("onboarding")
-  @HttpCode(HttpStatus.CREATED)
+  @Get('me')
   @ApiOperation({
-    summary: "First-time profile setup after registration",
+    summary: 'Get your full profile, nested',
     description:
-      "Requires identity (firstName, lastName, primaryEmail, primaryPhone; updates the user record; profilePhoto optional). " +
-      "Request body uses the same flattened shape as GET /profile/me (work.companyName, business.businessName, socials.skype, financial.isSensitive, etc.). " +
-      "Do not send profileOnboardingCompletedAt — the server sets it. Omit groupId/fieldId on first-time setup. Returns 409 if onboarding already completed.",
+      'identity + personal + work[] + business[] + socials[] + financial.* — the same shape ' +
+      'POST /profile/onboarding accepts and returns. This is the read model for a profile screen; ' +
+      'GET /profile/fields is the flat list used by the field editor.',
   })
+  @ApiResponse({ status: 200, type: MeResponseDto })
+  async getMe(@Req() req: Request) {
+    return this.onboarding.getMe(req.user!.id);
+  }
+
+  @Post('onboarding')
+  @ApiOperation({
+    summary: 'Complete first-time profile setup',
+    description:
+      'One-shot — 409 if onboarding has already been completed. Only identity (firstName, ' +
+      'lastName, primaryEmail) is required; every other section is optional and can be filled ' +
+      'in later through the field and group endpoints instead. Do not send primaryPhone (it is ' +
+      'your OTP-verified number, not a new input) or profilePhoto (use POST /profile/photo ' +
+      'separately) — both are rejected as unknown properties by the request validator.',
+  })
+  @ApiResponse({ status: 201, type: OnboardingResponseDto })
+  @ApiResponse({
+    status: 409,
+    type: ApiErrorResponseDto,
+    description: 'ONBOARDING_ALREADY_COMPLETED',
+  })
+  @ApiResponse({
+    status: 400,
+    type: ApiErrorResponseDto,
+    description:
+      'CUSTOM_FIELDS_TOO_MANY, CUSTOM_FIELD_KEY_TOO_LONG, or CUSTOM_FIELD_VALUE_TOO_LONG.',
+  })
+  @HttpCode(201)
+  async completeOnboarding(
+    @Req() req: Request,
+    @Body() dto: CompleteOnboardingDto,
+  ) {
+    return this.onboarding.complete(req.user!.id, dto);
+  }
+
+  @Get('fields')
+  @ApiOperation({
+    summary: 'List your profile fields',
+    description:
+      'Ordered by position. Archived fields are excluded unless includeArchived=true.',
+  })
+  @ApiResponse({ status: 200, type: [ProfileFieldResponseDto] })
+  async list(@Req() req: Request, @Query() query: ListProfileFieldsQueryDto) {
+    return this.profile.list(req.user!.id, query);
+  }
+
+  @Get('fields/:id')
+  @ApiOperation({ summary: 'Get one profile field' })
+  @ApiResponse({ status: 200, type: ProfileFieldResponseDto })
+  @ApiResponse({
+    status: 404,
+    type: ApiErrorResponseDto,
+    description: 'PROFILE_FIELD_NOT_FOUND',
+  })
+  async getOne(@Req() req: Request, @Param('id') id: string) {
+    return this.profile.getOne(req.user!.id, id);
+  }
+
+  @Post('fields')
+  @ApiOperation({
+    summary: 'Add a profile field',
+    description:
+      'BANK_ACCOUNT, DIGITAL_WALLET, and CRYPTO_WALLET values are encrypted at rest ' +
+      'automatically — nothing to opt into. PHOTO cannot be created here; use POST /profile/photo.',
+  })
+  @ApiResponse({ status: 201, type: ProfileFieldResponseDto })
+  @ApiResponse({
+    status: 409,
+    type: ApiErrorResponseDto,
+    description: 'PHOTO_VIA_UPLOAD_ONLY or FIELD_ENCRYPTION_NOT_CONFIGURED.',
+  })
+  @HttpCode(201)
+  async create(@Req() req: Request, @Body() dto: CreateProfileFieldDto) {
+    return this.profile.create(req.user!.id, dto);
+  }
+
+  @Patch('fields/:id')
+  @ApiOperation({
+    summary: 'Update a profile field',
+    description:
+      'type is immutable — delete and recreate the field to change it.',
+  })
+  @ApiResponse({ status: 200, type: ProfileFieldResponseDto })
+  @ApiResponse({
+    status: 404,
+    type: ApiErrorResponseDto,
+    description: 'PROFILE_FIELD_NOT_FOUND',
+  })
+  @ApiResponse({
+    status: 409,
+    type: ApiErrorResponseDto,
+    description: 'PHOTO_VIA_UPLOAD_ONLY',
+  })
+  async update(
+    @Req() req: Request,
+    @Param('id') id: string,
+    @Body() dto: UpdateProfileFieldDto,
+  ) {
+    return this.profile.update(req.user!.id, id, dto);
+  }
+
+  @Delete('fields/:id')
+  @ApiOperation({
+    summary: 'Remove a profile field',
+    description:
+      'Soft delete — the field is archived, not hard-deleted, so any card history that ' +
+      'referenced it stays displayable. Removing a PHOTO field also deletes its GCS object.',
+  })
+  @HttpCode(204)
+  @ApiResponse({ status: 204, description: 'Archived.' })
+  @ApiResponse({
+    status: 404,
+    type: ApiErrorResponseDto,
+    description: 'PROFILE_FIELD_NOT_FOUND',
+  })
+  async remove(@Req() req: Request, @Param('id') id: string): Promise<void> {
+    await this.profile.archive(req.user!.id, id);
+  }
+
+  @Put('fields/order')
+  @ApiOperation({
+    summary: 'Reorder profile fields',
+    description:
+      'All-or-nothing: if any id does not belong to you, none are reordered.',
+  })
+  @HttpCode(204)
+  @ApiResponse({ status: 204, description: 'Reordered.' })
+  @ApiResponse({
+    status: 403,
+    type: ApiErrorResponseDto,
+    description: 'PROFILE_FIELD_NOT_OWNED',
+  })
+  async reorder(
+    @Req() req: Request,
+    @Body() dto: ReorderProfileFieldsDto,
+  ): Promise<void> {
+    await this.profile.reorder(req.user!.id, dto.orderedIds);
+  }
+
+  // ---------------------------------------------------------------- groups
+
+  @Get('groups')
+  @ApiOperation({
+    summary: 'List your profile field groups',
+    description:
+      'Each group includes its own fields, already ordered — a job with its phone/email/title nested together, not a flat list you have to regroup client-side.',
+  })
+  @ApiResponse({ status: 200, type: [ProfileFieldGroupResponseDto] })
+  async listGroups(
+    @Req() req: Request,
+    @Query() query: ListProfileFieldGroupsQueryDto,
+  ) {
+    return this.profile.listGroups(req.user!.id, query);
+  }
+
+  @Post('groups')
+  @ApiOperation({
+    summary: 'Add a profile field group',
+    description:
+      "One instance of a repeatable thing — a specific job, business, bank account, or social profile. Add fields into it afterward via POST /profile/fields with this group's id.",
+  })
+  @ApiResponse({ status: 201, type: ProfileFieldGroupResponseDto })
+  @HttpCode(201)
+  async createGroup(
+    @Req() req: Request,
+    @Body() dto: CreateProfileFieldGroupDto,
+  ) {
+    return this.profile.createGroup(req.user!.id, dto);
+  }
+
+  @Patch('groups/:id')
+  @ApiOperation({ summary: 'Rename or recategorize a profile field group' })
+  @ApiResponse({ status: 200, type: ProfileFieldGroupResponseDto })
+  @ApiResponse({
+    status: 404,
+    type: ApiErrorResponseDto,
+    description: 'PROFILE_FIELD_GROUP_NOT_FOUND',
+  })
+  async updateGroup(
+    @Req() req: Request,
+    @Param('id') id: string,
+    @Body() dto: UpdateProfileFieldGroupDto,
+  ) {
+    return this.profile.updateGroup(req.user!.id, id, dto);
+  }
+
+  @Delete('groups/:id')
+  @ApiOperation({
+    summary: 'Remove a profile field group',
+    description:
+      'Archives the group AND every field in it — removing a job takes its phone/email/title with it, not just the job label.',
+  })
+  @HttpCode(204)
+  @ApiResponse({ status: 204, description: 'Archived.' })
+  @ApiResponse({
+    status: 404,
+    type: ApiErrorResponseDto,
+    description: 'PROFILE_FIELD_GROUP_NOT_FOUND',
+  })
+  async removeGroup(
+    @Req() req: Request,
+    @Param('id') id: string,
+  ): Promise<void> {
+    await this.profile.archiveGroup(req.user!.id, id);
+  }
+
+  // ----------------------------------------------------------------- photo
+
+  @Post('photo')
+  @ApiOperation({
+    summary: 'Upload or replace your profile photo',
+    description: `JPEG, PNG, or WebP, up to ${MAX_PHOTO_BYTES / (1024 * 1024)} MB. Replacing an existing photo deletes the old one from storage.`,
+  })
+  @ApiConsumes('multipart/form-data')
   @ApiBody({
-    type: ProfileMeOnboardingDto,
-    examples: {
-      firstTime: {
-        summary: "First-time onboarding (no groupId/fieldId)",
-        value: {
-          identity: {
-            firstName: "Jane",
-            lastName: "Doe",
-            primaryPhone: "+12025551234",
-            primaryEmail: "jane@example.com",
-            profilePhoto: null,
-          },
-          personal: {
-            tag: "Primary Personal",
-            mobile: "+12025551234",
-          },
-        },
-      },
-      fullProfile: {
-        summary: "Flattened sections (matches GET /profile/me write shape)",
-        value: {
-          identity: {
-            firstName: "Jane",
-            lastName: "Doe",
-            primaryPhone: "+12025551234",
-            primaryEmail: "jane@example.com",
-            profilePhoto: null,
-          },
-          personal: {
-            tag: "Primary Personal",
-            mobile: "+12025551234",
-            postalAddress: {
-              street: "1 Main St",
-              city: "Springfield",
-              state: "IL",
-              pincode: "62701",
-              country: "USA",
-            },
-          },
-          work: [
-            {
-              tag: "Acme Corp",
-              companyName: "Acme Corp",
-              workTitle: "Engineer",
-            },
-          ],
-          financial: {
-            bankAccounts: [
-              {
-                tag: "Primary",
-                bankName: "Example Bank",
-                accountHolder: "Jane Doe",
-                accountNumber: "123456789",
-                currency: "USD",
-                isSensitive: true,
-              },
-            ],
-          },
-        },
-      },
+    schema: {
+      type: 'object',
+      required: ['file'],
+      properties: { file: { type: 'string', format: 'binary' } },
     },
   })
-  @ApiCreatedResponse({ type: ProfileOnboardingResponseDto })
-  async completeOnboarding(
-    @CurrentUser() user: JwtUserPayload,
-    @Body() dto: ProfileMeOnboardingDto,
-  ): Promise<Omit<ProfileMeResponse, "profileOnboardingCompletedAt">> {
-    const result = await this.profileMeUpsert.completeOnboarding(user.sub, dto);
-    const rest = { ...result } as Partial<ProfileMeResponse>;
-    delete rest.profileOnboardingCompletedAt;
-    return rest as Omit<ProfileMeResponse, "profileOnboardingCompletedAt">;
-  }
-
-  @Get("me/fields")
-  @ApiOperation({
-    summary: "List all profile fields with their IDs",
-    description:
-      "Returns a flat list of the caller's non-sensitive profile fields. " +
-      "Use the `id` values as `fieldId` when mapping fields onto a card via POST /cards/:cardId/field-mappings.",
+  @ApiResponse({ status: 200, type: PhotoResponseDto })
+  @ApiResponse({
+    status: 409,
+    type: ApiErrorResponseDto,
+    description: 'PHOTO_STORAGE_NOT_CONFIGURED',
   })
-  @ApiOkResponse({ type: [ProfileFieldResponseDto] })
-  listFields(@CurrentUser() user: JwtUserPayload): Promise<ProfileFieldResponseDto[]> {
-    return this.profilePersistence.listFields(user.sub);
-  }
-
-  @Get("me")
-  @ApiOperation({
-    summary: "Current user profile (nested JSON for clients)",
-    description:
-      "Returns identity (User + IDENTITY groups), merged personal, work/business/social arrays, and financial rows.",
+  @ApiResponse({
+    status: 413,
+    type: ApiErrorResponseDto,
+    description: 'PHOTO_TOO_LARGE',
   })
-  @ApiOkResponse({ type: ProfileMeResponseDto })
-  getMe(@CurrentUser() user: JwtUserPayload) {
-    return this.profileMe.build(user.sub);
-  }
-
-  @Patch("me")
-  @ApiOperation({
-    summary: "Partially update profile",
-    description:
-      "Only top-level sections present in the body are applied. Same flattened field names as GET /profile/me. Empty shells are ignored. " +
-      "Use null on personal fields to clear them; identity core fields cannot be null. Remove work/business/social/financial groups via DELETE /profile/me/groups.",
+  @ApiResponse({
+    status: 415,
+    type: ApiErrorResponseDto,
+    description: 'PHOTO_TYPE_UNSUPPORTED',
   })
-  @ApiBody({ type: ProfileMePatchDto })
-  @ApiOkResponse({ type: ProfileMeResponseDto })
-  patchMe(@CurrentUser() user: JwtUserPayload, @Body() dto: ProfileMePatchDto) {
-    return this.profileMeUpsert.patch(user.sub, dto);
-  }
-
-  @Delete("me/groups")
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: "Delete a work, business, social, or financial field group",
-    description:
-      "Deletes the entire group and its fields. Use PATCH with null to clear personal or identity profile fields.",
-  })
-  @ApiOkResponse({ type: ProfileMeResponseDto })
-  deleteGroup(
-    @CurrentUser() user: JwtUserPayload,
-    @Body() dto: ProfileDeleteGroupDto,
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: MAX_PHOTO_BYTES } }),
+  )
+  async uploadPhoto(
+    @Req() req: Request,
+    @UploadedFile() file: Express.Multer.File,
   ) {
-    return this.profileMeUpsert.deleteGroup(user.sub, dto);
+    return this.profile.upsertPhoto(req.user!.id, file);
+  }
+
+  @Delete('photo')
+  @ApiOperation({ summary: 'Remove your profile photo' })
+  @HttpCode(204)
+  @ApiResponse({ status: 204, description: 'Removed.' })
+  @ApiResponse({
+    status: 404,
+    type: ApiErrorResponseDto,
+    description: 'PHOTO_NOT_FOUND',
+  })
+  async removePhoto(@Req() req: Request): Promise<void> {
+    await this.profile.removePhoto(req.user!.id);
   }
 }

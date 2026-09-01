@@ -1,193 +1,217 @@
-# Deploy the ContactBook API to a VM via Docker.
-#
-# Flow on push to main:
-#   test        → reusable api-test.yml (typecheck + jest), env from individual secrets
-#   build-push  → build the image and push it to Docker Hub
-#   deploy      → SSH to the VM, write .env from individual secrets, docker compose up
-#
-# Required GitHub secrets
-#   Registry / VM access:
-#     DOCKER_USERNAME, DOCKER_PASSWORD   Docker Hub login (password or access token)
-#     SSH_HOST, SSH_USERNAME, SSH_KEY    VM SSH access (private key). Optional: SSH_PORT
-#   Runtime env (one secret per var — see scripts/render-api-env.sh for the full list):
-#     DATABASE_URL, DIRECT_URL, JWT_SECRET, TWILIO_*, OPENWA_*, GOOGLE_*, GCS_*, ...
-#
-# The VM's SSH user must be in the `docker` group so `docker` runs without sudo.
-
-name: Deploy
+name: Deploy API
 
 on:
   push:
-    branches: [main]
+    branches: [main, refac-new-build]
     paths:
-      - ".github/workflows/ci.yml"
-      - ".github/workflows/deploy.yml"
-      - ".github/workflows/api-test.yml"
-      - "pnpm-lock.yaml"
-      - "pnpm-workspace.yaml"
-      - "package.json"
       - "apps/api/**"
       - "packages/**"
-      - "scripts/**"
+      - "pnpm-lock.yaml"
       - "docker/docker-compose.prod.yml"
       - "docker/Caddyfile"
+      - "scripts/render-api-env.sh"
+      - ".github/workflows/deploy.yml"
 
+# Never run two deploys of the same branch concurrently — a docker-compose
+# restart racing a migration from a second run is exactly the kind of thing
+# that only shows up in production.
 concurrency:
-  group: deploy-${{ github.ref }}
+  group: deploy-api-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   test:
-    uses: ./.github/workflows/api-test.yml
-    secrets: inherit
-    with:
-      fetch_depth: 0
+    runs-on: ubuntu-latest
+    # prisma.config.ts calls env('DIRECT_URL') at config-LOAD time (every
+    # prisma CLI invocation, including plain `generate`) — it only checks the
+    # var is set, generate itself never connects. A placeholder is enough;
+    # only the real `migrate` job below needs the actual Supabase URL.
+    env:
+      DIRECT_URL: "postgresql://placeholder:placeholder@localhost:5432/placeholder"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter api prisma:generate
+      - run: pnpm --filter api lint
+      - run: pnpm --filter api build
+      - run: pnpm --filter api test
 
-  build-push:
+  migrate:
     needs: test
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
+    # Environment-scoped so `main` and this branch can each hold their own
+    # value under the SAME secret name (DATABASE_URL, TASKS_TARGET_BASE_URL,
+    # ...) without colliding — set these under Settings → Environments →
+    # staging, not as repository-wide secrets.
+    environment: staging
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Render minimal build env (for prisma generate)
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --filter api
+      - name: Write Supabase root cert
+        # Same path already baked into the DIRECT_URL secret's sslrootcert=
+        # (the one meant for the VM's container) -- writing it here too means
+        # the same secret value works unmodified in both places, rather than
+        # needing a CI-specific DIRECT_URL that only differs by this path.
         run: |
-          ./scripts/render-api-env.sh apps/api/.env
-          test -s apps/api/.env || { echo "Failed to render apps/api/.env"; exit 1; }
+          sudo mkdir -p /etc/contactbook
+          echo "${{ secrets.SUPABASE_CA_CERT }}" | sudo tee /etc/contactbook/supabase-ca.crt > /dev/null
+      - name: Run migrations against Supabase directly (session-mode URL, not the pooler)
+        working-directory: apps/api
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+        run: npx prisma migrate deploy
 
+  build-and-push:
+    needs: migrate
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build and push image
-        uses: docker/build-push-action@v6
-        env:
-          DOCKER_BUILD_RECORD_UPLOAD: false
-          DOCKER_BUILD_SUMMARY: false
+      - uses: docker/build-push-action@v6
         with:
           context: .
           file: apps/api/Dockerfile
           push: true
-          tags: |
-            ${{ secrets.DOCKER_USERNAME }}/contactbook-api:latest
-            ${{ secrets.DOCKER_USERNAME }}/contactbook-api:${{ github.sha }}
-          provenance: false
-          sbom: false
-          secret-files: |
-            api_env=${{ github.workspace }}/apps/api/.env
+          # Not passed via a job output on purpose -- GitHub redacts a
+          # secret (DOCKER_USERNAME) wherever an output containing it gets
+          # READ in another job, which turned this into an empty value in
+          # `deploy` below rather than a partially-masked one. Confirmed
+          # live: docker-compose failed with "service api has neither an
+          # image nor a build context specified". Both DOCKER_USERNAME and
+          # github.sha are already available directly in any job that
+          # needs them -- there was never a reason to relay this one.
+          tags: ${{ secrets.DOCKER_USERNAME }}/contactbook-api:${{ github.sha }}
           cache-from: type=gha
-          cache-to: type=gha,mode=min
+          cache-to: type=gha,mode=max
 
   deploy:
-    needs: build-push
+    needs: build-and-push
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    env:
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      DIRECT_URL: ${{ secrets.DIRECT_URL }}
-      CORS_ORIGIN: ${{ secrets.CORS_ORIGIN }}
-      JWT_SECRET: ${{ secrets.JWT_SECRET }}
-      JWT_EXPIRES_IN: ${{ secrets.JWT_EXPIRES_IN }}
-      JWT_REFRESH_EXPIRES_IN: ${{ secrets.JWT_REFRESH_EXPIRES_IN }}
-      JWT_PHONE_VERIFY_EXPIRES_IN: ${{ secrets.JWT_PHONE_VERIFY_EXPIRES_IN }}
-      AUTH_COOKIE_SAME_SITE: ${{ secrets.AUTH_COOKIE_SAME_SITE }}
-      COOKIE_SECURE: ${{ secrets.COOKIE_SECURE }}
-      APP_PUBLIC_URL: ${{ secrets.APP_PUBLIC_URL }}
-      WEB_APP_URL: ${{ secrets.WEB_APP_URL }}
-      WHATSAPP_PROVIDER: ${{ secrets.WHATSAPP_PROVIDER }}
-      OPENWA_BASE_URL: ${{ secrets.OPENWA_BASE_URL }}
-      OPENWA_API_KEY: ${{ secrets.OPENWA_API_KEY }}
-      OPENWA_SESSION_ID: ${{ secrets.OPENWA_SESSION_ID }}
-      OPENWA_SENDER_PHONE: ${{ secrets.OPENWA_SENDER_PHONE }}
-      OPENWA_WEBHOOK_SECRET: ${{ secrets.OPENWA_WEBHOOK_SECRET }}
-      OPENWA_REQUEST_TIMEOUT_MS: ${{ secrets.OPENWA_REQUEST_TIMEOUT_MS }}
-      OPENWA_DELIVERY_POLL_ATTEMPTS: ${{ secrets.OPENWA_DELIVERY_POLL_ATTEMPTS }}
-      OPENWA_DELIVERY_POLL_INTERVAL_MS: ${{ secrets.OPENWA_DELIVERY_POLL_INTERVAL_MS }}
-      LOGIN_BROADCAST_ENABLED: ${{ secrets.LOGIN_BROADCAST_ENABLED }}
-      LOGIN_BROADCAST_RECIPIENTS: ${{ secrets.LOGIN_BROADCAST_RECIPIENTS }}
-      DUMMY_OTP_LOGIN_ENABLED: ${{ secrets.DUMMY_OTP_LOGIN_ENABLED }}
-      TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
-      TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
-      TWILIO_VERIFY_SERVICE_SID: ${{ secrets.TWILIO_VERIFY_SERVICE_SID }}
-      TWILIO_WHATSAPP_FROM: ${{ secrets.TWILIO_WHATSAPP_FROM }}
-      TWILIO_OTP_CONTENT_SID: ${{ secrets.TWILIO_OTP_CONTENT_SID }}
-      TWILIO_INBOUND_WEBHOOK_ENABLED: ${{ secrets.TWILIO_INBOUND_WEBHOOK_ENABLED }}
-      TWILIO_WA_CONNECTION_CONTENT_SID: ${{ secrets.TWILIO_WA_CONNECTION_CONTENT_SID }}
-      TWILIO_WA_CARD_PICK_CONTENT_SID: ${{ secrets.TWILIO_WA_CARD_PICK_CONTENT_SID }}
-      WHATSAPP_CLOUD_VERIFY_TOKEN: ${{ secrets.WHATSAPP_CLOUD_VERIFY_TOKEN }}
-      WHATSAPP_CLOUD_APP_SECRET: ${{ secrets.WHATSAPP_CLOUD_APP_SECRET }}
-      GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
-      GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
-      OAUTH_TOKEN_ENCRYPTION_KEY_BASE64: ${{ secrets.OAUTH_TOKEN_ENCRYPTION_KEY_BASE64 }}
-      FINANCIAL_FIELD_ENCRYPTION_KEY_BASE64: ${{ secrets.FINANCIAL_FIELD_ENCRYPTION_KEY_BASE64 }}
-      GCS_PROFILE_PHOTOS_BUCKET: ${{ secrets.GCS_PROFILE_PHOTOS_BUCKET }}
-      GCS_PUBLIC_BASE_URL: ${{ secrets.GCS_PUBLIC_BASE_URL }}
-      GCS_PROJECT_ID: ${{ secrets.GCS_PROJECT_ID }}
-      GCS_CARD_SHARES_BUCKET: ${{ secrets.GCS_CARD_SHARES_BUCKET }}
-      GCS_CARD_SHARES_PUBLIC_BASE_URL: ${{ secrets.GCS_CARD_SHARES_PUBLIC_BASE_URL }}
-      GCS_SERVICE_ACCOUNT_KEY_BASE64: ${{ secrets.GCS_SERVICE_ACCOUNT_KEY_BASE64 }}
-      GCS_HMAC_ACCESS_KEY_ID: ${{ secrets.GCS_HMAC_ACCESS_KEY_ID }}
-      GCS_HMAC_SECRET: ${{ secrets.GCS_HMAC_SECRET }}
+    environment: staging
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - name: Render .env from secrets
+        env:
+          APP_ENV: staging
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+          JWT_ACCESS_SECRET: ${{ secrets.JWT_ACCESS_SECRET }}
+          JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET }}
+          FIELD_ENCRYPTION_KEY: ${{ secrets.FIELD_ENCRYPTION_KEY }}
+          TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+          TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+          TWILIO_WHATSAPP_FROM: ${{ secrets.TWILIO_WHATSAPP_FROM }}
+          TWILIO_OTP_CONTENT_SID: ${{ secrets.TWILIO_OTP_CONTENT_SID }}
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          TASKS_QUEUE_PRIORITY: ${{ secrets.TASKS_QUEUE_PRIORITY }}
+          TASKS_QUEUE_OUTBOUND: ${{ secrets.TASKS_QUEUE_OUTBOUND }}
+          TASKS_TARGET_BASE_URL: ${{ secrets.TASKS_TARGET_BASE_URL }}
+          TASKS_OIDC_AUDIENCE: ${{ secrets.TASKS_OIDC_AUDIENCE }}
+          TASKS_INVOKER_SA: ${{ secrets.TASKS_INVOKER_SA }}
+          CORS_ORIGIN: ${{ secrets.CORS_ORIGIN }}
+          SHARE_BASE_URL: ${{ secrets.SHARE_BASE_URL }}
+          GCS_PROFILE_PHOTOS_BUCKET: ${{ secrets.GCS_PROFILE_PHOTOS_BUCKET }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          SWAGGER_ENABLED: ${{ secrets.SWAGGER_ENABLED }}
+        run: OUTPUT_PATH=./rendered.env bash scripts/render-api-env.sh
 
-      - name: Stage deployment bundle (compose + .env)
+      - name: Append container-internal sslrootcert paths
         run: |
-          set -euo pipefail
-          mkdir -p deploy-bundle
-          cp docker/docker-compose.prod.yml deploy-bundle/docker-compose.yml
-          cp docker/Caddyfile deploy-bundle/Caddyfile
-          ./scripts/render-api-env.sh deploy-bundle/.env
-          test -s deploy-bundle/.env || { echo "Rendered .env is empty — check the runtime secrets."; exit 1; }
-          # render-api-env.sh writes .env as 600; scp-action tars the bundle from
-          # inside a container as a different UID and can't read it. Relax to 644
-          # for the (encrypted) transfer; it's re-locked to 600 on the VM below.
-          chmod 644 deploy-bundle/.env
+          # The .env above has DATABASE_URL/DIRECT_URL without sslrootcert —
+          # render-api-env.sh doesn't know the container path; append it here
+          # since it's fixed by docker-compose.prod.yml's volume mount.
+          sed -i \
+            -e "s#\(DATABASE_URL=.*\)#\1\&sslrootcert=/etc/contactbook/supabase-ca.crt#" \
+            -e "s#\(DIRECT_URL=.*\)#\1?sslrootcert=/etc/contactbook/supabase-ca.crt#" \
+            ./rendered.env
 
-      - name: Copy bundle to VM
+      - name: Write Supabase root cert
+        run: echo "${{ secrets.SUPABASE_CA_CERT }}" > ./rendered-supabase-ca.crt
+
+      - name: Loosen permissions for the SCP step's own container to read
+        # render-api-env.sh chmod 600s the file (correct for its life on the
+        # VM), but appleboy/scp-action tars it up from inside its own Docker
+        # container as a different effective user than the one that created
+        # it -- 600 blocks that read entirely. Re-tightened to 600 on the VM
+        # itself in the very next job step, so this is safe: this copy only
+        # ever exists on the ephemeral, single-use Actions runner.
+        run: chmod 644 rendered.env rendered-supabase-ca.crt
+
+      # Two separate copies, not one with strip_components: 1 -- the docker/*
+      # files and the rendered.* files sit at different path depths (one has
+      # a directory prefix to strip, the other doesn't), and a single
+      # strip_components value applied uniformly strips the ROOT-level
+      # files' own filename instead of a directory. Confirmed live: the
+      # combined version reported success (scp itself didn't error) while
+      # silently failing to land rendered.env at all.
+      - name: Copy docker-compose + Caddyfile to the VM
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_KEY }}
-          port: ${{ secrets.SSH_PORT || 22 }}
-          source: "deploy-bundle/docker-compose.yml,deploy-bundle/.env,deploy-bundle/Caddyfile"
-          target: "~/contactbook-api"
+          source: "docker/docker-compose.prod.yml,docker/Caddyfile"
+          target: "~/contactbook-api-staging"
           strip_components: 1
-          overwrite: true
 
-      - name: Pull image and restart on VM
-        uses: appleboy/ssh-action@v1.2.0
-        env:
-          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
-          IMAGE_TAG: ${{ github.sha }}
+      - name: Copy rendered .env + cert to the VM
+        uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_KEY }}
-          port: ${{ secrets.SSH_PORT || 22 }}
-          envs: DOCKER_USERNAME,DOCKER_PASSWORD,IMAGE_TAG
+          source: "rendered.env,rendered-supabase-ca.crt"
+          target: "~/contactbook-api-staging"
+
+      - name: Restart containers on the VM
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          # Built the same way build-and-push's tag is, directly from
+          # DOCKER_USERNAME + github.sha -- not relayed via a job output,
+          # since that's what produced an unusable empty value before.
           script: |
             set -euo pipefail
-            cd ~/contactbook-api
-            chmod 600 .env
-            echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
-            export API_IMAGE="${DOCKER_USERNAME}/contactbook-api:${IMAGE_TAG}"
-            echo "Deploying ${API_IMAGE}"
-            docker compose pull
-            docker compose up -d --remove-orphans
-            docker image prune -af
-            docker logout
+            cd ~/contactbook-api-staging
+            mv rendered.env .env
+            mv rendered-supabase-ca.crt supabase-ca.crt
+            chmod 600 .env supabase-ca.crt
+            # The pre-rebuild API is still running on this VM under these
+            # exact container names, unmanaged by this (or any) compose
+            # project -- docker compose can't "recreate" a container it
+            # doesn't own, so `up` fails on a naming conflict instead.
+            # Confirmed live. This is the rebuild's first deploy tearing it
+            # down, exactly as docs/architecture/README.md's confirmed
+            # constraints already called out as the expected first-deploy
+            # behavior -- not a surprise, not a workaround.
+            docker rm -f contactbook-api contactbook-caddy 2>/dev/null || true
+            export API_IMAGE=${{ secrets.DOCKER_USERNAME }}/contactbook-api:${{ github.sha }}
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans
+            # -a, not just dangling: each deploy tags a new image by SHA, so
+            # last deploy's image is a properly-tagged, zero-container image
+            # once `up -d` swaps to the new one -- plain prune only ever
+            # touches untagged layers and leaves these to accumulate. This VM
+            # has a 9.7G disk; four leftover ~1.6G tags filled it completely
+            # and broke the next deploy's SCP step with no disk left to write
+            # to. The currently-running image is always safe here since `up
+            # -d` already has a container on it by this point.
+            docker image prune -a -f

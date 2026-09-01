@@ -1,9 +1,5 @@
-import { Module } from "@nestjs/common";
-import { HealthController } from "./health.controller";
-import { WhatsappModule } from "../messaging/whatsapp.module";
+import { Module } from '@nestjs/common';
+import { HealthController } from './health.controller';
 
-@Module({
-  imports: [WhatsappModule],
-  controllers: [HealthController],
-})
+@Module({ controllers: [HealthController] })
 export class HealthModule {}

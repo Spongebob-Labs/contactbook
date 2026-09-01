@@ -1,39 +1,58 @@
-module "environment" {
-  source = "../../modules/environment"
-
-  project_id = var.project_id
-  region     = var.region
-
-  cloud_run_service_name          = var.cloud_run_service_name
-  container_port                  = var.container_port
-  cpu                             = var.cpu
-  memory                          = var.memory
-  min_instances                   = var.min_instances
-  max_instances                   = var.max_instances
-  allow_unauthenticated           = var.allow_unauthenticated
-  cloud_run_service_account_email = var.cloud_run_service_account_email
-  env                             = var.env
-
-  create_profile_photos_bucket = var.create_profile_photos_bucket
-  profile_photos_bucket_name   = var.profile_photos_bucket_name
-  profile_photos_cors_origins  = var.profile_photos_cors_origins
-  custom_domain                = var.custom_domain
+locals {
+  name_prefix = "cb-${var.env}"
 }
 
-module "openwa" {
-  count  = var.enable_openwa_vm ? 1 : 0
-  source = "../../modules/openwa-vm"
+module "vm" {
+  source = "../../modules/vm"
 
-  project_id = var.project_id
-  region     = var.region
-  zone       = var.openwa_zone
+  project_id  = var.project_id
+  name_prefix = local.name_prefix
+  zone        = var.zone
+  vm_name     = var.vm_name
+}
 
-  name              = var.openwa_instance_name
-  machine_type      = var.openwa_machine_type
-  boot_disk_size_gb = var.openwa_boot_disk_size_gb
-  data_disk_size_gb = var.openwa_data_disk_size_gb
+module "identity" {
+  source = "../../modules/identity"
 
-  labels = {
-    environment = "prod"
+  project_id         = var.project_id
+  name_prefix        = local.name_prefix
+  vm_service_account = module.vm.vm_service_account
+}
+
+module "queues" {
+  source = "../../modules/queues"
+
+  region      = var.region
+  name_prefix = local.name_prefix
+
+  invoker_service_account        = module.identity.invoker_service_account
+  outbound_dispatches_per_second = var.outbound_dispatches_per_second
+}
+
+module "monitoring" {
+  source = "../../modules/monitoring"
+
+  project_id    = var.project_id
+  name_prefix   = local.name_prefix
+  vm_name       = var.vm_name
+  uptime_host   = replace(replace(var.api_base_url, "https://", ""), "http://", "")
+  alert_email   = var.alert_email
+  enable_alerts = var.enable_alerts
+}
+
+# ---- Copy these into the app's .env (via GitHub secrets) ----
+output "vm_external_ip" { value = module.vm.vm_external_ip }
+output "vm_service_account" { value = module.vm.vm_service_account }
+
+output "app_env_values" {
+  description = "Non-secret config the app needs in order to create and verify Cloud Tasks."
+  value = {
+    GCP_PROJECT_ID        = var.project_id
+    GCP_REGION            = var.region
+    TASKS_QUEUE_OUTBOUND  = module.queues.queue_outbound
+    TASKS_QUEUE_PRIORITY  = module.queues.queue_priority
+    TASKS_INVOKER_SA      = module.identity.invoker_service_account
+    TASKS_OIDC_AUDIENCE   = var.api_base_url
+    TASKS_TARGET_BASE_URL = var.api_base_url
   }
 }

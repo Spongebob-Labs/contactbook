@@ -1,0 +1,260 @@
+/* ============================================================================
+   Contact Book — design tokens.
+
+   DIRECTION: neutral canvas, bold templates.
+
+   Two colour systems live in this product and they are deliberately separate:
+
+     1. THE APP CHROME — this file. White, near-monochrome, quiet. Its job is to
+        disappear so the card is the only thing with colour on the screen. One
+        accent (near-black), used for primary actions only.
+
+     2. THE TEMPLATE PALETTES — `src/card/template-palettes.ts`. Saturated and
+        committed: cobalt, lime, clay, deep teal, carbon, paper. A card is
+        supposed to be loud; the app around it is not.
+
+   The previous build put both in this file and forbade colour anywhere else,
+   which made every template a variation on one cream ground. That rule is gone.
+   The replacement rule is stronger and lives in the test suite instead:
+   `tests/contract/template-palettes.test.ts` computes real WCAG ratios for every
+   ink/ground pair in every palette and fails the build on the first one under
+   threshold. Variety is allowed; unreadable variety is not.
+
+   Every ratio in a comment below was computed with `src/lib/contrast.ts`, not
+   estimated, and is re-derived on every test run.
+   ============================================================================ */
+
+:root {
+  /* ── Surfaces ────────────────────────────────────────────────────────────
+     Pure white page. Greys are neutral, not warm — a warm tint is what made the
+     old build read as beige, and it fights every saturated template palette. */
+  --canvas: #FFFFFF;          /* page ground, everywhere */
+  --surface: #FAFAFA;         /* panels, list rows, inputs, cards-of-UI */
+  --surface-sunk: #F4F4F5;    /* sidebar, wells, table zebra, selected row */
+  --surface-raised: #FFFFFF;  /* dialogs, popovers, toasts — lifted by shadow, not tint */
+
+  /* ── Ink ─────────────────────────────────────────────────────────────────
+     Ratios are against --canvas (#FFFFFF). */
+  --ink: #0A0A0A;             /* 19.79:1 — headings, body, primary text */
+  --ink-2: #3F3F46;           /* 10.33:1 — secondary body, long-form copy */
+  --ink-3: #68707E;           /*  4.99:1 on canvas, 4.54:1 on --surface-sunk — labels,
+                                  captions, metadata. Sized by the WORST ground in the system,
+                                  not by white: #6B7280 measures a comfortable 4.90 on canvas
+                                  and a failing 4.46 on --surface-sunk. */
+  --ink-4: #A1A1AA;           /*  2.53:1 — DISABLED + DECORATIVE ONLY.
+                                  Forbidden as a text colour. */
+  --ink-inverse: #FFFFFF;     /* text on --accent */
+
+  /* ── Accent — deliberately near-monochrome ───────────────────────────────
+     The app's accent is almost black. Colour is the card's job, not the
+     chrome's; a coloured app accent competes with eight coloured templates and
+     clashes with at least three of them. */
+  --accent: #111111;          /* 18.88:1 on canvas; --ink-inverse on it 18.88 */
+  --accent-hover: #000000;    /* 21.00:1 */
+  --accent-wash: #F4F4F5;     /* selected chip / row fill; --ink on it 18.24 */
+  --accent-ink: var(--ink-inverse);
+
+  /* ── Lines ───────────────────────────────────────────────────────────────
+     Two, for two different jobs. Using --line on an input fails WCAG 1.4.11. */
+  --line: #E5E7EB;            /* 1.24:1 — DECORATIVE hairlines, dividers, exempt from 1.4.11 */
+  --line-control: #8A8A8F;    /* 3.44:1 on canvas, 3.13:1 on --surface-sunk — input / select /
+                                  control BOUNDARIES. Non-text AA, again sized by the worst
+                                  ground: #8E8E93 fails 1.4.11 at 2.97 on --surface-sunk. */
+
+  /* ── Signals — rare by design ────────────────────────────────────────────*/
+  --danger: #B42318;          /* 6.24:1 on canvas; white on it 5.90 */
+  --danger-wash: #FEF3F2;     /* --danger on it 5.94 */
+  --warning-ink: #7A4100;     /* 7.94:1 on canvas */
+  --warning-wash: #FFFAEB;    /* --warning-ink on it 7.44 */
+  --success: #067647;         /* 5.16:1 on canvas; white on it 4.07 */
+  --success-wash: #ECFDF3;    /* --success on it 4.83 */
+
+  /* ── Focus — two rings, never one ────────────────────────────────────────
+     A single dark ring measures 2.98:1 on the Cobalt template ground and
+     disappears; a single light ring disappears on white. The
+     ink → white → ground sandwich clears 3:1 on every ground in the system,
+     app chrome and template palettes alike. Implemented ONCE, in globals.css. */
+  --focus-ring: var(--ink);
+  --focus-offset: #FFFFFF;
+
+  /* ── QR optical constants — not palette colours, and never themed ────────
+     A QR is a functional optical target. These two values are identical on
+     every template, including Carbon: many decoders reject inverted symbols,
+     so the plate is always white and always opaque. */
+  --qr-module: #0B0B0B;
+  --qr-plate: #FFFFFF;        /* module/plate 19.68:1, far past the 15:1 bar */
+
+  /* ── Typefaces ───────────────────────────────────────────────────────────
+     One family, Geist, across the whole product. No serif anywhere: the
+     editorial serif is what dated the previous build and it is the single
+     loudest "this is not a modern product" signal in the old screenshots.
+     Geist is variable 100–900, so weight does the work a second family used to.
+     Injected on <html> by next/font in app/layout.tsx. */
+  --font-sans: var(--font-geist);
+  --font-mono: var(--font-geist-mono);
+  /* Headings inside the app shell only — see the note in app/layout.tsx. Body stays Geist. */
+  --font-display: var(--font-space);
+
+  /* ⚠ **The app chrome's face, and the reason it is a THIRD token rather than a new value
+     for `--font-sans`.**
+
+     `--font-sans` is not the dashboard's font. `card-page.tsx` and `share-face.tsx` both pin
+     `font-family: var(--font-sans)` on their own roots — deliberately, so the display face
+     could never reach them — which means repointing it would re-type the public card page and
+     the 336×500 wallet face whose geometry five QR contract suites measure. The card's
+     typeface is a brand commitment (`PRODUCT.md`) and is not what was being changed here.
+
+     So the chrome gets its own token, applied on `[data-app-shell]` in `globals.css`, and the
+     card's existing pin does the rest of the work for free: the builder's preview sits *inside*
+     the shell and still renders in Geist, which is correct — the preview must match the page a
+     recipient opens, not the editor around it.
+
+     The fallback chain is Geist before `system-ui`. `next/font` supplies a metric-corrected
+     local fallback already; this is the second line of defence, and it lands on the family the
+     rest of the product uses rather than on whatever the OS offers. */
+  --font-app: var(--font-instrument), var(--font-geist), system-ui, -apple-system, sans-serif;
+
+  /* ── Type scale ──────────────────────────────────────────────────────────
+     Nine steps, down from fourteen. Every step below is used somewhere; a scale
+     with unused steps is a scale nobody can hold in their head. Display steps
+     are fluid between 768px and 1024px. */
+  --text-hero: clamp(2.5rem, 1rem + 3.125vw, 4rem);        /* 40 → 64px */
+  --text-hero-lh: 1.04;
+  --text-hero-tracking: -0.032em;
+
+  --text-h1: clamp(2rem, 1.25rem + 1.5625vw, 2.75rem);     /* 32 → 44px */
+  --text-h1-lh: 1.08;
+  --text-h1-tracking: -0.028em;
+
+  --text-h2: clamp(1.5rem, 1.125rem + 0.78125vw, 1.875rem);/* 24 → 30px */
+  --text-h2-lh: 1.16;
+  --text-h2-tracking: -0.022em;
+
+  --text-h3: 1.25rem;         /* 20px — section heading, dialog title, card name */
+  --text-h3-lh: 1.3;
+  --text-h3-tracking: -0.016em;
+
+  --text-lg: 1.0625rem;       /* 17px — marketing paragraph, card display name */
+  --text-lg-lh: 1.55;
+  --text-lg-tracking: -0.008em;
+
+  --text-base: 0.9375rem;     /* 15px — DEFAULT UI BODY */
+  --text-base-lh: 1.6;
+  --text-base-tracking: -0.003em;
+
+  --text-sm: 0.8125rem;       /* 13px — helper text, field values, buttons */
+  --text-sm-lh: 1.54;
+  --text-sm-tracking: 0em;
+
+  --text-xs: 0.75rem;         /* 12px — captions, timestamps, counts */
+  --text-xs-lh: 1.34;
+  --text-xs-tracking: 0.004em;
+
+  --text-overline: 0.6875rem; /* 11px — eyebrow labels, field labels, UPPERCASE */
+  --text-overline-lh: 1.28;
+  --text-overline-tracking: 0.08em;
+
+  /* ── Weights ─────────────────────────────────────────────────────────────
+     Named, because "600" at a call site says nothing about intent. */
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-semibold: 560;   /* Geist is variable — 560 is a real value, not a fake bold */
+  --weight-bold: 680;
+
+  /* ── Spacing — 4px base ──────────────────────────────────────────────────*/
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+  --space-32: 128px;
+
+  /* ── Layout constants ────────────────────────────────────────────────────*/
+  --sidebar-width: 248px;
+  --sidebar-collapsed: 64px;
+  --content-max: 1180px;
+  --prose-max: 36em;
+  --bottombar-height: 64px;
+
+  /* ── The two card variants ───────────────────────────────────────────────
+     THIS IS THE ARCHITECTURAL FIX. The old build had one 400×860 canvas that
+     had to hold identity + QR + two buttons + every field the user added, so
+     the field list got an inner `overflow-y: auto` and clipped its own rows.
+
+     There are two objects instead:
+
+       SHARE FACE — fixed, compact, wallet-shaped. Name, up to two highlight
+       details, and the QR. Nothing else, ever. This is what gets shown,
+       shared, exported to PNG and put in a wallet pass.
+
+       CARD PAGE  — not a canvas at all. A real page at --page-measure wide
+       that grows to fit every field and scrolls with the document. No inner
+       scroll container exists anywhere in it.
+
+     The QR therefore never competes with the field list for vertical space,
+     because they are no longer in the same object. */
+  --face-w: 336px;            /* share-face design width — ONE size, portrait, no exceptions.
+                                 336 + 12px page padding each side == 360, the narrowest
+                                 supported viewport. The face is rigid, so it sets that floor. */
+  --face-h: 500px;            /* 1 : 1.49. Derived in share-face.tsx — see the budget there. */
+  --face-radius: 20px;
+  --page-measure: 460px;      /* card-page content column */
+
+  /* ── Radius ──────────────────────────────────────────────────────────────
+     The `-base` twins exist so the `@theme inline` block in globals.css can
+     point at a name that differs from the theme key it defines; a
+     self-referential Tailwind theme key is emitted verbatim and invalidates
+     the property. */
+  --radius-xs-base: 4px;       /* THE QR PLATE — a larger radius eats the quiet zone */
+  --radius-sm-base: 6px;       /* inline code, small chips, table cells */
+  --radius-md-base: 10px;      /* inputs, selects, buttons */
+  --radius-lg-base: 14px;      /* panels, dialogs, list-row hover fills */
+  --radius-xl-base: 20px;      /* the share face, gallery tiles */
+  --radius-2xl-base: 28px;     /* mobile bottom sheet ONLY */
+  --radius-full-base: 9999px;  /* avatars, pills, status chips */
+
+  --radius-xs: var(--radius-xs-base);
+  --radius-sm: var(--radius-sm-base);
+  --radius-md: var(--radius-md-base);
+  --radius-lg: var(--radius-lg-base);
+  --radius-xl: var(--radius-xl-base);
+  --radius-2xl: var(--radius-2xl-base);
+  --radius-full: var(--radius-full-base);
+
+  /* ── Hairlines ───────────────────────────────────────────────────────────
+     Always a real `border`, never a box-shadow fake: a box-shadow hairline does
+     not survive PNG export. Always 1px, never 0.5px. */
+  --hairline: 1px solid var(--line);
+  --hairline-control: 1px solid var(--line-control);
+
+  /* ── Elevation ───────────────────────────────────────────────────────────
+     Neutral-tinted, not warm. If it is in normal flow it gets --elevation-0;
+     only something genuinely floating may use 1 or 2. The share face gets
+     --elevation-card because it is a physical object on a page, which is the
+     one exception. */
+  --elevation-0: none;
+  --elevation-card: 0 1px 2px rgba(9, 9, 11, 0.04), 0 12px 32px -12px rgba(9, 9, 11, 0.16);
+  --elevation-1: 0 1px 2px rgba(9, 9, 11, 0.06), 0 8px 24px -12px rgba(9, 9, 11, 0.14);
+  --elevation-2: 0 2px 4px rgba(9, 9, 11, 0.08), 0 24px 56px -20px rgba(9, 9, 11, 0.22);
+
+  /* ── Motion ──────────────────────────────────────────────────────────────
+     All durations are zeroed centrally in globals.css under
+     prefers-reduced-motion, so no component has to remember. */
+  --dur-instant: 90ms;      /* hover / press feedback */
+  --dur-fast: 150ms;        /* control state, toggle, tab underline, chip select */
+  --dur-base: 220ms;        /* popover, dropdown, toast, builder template swap */
+  --dur-slow: 380ms;        /* dialog, mobile sheet, auth step transition */
+  --dur-editorial: 640ms;   /* marketing scroll reveals ONLY */
+
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+  --ease-lift: cubic-bezier(0.34, 1.24, 0.64, 1);   /* the "Saved" tick, and nothing else */
+}

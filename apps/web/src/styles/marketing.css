@@ -1,0 +1,1201 @@
+/* ============================================================================
+   Contact Book — MARKETING token layer  ("Micro" direction).
+
+   ── Why this file exists separately from `tokens.css` ──────────────────────
+   There are now THREE colour systems in this product, and the split is
+   deliberate:
+
+     1. APP CHROME     `tokens.css`               white, near-monochrome, quiet.
+     2. CARD PALETTES  `src/card/template-palettes.ts`   loud, per-card data.
+     3. MARKETING      this file                  the composition, in the card
+                                                  palette's own nine colours.
+
+   The marketing site is a different room from the product. `tokens.css` exists
+   to disappear so a card is the only coloured thing on screen; that is exactly
+   the wrong instinct for a landing page, whose job is to have a point of view
+   before anyone has seen a card at all. So marketing gets its own layer rather
+   than bending the app's.
+
+   ⚠ A separate LAYER is not a separate PALETTE, and conflating the two is the
+   defect this file was rebuilt to remove. The layer still exists — the `--mk-`
+   namespace, the type scale, the deck, the motion grammar are all only here.
+   What no longer exists is marketing's own set of hues.
+
+   ── The namespace is the boundary ─────────────────────────────────────────
+   EVERY token here is prefixed `--mk-` and every Tailwind utility it generates
+   is prefixed `mk-` (`bg-mk-paper`, `text-mk-stone`, `font-mk-display`). That
+   makes the boundary greppable in one command: an `mk-` utility outside
+   `src/components/marketing/**` or `src/app/(marketing)/**` is a layering bug,
+   and a contract test can say so in three lines. Without the prefix these
+   would collide with the app's `--color-ink` / `--color-surface` names and the
+   two systems would quietly become one — which is the exact failure the
+   previous build died of.
+
+   ── HUES ARE THE CARD SYSTEM'S. LEVELS ARE DERIVED. ───────────────────────
+   Every hue below is one of the nine card grounds in
+   `src/card/template-palettes.ts`, reproduced to the digit:
+
+     Onyx #181A1F · Sapphire #142C63 · Emerald #0D3C2E · Oxblood #5B1626
+     Rust #80371C · Amber #E1AA40 · Clay #E3A28A · Pistachio #BFD48C
+     Periwinkle #B4C1EC
+
+   ⚠ **THE DEFECT THIS PREVENTS, AND IT HAS SHIPPED TWICE.**
+   The card system originally shipped a Cobalt / Sky `#22B8CF` / Lime `#C8F751`
+   / Violet set and was rejected in one sentence — "nobody hands out a cyan
+   business card" — which is why the cards were rebuilt as nine muted grounds
+   whose every ink pair is proven by `tests/contract/template-palettes.test.ts`.
+   This file then reinstated the same two hues from a separate pinned brief
+   (`--mk-teal #36bab8`, `--mk-lime #7efa55`) and the homepage was read the same
+   way: "looking very childish". Two colour systems in one product, drifting
+   apart, is how the same rejected note gets delivered twice.
+
+   `PRODUCT.md` records the register as "professional, quietly premium —
+   impressive because it is precise, not because it is loud". The homepage is
+   the loudest surface in the product, so it is the surface that has to hold it.
+   Marketing therefore stops inventing colour: the palette IS the product's.
+
+   ── The two levels, and why the search direction flips ────────────────────
+   A card ground is proven for ink drawn ON it. Marketing asks the opposite
+   question of the same hex — may this colour be drawn on PAPER? — and the
+   answer is not inherited, so both levels are re-derived here. The split is
+   the one `tokens.css` already uses for `--ink` vs `--ink-4`:
+
+     · the DISPLAY level — fills, rings, bands. The 3:1 non-text bar.
+     · the INK level     — anything carrying body text. The 4.5:1 bar.
+
+   ⚠ For the five DEEP grounds the binding constraint is not legibility, it is
+   SEPARATION. Sapphire measures 12.27:1 on paper — legal, and useless, because
+   at that ratio a "sapphire" link and the near-black body copy are the same
+   colour to the eye. So for those the search runs the other way and finds the
+   LIGHTEST instance of the hue that still clears the bar, which is the same
+   rule `derive-palette.ts` uses for `inkSoft`. For the four light grounds it
+   runs the original direction, downwards.
+
+   Hue and saturation held; lightness alone moved; never re-picked by eye.
+   Generator and every number below: `.scratch-debug/mk-palette-gen.mjs`, which
+   computes ratios with the same WCAG transcription as `src/lib/contrast.ts`.
+   Ratios in comments are that script's output, not estimates.
+   ============================================================================ */
+
+:root {
+  /* ── Surfaces (design.md, unchanged) ──────────────────────────────────── */
+  --mk-paper: #f5f5f5;        /* canvas — the warm off-white base */
+  --mk-white: #ffffff;        /* elevated card surfaces, one level above paper */
+
+  /* ── Ink ───────────────────────────────────────────────────────────────
+     Ratios against --mk-paper. */
+  --mk-ink: #181a1f;          /* 15.97:1 — ONYX, the card system's one neutral
+                                 ground, verbatim. Primary text AND the dark
+                                 close pass, which used to be two near-blacks
+                                 three points apart (#221f1c text on a #221f1c
+                                 ground) pretending to be a decision. One
+                                 near-black, and it is a colour the product
+                                 already ships on cards. */
+  --mk-stone: #766f65;        /*  4.55:1 — secondary body copy.
+                                 design.md's #797267 measures 4.36 and fails;
+                                 deepened by L-0.010, hue held. */
+  --mk-pebble: #72706f;       /*  4.52:1 — captions, metadata, eyebrows.
+                                 design.md's #8c8a88 measures 3.15 — that value
+                                 is retained below as --mk-pebble-mute for the
+                                 DISABLED/decorative role it can actually hold. */
+  --mk-pebble-mute: #8c8a88;  /*  3.15:1 — DECORATIVE + DISABLED ONLY.
+                                 Forbidden as a text colour, exactly as
+                                 tokens.css forbids --ink-4. */
+
+  /* ── Lines ─────────────────────────────────────────────────────────────
+     design.md asks for "1px solid #27272a at low opacity". Expressed as two
+     flat values rather than an opacity, because a translucent hairline over
+     the gradient sky resolves to a different colour than over paper and the
+     component has no way to know which it is sitting on. */
+  --mk-hairline: #e3e1de;     /* 1.20:1 — decorative dividers, card edges */
+  --mk-hairline-strong: #c9c5c0; /* 1.57:1 — card edge on paper, table rules */
+  --mk-control: #8a857e;      /* 3.36:1 on paper — input/control BOUNDARIES,
+                                 the WCAG 1.4.11 job.
+                                 ⚠ The colours are untouched, but two of these
+                                 comments were stale: they read 1.60 and 3.09.
+                                 Re-measured by the generator on this pass,
+                                 which is the whole reason a number in a comment
+                                 has to come out of a script. --mk-control is
+                                 further above the bar than it claimed, so
+                                 nothing shipped illegible — but a comment that
+                                 is wrong in the safe direction is still a
+                                 comment nobody can trust in the other one. */
+
+  /* ── The signature: A DEEP SKY, AND ONE OBJECT LIT INSIDE IT ───────────
+     ⚠ THE MEADOW IS GONE, AND SO IS THE OVERSIZED CARD IT EXISTED FOR.
+     ── ⚠ THE SKY IS GONE. THE HERO IS A SHEET OF RULED PAPER. ────────────
+     Three heroes have now stood here and the client rejected each ground in
+     turn: azure→cyan ("childish"), then Sapphire→Onyx with a film in it —
+     *"the blue colour and the video being rendered there are both looking the
+     worst of all, remove both of them."* The instruction was explicit about
+     both objects, so neither is replaced by a quieter version of itself.
+
+     What the three rejections have in common is worth naming, because a fourth
+     gradient would have inherited it: a full-bleed coloured rectangle with
+     centred type is the shape every generated landing page ships, and no
+     choice of hue rescues it. The ground was never the defect. Seven hundred
+     pixels of surface doing no work was.
+
+     So the hero's ground is now the product's own metaphor, and it is one the
+     page already argues two sections later: *"A paper contact book worked
+     because somebody maintained it. You crossed out an address and wrote the
+     new one above it."* The hero is that page — paper, ruled, with a margin
+     rule down the left — and the headline is the entry written on it. It
+     costs no bytes (no image, no video, one repeating gradient), it makes the
+     page's LCP text instead of a video poster, and it sets up the argument
+     below instead of contradicting it with weather.
+
+     ── ⚠ THE RULED GROUND CARRIES ONE INK LEVEL AND HAS NO SECONDARY TIER ──
+     Exactly the rule the four washes already follow, arrived at the same way —
+     by measuring rather than assuming. `--mk-stone` is the secondary body
+     level and it FAILS on this ground at every rule density, including
+     densities too faint to see:
+
+       rule @ 3%  ground #eeeeef   stone 4.28:1   FAIL
+       rule @ 4%  ground #ececec   stone 4.20:1   FAIL   ← shipped density
+       rule @ 5%  ground #eaeaea   stone 4.12:1   FAIL
+       rule @ 8%  ground #e3e3e4   stone 3.87:1   FAIL
+
+     There is no density where a rule is visible and stone is legal, so the
+     hero's every level of copy is `--mk-ink` at full strength and hierarchy
+     is carried by size and weight alone. Ink holds 14.73:1 on the worst
+     ground (over a rule) and 15.97:1 off it.
+
+     ── The rhythm is the display line box, not a round number ─────────────
+     `--mk-ledger-rhythm` is `--mk-text-display × --mk-text-display-lh` — the
+     exact height of one line of the headline, fluid with it from 44.9px at
+     360 to 73.4px at 1440. The two headline lines therefore occupy exactly
+     two rules at every width, which is the difference between a page ruled
+     for this text and lines drawn behind it. A fixed 32px would drift against
+     a clamped headline at every viewport between the two ends.
+
+     ⚠ The rules fade at BOTH ends via a mask, and the bottom fade is not
+     taste: the deck's first pass rides `--mk-pass-overlap` (44px) up over the
+     hero, and a rule running under that lip would be sliced by it. */
+  --mk-ledger-ink: rgb(24 26 31 / 0.07);   /* 7% Onyx — see the table above  */
+  --mk-ledger-rhythm: calc(var(--mk-text-display) * var(--mk-text-display-lh));
+  --mk-ledger-margin: var(--mk-oxblood);   /* 12.13:1 on paper. The margin rule. */
+
+  /* ⚠ A TOKEN AND NOT A RULE-LOCAL VALUE, and the reason is a bug this already caused.
+     It was declared on `.mk-ledger`, which is the ruling layer — a SIBLING of the hero's copy
+     column, not its ancestor. `pt-[var(--mk-ledger-lead)]` on the column therefore resolved to
+     nothing, the hero lost its entire top padding, and the headline slid under the fixed nav.
+     Custom properties inherit down, never across. Declared here, both elements see it. */
+  --mk-ledger-lead: 3rem;
+
+  /* ⚠ THE MARGIN RULE'S X POSITION, AND THE RULING'S LEFT EDGE. ONE VALUE, TWO CONSUMERS.
+     On a real ledger the ruling STARTS at the margin rule — that is what makes the vertical
+     stroke a margin rather than a line someone drew down the page. The first build had the
+     rules running edge to edge past it and the two read as unrelated systems.
+
+     It is half the content column's own inset at each breakpoint (`px-6` / `px-10`), which is
+     what makes one token serve both: the ruling offsets from the column's outer edge by
+     +gutter, and the margin rule offsets from the text by -gutter, and those land on the same
+     x because the gutter IS half the padding. Change the column's padding and both move
+     together; change one of them by hand and the ruling detaches from its own margin. */
+  --mk-ledger-gutter: 0.75rem;
+
+  /* ⚠ KEPT, though the sky that named them is deleted. These two are Sapphire
+     and Onyx verbatim — card grounds in their own right — and they are bridged
+     into `@theme inline` below AND listed in `mk-cn.ts`'s text-color group. A
+     token dropped from one list but not the other does not error; it degrades
+     to the silent class-drop `mk-cn.ts` exists to prevent. `--mk-sky`,
+     `--mk-sky-from` and `--mk-sky-to` were NOT bridged and are deleted. */
+  --mk-sky-zenith: #142c63;   /* SAPPHIRE, card ground, verbatim. white 13.37:1 */
+  --mk-sky-horizon: #181a1f;  /* ONYX, card ground, verbatim.     white 17.41:1 */
+
+  /* ── Emerald ───────────────────────────────────────────────────────────
+     ⚠ THESE TWO STOPS NO LONGER PAINT A MEADOW. They are Emerald's own
+     `gradientFrom` / `gradientTo`, and `--mk-field` — the 180deg ramp that
+     drew the hero's field band — is DELETED with the band. The stops stay for
+     one mechanical reason and it is worth stating rather than rediscovering:
+     they are bridged into `@theme inline` below as `--color-mk-field-near` /
+     `-far` and listed in `mk-cn.ts`'s `text-color` group, and a token removed
+     from one of those two lists but not the other does not error — it degrades
+     to the silent class-drop `mk-cn.ts` exists to prevent. Removing them is a
+     two-file change and this file is not allowed to make half of it.
+
+       field-near  #12513E   white  9.24:1
+       field-far   #07271E   white 15.93:1 */
+  --mk-field-near: #12513e;   /* Emerald gradientFrom */
+  --mk-field-far: #07271e;    /* Emerald gradientTo   */
+  --mk-emerald: #0d3c2e;      /* Emerald ground — 11.31:1 on paper. Rings, marks. */
+  --mk-emerald-ink: #1c7f62;  /* 4.52:1 on paper — the LIFTED level, for the one
+                                 place green carries text. Deep Emerald measures
+                                 11.31:1 and is legal, and useless: against the
+                                 near-black ink beside it, it IS the near-black
+                                 ink. Lifted, it separates at 3.53:1. */
+
+  /* ── Action — AMBER, with Amber's own button ink ───────────────────────
+     The primary action was `--mk-lime #7efa55`. Lime is one of the two hues
+     the card system was rejected for and it came back here from a separate
+     brief; it is gone.
+
+       label #3A2408 on fill #E1AA40   6.98:1   ← Amber's own buttonInk,
+                                                   from template-palettes.ts
+       fill on the sky zenith           6.38:1
+       fill on the ink/Onyx close       8.31:1
+       fill on the meadow's lit edge    4.41:1
+
+     ⚠ **AMBER MAY NOT BE DRAWN ON PAPER OR WHITE.** It measures 1.92:1 and
+     2.09:1 there — an action with no findable boundary, which is the 1.4.11
+     failure, not a style one. Every filled Amber control on this page sits on
+     the sky or on the Onyx close, and there is nowhere else it may sit. This
+     is the one hard placement rule the palette imposes, and it is the price of
+     an action colour that is warm rather than shouted. */
+  --mk-amber: #e1aa40;        /* Amber ground, verbatim — the primary action fill */
+  --mk-amber-deep: #3a2408;   /* Amber's own buttonInk — 6.98:1 on the fill */
+
+  /* ── Sapphire, the link and the ring ───────────────────────────────────
+     Three levels, and each one exists because the other two cannot do its job:
+
+       --mk-sapphire       #142C63  the ground, verbatim. 12.27:1 on paper,
+                                    7.50:1 on the periwinkle wash. A deep mark
+                                    on a light ground.
+       --mk-sapphire-lift  #567FDD  3.52:1 on paper AND 3.49:1 on the sky's
+                                    zenith. The focus ring and non-text accents.
+       --mk-sapphire-ink   #3B6BD7  4.51:1 on paper, 4.92:1 on white. Link and
+                                    inline accent TEXT. Separates from the ink
+                                    beside it at 3.54:1.
+
+     ⚠ The middle level is a real improvement, not a rename. The old focus ring
+     was `--mk-azure #518bdb`: 3.46:1 on paper but ~1.4:1 on the old sky, so on
+     the hero the white halo was carrying the ring alone. `--mk-sapphire-lift`
+     is the lightest Sapphire that still clears 3:1 on paper, which happens to
+     be dark enough to clear 3:1 on the sky as well — the first ring in this
+     layer that holds on BOTH grounds by itself. */
+  --mk-sapphire: #142c63;
+  --mk-sapphire-lift: #567fdd;
+  --mk-sapphire-ink: #3b6bd7;
+
+  /* ── The four wash grounds ─────────────────────────────────────────────
+     Was mint / peach / lavender / teal-mist — four pastels from a brief. Now
+     four card grounds, at the saturation the cards actually ship:
+
+       clay        #E3A28A   ink  8.12:1   stone 2.32:1   pebble 2.30:1
+       pistachio   #BFD48C   ink 10.79:1   stone 3.07:1   pebble 3.05:1
+       periwinkle  #B4C1EC   ink  9.76:1   stone 2.78:1   pebble 2.76:1
+       amber       #E1AA40   ink  8.31:1   stone 2.37:1   pebble 2.35:1
+
+     ⚠ The substitution rule a wash imposes is UNCHANGED IN SHAPE AND HARDER IN
+     DEGREE. The old pastels put --mk-stone at 3.99–4.21:1: a near miss. These
+     put it at 2.30–3.07:1: not close. Body copy inside a wash is
+     `<Prose tone="ink">`, and there is no grey that can substitute.
+
+     ⚠ And a second rule these grounds add: **ink at 70% is no longer legal
+     either.** It composites to 4.34:1 on clay and 4.44:1 on amber. A wash pass
+     carries ONE ink level, at full strength. Alpha is not a secondary level
+     here; the 15% used for interior rules is decorative and owes nothing. */
+  --mk-clay: #e3a28a;
+  --mk-pistachio: #bfd48c;
+  --mk-periwinkle: #b4c1ec;
+  /* The fourth wash is --mk-amber above. ⚠ It is also the action fill, so an
+     Amber pass may not carry the Amber CTA — 1.0:1, a button that is its own
+     ground. No section takes this tone today; the trap is recorded so the next
+     one does not spring it. */
+
+  /* ── Marker set — the CLOSED categorical set, from the deep tier ───────
+     Four rings, one per node in `assistant`, and nothing is encoded by which
+     colour a node wears. They are the four deep card grounds that are not the
+     sky, measured on the periwinkle wash they are drawn on:
+
+       sapphire  #142C63   7.50:1
+       oxblood   #5B1626   7.42:1
+       rust      #80371C   4.75:1
+       emerald   #0D3C2E   6.92:1
+
+     ⚠ Periwinkle is NOT in this set even though it is one of the nine, because
+     the pass those rings are drawn on is the Periwinkle wash: the ring would
+     measure 1.0:1 against its own ground. A palette entry is not automatically
+     an accent — it depends what it is being drawn on. */
+  --mk-oxblood: #5b1626;      /* 12.13:1 on paper — also the roadmap status ink,
+                                 7.42:1 on the periwinkle wash it sits on */
+  --mk-rust: #80371c;         /*  7.76:1 on paper */
+
+  /* ── Typography ────────────────────────────────────────────────────────
+     DISPLAY → Space Grotesk. BODY → Geist. One display voice for the whole
+     product, marketing included.
+
+     The display face was Fraunces, a Cooper Black / Windsor revival chosen to
+     answer a brief asking for "a chunky 70s/80s display face". It is gone, and
+     for a reason that has nothing to do with Fraunces being a bad face: Space
+     Grotesk is ALREADY the app's display face — loaded app-wide as
+     `--font-space` by `src/app/layout.tsx`, bound to `.text-h1/2/3` — so the
+     landing page and the product screen a reader lands on after signup were
+     speaking in two different display voices for no reason a reader could
+     name. Body copy was already metrically identical either side of signup
+     (Geist both places). Now the headlines are too.
+
+     It also removes a font request from this route entirely. Fraunces was
+     route-scoped so no app screen paid for it; Space Grotesk is already on
+     `<html>`, so `(marketing)` now loads NOTHING of its own. See
+     `(marketing)/layout.tsx`, which no longer imports `next/font/google`.
+
+     ⚠ THE TRACKING HAD TO BE RETUNED, AND THE SIGN FLIPS. Positive display
+     tracking was Fraunces' signature — a wide, letterspaced serif is a period
+     reference. Space Grotesk is a grotesque: its counters are already open and
+     its sidebearings already generous, so at 72px positive tracking does not
+     read as editorial, it reads as a headline that failed to justify. Every
+     display step below is negative now, and the sign is the whole point. See
+     the scale block for the per-step values and why each one is what it is. */
+  /* ⚠ The three font tokens are NOT here — see the `[data-mk-root]` block below. */
+
+  /* ── Type scale (fluid where it must be) ───────────────────────────────
+     Fixed 72px display type overflows a 375px viewport, so the four display
+     steps clamp and the text steps do not — the same split tokens.css makes.
+
+     ── TRACKING, RETUNED FOR A GROTESQUE ─────────────────────────────────
+     Optical rule, applied step by step rather than as one number: a grotesque
+     needs the MOST negative tracking where the type is largest, and needs it
+     to relax back to zero as the size falls toward body copy, because the same
+     -0.03em that tightens a 72px headline closes up a 24px one. Sizes were
+     re-checked as well as tracking — a serif and a grotesque do not have the
+     same optical size at the same px — and they hold: Space Grotesk's cap
+     height (0.70em) and Fraunces' (0.72em) are within two points, so the
+     display step does not need to grow to keep its weight on the page.
+
+       step         was       now       why
+       display      +0.02em   -0.03em   72px. The largest change, because the
+                                        error is proportional to the size.
+       heading-xl   +0.02em   -0.025em  60px, one section only.
+       heading-lg   +0.02em   -0.02em   48px, every other section head.
+       heading      +0.02em   -0.015em  30px, relaxing toward body.
+       heading-sm   -0.025em  -0.02em   24px. Already negative (it was the SANS
+                                        step); loosened slightly because it is
+                                        now set in the display face at the
+                                        wordmark and 24px Space Grotesk at
+                                        -0.025em collides on the double `t`.
+       subheading    0em       0em      18px. Body territory; leave it alone.
+       eyebrow      +0.1em    +0.1em    11px uppercase. Positive tracking on
+                                        small caps is not the display
+                                        signature, it is legibility. */
+  /* ⚠ 4.5rem (72px) until the hero became text-only, and the raise is a composition fix
+     rather than a preference. With a film in it the hero had a second object to hold the
+     right half of a 1440 sheet; with the film gone, 72px left the copy occupying ~615px of
+     1440 and the rest of the page empty — the same "surface doing no work" the redesign was
+     asked to remove, in a lighter colour.
+
+     In a text-only hero the type IS the composition and has to carry the width. 5.5rem takes
+     the headline to ~780px at 1440 and it stays inside craft-floor's 6rem display ceiling.
+     The lower bound is untouched: at 360 the clamp still delivers 44px, where the constraint
+     is the viewport and not the composition.
+
+     ⚠ This also moves the RULING, and that is correct rather than a side effect:
+     `--mk-ledger-rhythm` is this value times the line height, so a larger headline is set on
+     a more generous ruling and the two stay in register by construction. Changing this token
+     to a fixed px would silently decouple them. The hero owns the page's only display step —
+     `assistant.tsx` and `broadcast.tsx` both say so — so nothing else moves. */
+  --mk-text-display: clamp(2.75rem, 1.5rem + 5vw, 5.5rem);      /* 44 → 88px */
+  --mk-text-display-lh: 1.02;
+  --mk-text-display-tracking: -0.03em;
+
+  /* The step between a section heading and the hero.
+     It was missing, and its absence caused a real problem: the `broadcast` band — the page's
+     second most important sentence — had only two options, the section step (48px, identical
+     to every other head on the page) or the display step (72px, which is the hero's and makes
+     a mid-page band the largest type on the page). One section deserves to be visibly bigger
+     than the others and visibly smaller than the opening; that is a scale step, not a
+     one-off override. */
+  --mk-text-heading-xl: clamp(2.25rem, 1.5rem + 3.75vw, 3.75rem); /* 36 → 60px */
+  --mk-text-heading-xl-lh: 1.06;
+  --mk-text-heading-xl-tracking: -0.025em;
+
+  --mk-text-heading-lg: clamp(2rem, 1.25rem + 3vw, 3rem);       /* 32 → 48px */
+  --mk-text-heading-lg-lh: 1.12;
+  --mk-text-heading-lg-tracking: -0.02em;
+
+  --mk-text-heading: clamp(1.5rem, 1.125rem + 1.5vw, 1.875rem); /* 24 → 30px */
+  --mk-text-heading-lh: 1.25;
+  --mk-text-heading-tracking: -0.015em;
+
+  --mk-text-heading-sm: 1.5rem;                                  /* 24px */
+  --mk-text-heading-sm-lh: 1.35;
+  --mk-text-heading-sm-tracking: -0.02em;
+
+  --mk-text-subheading: 1.125rem;                                /* 18px */
+  --mk-text-subheading-lh: 1.55;
+  --mk-text-subheading-tracking: 0em;
+
+  --mk-text-body: 1rem;                                          /* 16px */
+  --mk-text-body-lh: 1.6;
+
+  --mk-text-body-sm: 0.875rem;                                   /* 14px */
+  --mk-text-body-sm-lh: 1.55;
+
+  --mk-text-caption: 0.75rem;                                    /* 12px */
+  --mk-text-caption-lh: 1.45;
+
+  --mk-text-eyebrow: 0.6875rem;                                  /* 11px — design.md
+                                 specifies 10px; 10px uppercase at 0.1em is below the
+                                 legibility floor this project holds elsewhere, so the
+                                 eyebrow is 11px and keeps design.md's tracking. */
+  --mk-text-eyebrow-lh: 1.4;
+  --mk-text-eyebrow-tracking: 0.1em;
+
+  /* ── Weights ───────────────────────────────────────────────────────────
+     Named rather than written as Tailwind's `font-bold` / `font-semibold`,
+     because naming the ROLE ("the weight the display face is set at") survives
+     a change of typeface, where `font-bold` silently becomes whatever the next
+     face calls bold. This pass is exactly that change, and it is why the token
+     earned its keep: one value moved and every headline followed.
+
+     ⚠ **750 and 900 were outside the face's axis and are gone.** Fraunces runs
+     400–900, so `--mk-weight-display: 750` was a real interpolated instance
+     there. Space Grotesk's `wght` axis stops at 700: 750 clamps to 700 and 900
+     clamps to 700, so `--mk-weight-heavy` was no longer a second weight at all
+     — it was `--mk-weight-display` under another name, and the utility it
+     generated (`font-mk-heavy`) promised a level the file could not deliver.
+     It is removed rather than re-pointed, because an unused token that lies is
+     worse than no token. Nothing referenced it. */
+  --mk-weight-regular: 400;
+  --mk-weight-medium: 500;
+  --mk-weight-strong: 600;
+  --mk-weight-display: 700;   /* the top of Space Grotesk's axis */
+
+  /* ── Radius (design.md's cluster, exactly) ─────────────────────────────
+     8 buttons/inputs/nav · 14 product rows · 18 feature blocks + graph nodes.
+     design.md: "do not mix freely", and 4px is reserved for small chrome. */
+  --mk-radius-chrome: 4px;
+  --mk-radius-control: 8px;
+  --mk-radius-row: 14px;
+  --mk-radius-block: 18px;
+  --mk-radius-pill: 9999px;
+
+  /* ── Elevation ─────────────────────────────────────────────────────────
+     design.md is flat-first: "the system relies on hairline edges, not
+     shadows, to define surfaces." Two shadows only, and the bordered card
+     leads with its 1px ring. */
+  --mk-shadow-card:
+    0 0 0 1px rgb(34 31 28 / 0.065),
+    0 1px 3px 0 rgb(0 0 0 / 0.1),
+    0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --mk-shadow-float:
+    0 10px 15px -3px rgb(0 0 0 / 0.1),
+    0 4px 6px -4px rgb(0 0 0 / 0.1);
+
+  /* ── Motion ───────────────────────────────────────────────────────────
+     ONE grammar, not scattered effects.
+
+     Everything on this page moves the same way: an exponential ease-out from
+     an already-visible default. "Already visible" is the load-bearing half —
+     an element that starts at opacity 0 and waits for an observer is invisible
+     to a reader who lands mid-page, to a crawler, and to anyone with JS off.
+     Passes lift, they do not fade in from nothing.
+
+     The curve is a real exponential-out, not `ease-out`: the browser keyword
+     is a cubic that keeps accelerating into the middle, and against a spring
+     it reads as hesitation. */
+  --mk-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --mk-ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+  --mk-dur-tap: 120ms;
+  --mk-dur-lift: 520ms;
+  --mk-dur-settle: 900ms;
+
+  /* ── The deck ──────────────────────────────────────────────────────────
+     How far each pass rides over the one above it, and the shadow that makes
+     that overlap read as depth rather than as a rendering mistake.
+
+     The shadow is two layers with real offset and blur, per the craft floor: a
+     zero-offset coloured halo is decoration, not depth. The upper layer is the
+     contact shadow where the pass meets the one beneath; the lower is the cast
+     shadow that gives it height. Both are tinted toward the sky rather than
+     neutral black, because the light in this world comes from the sky above
+     the deck and a grey shadow under a blue sky reads as a sticker.
+
+     The tint is now Sapphire's own channels — `rgb(20 44 99)` IS `#142C63` —
+     rather than the hand-picked `rgb(18 40 80)` that approximated the old sky.
+     The shadow under a pass and the sky above it are the same colour, which is
+     what a shadow is. */
+  --mk-pass-overlap: 44px;
+  --mk-pass-shadow:
+    0 2px 6px -2px rgb(20 44 99 / 0.16),
+    0 24px 48px -16px rgb(20 44 99 / 0.22);
+
+  /* ── Layout (design.md) ────────────────────────────────────────────────
+     1200px page, 64px section gap. §8C.2's "sections 128px apart on desktop"
+     is kept as the OUTER rhythm and design.md's 64px as the inner one — they
+     are measuring different gaps, not disagreeing. */
+  --mk-page-max: 1200px;
+  /* THREE measures, and only three. Fourteen distinct `max-w-[Nch]` literals appeared across
+     the first pass of the sections, `54ch` retyped in five files. A measure is a typographic
+     decision about line length, so it belongs to the type system, not to each component. */
+  /* Headline measures. A headline's line length is a different quantity from body copy's —
+     16ch at 72px is a wide line, not a narrow one — so they are their own two steps rather
+     than being forced onto the body scale or written as literals at each call site. */
+  /* ⚠ 16ch until the hero left the sky, and the retune is a consequence of the alignment
+     rather than a taste edit. 16ch was tuned for a CENTRED headline, where a short rag is the
+     point and every line is optically anchored by the centre axis. Left-aligned against a
+     margin rule the same 16ch breaks "Keep it true for years." across two lines at 1440 and
+     turns a two-line headline into a four-line rag with no axis holding it together.
+     24ch clears the longer of the two clauses on one line at the display step and still wraps
+     naturally on a phone, where the clamp has taken the size to 44px. The hero is the only
+     consumer of this token — checked, not assumed — so retuning it moves nothing else. */
+  --mk-measure-display: 24ch; /* the hero, at the display step */
+  --mk-measure-head: 26ch;    /* a section head, at the heading step */
+
+  --mk-measure-tight: 46ch;   /* a caption, a panel body, a footnote */
+  --mk-measure: 68ch;         /* the default body measure — mid of the 65-75ch band */
+  --mk-measure-wide: 75ch;    /* the top of the band, for a lead carrying a section */
+  --mk-section-gap: 4rem;     /* 64px */
+  --mk-section-gap-lg: 8rem;  /* 128px */
+}
+
+/* ── Font tokens stay scoped to the marketing root ────────────────────────────
+   All three faces now come from `<html>`: `--font-geist`, `--font-geist-mono`
+   and `--font-space` are set by the ROOT layout, and `(marketing)/layout.tsx`
+   no longer loads a face of its own.
+
+   That means `:root` would now resolve correctly, and the block still stays
+   here. Two reasons, and neither is inertia:
+
+   1. **The hazard it documents is one route change away from returning.** A
+      custom property's `var()` references are substituted where the property
+      is DECLARED, not where it is used. When the display face was route-scoped
+      (`--font-fraunces`, injected on the `(marketing)` wrapper),
+      `:root { --mk-font-display: var(--font-fraunces), … }` resolved against
+      `:root` — where next/font had not put it — so the declaration was invalid
+      at computed-value time and every headline silently rendered in the
+      inherited family at the right size and the right tracking. Wrong face,
+      correct markup, correct CSS rule. The next route-scoped face reintroduces
+      it exactly, and this block is where it is already solved.
+   2. `[data-mk-root]` also keeps the display face off any app screen that
+      might one day render a marketing component by accident, which `:root`
+      would not.
+
+   `@theme inline` is what makes the scoping work at all: the utility emits
+   `font-family: var(--mk-font-display)`, which resolves against the ELEMENT,
+   so an ancestor declaration reaches every marketing node by inheritance.
+
+   ⚠ The fallback stack changed with the face. It read `"Recoleta", Georgia,
+   serif` — the right fallback for Fraunces and a *serif page* for Space
+   Grotesk, which is a bigger visual jump than a missing webfont should ever
+   cause. It falls back through grotesques now, ending on the body face. */
+
+[data-mk-root] {
+  --mk-font-display: var(--font-space), "Space Grotesk", var(--font-geist), system-ui, sans-serif;
+  --mk-font-sans: var(--font-geist), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mk-font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* ── Tailwind bridge — the marketing half ────────────────────────────────────
+   A second `@theme inline`, merged with the app's by Tailwind. Same rule as
+   globals.css: a theme key must never share a name with the variable it points
+   at, which the `mk-` prefix guarantees for free. */
+
+@media (min-width: 768px) {
+  :root {
+    /* The hero's lead grows with the type. Same token, so the ruling's register and the copy
+       block's padding cannot drift apart at a breakpoint — which is the whole point of it. */
+    --mk-ledger-lead: 5rem;
+    /* Tracks `md:px-10` on the content column. Half of it, for the reason in the token block. */
+    --mk-ledger-gutter: 1.25rem;
+  }
+}
+
+@theme inline {
+  --color-mk-paper: var(--mk-paper);
+  --color-mk-white: var(--mk-white);
+  --color-mk-ink: var(--mk-ink);
+  --color-mk-stone: var(--mk-stone);
+  --color-mk-pebble: var(--mk-pebble);
+  --color-mk-pebble-mute: var(--mk-pebble-mute);
+  --color-mk-hairline: var(--mk-hairline);
+  --color-mk-hairline-strong: var(--mk-hairline-strong);
+  --color-mk-control: var(--mk-control);
+  --color-mk-sky-zenith: var(--mk-sky-zenith);
+  --color-mk-sky-horizon: var(--mk-sky-horizon);
+  --color-mk-field-near: var(--mk-field-near);
+  --color-mk-field-far: var(--mk-field-far);
+  --color-mk-sapphire: var(--mk-sapphire);
+  --color-mk-sapphire-lift: var(--mk-sapphire-lift);
+  --color-mk-sapphire-ink: var(--mk-sapphire-ink);
+  --color-mk-emerald: var(--mk-emerald);
+  --color-mk-emerald-ink: var(--mk-emerald-ink);
+  --color-mk-oxblood: var(--mk-oxblood);
+  --color-mk-rust: var(--mk-rust);
+  --color-mk-amber: var(--mk-amber);
+  --color-mk-amber-deep: var(--mk-amber-deep);
+  --color-mk-clay: var(--mk-clay);
+  --color-mk-pistachio: var(--mk-pistachio);
+  --color-mk-periwinkle: var(--mk-periwinkle);
+
+  --font-mk-display: var(--mk-font-display);
+  --font-mk-sans: var(--mk-font-sans);
+  --font-mk-mono: var(--mk-font-mono);
+
+  --text-mk-display: var(--mk-text-display);
+  --text-mk-display--line-height: var(--mk-text-display-lh);
+  --text-mk-display--letter-spacing: var(--mk-text-display-tracking);
+
+  --text-mk-heading-xl: var(--mk-text-heading-xl);
+  --text-mk-heading-xl--line-height: var(--mk-text-heading-xl-lh);
+  --text-mk-heading-xl--letter-spacing: var(--mk-text-heading-xl-tracking);
+
+  --text-mk-heading-lg: var(--mk-text-heading-lg);
+  --text-mk-heading-lg--line-height: var(--mk-text-heading-lg-lh);
+  --text-mk-heading-lg--letter-spacing: var(--mk-text-heading-lg-tracking);
+
+  --text-mk-heading: var(--mk-text-heading);
+  --text-mk-heading--line-height: var(--mk-text-heading-lh);
+  --text-mk-heading--letter-spacing: var(--mk-text-heading-tracking);
+
+  --text-mk-heading-sm: var(--mk-text-heading-sm);
+  --text-mk-heading-sm--line-height: var(--mk-text-heading-sm-lh);
+  --text-mk-heading-sm--letter-spacing: var(--mk-text-heading-sm-tracking);
+
+  --text-mk-subheading: var(--mk-text-subheading);
+  --text-mk-subheading--line-height: var(--mk-text-subheading-lh);
+  --text-mk-subheading--letter-spacing: var(--mk-text-subheading-tracking);
+
+  --text-mk-body: var(--mk-text-body);
+  --text-mk-body--line-height: var(--mk-text-body-lh);
+
+  --text-mk-body-sm: var(--mk-text-body-sm);
+  --text-mk-body-sm--line-height: var(--mk-text-body-sm-lh);
+
+  --text-mk-caption: var(--mk-text-caption);
+  --text-mk-caption--line-height: var(--mk-text-caption-lh);
+
+  --text-mk-eyebrow: var(--mk-text-eyebrow);
+  --text-mk-eyebrow--line-height: var(--mk-text-eyebrow-lh);
+  --text-mk-eyebrow--letter-spacing: var(--mk-text-eyebrow-tracking);
+
+  /* ⚠ The display WEIGHT is `mk-editorial`, not `mk-display`.
+     `--font-mk-display` (a family) and `--font-weight-mk-display` (a weight) both generate a
+     utility literally named `font-mk-display`, and Tailwind can only resolve that one way —
+     so the family silently won and every headline rendered in Geist at the inherited weight.
+     Namespaces that share a utility prefix must not share a suffix. */
+  --font-weight-mk-regular: var(--mk-weight-regular);
+  --font-weight-mk-medium: var(--mk-weight-medium);
+  --font-weight-mk-strong: var(--mk-weight-strong);
+  --font-weight-mk-editorial: var(--mk-weight-display);
+
+  --radius-mk-chrome: var(--mk-radius-chrome);
+  --radius-mk-control: var(--mk-radius-control);
+  --radius-mk-row: var(--mk-radius-row);
+  --radius-mk-block: var(--mk-radius-block);
+  --radius-mk-pill: var(--mk-radius-pill);
+
+  --container-mk-page: var(--mk-page-max);
+  --container-mk-measure-display: var(--mk-measure-display);
+  --container-mk-measure-head: var(--mk-measure-head);
+  --container-mk-measure-tight: var(--mk-measure-tight);
+  --container-mk-measure: var(--mk-measure);
+  --container-mk-measure-wide: var(--mk-measure-wide);
+}
+
+/* ── Component layer ─────────────────────────────────────────────────────────
+   Three things that must exist as CSS rather than as utilities, each for the
+   same reason: ONE grep site.
+
+   `tokens.css` already establishes this pattern for the app — elevation is
+   applied as `[data-elevation]`, never as a `shadow-*` utility, "so there is
+   one grep-able site per elevation". These follow it.
+
+     · `.mk-ledger` — the hero's ruled ground. Written once, here, because the
+       rule density is not a style choice: it is capped by the contrast table
+       in the token block, and a call site retyping it at 8% would silently
+       take the sheet's only ink level below AA.
+
+     · `.mk-ledger-margin` — the margin rule, and the page's one authored
+       moment. The stroke and the animation that draws it are one object; split
+       across a call site, the next hand edits the colour and leaves a rule
+       that draws itself in for no stated reason.
+
+     ⚠ `.mk-sky`, `.mk-hero-glow`, `.mk-film-frame` and `.mk-film-screen` were
+       here and are DELETED with the sky and the film the client removed. A
+       stylesheet that keeps selectors for objects the page no longer renders
+       is archaeology, and the next hand cannot tell which half is live.
+
+     · `[data-mk-arrive]` — the hero's arrival. See the block above the rule for
+       why this is a CSS animation and not a JS one; the short version is that a
+       JS arrival is invisible in every screenshot the e2e harness takes and for
+       every reader whose script never runs.
+
+     · `[data-mk-elevation]` — the two shadows. design.md is flat-first and
+       leads with a hairline ring; these are for the two cases it names, the
+       bordered card and the floating product mockup.
+
+     · `.mk-hairline-grid` — the internal rules design.md draws between cells.
+       A `border` on each child double-draws every interior edge; a single
+       negative-margin rule set does not.
+
+   `@layer components` on purpose, not unlayered: a utility must still be able
+   to override any of these at a call site. `tokens.css` puts `[data-elevation]`
+   unlayered because overlays must never lose their shadow; a marketing card
+   losing its shadow is a visual preference, not a broken affordance. */
+
+@layer components {
+  /* ── The ruled sheet ────────────────────────────────────────────────────────────────────
+     Two layers, and the split is what lets the ruling fade without the paper fading with it:
+     the SECTION paints `--mk-paper` edge to edge, and this element paints only the rules, over
+     it, masked at both ends. Put the paper on the masked layer instead and the sheet dissolves
+     into whatever is behind the page at the top and bottom of the hero.
+
+     ⚠ 1px of ink at 4% and `--mk-ledger-rhythm` of nothing. The density is the largest one at
+     which the ruling stays a rhythm you feel rather than lines you read — and it is also the
+     ceiling set by the contrast table in the token block, which is the binding constraint.
+
+     The vertical offset is `-1px` so a rule lands ON the copy block's first baseline band
+     rather than one full rhythm below it; without it the grid starts a line late and the
+     headline floats between rules instead of sitting on them.
+
+     ⚠ The bottom of the mask stops at 76%, not 100%. The deck's first pass rides
+     `--mk-pass-overlap` (44px) up over this section, so a rule that ran to the hero's last
+     pixel would be sliced mid-stroke by a white lip — the one artefact that would make the
+     ruling read as a background image rather than as the page it is drawn on. */
+  .mk-ledger {
+    /* ⚠ THE LEAD IS SHARED WITH THE HERO'S TOP PADDING AND MUST STAY THAT WAY.
+       `hero.tsx` sets its padding to `pt-[var(--mk-ledger-lead)]` — the same token, not the
+       same number — because this is what puts the ruling in register with the type. The
+       gradient repeats every `--mk-ledger-rhythm`, which IS one headline line box, so anchoring
+       the pattern at the copy block's top edge lands a rule on every headline line boundary for
+       free and at every viewport the clamp passes through. Retype either value as a literal and
+       the rules drift a few pixels into the letterforms, which reads as a printing fault. */
+    background-image: repeating-linear-gradient(
+      to bottom,
+      var(--mk-ledger-ink) 0,
+      var(--mk-ledger-ink) 1px,
+      transparent 1px,
+      transparent var(--mk-ledger-rhythm)
+    );
+    background-position: 0 var(--mk-ledger-lead);
+    /* ⚠ `100%` here resolves against the SECTION's width, deliberately, and not `100vw`.
+       `100vw` includes the scrollbar gutter on any platform that reserves one, which would
+       push the ruling a scrollbar's width right of the margin rule — a misregistration that
+       is invisible on this machine and obvious on Windows. */
+    left: calc(max(0px, (100% - var(--mk-page-max)) / 2) + var(--mk-ledger-gutter));
+    /* Fades in above the first entry and out before the deck's first pass rides its 44px lip
+       over this section — a rule sliced mid-stroke by a white edge is the one artefact that
+       would make the ruling read as a background image rather than as the page it is drawn on.
+       It runs to 78% because the earlier 62% stopped the ruling at the CTA row and left the
+       bottom third of the sheet blank, which is the dead space this ground exists to remove. */
+    mask-image: linear-gradient(
+      to bottom,
+      transparent 0,
+      #000 7%,
+      #000 78%,
+      transparent 92%
+    );
+  }
+
+  /* ── The margin rule — the one saturated stroke on the sheet ─────────────────────────────
+     A contact book's page has a ruled margin, and this is it: a 1px Oxblood hairline down the
+     left of the writing area, 12.13:1 on paper. It is the only chromatic mark in the hero, and
+     it is a hairline rather than a band on purpose — craft-floor refuses a coloured left border
+     above 1px, and at 1px this reads as bookbinding rather than as a callout stripe.
+
+     ⚠ It is positioned in the content column's PADDING, not at the viewport edge. `left: -12px`
+     (`-20px` from `md`) is half the column's own inset at each breakpoint, so the rule keeps a
+     real margin from the text at 360 and never slides off-screen the way a viewport-anchored
+     rule does on a phone.
+
+     ── The page's one authored moment now lives here ────────────────────────────────────────
+     It was the film. With the film deleted the hero would have had no motion at all, so the
+     moment moved rather than being dropped: the rule DRAWS DOWN on load, over 900ms, and the
+     copy arrives against it. The page gets ruled, then written on — which is the same sentence
+     the ground is making, so it is one moment and not a second effect bolted beside it.
+
+     ⚠ TRANSFORM ONLY, never opacity, and `both` fill. The harness zeroes every duration and
+     screenshots the result, so the `to` keyframe has to BE the element's ordinary rendering —
+     an opacity fade lands invisible in every one of those shots and for every reader whose
+     script never runs. `scaleY` from a top origin is a paint-free property that satisfies that
+     and reads as a stroke being drawn. Reduced motion drops the animation entirely, leaving the
+     rule at rest and full height: less travel, never less content. */
+  .mk-ledger-margin {
+    background-color: var(--mk-ledger-margin);
+    transform-origin: top center;
+    animation: mk-rule-draw 900ms var(--mk-ease) both;
+  }
+
+  @keyframes mk-rule-draw {
+    from {
+      transform: scaleY(0);
+    }
+    to {
+      transform: scaleY(1);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .mk-ledger-margin {
+      animation: none;
+    }
+  }
+
+  /* ── The arrival — the page's one authored moment ───────────────────────────────────────
+     DESIGN.md allows exactly one, it is the hero, and this is it: the headline, the sub, the
+     controls, the caveat and the film each rise a short distance into place, in that order,
+     once, on load. Nothing else on the page moves on its own.
+
+     ⚠ WHY THIS IS CSS AND NOT `motion/react`, WHICH IS RIGHT THERE IN `mk-motion.tsx`.
+     Three defects, and the first two are the non-negotiable rules that module states:
+
+     1. **The final state has to be the default.** A `motion` component with
+        `initial={{ opacity: 0 }}` inlines `opacity: 0` into the server-rendered HTML and waits
+        for hydration to undo it. The element is then genuinely missing for a reader whose
+        script fails, for a crawler, and — most concretely — for the e2e harness, which zeroes
+        every duration and screenshots the result. A CSS animation with `both` and a zeroed
+        duration lands on its `to` keyframe *immediately*, and the `to` keyframe here is the
+        element exactly as it would render with no animation at all. Delete this whole block
+        and the hero is unchanged apart from being still.
+     2. **Reduced motion removes travel, never content.** The query below drops the animation,
+        so the element renders at rest. `globals.css` already forces every duration to 0.01ms
+        under the same query; this rule is the explicit half so the intent is greppable.
+     3. `mk-motion.tsx` is a `"use client"` module, so importing anything from it into the hero
+        pulls `motion/react` into the bundle for `/` — tens of kilobytes of animation runtime on
+        the page whose LCP is a video poster, to run five keyframes a stylesheet already ships.
+        `<Arrival>` in that module is therefore a plain element that sets the attribute below;
+        the vocabulary is still declared in one place, and the page pays nothing for it.
+
+     The step is 70ms and the whole sequence resolves in 1.0s (index 4 × 70ms + 760ms). Long
+     enough to read as deliberate, short enough that a visitor who scrolls immediately is not
+     watching the hero finish arriving from underneath the second section. */
+  @keyframes mk-arrive {
+    from {
+      opacity: 0;
+      transform: translate3d(0, var(--mk-arrive-y), 0) scale(var(--mk-arrive-scale));
+    }
+
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  [data-mk-arrive] {
+    --mk-arrive-y: 14px;
+    --mk-arrive-scale: 1;
+    --mk-arrive-dur: 760ms;
+    --mk-arrive-step: 70ms;
+    /* ⚠ The shorthand resets `animation-delay`, so the delay must be declared after it. */
+    animation: mk-arrive var(--mk-arrive-dur) var(--mk-ease) both;
+    /* `--mk-arrive-offset` lets one part of a sequence start after another has run without
+       giving its elements meaningless ordinals. The hero's copy block sets it once, inherited,
+       so the lead begins as the second headline line lands instead of underneath it — the
+       alternative was numbering the lead `index={6}` to buy a delay, which is a number nobody
+       could later explain. */
+    animation-delay: calc(
+      var(--mk-arrive-offset, 0ms) + var(--mk-arrive-index, 0) * var(--mk-arrive-step)
+    );
+  }
+
+  /* ⚠ `object` is KEPT although the film it was written for is deleted. It is the vocabulary's
+     entry for a physical thing arriving toward the reader — it travels further, settles slower,
+     and scales, because a physical thing changes size on approach and a line of text does not.
+     0.972 is small on purpose: anything that reads as a "zoom in" is a template effect. */
+  [data-mk-arrive="object"] {
+    --mk-arrive-y: 26px;
+    --mk-arrive-scale: 0.972;
+    --mk-arrive-dur: 1000ms;
+  }
+
+  /* ── `line` — THE PAGE'S SIGNATURE MOVE, AND THE ONE THE CLIENT ASKED FOR ────────────────
+     *"Whenever the user is loading, the hero section should be properly animated. It should be
+     a professional animation that should be visible."* The previous arrival was a 14px rise
+     over 760ms, which is real motion and reads as nothing — at 88px type a 14px rise is a
+     sixth of one letter.
+
+     This wipes each clause of the headline up from behind a clip, one after the other, so the
+     line appears to be written onto the ruled sheet. It is the only move on the page that
+     hides content, and that is safe HERE and only here for one mechanical reason: it is a load
+     move driven by a CSS keyframe with `both` fill and no JavaScript anywhere in it. With the
+     harness zeroing durations it lands on `to` instantly; with no script at all it never runs
+     and the element renders plain. The scroll vocabulary cannot do this — see the block at the
+     foot of this file for why `armed` plus a clip is a page that is sometimes blank.
+
+     ⚠ THE INSETS ARE NEGATIVE AT REST, NOT ZERO. `clip-path: inset(0)` clips to the border box,
+     and at `line-height: 1.02` the glyphs OVERFLOW that box — Space Grotesk's ascender plus
+     descender is about 1.23em against a 1.02em line box. A zero inset would shave the tops of
+     the caps and the tails of every `y`, `p` and `g` permanently, in the finished state, on a
+     headline that reads "Keep it true for years." The expanded region clips nothing.
+
+     ⚠ `--mk-arrive-step` is doubled to 140ms for this variant. At 70ms two clauses read as one
+     event; at 140ms they read as two lines being written, which is the whole point of choosing
+     a per-line move over a block fade. */
+  [data-mk-arrive="line"] {
+    --mk-arrive-dur: 1100ms;
+    --mk-arrive-step: 140ms;
+    animation-name: mk-arrive-line;
+  }
+
+  @keyframes mk-arrive-line {
+    from {
+      clip-path: inset(-35% 0 100% 0);
+      transform: translate3d(0, 0.16em, 0);
+    }
+
+    to {
+      clip-path: inset(-35% 0 -35% 0);
+      transform: none;
+    }
+  }
+
+  /* The sheet's ruling fades up under the first line rather than being there from the first
+     frame — the page gets ruled, then written on, which is the same sentence the margin rule's
+     draw is making. Opacity is legal here for the reason above: no JavaScript is involved, so
+     there is no state in which a reader is left looking at an unruled sheet forever. */
+  .mk-ledger {
+    animation: mk-ledger-in 900ms var(--mk-ease) both;
+  }
+
+  @keyframes mk-ledger-in {
+    from {
+      opacity: 0;
+    }
+
+    to {
+      opacity: 1;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .mk-ledger {
+      animation: none;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    [data-mk-arrive] {
+      animation: none;
+    }
+  }
+
+  [data-mk-elevation="card"] {
+    box-shadow: var(--mk-shadow-card);
+  }
+
+  [data-mk-elevation="float"] {
+    box-shadow: var(--mk-shadow-float);
+  }
+
+  /* A bottom fade, for a frame that deliberately crops a taller thing.
+
+     ⚠ ITS ONE CONSUMER MOVED, AND THE REASON IT EXISTS DID NOT. This comment used to describe
+     "the card section", a 500px frame in a band that no longer exists. The rule is now used by
+     `[data-card-page-frame]` — the cropped `<CardPage>` in the bento's studio cell — and the
+     argument is the same one, which is why the rule survived the section that introduced it:
+     **the card page is as long as the owner's data, and that is the entire difference between
+     it and the fixed wallet pass beside it.** A frame that showed all of it would be showing
+     the wrong thing, and a hard cut mid-button reads as a clipping bug rather than as a crop.
+     The last 96px fade to the frame's own ground so the cut reads as "continues below".
+
+     It lives here for the same reason `.mk-sky` does: `marketing.spec.ts` fails any component
+     in `src/components/marketing/**` that declares a gradient of its own, so every gradient in
+     this layer is in this file. `--mk-fade-to` lets the caller name the ground being faded to,
+     because the fade has to match whatever is behind it — the studio's frame sets it to
+     `--mk-white`, which is its cell's ground rather than the pass's paper. */
+  .mk-fade-b {
+    position: relative;
+  }
+
+  .mk-fade-b::after {
+    content: "";
+    position: absolute;
+    inset-inline: 0;
+    bottom: 0;
+    height: 96px;
+    pointer-events: none;
+    background-image: linear-gradient(
+      to bottom,
+      rgb(255 255 255 / 0) 0%,
+      var(--mk-fade-to, var(--mk-white)) 100%
+    );
+  }
+
+  /* A full-bleed rail whose FIRST cell still lines up with the content column.
+     The template strip runs past the gutter to the viewport edge on purpose — it is the one
+     band that breaks the grid — but a rail whose first card starts at x=0 while the heading
+     above it starts at 152px reads as a misalignment, not as a bleed.
+
+     ⚠ Padding alone does not do it, and this is the trap: the cells are scroll-snap targets,
+     and `scroll-snap-align: start` aligns to the SCROLLPORT edge, which sits inside the
+     padding box. So the browser scrolls the rail by exactly the padding to satisfy the snap,
+     the inset is cancelled, and `scrollLeft` sits at 152 on first paint. `scroll-padding-inline`
+     is what moves the snap edge to match, and it has to carry the same value — which is why
+     both live in one rule here rather than as two utilities that can drift apart.
+
+     The value is the gutter plus whatever the centred 1200px column leaves at the side, so the
+     rail's first cell and the section's heading share an edge at every width. */
+  .mk-rail-inset {
+    --mk-rail-gutter: var(--spacing-5, 1.25rem);
+    padding-inline-start: max(
+      var(--mk-rail-gutter),
+      (100% - var(--mk-page-max)) / 2 + var(--mk-rail-gutter)
+    );
+    padding-inline-end: var(--mk-rail-gutter);
+    scroll-padding-inline-start: max(
+      var(--mk-rail-gutter),
+      (100% - var(--mk-page-max)) / 2 + var(--mk-rail-gutter)
+    );
+  }
+
+  @media (min-width: 768px) {
+    .mk-rail-inset {
+      --mk-rail-gutter: 2rem;
+    }
+  }
+
+  /* Interior hairlines for a grid of cells: one rule per shared edge, drawn by
+     the cell that follows it, so the outer edges of the grid stay clean. */
+  .mk-hairline-grid > * + * {
+    border-top: 1px solid var(--mk-hairline);
+  }
+
+  @media (min-width: 768px) {
+    .mk-hairline-grid[data-cols] > * + * {
+      border-top: 0;
+      border-left: 1px solid var(--mk-hairline);
+    }
+  }
+}
+
+/* ── The surfaces we did not draw ────────────────────────────────────────────
+   Text selection, the caret, the scrollbar, the focus ring and the numerals in
+   a data column all ship with browser defaults that belong to no design system.
+   Leaving them is the cheapest tell that a page was assembled rather than built,
+   so the marketing root themes every one of them from the palette.
+
+   Scoped to `[data-mk-root]` throughout: the product's own screens have their
+   own chrome and must not inherit a lime selection highlight. */
+
+[data-mk-root] ::selection {
+  /* The action colour, with the ink the action colour ships with. Amber carries
+     `--mk-amber-deep` at 6.98:1 — the pair is `template-palettes.ts`'s own
+     `buttonBg`/`buttonInk` for this ground, so a selected run of text is
+     legible for the same measured reason the CTA's label is. It was lime on
+     ink, and a lime highlight is the loudest thing a page can do to a sentence
+     somebody is trying to read. */
+  background: var(--mk-amber);
+  color: var(--mk-amber-deep);
+}
+
+[data-mk-root] {
+  caret-color: var(--mk-sapphire-ink);
+  scrollbar-color: var(--mk-hairline-strong) transparent;
+  scrollbar-width: thin;
+  /* Numbers in the field index and the step ordinals sit in columns; proportional
+     figures make those columns ragged. */
+  font-variant-numeric: tabular-nums;
+}
+
+[data-mk-root] ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+[data-mk-root] ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+[data-mk-root] ::-webkit-scrollbar-thumb {
+  background: var(--mk-hairline-strong);
+  border: 3px solid var(--mk-paper);
+  border-radius: var(--mk-radius-pill);
+}
+
+[data-mk-root] ::-webkit-scrollbar-thumb:hover {
+  background: var(--mk-pebble-mute);
+}
+
+/* The focus ring, in the palette rather than the platform's blue. Two rings, so
+   it survives every ground on the page.
+
+   ⚠ The outline used to be `--mk-azure`, which held 3.46:1 on paper and roughly
+   1.4:1 on the old sky — meaning that in the hero, the one place a visitor is
+   most likely to tab first, the white halo was the entire focus indicator and
+   the coloured ring was decoration. `--mk-sapphire-lift` is the lightest
+   Sapphire that still clears 3:1 on paper (3.52:1) and it clears 3:1 on the sky
+   as well (3.49:1 at the zenith, 4.54:1 at the horizon). The halo is now
+   redundancy rather than the load-bearing half. */
+[data-mk-root] :focus-visible {
+  outline: 2px solid var(--mk-sapphire-lift);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgb(255 255 255 / 0.9);
+  border-radius: var(--mk-radius-chrome);
+}
+
+/* A link's underline should clear its descenders. The default sits on them. */
+[data-mk-root] a {
+  text-underline-offset: 0.18em;
+  text-decoration-thickness: from-font;
+}
+
+/* ── THE SCROLL VOCABULARY ───────────────────────────────────────────────────
+   Paired with `components/marketing/mk-reveal.tsx`; read its header first.
+
+   ⚠ DESIGN.md USED TO FORBID THIS ENTIRELY, AND THE OVERRIDE IS THE CLIENT'S:
+   *"when the user is scrolling, the scroll effect should also be a very smooth
+   and very crazy transition."* The rule it replaces was not wrong, though, and
+   the failure mode it named is the one to design against: scattered reveals
+   "read as a template with a plugin attached… and they make every section
+   behave identically."
+
+   So this is a VOCABULARY of two named moves with two different jobs, not one
+   fade applied everywhere:
+
+     · `deal`  the pass itself, rising 40px and settling from 0.972. The page is
+               a wallet and the sections are passes; this is a card being dealt
+               onto the stack. One rule, applied by `<Section>`, so the deck
+               moves as a deck instead of each section deciding for itself.
+     · `rise`  contents inside a pass — a bento cell, a trust panel. 18px, with
+               a capped stagger, so a group arrives as a group.
+
+   The hero's own moves are LOAD moves and live in the arrival block below.
+   Nothing here fires above the fold.
+
+   ⚠ THIS ANIMATES TRANSFORM ONLY. IT MUST NEVER TOUCH OPACITY, AND THE REASON
+   IS MECHANICAL RATHER THAN AESTHETIC.
+
+   `armed` is applied by JavaScript and only an intersection removes it, so
+   anything that HIDES content while armed is missing for a crawler, for a
+   reader whose script failed, and for every screenshot this suite takes —
+   zeroing durations does not help, because `armed` is a static rule and not an
+   animation. The first version faded from `opacity: 0` and
+   `marketing.spec.ts`'s "every cell is painted, in position, at rest with
+   durations zeroed" caught it at 768 and 1440, correctly.
+
+   A displaced element is still fully painted, still the right size, still
+   readable and still in the document. The worst case of a stuck observer is
+   something slightly low, never something absent. That asymmetry is the whole
+   argument, and it is why the clip-wipe — which really does hide text — is a
+   LOAD move driven by a CSS keyframe with `both` fill, where the final state is
+   reached with no script at all.
+
+   The stagger is capped: an eight-cell grid at 70ms would still be arriving
+   after the reader had finished looking at it. */
+@media (prefers-reduced-motion: no-preference) {
+  [data-mk-reveal="armed"] {
+    transform: translateY(18px);
+  }
+
+  [data-mk-reveal="in"] {
+    animation: mk-reveal 700ms var(--mk-ease) backwards;
+    animation-delay: calc(min(var(--mk-reveal-i, 0), 6) * 70ms);
+  }
+
+  /* The deck's own move. Longer and further than `rise`, because a pass is a
+     large object and a large object travelling 18px reads as a jitter rather
+     than as an arrival. `scale` is what makes it a card being placed rather
+     than a div sliding. */
+  [data-mk-reveal="armed"][data-mk-reveal-move="deal"] {
+    transform: translateY(40px) scale(0.972);
+  }
+
+  [data-mk-reveal="in"][data-mk-reveal-move="deal"] {
+    animation: mk-deal 900ms var(--mk-ease) backwards;
+    animation-delay: 0ms;
+  }
+}
+
+@keyframes mk-reveal {
+  from {
+    transform: translateY(18px);
+  }
+}
+
+@keyframes mk-deal {
+  from {
+    transform: translateY(40px) scale(0.972);
+  }
+}

@@ -1,3 +1,18 @@
-api.getcontactbook.com {
-    reverse_proxy contactbook-api:8080
+# Caddy gets its TLS cert automatically (Let's Encrypt) for whatever domain
+# it's told to serve — DNS must already resolve to this VM's external IP
+# before the first request, or the ACME challenge fails.
+#
+# {$API_DOMAIN} is substituted from the environment; render-api-env.sh sets
+# CADDY_API_DOMAIN in the same .env this compose file already reads, so this
+# file doesn't need per-environment editing (api.getcontactbook.com for prod,
+# apistaging.getcontactbook.com for staging, ...).
+{$CADDY_API_DOMAIN} {
+	reverse_proxy api:8080
+
+	encode gzip
+
+	log {
+		output stdout
+		format json
+	}
 }

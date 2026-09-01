@@ -1,112 +1,59 @@
-# syntax=docker/dockerfile:1.7
+# Build context is the REPO ROOT, not apps/api — a pnpm workspace needs the
+# root lockfile and every workspace package.json to resolve dependencies.
+#   docker build -f apps/api/Dockerfile -t contactbook-api:local .
 #
-# Multi-stage Dockerfile for the ContactBook NestJS API.
-# Optimized for Google Cloud Run: small runtime, non-root user, listens on $PORT.
-#
-# Build context MUST be the repository root (pnpm workspace):
-#   docker build -f apps/api/Dockerfile -t contactbook-api .
-#
-ARG NODE_VERSION=20-alpine
+# node:22-slim (Debian glibc), not alpine, in BOTH stages deliberately: bcrypt
+# is a native addon, and building it in one libc and running it in another is
+# exactly the kind of thing that only breaks at 2am on the VM, not in CI.
 
-# =============================================================================
-# Stage 1: base — Node + pnpm + OpenSSL (required by Prisma engines on Alpine)
-# =============================================================================
-FROM node:${NODE_VERSION} AS base
-RUN apk add --no-cache openssl libc6-compat \
-    && corepack enable \
-    && corepack prepare pnpm@10 --activate
-ENV PNPM_HOME=/pnpm \
-    PATH=/pnpm:$PATH \
-    CI=true
-WORKDIR /workspace
+# ---- deps + build ---------------------------------------------------------
+FROM node:22-slim AS build
+WORKDIR /repo
 
-# =============================================================================
-# Stage 2: builder — install workspace deps, generate Prisma client, build Nest
-# =============================================================================
-FROM base AS builder
+# python3/make/g++: bcrypt falls back to compiling from source if no prebuilt
+# binary matches this exact platform. Build-stage only — never ships.
+RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ \
+  && rm -rf /var/lib/apt/lists/*
 
-# Workspace manifests first to maximize Docker layer caching across code changes.
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.json ./
-COPY apps/api/package.json ./apps/api/
-COPY apps/web/package.json ./apps/web/
-COPY packages/types/package.json ./packages/types/
-COPY packages/utils/package.json ./packages/utils/
+RUN corepack enable && corepack prepare pnpm@11.13.1 --activate
 
-RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
-    pnpm install --frozen-lockfile \
-    --filter api... \
-    --filter "./packages/*"
+# Manifests first, so `pnpm install` is Docker-layer-cached across builds
+# that only change application source, not dependencies.
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
+COPY apps/api/package.json apps/api/package.json
+COPY apps/web/package.json apps/web/package.json
+COPY packages/types/package.json packages/types/package.json
+COPY packages/utils/package.json packages/utils/package.json
 
-# Source for the api and its workspace deps.
-COPY apps/api ./apps/api
-COPY packages ./packages
+RUN pnpm install --frozen-lockfile
 
-# Full dotenv for prisma generate (not persisted): BuildKit file secret -> apps/api/.env, then removed.
-# CI: decode API_ENV_B64 to apps/api/.env, then build-push-action `secret-files: api_env=<that path>`.
-# Local: docker buildx build --secret id=api_env,src=apps/api/.env ...
-RUN --mount=type=secret,id=api_env \
-    --mount=type=cache,id=pnpm-store,target=/pnpm/store \
-    cp /run/secrets/api_env /workspace/apps/api/.env \
-    && pnpm --filter api exec prisma generate \
-    && pnpm --filter api build \
-    && rm -f /workspace/apps/api/.env \
-    && test -f apps/api/dist/main.js \
-    || (echo "Build failed: apps/api/dist/main.js missing" \
-    && ls -la apps/api/dist && exit 1)
+# Now the real source.
+COPY apps/api apps/api
+COPY packages packages
 
-# =============================================================================
-# Stage 3: deployer — produce a self-contained prod-only deployment tree
-# =============================================================================
-FROM base AS deployer
+# prisma.config.ts calls env('DIRECT_URL') at config-LOAD time -- generate
+# itself never connects, it just needs the var to exist. This build stage
+# has no .env (see .dockerignore) and shouldn't: real credentials have no
+# business inside an image layer. ARG, not ENV -- doesn't persist into the
+# runtime stage, which never reads this build stage's env at all anyway.
+ARG DIRECT_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder"
+RUN pnpm --filter api prisma:generate
+RUN pnpm --filter api build
 
-# Re-copy workspace metadata + source so pnpm deploy can resolve the api.
-COPY --from=builder /workspace/package.json /workspace/pnpm-lock.yaml /workspace/pnpm-workspace.yaml /workspace/tsconfig.json /workspace/
-COPY --from=builder /workspace/apps/api /workspace/apps/api
-COPY --from=builder /workspace/apps/web/package.json /workspace/apps/web/package.json
-COPY --from=builder /workspace/packages /workspace/packages
-
-# Drop pre-built node_modules — pnpm deploy installs a fresh prod-only tree.
-RUN rm -rf /workspace/node_modules /workspace/apps/api/node_modules \
-    /workspace/packages/*/node_modules
-
-# Create the deployable bundle (apps/api + its prod deps, workspace deps inlined).
-RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
-    pnpm --filter=api deploy --legacy --prod /deploy
-
-# pnpm deploy reinstalls @prisma/client fresh, which discards the previously
-# generated client. prisma is a prod dep so pnpm deploy --prod includes the CLI;
-# use it directly to regenerate the client inside /deploy.
-WORKDIR /deploy
-RUN --mount=type=secret,id=api_env \
-    cp /run/secrets/api_env /deploy/.env \
-    && ./node_modules/.bin/prisma generate \
-    && rm -f /deploy/.env
-
-# Drop files not needed at runtime to keep the image lean.
-RUN rm -rf src test eslint.config.mjs nest-cli.json \
-    tsconfig.json tsconfig.build.json tsconfig.build.tsbuildinfo \
-    Dockerfile cloudbuild.yaml .env.example .gitignore
-
-# =============================================================================
-# Stage 4: runtime — minimal image for Cloud Run
-# =============================================================================
-FROM node:${NODE_VERSION} AS runtime
-
-RUN apk add --no-cache openssl tini
-
-ENV NODE_ENV=production \
-    PORT=8080 \
-    NODE_OPTIONS="--enable-source-maps"
-
+# ---- runtime ----------------------------------------------------------
+FROM node:22-slim AS runtime
 WORKDIR /app
-COPY --from=deployer --chown=node:node /deploy /app
+ENV NODE_ENV=production
 
-USER node
+# Full workspace node_modules, not a pruned pnpm-deploy output — simpler and
+# more predictable than chasing pnpm deploy's workspace-linking edge cases
+# for a two-package monorepo this size. Costs image size, not correctness.
+COPY --from=build /repo/node_modules ./node_modules
+COPY --from=build /repo/apps/api/node_modules ./apps/api/node_modules
+COPY --from=build /repo/apps/api/dist ./apps/api/dist
+COPY --from=build /repo/apps/api/prisma ./apps/api/prisma
+COPY --from=build /repo/apps/api/package.json ./apps/api/package.json
 
-# Documents the default Cloud Run port; Cloud Run injects PORT at runtime and
-# the Nest app reads process.env.PORT in src/main.ts.
+WORKDIR /app/apps/api
 EXPOSE 8080
-
-# tini reaps zombies and forwards signals (SIGTERM from Cloud Run -> Node).
-ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["node", "dist/main.js"]

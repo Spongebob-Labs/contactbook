@@ -1,0 +1,60 @@
+/* TEMPORARY VISUAL HARNESS — delete before hand-off. Not referenced by any test. */
+import type { CSSProperties } from "react";
+
+import { CardPage, cardPageSurface } from "@/card/card-page";
+import type { CardSurface, HeaderLayout, PatternId, SurfaceStyle } from "@/card/card-surface";
+import { resolveCard } from "@/card/resolve-card";
+import { paletteVars, TEMPLATE_PALETTES, type PaletteId } from "@/card/template-palettes";
+import { fixtureCards } from "@/fixtures/cards";
+import { fixtureFields, fixtureGroups } from "@/fixtures/profile";
+import { fixtureUser } from "@/fixtures/user";
+import type { ContactCard, ResolvedCard } from "@/types/domain";
+
+export const dynamic = "force-dynamic";
+
+const CARD = fixtureCards.find((c) => c.slug === "prya-hq") as ContactCard;
+
+function build(paletteId: PaletteId, surface: CardSurface): ResolvedCard {
+  const resolved = resolveCard({ ...CARD, paletteId }, fixtureUser, fixtureGroups, fixtureFields);
+  return { ...resolved, surface } as ResolvedCard;
+}
+
+export default async function SurfaceMatrix({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const q = await searchParams;
+  const one = (k: string): string | undefined => (Array.isArray(q[k]) ? q[k][0] : q[k]);
+
+  const paletteId = (one("palette") ?? "sapphire") as PaletteId;
+  const surfaceStyle = (one("style") ?? "mesh") as SurfaceStyle;
+  const headerLayout = (one("layout") ?? "banner") as HeaderLayout;
+  const patternId = (one("pattern") ?? "grid") as PatternId;
+
+  const resolved = build(paletteId, { surfaceStyle, headerLayout, patternId });
+  const palette = TEMPLATE_PALETTES[paletteId];
+  const spec = cardPageSurface(resolved);
+
+  return (
+    <main className="flex min-h-full flex-1 flex-col items-center bg-canvas">
+      <div
+        data-card-page-surface=""
+        style={paletteVars(palette) as CSSProperties}
+        className="flex w-full max-w-[480px] flex-col items-center gap-4"
+      >
+        <CardPage resolved={resolved} />
+        <p
+          style={{
+            position: "relative",
+            zIndex: 1,
+            color: spec.painted ? "var(--c-ink-soft)" : "var(--ink-3)",
+          }}
+          className="text-center text-xs"
+        >
+          {`${paletteId} · ${surfaceStyle} · ${headerLayout} · ${patternId}`}
+        </p>
+      </div>
+    </main>
+  );
+}

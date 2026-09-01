@@ -1,0 +1,10 @@
+# Terraform state must never be committed — it contains resolved values.
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+# Plan files can embed secret values. The previous repo committed one; do not repeat that.
+*.tfplan
+# Real variable values.
+terraform.tfvars
+*.auto.tfvars

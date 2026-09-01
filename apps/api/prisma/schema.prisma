@@ -1,15 +1,108 @@
+// Scope note: this is NOT the full schema from docs/architecture/lld.md yet.
+// Card/ShareLink/Contact/WhatsAppTemplate landed 2026-08-23 (curation, a
+// contact registry with bulk import, live public resolver, and the actual
+// WhatsApp send wired through the outbox). Contact is named Recipient in
+// lld.md's original draft — renamed to match product usage; a card is
+// still shared by contactId, one at a time. Still missing: CardVersion
+// (diffing, needs the notify-on-update feature), Broadcast/BroadcastTarget
+// (batch send + per-target delivery tracking across many contacts at once),
+// ShareLinkFieldOverride (per-contact field hiding), ScanCode, LinkEvent.
+// See docs/architecture/sprint-plan.md.
+
 generator client {
   provider = "prisma-client-js"
 }
 
+// Prisma 7: no connection URL here. Migrate reads its connection from
+// prisma.config.ts; the running app passes a driver adapter to the
+// PrismaClient constructor (see src/prisma/prisma.service.ts). Both still
+// read DATABASE_URL / DIRECT_URL from the environment — just not from this file.
 datasource db {
-  provider  = "postgresql"
+  provider = "postgresql"
 }
 
 // ==========================================
-// DOMAIN ENUMS
+// AUTH
 // ==========================================
 
+/// Passwordless: verifying an OTP for a phone number that has never been seen
+/// creates the User, with every identity field null until onboarding.
+///
+/// firstName/lastName/email live here, not as ProfileFields, because they are
+/// account identity rather than a shareable/removable fact — collected once
+/// at onboarding via POST /profile/onboarding. There is deliberately no
+/// separate "primary phone" column: phoneE164 IS the primary phone, the one
+/// number the system has actually OTP-verified. A second, freely-typed,
+/// unverified "primary phone" would undermine that everywhere WhatsApp
+/// delivery assumes phoneE164 is reachable.
+model User {
+  id                           String    @id @default(uuid())
+  phoneE164                    String    @unique
+  displayName                  String?
+  firstName                    String?
+  lastName                     String?
+  email                        String?
+  /// Set once, server-side only, by POST /profile/onboarding. Its presence is
+  /// what makes that endpoint 409 on a second call — onboarding is one-shot;
+  /// every edit after it goes through the granular field/group CRUD instead.
+  profileOnboardingCompletedAt DateTime?
+  isActive                     Boolean   @default(true)
+  createdAt                    DateTime  @default(now())
+  updatedAt                    DateTime  @updatedAt
+
+  refreshTokens RefreshToken[]
+  profileFields ProfileField[]
+  fieldGroups   ProfileFieldGroup[]
+  cards         Card[]
+  contacts      Contact[]
+
+  @@map("users")
+}
+
+/// One row per OTP request. The code itself is never stored — only its bcrypt
+/// hash. `attempts` bounds brute force against a single 6-digit code.
+model OtpChallenge {
+  id         String    @id @default(uuid())
+  phoneE164  String
+  codeHash   String
+  attempts   Int       @default(0)
+  consumedAt DateTime?
+  expiresAt  DateTime
+  createdAt  DateTime  @default(now())
+
+  @@index([phoneE164, expiresAt])
+  @@map("otp_challenges")
+}
+
+/// Rotating refresh tokens. `tokenHash` is SHA-256 (deterministic — looked up
+/// by exact match), unlike the OTP's bcrypt hash which is only ever compared,
+/// never searched by. Reusing an already-rotated token (replacedById set)
+/// revokes the whole family: that pattern is how a stolen refresh token gets
+/// detected after the legitimate client already rotated past it.
+model RefreshToken {
+  id           String    @id @default(uuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash    String    @unique
+  familyId     String
+  replacedById String?
+  revokedAt    DateTime?
+  expiresAt    DateTime
+  createdAt    DateTime  @default(now())
+
+  @@index([userId, revokedAt])
+  @@index([familyId])
+  @@map("refresh_tokens")
+}
+
+// ==========================================
+// PROFILE
+// ==========================================
+
+/// Groups fields for display — which section of the profile editor a field
+/// sits in. Orthogonal to FieldType: a CUSTOM-typed field can belong to any
+/// category, and a PHONE-typed field is usually PERSONAL or WORK depending on
+/// which number it is.
 enum FieldCategory {
   IDENTITY
   PERSONAL
@@ -20,6 +113,8 @@ enum FieldCategory {
   CUSTOM
 }
 
+/// What KIND of data the field holds — governs input validation on the client
+/// and, for the three financial types, whether the value is encrypted at rest.
 enum FieldType {
   PHONE
   LANDLINE
@@ -44,858 +139,386 @@ enum FieldType {
   CUSTOM
 }
 
-enum CardType {
+/// The kind of repeatable, named thing a ProfileFieldGroup represents. A
+/// narrower enum than FieldCategory on purpose — PERSONAL and IDENTITY are
+/// singular per user (you have one "personal" set of fields, not several),
+/// so they are never grouped; only genuinely repeatable things are.
+enum FieldGroupCategory {
+  WORK
   BUSINESS
+  SOCIAL
+  FINANCIAL
+}
+
+/// One instance of a repeatable structured thing: one specific job, one
+/// specific business, one specific bank account, one specific social
+/// profile. Exists so "these four fields are Acme Corp's" is expressible —
+/// the flat ProfileField list alone has no way to say that.
+///
+/// Deliberately NOT a parallel field model: a group is a label over a set of
+/// ordinary ProfileFields (via ProfileField.groupId), not a new place values
+/// live. Cards still pick individual ProfileFields regardless of grouping —
+/// "share my Acme Corp work email but not my work phone" — so sharing never
+/// has to reach across two different field representations.
+model ProfileFieldGroup {
+  id         String             @id @default(uuid())
+  userId     String
+  user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category   FieldGroupCategory
+  /// User-chosen label for the instance — "Acme Corp", "Freelance", "HDFC
+  /// Savings". Not required: a group can exist before it's named.
+  tag        String?
+  position   Int                @default(0)
+  archivedAt DateTime?
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+
+  fields ProfileField[]
+
+  @@index([userId, category, archivedAt, position])
+  @@map("profile_field_groups")
+}
+
+/// A single entry in a user's profile. There is no fixed "Profile" row with
+/// nullable columns for phone/email/etc — a user's profile IS this list, and
+/// every field on it is optional by construction: it either exists or it
+/// doesn't, rather than existing-but-empty. This is also what makes cards
+/// possible later: a Card is just a chosen subset of a user's ProfileFields.
+///
+/// PHOTO is a field type like any other, but its value can only be set via
+/// the upload endpoint (POST /profile/photo) — the value is a GCS object URL,
+/// never a client-supplied string, since there is no meaningful "type a photo
+/// URL yourself" path we want to support.
+model ProfileField {
+  id          String             @id @default(uuid())
+  userId      String
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category    FieldCategory
+  type        FieldType
+  label       String
+  /// Encrypted at rest (AES-256-GCM, AAD bound to userId+fieldId+type) when
+  /// `type` is BANK_ACCOUNT, DIGITAL_WALLET, or CRYPTO_WALLET. See
+  /// src/crypto/field-encryption.util.ts. Never logged at any level — the
+  /// logger's redact() drops any key literally named `value`.
+  value       String
+  isEncrypted Boolean            @default(false)
+  position    Int                @default(0)
+  /// Null for a "loose" field (personal phone, personal email — things that
+  /// don't repeat). Set when the field belongs to one instance of a
+  /// repeatable thing (this job's phone, this bank account's IFSC). Cascades:
+  /// a group's fields don't mean anything once the group they describe is gone.
+  groupId     String?
+  group       ProfileFieldGroup? @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  /// Soft delete. An archived field vanishes from the live profile and from
+  /// any card that included it, but is never hard-deleted — a card's
+  /// historical "what did I share" record should survive the source field
+  /// being removed.
+  archivedAt  DateTime?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  cardFields CardField[]
+
+  @@index([userId, archivedAt, position])
+  @@index([groupId, position])
+  @@map("profile_fields")
+}
+
+// ==========================================
+// SHARING
+// ==========================================
+
+enum CardKind {
+  WORK
   PERSONAL
   PAYMENT
   CUSTOM
 }
 
-enum ConnectionStatus {
-  PENDING
-  ACCEPTED
-  DECLINED
+/// A named, curated subset of the owner's ProfileFields — "what I show this
+/// group of people." A Card holds no values itself; CardField just points at
+/// which ProfileFields are included, so editing a ProfileField updates every
+/// card (and every live ShareLink) that includes it automatically.
+///
+/// Deliberately missing vs. the fuller docs/architecture/lld.md draft:
+/// `theme` (no dashboard UI to theme yet) and `currentVersion` (no CardVersion
+/// table yet — that lands with the notify-on-update feature). `slug` never
+/// lands as such — `publicToken` below is what the QR/public-URL problem
+/// actually needed, not a human-readable slug.
+model Card {
+  id         String    @id @default(uuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String
+  kind       CardKind  @default(CUSTOM)
+  archivedAt DateTime? // cascades to REVOKE every ShareLink on this card — see SharingService.archiveCard
+
+  /// The card's own public URL, independent of any recipient. Scanned via QR
+  /// before the card has ever been shared with anyone — resolves through the
+  /// same GET /public/links/:token as a ShareLink token (ShareLinksService
+  /// .resolvePublic falls back here on a miss), never a separate route. Never
+  /// tied to one contact: revoking a contact's ShareLink must not affect this.
+  /// 128-bit base62 via the same generateShareToken() ShareLink already uses —
+  /// one generator, one entropy guarantee, across both token namespaces.
+  publicToken String @unique
+
+  // Appearance. All nullable and all NULL until the owner explicitly picks one —
+  // NULL is load-bearing, it means "derive the look from `kind` instead," the
+  // fallback both the owner app and the public page already implement. No
+  // backfill needed: an existing card with everything NULL renders exactly as
+  // it does today.
+  templateId      String? // "meridian" | "marigold"
+  paletteId       String? // "onyx" | "sapphire" | "emerald" | "oxblood" | "rust" | "amber" | "clay" | "pistachio" | "periwinkle"
+  groundHex       String? // free colour, #RRGGBB — overrides paletteId when set
+  finish          String? // surface finish, FE-owned value set
+  texture         String? // motif, FE-owned value set, "none" included
+  texturePresence String? // how strongly the texture reads, FE-owned value set
+  textureScale    String? // multiplier on the texture tile, FE-owned value set
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  fields     CardField[]
+  shareLinks ShareLink[]
+  scans      CardScan[]
+
+  @@index([userId, archivedAt])
+  @@map("cards")
+}
+
+/// Membership of one ProfileField on one Card, plus card-scoped presentation.
+/// `visible=false` is a soft hide: the owner can toggle a field off without
+/// losing its position or label override. `fieldId` must belong to the same
+/// owner as the card — enforced in SharingService, not by the schema (Prisma
+/// can't express a cross-row same-owner constraint).
+model CardField {
+  cardId        String
+  fieldId       String
+  card          Card         @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  field         ProfileField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  visible       Boolean      @default(true)
+  position      Int          @default(0)
+  labelOverride String?
+
+  @@id([cardId, fieldId])
+  @@index([cardId, visible, position])
+  @@map("card_fields")
 }
 
 enum ContactSource {
-  GOOGLE
-  ICLOUD
-  VCARD
-  CONTACTBOOK
-}
-
-enum OAuthProvider {
-  GOOGLE
-  MICROSOFT
-  ICLOUD
-}
-
-enum WhatsappFlowState {
-  IDLE
-  AWAITING_CONNECTION_ACCEPT
-  AWAITING_RECIPIENT_CARD_SELECTION
-  AWAITING_REQUESTER_CARD_SELECTION
-}
-
-enum ConnectionInviteRecipientKind {
-  CONTACT
-  EXTERNAL
-}
-
-enum WebhookDlqStatus {
-  PENDING
-  RETRYING
-  SUCCEEDED
-  FAILED
-}
-
-enum ConnectionInviteStatus {
-  PENDING
-  DECLINED
-  CONVERTED
-}
-
-enum WhatsappProvider {
-  OPENWA
-  TWILIO
-}
-
-enum WhatsappMessageDirection {
+  MANUAL // added one at a time via POST /contacts
+  IMPORTED // bulk-imported via POST /contacts/import, e.g. from the device address book
+  QR_SCAN
   INBOUND
-  OUTBOUND
 }
 
-enum WhatsappMessagePurpose {
-  OTP
-  CONNECTION_INVITE
-  SIGNUP_INVITE
-  CARD_SELECTION
-  CONNECTION_UPDATE
-  TRAVEL_NOTIFICATION
-  LOGIN_BROADCAST
-  CONVERSATION
-  CARD_SHARE
-}
-
-enum WhatsappTemplateUseCase {
-  CARD_SHARE
-  OTP
-  CONNECTION_INVITE
-}
-
-enum CardShareDispatchStatus {
-  PENDING
-  PROCESSING
-  RETRYING
-  DISPATCHED
-  FAILED
-}
-
-enum WhatsappMessageStatus {
-  PENDING
-  SENT
-  DELIVERED
-  READ
-  FAILED
-  RECEIVED
-  PROCESSING
-  PROCESSED
-}
-
-// ==========================================
-// AUTH / SESSION (retained)
-// ==========================================
-
-model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  /// National significant number (digits only, no country calling code).
-  phone       String
-  /// E.164 country calling prefix (e.g. +1, +44).
-  countryCode String   @db.VarChar(8)
-  firstName String
-  lastName  String
-  isActive  Boolean  @default(false)
-  profileOnboardingCompletedAt DateTime? @map("profile_onboarding_completed_at")
-
-  fieldGroups   FieldGroup[]
-  cards         ContactCard[]
-
-  initiatedConnections Connection[] @relation("Requester")
-  receivedConnections  Connection[] @relation("Receiver")
-  connectionInvites    ConnectionInvite[]
-
-  contacts           Contact[]
-  contactMergeGroups ContactMergeGroup[]
-  integrations       IntegrationState[]
-  travelEvents       TravelEvent[]
-  tags               Tag[]
-  contactGroups      ContactGroup[]
-  travelProfile      UserTravelProfile?
-  travelSessions     UserTravelSession[]
-  travelNotifyContacts TravelNotificationContact[]
-
-  oauthAccounts    OAuthAccount[]
-  otpSessions      OtpSession[]
-  whatsappSessions WhatsappSession[]
-  refreshTokens    RefreshToken[]
-  cardShareBatches CardShareBatch[]
-  createdWhatsappTemplates WhatsappTemplate[] @relation("TemplateCreator")
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([countryCode, phone])
-  @@map("users")
-}
-
-model RefreshToken {
-  id        String    @id @default(uuid())
-  userId    String
-  tokenHash String    @unique
-  expiresAt DateTime
-  revokedAt DateTime?
-  createdAt DateTime  @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@map("refresh_tokens")
-}
-
-model FieldGroup {
-  id       String        @id @default(uuid())
-  userId   String
-  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  category FieldCategory
-  name     String
-
-  fields ProfileField[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([userId, category])
-  @@map("field_groups")
-}
-
-model ProfileField {
-  id          String      @id @default(uuid())
-  groupId     String
-  group       FieldGroup  @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  type        FieldType
-  label       String?
-  isSensitive Boolean     @default(false)
-  value       String?
-
-  address       AddressDetail?
-  bankAccount   BankAccountDetail?
-  digitalWallet DigitalWalletDetail?
-  cryptoWallet  CryptoWalletDetail?
-
-  cardMappings CardFieldMapping[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([groupId])
-  @@map("profile_fields")
-}
-
-model ContactCard {
-  id          String         @id @default(uuid())
-  userId      String
-  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name        String
-  type        CardType       @default(CUSTOM)
-  isSensitive Boolean        @default(false)
-
-  fieldMappings CardFieldMapping[]
-  requesterSharedConnections Connection[] @relation("RequesterSharedCard")
-  receiverSharedConnections  Connection[] @relation("ReceiverSharedCard")
-  shareBatches  CardShareBatch[]
-  vcardAssets   VCardAsset[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([userId])
-  @@map("contact_cards")
-}
-
-model CardFieldMapping {
-  cardId  String
-  fieldId String
-  card    ContactCard  @relation(fields: [cardId], references: [id], onDelete: Cascade)
-  field   ProfileField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
-
-  @@id([cardId, fieldId])
-  @@map("card_field_mappings")
-}
-
-model Connection {
-  id                    String           @id @default(uuid())
-  status                ConnectionStatus @default(PENDING)
-  requesterId           String
-  requester             User             @relation("Requester", fields: [requesterId], references: [id], onDelete: Cascade)
-  receiverId            String
-  receiver              User             @relation("Receiver", fields: [receiverId], references: [id], onDelete: Cascade)
-  requesterSharedCardId String?          @map("requester_shared_card_id")
-  requesterSharedCard   ContactCard?     @relation("RequesterSharedCard", fields: [requesterSharedCardId], references: [id], onDelete: SetNull)
-  receiverSharedCardId  String?          @map("receiver_shared_card_id")
-  receiverSharedCard    ContactCard?     @relation("ReceiverSharedCard", fields: [receiverSharedCardId], references: [id], onDelete: SetNull)
-  hasSharedBack         Boolean          @default(false)
-
-  whatsappSessions WhatsappSession[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([requesterId, receiverId])
-  @@index([requesterId, status])
-  @@index([receiverId, status])
-  @@map("connections")
-}
-
-model ConnectionInvite {
-  id                   String                      @id @default(uuid())
-  requesterId          String
-  requester            User                        @relation(fields: [requesterId], references: [id], onDelete: Cascade)
-  recipientKind        ConnectionInviteRecipientKind
-  recipientContactId   String?
-  recipientCountryCode String                      @db.VarChar(8)
-  recipientPhone       String
-  status               ConnectionInviteStatus      @default(PENDING)
-  expiresAt            DateTime
-  createdAt            DateTime                    @default(now())
-  updatedAt            DateTime                    @updatedAt
-
-  @@index([requesterId, recipientCountryCode, recipientPhone])
-  @@index([requesterId, recipientContactId])
-  @@map("connection_invites")
-}
-
-model AddressDetail {
-  id           String       @id @default(uuid())
-  fieldId      String       @unique
-  profileField ProfileField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
-
-  street  String
-  city    String
-  state   String?
-  pincode String?
-  country String
-
-  @@map("address_details")
-}
-
-model BankAccountDetail {
-  id           String       @id @default(uuid())
-  fieldId      String       @unique
-  profileField ProfileField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
-
-  bankName      String
-  accountHolder String
-  accountNumber String
-  iban          String?
-  swiftBic      String?
-  routingNumber String?
-  ifsc          String?
-  currency      String @default("USD")
-
-  @@map("bank_account_details")
-}
-
-model DigitalWalletDetail {
-  id           String       @id @default(uuid())
-  fieldId      String       @unique
-  profileField ProfileField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
-
-  platform     String
-  handleOrLink String
-
-  @@map("digital_wallet_details")
-}
-
-model CryptoWalletDetail {
-  id           String       @id @default(uuid())
-  fieldId      String       @unique
-  profileField ProfileField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
-
-  network String
-  address String
-
-  @@map("crypto_wallet_details")
-}
-
-model IntegrationState {
-  id                 String        @id @default(uuid())
-  userId             String
-  user               User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  source             ContactSource
-  syncToken          String?
-  lastSyncAt         DateTime      @default(now())
-  lastSyncAdded      Int           @default(0)
-  lastSyncUpdated    Int           @default(0)
-  lastSyncDeleted    Int           @default(0)
-  lastSyncDuplicates Int           @default(0)
-  lastWriteBackAt    DateTime?
-  lastWriteBackError String?
-
-  @@unique([userId, source])
-  @@map("integration_states")
-}
-
-model ContactMergeGroup {
-  id        String   @id @default(uuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  contacts  Contact[]
-  dedupKeys ContactDedupKey[]
-  createdAt DateTime @default(now())
-
-  @@index([userId])
-  @@map("contact_merge_groups")
-}
-
-model ContactDedupKey {
-  id           String            @id @default(uuid())
-  userId       String
-  mergeGroupId String
-  mergeGroup   ContactMergeGroup @relation(fields: [mergeGroupId], references: [id], onDelete: Cascade)
-  kind         String
-  value        String
-
-  @@unique([userId, kind, value])
-  @@index([mergeGroupId])
-  @@map("contact_dedup_keys")
-}
-
+/// A person the owner has shared with. Scoped to the owner, not global — the
+/// same phone number is a separate Contact row for each owner who shares
+/// with them. Deliberately no global "person" entity: that would leak one
+/// owner's contacts into another owner's data.
+///
+/// Sharing a card requires an existing contactId (see ShareLink below) —
+/// POST /cards/:id/share no longer accepts an inline phone number. The
+/// expected flow is import-then-share, not type-a-number-then-share.
 model Contact {
-  id             String             @id @default(uuid())
-  userId         String
-  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  source         ContactSource
-  externalId     String
-  mergeGroupId   String?
-  mergeGroup     ContactMergeGroup? @relation(fields: [mergeGroupId], references: [id], onDelete: SetNull)
-  sourceRevision String?
-  displayName    String?
-  firstName      String?
-  lastName       String?
-  middleName     String?
-  namePrefix     String?
-  nameSuffix     String?
-  nickname       String?
-  notes          String?
-  deletedAt      DateTime?
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
+  id          String        @id @default(uuid())
+  ownerId     String
+  owner       User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  phoneE164   String
+  displayName String? // owner-supplied, or whatever the imported source called them
+  notes       String? // owner's private notes, never shown to the contact
+  source      ContactSource @default(MANUAL)
+  optedOutAt  DateTime? // set on STOP; blocks future sends, existing links stay live
 
-  phones        ContactPhone[]
-  emails        ContactEmail[]
-  organizations ContactOrganization[]
-  addresses     ContactAddress[]
-  urls          ContactUrl[]
-  tags          Tag[]          @relation("ContactTags")
-  groups                 ContactGroup[]              @relation("ContactGroups")
-  travelNotifyForUsers   TravelNotificationContact[]
-  providerLinks          ContactProviderLink[]
-  cardShareRecipients    CardShareRecipient[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  @@unique([userId, source, externalId])
-  @@index([userId, source, deletedAt])
-  @@index([userId, displayName])
-  @@index([mergeGroupId])
+  shareLinks ShareLink[]
+
+  @@unique([ownerId, phoneE164])
+  @@index([ownerId, createdAt])
   @@map("contacts")
 }
 
-model ContactProviderLink {
-  id             String        @id @default(uuid())
-  userId         String
-  contactId      String
-  contact        Contact       @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  source         ContactSource
-  externalId     String
-  sourceRevision String?
-  isPrimary      Boolean       @default(false)
-  firstLinkedAt  DateTime      @default(now())
-  lastUpdatedAt  DateTime      @updatedAt
-
-  @@unique([userId, source, externalId])
-  @@unique([contactId, source])
-  @@index([userId, source])
-  @@map("contact_provider_links")
+enum ShareLinkStatus {
+  ACTIVE
+  REVOKED
 }
 
-model ContactPhone {
-  id        String  @id @default(uuid())
+/// THE central entity for live sharing. Unique on (cardId, contactId):
+/// sharing the same card with the same person again returns the SAME token,
+/// never a new one — see the architecture skill's invariant #1. Re-sending
+/// shows updated info because the token was never tied to a snapshot in the
+/// first place; GET /public/links/:token always resolves current data.
+///
+/// `token` is stored in plaintext (never hashed) because the owner needs to
+/// re-copy the exact same URL to resend it — see lld.md §5 for why that's an
+/// acceptable tradeoff given the token's 128 bits of entropy.
+model ShareLink {
+  id        String          @id @default(uuid())
+  token     String          @unique
+  cardId    String
+  card      Card            @relation(fields: [cardId], references: [id], onDelete: Cascade)
   contactId String
-  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  value     String
-  label     String?
-  isPrimary Boolean @default(false)
-  sortOrder Int     @default(0)
+  contact   Contact         @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  status    ShareLinkStatus @default(ACTIVE)
 
-  @@index([contactId])
-  @@map("contact_phones")
-}
-
-model ContactEmail {
-  id        String  @id @default(uuid())
-  contactId String
-  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  value     String
-  label     String?
-  isPrimary Boolean @default(false)
-  sortOrder Int     @default(0)
-
-  @@index([contactId])
-  @@map("contact_emails")
-}
-
-model ContactOrganization {
-  id          String  @id @default(uuid())
-  contactId   String
-  contact     Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  companyName String?
-  department  String?
-  title       String?
-  isPrimary   Boolean @default(false)
-  sortOrder   Int     @default(0)
-
-  @@index([contactId])
-  @@map("contact_organizations")
-}
-
-model ContactAddress {
-  id         String  @id @default(uuid())
-  contactId  String
-  contact    Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  street     String?
-  city       String?
-  region     String?
-  postalCode String?
-  country    String?
-  label      String?
-  isPrimary  Boolean @default(false)
-  sortOrder  Int     @default(0)
-
-  @@index([contactId])
-  @@map("contact_addresses")
-}
-
-model ContactUrl {
-  id        String  @id @default(uuid())
-  contactId String
-  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  value     String
-  label     String?
-  sortOrder Int     @default(0)
-
-  @@index([contactId])
-  @@map("contact_urls")
-}
-
-model UserTravelProfile {
-  userId                String  @id
-  user                  User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  homeCity              String?
-  homeCountry           String?
-  calendarSyncEnabled   Boolean @default(true)
-
-  @@map("user_travel_profiles")
-}
-
-model TravelNotificationContact {
-  userId    String
-  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  contactId String
-  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
-
-  @@id([userId, contactId])
-  @@map("travel_notification_contacts")
-}
-
-model UserTravelSession {
-  id          String    @id @default(uuid())
-  userId      String
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  inTravel    Boolean   @default(false)
-  detectedCity    String?
-  detectedCountry String?
-  promptedAt  DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-
-  @@index([userId, updatedAt])
-  @@map("user_travel_sessions")
-}
-
-model TravelEvent {
-  id                      String   @id @default(uuid())
-  userId                  String
-  user                    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  city                    String
-  country                 String
-  startDate               DateTime
-  endDate                 DateTime
-  isConfirmed             Boolean  @default(false)
-  notifiedContacts        Json?
-  /// Dedup key for Google Calendar–originated rows
-  externalCalendarEventId String?
-  whatsappSentAt          DateTime?
-  title                   String?
-  raw                     Json?
+  firstViewedAt DateTime?
+  lastViewedAt  DateTime?
+  viewCount     Int       @default(0)
+  revokedAt     DateTime?
 
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  @@unique([userId, externalCalendarEventId])
-  @@index([userId, startDate])
-  @@map("travel_events")
+  @@unique([cardId, contactId])
+  @@index([contactId, status])
+  @@index([cardId, status])
+  @@map("share_links")
 }
 
-model Tag {
-  id       String    @id @default(uuid())
-  userId   String
-  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name     String
-  contacts Contact[] @relation("ContactTags")
+/// An anonymous scan of Card.publicToken via GET /public/links/:token. No IP,
+/// no fingerprint, no UA string — a scan is a stranger, and this should not
+/// become a profile of one. Count + timestamp is enough to answer "has anyone
+/// scanned this card" for the sharing dashboard. Recorded on every resolve of
+/// the publicToken path, the same way ShareLink.viewCount is bumped on every
+/// resolve of a per-contact token — this is that mechanism's card-level twin.
+model CardScan {
+  id        String   @id @default(uuid())
+  cardId    String
+  card      Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
 
-  @@unique([userId, name])
-  @@index([userId])
-  @@map("tags")
-}
-
-model ContactGroup {
-  id         String         @id @default(uuid())
-  userId     String
-  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name       String
-  source     ContactSource?
-  externalId String?
-  contacts   Contact[]      @relation("ContactGroups")
-
-  @@unique([userId, name])
-  @@unique([userId, source, externalId])
-  @@index([userId])
-  @@map("contact_groups")
-}
-
-model OAuthAccount {
-  id                  String          @id @default(uuid())
-  userId              String
-  provider            OAuthProvider
-  scopes              String
-  accessToken         String
-  refreshToken        String
-  expiresAt           DateTime?
-  /// Stable id from the provider (e.g. Google `sub`) when available.
-  providerAccountId   String?
-  /// Provider-specific persisted state (e.g. `{ "google": { "calendarSyncToken": "..." } }`).
-  providerState     Json?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, provider])
-  @@map("oauth_accounts")
-}
-
-model OtpSession {
-  id         String    @id @default(uuid())
-  userId     String?
-  phoneE164  String
-  codeHash   String
-  expiresAt  DateTime
-  consumedAt DateTime?
-  attemptCount Int      @default(0)
-  createdAt  DateTime  @default(now())
-
-  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([phoneE164, expiresAt])
-  @@map("otp_sessions")
-}
-
-model WhatsappMessage {
-  id                   String                   @id @default(uuid())
-  provider             WhatsappProvider
-  providerMessageId    String?
-  deduplicationKey     String?                  @unique
-  eventType            String?
-  direction            WhatsappMessageDirection
-  purpose              WhatsappMessagePurpose
-  phoneE164            String
-  correlationId        String?
-  status               WhatsappMessageStatus   @default(PENDING)
-  providerErrorCode    String?
-  providerErrorMessage String?
-  sentAt               DateTime?
-  deliveredAt          DateTime?
-  readAt               DateTime?
-  failedAt             DateTime?
-  processedAt          DateTime?
-  createdAt            DateTime                 @default(now())
-  updatedAt            DateTime                 @updatedAt
-
-  cardShareRecipient CardShareRecipient?
-
-  @@index([status, createdAt])
-  @@index([phoneE164, createdAt])
-  @@index([correlationId])
-  @@map("whatsapp_messages")
-}
-
-model WhatsappSession {
-  id            String            @id @default(uuid())
-  userId        String?
-  phoneE164     String
-  state         WhatsappFlowState @default(IDLE)
-  connectionId  String?
-  correlationId String?
-  metadata      Json?
-  expiresAt     DateTime
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
-
-  user       User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
-  connection Connection? @relation(fields: [connectionId], references: [id], onDelete: SetNull)
-
-  @@index([phoneE164, state])
-  @@map("whatsapp_sessions")
+  @@index([cardId, createdAt])
+  @@map("card_scans")
 }
 
 // ==========================================
-// WHATSAPP CARD SHARE
+// WHATSAPP TEMPLATES
 // ==========================================
 
-/// WhatsApp approval state mirrored from the Twilio Content API by the sync service.
-enum WhatsappTemplateApprovalStatus {
+enum TemplateStatus {
   APPROVED
   PENDING
-  RECEIVED
   REJECTED
   UNKNOWN
 }
 
-/// Outcome of the last DB<->Twilio reconciliation for a template.
-enum WhatsappTemplateSyncStatus {
-  NEVER_SYNCED
-  IN_SYNC
-  /// Content on Twilio differed from our copy; DB was repaired from Twilio (authoritative).
-  DRIFT_REPAIRED
-  /// The ContentSid no longer exists on Twilio; template is unusable.
-  MISSING_ON_TWILIO
-  /// Sync failed (Twilio unreachable or unrepairable mismatch, e.g. wrong button base URL).
-  SYNC_ERROR
-}
-
-/// Registry of approved Twilio WhatsApp Content Templates. DB-backed (not env vars) so
-/// multiple approved templates can be added/rotated/deactivated without a deploy.
-/// Strict 1:1 with Twilio: one row per ContentSid, content mirrored by the sync service
-/// so in-app previews always match what Twilio actually sends.
-model WhatsappTemplate {
-  id      String                  @id @default(uuid())
-  /// Stable lookup key the app code references, e.g. "card_share_default_en".
-  key     String                  @unique
-  useCase WhatsappTemplateUseCase
-  /// Twilio Content Template SID (HX...). Unique: each row maps to exactly one template.
-  contentSid  String  @unique
-  locale      String  @default("en")
-  /// Mirror of the template body on Twilio; kept in sync so previews match sends exactly.
-  bodyPreview String
-  /// Mirror of the URL button label on Twilio.
-  buttonTitle String  @default("Save Contact")
-  /// Mirror of the static header image baked into the template, if any.
-  headerImageUrl String?
-  isActive    Boolean @default(true)
-
-  approvalStatus  WhatsappTemplateApprovalStatus @default(UNKNOWN)
+/// Registry of Twilio Content templates, keyed by our own semantic `key`
+/// rather than the raw contentSid — DB-backed rather than env-var-backed so
+/// a template can rotate (new wording, re-approval) without a deploy.
+///
+/// Empty until a real template is created in Twilio Console and its
+/// contentSid registered here. Nothing sends through a template whose
+/// approvalStatus isn't APPROVED — see messaging/whatsapp-template.service.ts.
+/// A reconciler that syncs approvalStatus from Twilio (the "template
+/// reconcile, 10m" cron in lld.md §3) is not built yet; for now a human
+/// updates approvalStatus after checking Twilio Console.
+model WhatsAppTemplate {
+  id              String         @id @default(uuid())
+  key             String         @unique // "card_share_initial_en"
+  purpose         MessagePurpose
+  contentSid      String         @unique
+  locale          String         @default("en")
+  bodyPreview     String
+  buttonLabel     String?
+  variableSchema  Json // {"1":"ownerName","2":"linkToken"} — documents Twilio's ContentVariables mapping
+  approvalStatus  TemplateStatus @default(UNKNOWN)
   rejectionReason String?
-  syncStatus      WhatsappTemplateSyncStatus     @default(NEVER_SYNCED)
-  /// When the sync service last successfully reconciled this row against Twilio.
+  isActive        Boolean        @default(true)
   syncedAt        DateTime?
 
-  /// NULL = global template (visible to everyone in the picker). Set = user-created
-  /// template, visible/sendable only by its creator. Restrict: user deletion is blocked
-  /// while they own templates rather than silently promoting them to global.
-  createdByUserId String?
-  createdBy       User?   @relation("TemplateCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
-
-  /// DEPRECATED: no longer read at send time (templateKey is required on shares).
-  /// Kept one release for rollback safety; drop in a follow-up migration.
-  isDefault Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  batches CardShareBatch[]
-
-  @@index([useCase, isActive, approvalStatus])
-  @@index([createdByUserId])
+  @@index([purpose, isActive, approvalStatus])
   @@map("whatsapp_templates")
 }
 
-/// A generated .vcf file for a card, uploaded once to GCS and reused across shares as long
-/// as the card's mapped fields haven't changed (content-addressed by contentHash).
-model VCardAsset {
-  id    String       @id @default(uuid())
-  /// Nullable + SetNull: if the source card is later deleted, we keep the asset and the
-  /// share history that references it around for audit.
-  cardId      String?
-  card        ContactCard? @relation(fields: [cardId], references: [id], onDelete: SetNull)
-  /// sha256 of the serialized vCard bytes; dedupes re-shares of an unedited card.
-  contentHash String
-  storageUrl  String
-  objectKey   String
-  sizeBytes   Int
-  /// text/x-vcard, not text/vcard — WhatsApp only accepts the former (Twilio's MMS-only
-  /// vs MMS+WhatsApp MIME type distinction); see gcs-vcard.service.ts for the full note.
-  mimeType    String   @default("text/x-vcard")
-  createdAt   DateTime @default(now())
+// ==========================================
+// OUTBOUND MESSAGING
+// ==========================================
 
-  batches CardShareBatch[]
-
-  @@unique([cardId, contentHash])
-  @@index([cardId])
-  @@map("vcard_assets")
+enum OutboxStatus {
+  PENDING
+  CLAIMED
+  SENT
+  DEFERRED // throttled by the provider; availableAt pushed out
+  FAILED // terminal
 }
 
-/// One "share" action: a card, a sender, a chosen template, and the recipients it went to.
-model CardShareBatch {
-  id     String @id @default(uuid())
-  /// SetNull, not Cascade: a share is a historical record of something that happened.
-  /// Deleting the card later shouldn't erase that it was sent. Snapshots below keep the
-  /// batch displayable even if the live card is gone.
-  cardId           String?
-  card             ContactCard? @relation(fields: [cardId], references: [id], onDelete: SetNull)
-  cardNameSnapshot String
-  cardTypeSnapshot CardType
-  senderId         String
-  sender           User             @relation(fields: [senderId], references: [id], onDelete: Cascade)
-  templateId       String
-  template         WhatsappTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
-  vcardAssetId     String
-  vcardAsset       VCardAsset       @relation(fields: [vcardAssetId], references: [id], onDelete: Restrict)
-  /// Optional free-text injected into the template's personalization variable, if it has one.
-  note      String?
-  createdAt DateTime @default(now())
-
-  recipients CardShareRecipient[]
-
-  @@index([cardId])
-  @@index([senderId, createdAt])
-  @@map("card_share_batches")
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
 }
 
-/// One target phone number within a batch. dispatchStatus tracks whether *we* have managed
-/// to hand the send to Twilio yet (our own retry loop); deliveryStatus tracks what happened
-/// to the message on WhatsApp once Twilio has accepted it (from the status callback webhook).
-model CardShareRecipient {
-  id      String         @id @default(uuid())
-  batchId String
-  batch   CardShareBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
-
-  /// Split the same way ConnectionInvite is — a raw user-entered number, not necessarily
-  /// tied to any Contact/User record.
-  recipientCountryCode String @db.VarChar(8)
-  recipientPhone       String
-  /// Optional: set when the user picked an existing synced Contact rather than typing a
-  /// raw number. SetNull if that contact is later deleted/merged away.
-  recipientContactId String?
-  recipientContact   Contact? @relation(fields: [recipientContactId], references: [id], onDelete: SetNull)
-
-  dispatchStatus    CardShareDispatchStatus @default(PENDING)
-  dispatchAttempts  Int                     @default(0)
-  nextAttemptAt     DateTime                @default(now())
-  lastDispatchError String?
-
-  /// Set once we've successfully handed the send to Twilio.
-  whatsappMessageId String?          @unique
-  whatsappMessage   WhatsappMessage? @relation(fields: [whatsappMessageId], references: [id], onDelete: SetNull)
-  deliveryStatus    WhatsappMessageStatus?
-
-  sentAt      DateTime?
-  deliveredAt DateTime?
-  readAt      DateTime?
-  failedAt    DateTime?
-
-  /// Set once the VCF document is dispatched as a follow-up WhatsApp message (two-message flow).
-  vcfSentAt     DateTime? @map("vcf_sent_at")
-  /// Twilio SID of the VCF document message; null until the send succeeds.
-  vcfMessageSid String?   @map("vcf_message_sid")
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([batchId, recipientCountryCode, recipientPhone])
-  @@index([dispatchStatus, nextAttemptAt])
-  @@index([recipientCountryCode, recipientPhone])
-  @@map("card_share_recipients")
+enum MessagePurpose {
+  OTP
+  CARD_SHARE
+  // CARD_UPDATE, SCAN_REPLY land with broadcast/notify and QR scanning.
 }
 
-/**
- * Stores normalized inbound provider events that failed conversation processing.
- * A cron job retries them with exponential backoff until they succeed or exhaust all attempts.
- */
-model WebhookDeadLetter {
-  id         String           @id @default(uuid())
-  /// Identifies the provider webhook source.
-  source     String           @default("openwa_whatsapp")
-  /// Normalized provider-neutral inbound event.
-  payload    Json
-  /// Captured HTTP headers for diagnostics.
-  headers    Json
-  /// The exact webhook URL that received the event.
-  webhookUrl String
-  status     WebhookDlqStatus @default(PENDING)
-  attempts   Int              @default(0)
-  lastError  String?
-  /// When null the record is ready to retry immediately.
-  nextRetryAt DateTime?
-  resolvedAt  DateTime?
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+enum MessageStatus {
+  PENDING
+  SENT
+  DELIVERED
+  READ
+  UNDELIVERED
+  FAILED
+}
 
-  @@index([status, nextRetryAt])
-  @@map("webhook_dead_letters")
+/// Transactional outbox. Written in the SAME transaction as the domain change
+/// (e.g. the OtpChallenge insert), so an enqueue can never be lost — a crash
+/// between commit and task creation just leaves this row PENDING for the
+/// sweeper to pick up later, rather than silently dropping the message.
+///
+/// `payload` briefly holds plaintext the send handler needs (e.g. an OTP code)
+/// that only ever existed as a hash elsewhere. It is scrubbed after a
+/// successful send. This is a deliberate, narrow exception to "never store an
+/// OTP in the clear" — anywhere that reads this row into a log line still
+/// gets it redacted, since `redact()` matches the `code` key regardless of
+/// where it appears.
+model OutboxMessage {
+  id          String       @id @default(uuid())
+  dedupeKey   String       @unique
+  kind        String
+  payload     Json
+  status      OutboxStatus @default(PENDING)
+  attempts    Int          @default(0)
+  availableAt DateTime     @default(now())
+  claimedAt   DateTime?
+  lastError   String?
+  completedAt DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([status, availableAt])
+  @@index([status, claimedAt])
+  @@map("outbox_messages")
+}
+
+/// Canonical send ledger. One row per outbound (or inbound) WhatsApp message.
+model Message {
+  id                String           @id @default(uuid())
+  provider          String           @default("twilio")
+  providerMessageId String?          @unique
+  direction         MessageDirection
+  purpose           MessagePurpose
+  phoneE164         String
+  correlationId     String?
+  status            MessageStatus    @default(PENDING)
+  errorCode         String?
+  errorMessage      String?
+  errorClass        String? // PERMANENT | THROTTLED | TRANSIENT | CONFIG
+  sentAt            DateTime?
+  deliveredAt       DateTime?
+  readAt            DateTime?
+  failedAt          DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  @@index([phoneE164, createdAt(sort: Desc)])
+  @@index([status, createdAt])
+  @@index([correlationId])
+  @@map("messages")
 }
