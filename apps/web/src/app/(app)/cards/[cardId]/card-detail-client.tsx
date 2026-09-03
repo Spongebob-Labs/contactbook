@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState, useTransition } from "react";
 
 import { buildVcf, canBuildVcf } from "@/card/build-vcf";
-import { CardActionButton } from "@/card/card-action-button";
 import { ShareFace } from "@/card/share-face";
 import { resolveCard } from "@/card/resolve-card";
 import { CardTypeChip, FieldCountMeter, FieldList } from "@/components/app";
@@ -22,16 +21,18 @@ import { ExportPngButton } from "@/components/share/export-png-button";
 import { ShareSheet, useVcfDownload } from "@/components/share/share-sheet";
 import { WalletPassBlock } from "@/components/share/wallet-pass-block";
 import { CardShares, SendToContact, type MintedLink } from "@/components/share/card-sharing";
+import { NotifyBanner, NotifyRecipients } from "@/components/share/notify-recipients";
 import { cards as api } from "@/lib/api/browser";
 import { fetchCardDetail } from "@/lib/api/browser-loaders";
 import { toScreenError } from "@/lib/api/errors";
+import { cn } from "@/lib/cn";
 import { useApiResource } from "@/lib/use-api";
 import { useToast } from "@/components/overlay";
 import { CARD_LINK_PENDING, formatLongDate } from "@/lib/format";
 import type {
   Contact,
   ContactCard,
-  ContactShare,
+  CardShareRow,
   FieldGroup,
   FixtureError,
   ProfileField,
@@ -115,7 +116,8 @@ export interface CardDetailData {
 }
 
 /** One share link on this card, with the recipient's name already resolved for display. */
-export type CardShareRow = ContactShare & { contactId: string; contactLabel: string };
+/** Re-exported so existing importers of this screen keep working. */
+export type { CardShareRow };
 
 /**
  * `?state=empty` — the profile has nothing to map.
@@ -202,6 +204,19 @@ function CardDetailScreen({
    * The QR is now `card.publicUrl` and is not a function of who has been sent the card.
    */
   const [minted, setMinted] = useState<MintedLink | null>(null);
+
+  /**
+   * The one re-read every sharing affordance goes through.
+   *
+   * ⚠ `setMinted(null)` matters here as much as the reload: a link minted this session is held
+   * locally so the panel can publish it immediately, and after any change to the share set the
+   * server's answer is the only honest source. Shared by revoke/restore and by notify, so a
+   * notify's reconcile cannot drift from what a revoke does.
+   */
+  const reloadShares = useCallback(() => {
+    setMinted(null);
+    reload();
+  }, [reload]);
 
 
 
@@ -334,6 +349,15 @@ function CardDetailScreen({
                   Edit
                 </Link>
 
+                {/* Renders nothing when this card has no active recipients — an owner with
+                    nobody to notify gets no control, not a disabled one. */}
+                <NotifyRecipients
+                  cardId={cardId}
+                  shares={shares}
+                  contacts={contacts}
+                  onChanged={reloadShares}
+                />
+
                 <ShareSheet
                   resolved={resolved}
                   sharesNothing={vcf === null}
@@ -399,6 +423,11 @@ function CardDetailScreen({
                 the card root, and a fixed wrapper would take the same behaviour with it. */}
             <div
               data-card-detail-preview=""
+              /* Fluid. The one rigid object on this screen is the share face, and the rail that
+                 lets it overhang a 320px viewport lives around the face itself inside
+                 `<WalletPassBlock>` — not here. Scoping it to this column instead made the
+                 block's own prose 336px wide in a 296px box, so the wallet-pass copy needed a
+                 sideways nudge to be read, which is a worse bug than the one it fixed. */
               className="min-w-0 lg:sticky lg:top-8 lg:self-start"
             >
               {/* ⚠ The face is handed to `<WalletPassBlock>` as children and is rendered by
@@ -408,45 +437,64 @@ function CardDetailScreen({
                   is the only surface in the product that paints it at the size every constant
                   in `qr-geometry.ts` was derived from. The block adds copy above it and
                   controls beneath it, in normal flow, and nothing else. */}
-              <WalletPassBlock resolved={resolved}>
-                <ShareFace resolved={resolved} mode="full" />
+              <WalletPassBlock
+                resolved={resolved}
+                /*
+                  ⚠ THE SAVE ACTION IS AN APP BUTTON AND IT IS PASSED AS `action`, NOT CHILDREN.
 
-                {/* The face is the shareable artefact and deliberately carries no controls, so
-                    the owner's own save action sits beneath it. It uses the palette-aware card
-                    button on the canvas colourway, matching the public page's actions.
+                  Both halves of that were bugs, and both produced the same report — *"what is
+                  this glitch onto the UI"*:
 
-                    The width is the block's now — one `FACE_WIDTH`-wide column for the caption,
-                    the face and every control — so this is `w-full` rather than a second,
-                    slightly-wrong copy of the face's measurement. It used to read `w-[360px]`
-                    under a comment claiming that was "the face's own width"; the face is 336,
-                    so the button overhung the card it belonged to by 24px at every viewport
-                    wide enough to show it. */}
-                {/* Omitted, not disabled, when the card shares nothing — matching the public
-                    page. `vcf` is already `null` in exactly that case (it is built through
-                    `canBuildVcf`), so this gates on the same single definition rather than
-                    introducing a second idea of "empty".
+                    1. **It was a `<CardActionButton surface="canvas">`.** For every deep
+                       palette `canvasActionBg` IS the palette's own ground (see
+                       `derive-palette.ts`), so on a Sapphire card this rendered a Sapphire
+                       block, one card wide, sixteen pixels below a Sapphire card. The two
+                       fused and the card's own bottom edge stopped being readable. It was
+                       never a contrast failure — `PALETTE_CONTRACT` proves that fill against
+                       the white canvas and passes; nothing measured it against the card above
+                       it. The block's other two controls were already plain `<Button>`s, so
+                       this was the only control on the canvas dressed as the card.
+                    2. **It was `children`.** `children` is rendered inside the block's
+                       `overflow-x-auto` rail, which exists to let the rigid 336px face
+                       overhang a 296px column without scrolling the document. The button went
+                       into the scroller with it and was sized by the rail instead of the
+                       block.
 
-                    The wrapper is inside the conditional now, not around it: an always-rendered
-                    empty box was harmless while it was the last thing in the column, but the
-                    block below it is laid out with `gap`, and an empty flex item would open a
-                    hole under the face of every zero-field card. */}
-                {vcf === null ? null : (
-                  <div className="w-full">
-                    <CardActionButton
-                      action="save"
-                      paletteId={resolved.palette.id}
-          palette={resolved.palette}
+                  `fullWidth` rather than a `w-full` wrapper: the block already owns the
+                  column's width, and the primitive has the prop.
+                */
+                action={
+                  vcf === null ? null : (
+                    <Button
                       variant="primary"
-                      surface="canvas"
-                      shape={resolved.template.shape.buttonShape}
+                      fullWidth
+                      data-card-save-contacts=""
                       onClick={() => onSaveToContacts(resolved)}
-                      disabled={savePending}
-                      busy={savePending}
+                      /* The primitive owns the in-flight state: `loading` sets `aria-busy`,
+                         swaps the label and really swallows the click (a bare `disabled` is
+                         advisory to the browser). The old call hand-rolled all three with
+                         `disabled` + `busy` + a label ternary, and `busy` is not even a prop
+                         on this component — it was silently doing nothing. */
+                      loading={savePending}
+                      loadingLabel="Saving…"
                     >
-                      {savePending ? "Saving…" : "Save to contacts"}
-                    </CardActionButton>
-                  </div>
-                )}
+                      Save to contacts
+                    </Button>
+                  )
+                }
+              >
+                {/* ⚠ The face is handed to `<WalletPassBlock>` as children and is rendered by
+                    it verbatim — unscaled, unclipped, untransformed, still at 336×500. That is
+                    not a stylistic preference: five contract suites decode and measure this
+                    exact element on this exact route (`tests/helpers/qr-surface.ts`), and this
+                    is the only surface in the product that paints it at the size every constant
+                    in `qr-geometry.ts` was derived from. The block adds copy above it, the
+                    owner's action beneath it and its own controls below that, in normal flow,
+                    and nothing else.
+
+                    ⚠ NOTHING ELSE MAY BE ADDED HERE. This slot is inside the horizontal scroll
+                    rail; anything but the face belongs in `action` or in the block itself. */}
+                <ShareFace resolved={resolved} mode="full" />
               </WalletPassBlock>
             </div>
 
@@ -471,9 +519,16 @@ function CardDetailScreen({
                   {resolved.qrPayload == null ? (
                     <span className="text-ink-3">{CARD_LINK_PENDING}</span>
                   ) : (
+                    /* 44px on touch. This is the card's own public URL and the one link on
+                       this screen a reader taps to check what the QR opens; `--text-sm` gives
+                       it a 20px line box. `inline-block` is required for the padding to affect
+                       the hit area, and the negative margin keeps the meta block's rhythm. */
                     <Link
                       href={resolved.qrPayload}
-                      className="text-ink underline underline-offset-4"
+                      className={cn(
+                        "text-ink underline underline-offset-4",
+                        "max-md:-my-3 max-md:inline-block max-md:py-3",
+                      )}
                     >
                       {resolved.qrPayload}
                     </Link>
@@ -520,16 +575,23 @@ function CardDetailScreen({
                 <h2 id="card-shares-heading" className="text-overline uppercase text-ink-3">
                   Sent to
                 </h2>
+                {/* ⚠ Above the list, and only when somebody is actually behind.
+
+                    It belongs here rather than in the header because it is a fact about *these
+                    recipients*, and this is already documented as the only place every link is
+                    listed. It renders nothing at all when everyone is caught up — a permanent
+                    zero-count banner trains the eye to skip the row it needs to notice. */}
+                <NotifyBanner
+                  cardId={cardId}
+                  shares={shares}
+                  contacts={contacts}
+                  onChanged={reloadShares}
+                />
+
                 <CardShares
                   cardId={cardId}
                   shares={shares}
-                  onChanged={() => {
-                    // ⚠ Cleared, not kept. Revoking the link this session minted would otherwise
-                    // leave a dead URL on the QR — the one thing a printed card must never carry.
-                    // The re-read decides what replaces it, which is the only honest source.
-                    setMinted(null);
-                    reload();
-                  }}
+                  onChanged={reloadShares}
                 />
               </section>
             </div>

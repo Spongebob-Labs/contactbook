@@ -46,14 +46,38 @@ const BASE =
   "whitespace-nowrap align-middle select-none transition-colors duration-[var(--dur-fast)] " +
   "ease-out aria-disabled:cursor-not-allowed";
 
-/** 40px and 52px (§8D.7). `text-link` overrides the box below — it is type, not a slab. */
+/**
+ * 40px and 52px (§8D.7) — **on a pointer. On touch `md` is 44px, and that is not a rounding.**
+ *
+ * ## ⚠ Why `md` has two heights
+ *
+ * §8D.7's 40px is a mouse number and it is right for a mouse: a cursor is a single pixel, so
+ * 40px is generous and a taller control would coarsen a dense desktop toolbar. A fingertip is
+ * not a pixel. Apple's HIG, Android's Material guidance and WCAG 2.5.5 independently land on
+ * **44** (48 for Material), and this is the size the entire product's primary controls are —
+ * Save, Create link, Notify, every dialog action, every Input and every Select trigger inherit
+ * this map or copy its `h-10`. Shipping the whole app 4px under the floor is a defect you feel
+ * as mis-taps rather than see as a layout break, which is exactly why it survived this long.
+ *
+ * The breakpoint is `md` (768px), matching the shell's own rail↔bottom-bar swap — the same line
+ * the product already uses to mean "this is a phone". Below it: 44. From `md` up: the original
+ * 40, unchanged, so no desktop screen moves by a pixel.
+ *
+ * `max-md:` rather than a `md:` override, deliberately: written the other way (`h-11 md:h-10`)
+ * the *mobile* value is the base, and any caller passing `h-10` in `className` would silently
+ * win at every width through tailwind-merge. As a `max-md:` variant the touch floor and the
+ * caller's class are different utilities, so a caller can still opt a specific control out
+ * without accidentally opting out everywhere.
+ */
 const SIZES: Record<ButtonSize, string> = {
-  md: "h-10 px-4",
+  md: "h-10 max-md:h-11 px-4",
   lg: "h-13 px-6 text-base",
 };
 
 const ICON_ONLY_SIZES: Record<ButtonSize, string> = {
-  md: "w-10 px-0",
+  /* Square at both sizes: 44x44 on touch, 40x40 on a pointer. This is what the dialog and
+     sheet close buttons and every row action resolve to. */
+  md: "w-10 max-md:w-11 px-0",
   lg: "w-13 px-0",
 };
 
@@ -78,8 +102,23 @@ const VARIANTS: Record<ButtonVariant, string> = {
   destructive:
     "bg-danger text-ink-inverse hover:brightness-90 active:brightness-90 " +
     "aria-disabled:bg-surface-sunk aria-disabled:text-ink-3 aria-disabled:hover:brightness-100",
+  /**
+   * ⚠ **Type, not a slab — and on touch it still has to be 44px tall.**
+   *
+   * This variant deliberately drops the box so the control reads as a link inside a sentence,
+   * and that is right. What it produced was a **28px** target (a 13px `--text-sm` line box of
+   * 20px plus `py-1` twice) on controls that are the *only* affordance for their action:
+   * Copy link, Revoke, Restore, Undo in a six-second toast, "Reorder or delete fields", and
+   * the profile's only add-group control.
+   *
+   * `max-md:py-3 max-md:-my-2` is the whole fix and it costs no layout: the padding grows the
+   * hit box to 20 + 24 = 44px while the negative margin removes the same 8px a side from the
+   * flow, so every row this sits in keeps the height it had. The control still *looks* like
+   * type; it is simply reachable.
+   */
   "text-link":
-    "h-auto w-auto px-0 py-1 bg-transparent text-accent underline underline-offset-4 " +
+    "h-auto w-auto px-0 py-1 max-md:py-3 max-md:-my-2 " +
+    "bg-transparent text-accent underline underline-offset-4 " +
     "decoration-line-control hover:text-accent-hover hover:decoration-accent-hover " +
     "aria-disabled:text-ink-3 aria-disabled:decoration-line",
 };

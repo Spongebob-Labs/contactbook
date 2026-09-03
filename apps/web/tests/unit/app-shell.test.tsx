@@ -281,10 +281,17 @@ describe("BottomBar (spec §8D.3, ≤767px)", () => {
     // 64px of content PLUS the inset, not 64px total: under `border-box` a bare
     // `h-[var(--bottombar-height)]` alongside the padding below would squeeze the items
     // into `64px - inset` and push their labels under the home indicator.
+    //
+    // ⚠ The `, 0px` fallback is part of the contract, not formatting. An `env()` with no
+    // fallback is INVALID AT PARSE TIME on an engine without support, and an invalid value
+    // takes the whole declaration with it — so the version without it collapsed this bar to
+    // `height: auto` rather than degrading to 64px. The inset itself only resolves to a real
+    // number because `app/layout.tsx` exports `viewport: { viewportFit: "cover" }`; without
+    // that export it is 0 on every device and all of this arithmetic is against zero.
     expect(bar?.className).toContain(
-      "h-[calc(var(--bottombar-height)+env(safe-area-inset-bottom))]",
+      "h-[calc(var(--bottombar-height)+env(safe-area-inset-bottom,0px))]",
     );
-    expect(bar?.className).toContain("pb-[env(safe-area-inset-bottom)]");
+    expect(bar?.className).toContain("pb-[env(safe-area-inset-bottom,0px)]");
   });
 });
 
@@ -353,8 +360,10 @@ describe("AppShell (§11 E-45 — crossing the mobile breakpoint)", () => {
     );
 
     const column = container.querySelector("[data-app-content]");
+    // The `, 0px` fallback is required — see the BottomBar test above for why an `env()`
+    // without one invalidates its whole declaration rather than degrading.
     expect(column?.className).toContain(
-      "pb-[calc(var(--bottombar-height)+env(safe-area-inset-bottom))]",
+      "pb-[calc(var(--bottombar-height)+env(safe-area-inset-bottom,0px))]",
     );
     expect(column?.className).toMatch(/\bmd:pb-0\b/);
   });

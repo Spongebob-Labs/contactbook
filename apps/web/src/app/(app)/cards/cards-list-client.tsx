@@ -134,7 +134,41 @@ const GRID_CLASS = "grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3";
  * It is also half of §11 E-13: a track that cannot exceed 200px cannot be widened by a
  * 40+ character caption, so one long name can never reflow the grid.
  */
-const GRID_WIDTH_CLASS = "w-full max-w-[200px] md:max-w-[424px] xl:max-w-[648px]";
+/**
+ * ⚠ **The mobile cap and the thumbnail scale step together, and they must stay in step.**
+ *
+ * The flat `max-w-[200px]` below `md` was stale against `FACE_WIDTH = 336`: it left a 200px card
+ * in a 296px content box at 320px and in a 336px box at 360px — **40% of a phone's width empty
+ * beside the only object on the screen** — and it squeezed the caption row (type chip + template
+ * name + field meter, ~250px of max-content) so hard that the meter always wrapped to a second
+ * line. The doc note this replaces still reasoned from a 400px canvas that no longer exists.
+ *
+ * Three mobile steps, each one the largest card that fits its band with the shell's `px-3`
+ * gutter still intact:
+ *
+ * | viewport | content box | scale | card  | slack |
+ * |----------|-------------|-------|-------|-------|
+ * | 320      | 296         | 0.82  | 276   | 20    |
+ * | 360      | 336         | 0.92  | 309   | 27    |
+ * | 414      | 390         | 1.00  | 336   | 54    |
+ * | `md` +   | two-up      | 0.595 | 200   | —     |
+ *
+ * `--card-thumb-scale` is read by `<ShareFace mode="thumb">`; see the note there for why the
+ * size is a CSS variable rather than the `thumbWidth` prop. **The cap and the scale are the same
+ * number twice** — the `<ul>`'s `max-w` reserves the column and the scale paints inside it — so
+ * changing one without the other gives a card floating in an over-wide track, or a clipped one.
+ *
+ * §11 E-13 still holds and is what the caps are really for: a track that cannot exceed its
+ * band's width cannot be widened by a 40-character caption, so one long name never reflows the
+ * grid. That guarantee is about the *cap existing*, not about its being 200px.
+ */
+const GRID_WIDTH_CLASS = cn(
+  "w-full max-w-[276px] [--card-thumb-scale:0.82]",
+  "min-[360px]:max-w-[309px] min-[360px]:[--card-thumb-scale:0.92]",
+  "min-[414px]:max-w-[336px] min-[414px]:[--card-thumb-scale:1]",
+  "md:max-w-[424px] md:[--card-thumb-scale:0.595]",
+  "xl:max-w-[648px]",
+);
 
 /** §5.1 order, so the chips do not re-order themselves as the fixture set changes. */
 const CARD_TYPE_ORDER: readonly CardType[] = ["BUSINESS", "PERSONAL", "PAYMENT", "CUSTOM"];

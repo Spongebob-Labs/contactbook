@@ -5,6 +5,7 @@ import { useId, type ReactNode } from "react";
 
 import { cn } from "@/lib/cn";
 import { Label } from "./label";
+import { TOUCH_HIT_44_Y } from "./touch-target";
 
 /**
  * Switch — an immediate on/off, never a deferred one. If the change needs a Save button
@@ -61,6 +62,11 @@ export function Switch({
       aria-describedby={descriptionId}
       className={cn(
         "inline-flex h-6 w-11 shrink-0 items-center rounded-full p-1",
+        /* The track is 44px wide and 24px tall, so only the vertical axis is short — hence the
+           `_Y` variant, which grows the region up and down and leaves the width alone. Rendered
+           once per profile field row, where `hideLabel` is used and this is the only target.
+           See `touch-target.ts`. */
+        TOUCH_HIT_44_Y,
         "bg-line-control transition-colors duration-[var(--dur-fast)] ease-out",
         "data-[state=checked]:bg-accent",
         "disabled:cursor-not-allowed disabled:bg-ink-4",

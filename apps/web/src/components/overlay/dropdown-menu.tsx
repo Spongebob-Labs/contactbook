@@ -102,7 +102,7 @@ export function DropdownMenuItem({
       disabled={disabled}
       data-tone={tone}
       className={cn(
-        "flex cursor-default select-none items-center gap-2 rounded-md px-3 py-2 text-base",
+        "flex cursor-default select-none items-center gap-2 rounded-md px-3 py-2 max-md:py-2.5 text-base",
         "data-disabled:pointer-events-none data-disabled:text-ink-3",
         ITEM_TONES[tone],
         className,

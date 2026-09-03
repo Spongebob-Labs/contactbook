@@ -83,13 +83,26 @@ export function FieldCountMeter({
         data-field-count-state={state}
         className={cn("inline-flex flex-wrap items-baseline gap-2 text-sm", className)}
       >
-        <span className="text-ink-3">Field count</span>
+        {/* ⚠ Two spellings of the same label, and CSS picks — never a JS viewport branch, which
+            renders one on the server and possibly the other on the client.
+
+            "Field count 12" is 92px of a 351px builder toolbar on a phone, sitting next to a
+            44px Save button on a row that already wraps. The word "Field" is the half that
+            carries the meaning next to a number; "count" is the half that restates what a
+            number beside a noun already is. Below `sm` the short form is used and the full
+            phrase stays in the accessibility tree through the `sr-only` span, so a screen
+            reader hears the same sentence at every width. */}
+        <span className="text-ink-3 max-sm:hidden">Field count</span>
+        <span aria-hidden="true" className="text-ink-3 sm:hidden">
+          Fields
+        </span>
         <span
           data-field-count-value=""
           className={cn("tabular-nums", shares ? "text-ink" : "text-warning-ink")}
         >
           {count}
         </span>
+        <span className="sr-only sm:hidden"> field count</span>
         {shares || !note ? null : (
           <span className="text-xs text-warning-ink">{EMPTY_CARD_NOTE}</span>
         )}

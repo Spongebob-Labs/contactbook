@@ -1,5 +1,8 @@
+import { resolveCard } from "@/card/resolve-card";
+import { cardLedgerDemo, FIXTURE_DB } from "@/fixtures";
 import { broadcast } from "@/fixtures/marketing";
 
+import { HandoverFlow } from "./handover-flow";
 import { mkcn } from "./mk-cn";
 import { Section } from "./section";
 import { HEAD_TO_BODY, PanelTitle, Prose, RULE, SectionHead } from "./type";
@@ -69,6 +72,25 @@ import { HEAD_TO_BODY, PanelTitle, Prose, RULE, SectionHead } from "./type";
  */
 
 export function Broadcast() {
+  /*
+    ⚠ THE SAME CARD THE `how-it-works` STUDIO AND QR RESOLVE FROM, AND THAT IS THE POINT.
+
+    `cardLedgerDemo` is slug `prya-hq`. The bento's scan cell encodes that slug in a symbol a
+    reader can point a phone at; this diagram shows the pass carrying it and the page it
+    opens. Two different fixtures would give the page two different people and quietly break
+    the one thread a reader is following down it.
+
+    Resolved on the server and handed across the client boundary as a prop, exactly as
+    `step-list.tsx` does for the studio — so the flow's island pays for no data fetching and
+    the pass, the page and the QR cannot disagree about what card this is.
+  */
+  const resolved = resolveCard(
+    cardLedgerDemo,
+    FIXTURE_DB.user,
+    FIXTURE_DB.groups,
+    FIXTURE_DB.fields,
+  );
+
   return (
     <Section id="broadcast" tone="pistachio" labelledBy="broadcast-heading">
       {/*
@@ -126,6 +148,27 @@ export function Broadcast() {
             </Prose>
           ))}
         </div>
+
+        {/*
+          ⚠ THE DIAGRAM STANDS WHERE THE SECOND PARAGRAPH DID, AND IT IS THE SAME ARGUMENT.
+
+          The client's note was that the page reads as *"very text-heavy"* and asked for one
+          interactive flow *"in the place where all the text is actually being written"*. This
+          pass was the correct target and not by a small margin: it carried 150 words with
+          nothing on screen to look at, on a page where every other band already mounts
+          something real.
+
+          What went is the paragraph that described the send. What stands here shows it — and
+          shows the two things prose could only assert: that the recipient's link never
+          changes, and that the loop is an arrow the owner fires rather than a ring that turns
+          on its own. See the ⚠ on `broadcast.paragraphs` in the fixture for the clause-by-
+          clause trade, and `handover-flow.tsx` for why the return path is the whole drawing.
+
+          It sits ABOVE the facts, not below them: the facts are the diagram's caveats
+          ("opt-in only", "nothing in the background") and a caveat that arrives before the
+          thing it qualifies is read as a disclaimer about nothing.
+        */}
+        <HandoverFlow resolved={resolved} />
 
         {/*
           The guarantees: three abreast from `md`, stacked below it.

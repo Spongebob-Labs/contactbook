@@ -231,7 +231,13 @@ export function BackgroundPicker({
             hideName
             compact
             selected={!custom && id === paletteId}
-            className="w-10"
+            /* ⚠ 44px on touch, 40px on a pointer, and the row still packs five across.
+               40px was under the 44px floor on the one control an owner taps nine times in a
+               row while comparing colours. The arithmetic is tight and it was checked: at a
+               320px viewport the panel's inner width is 254px, and 5 × 44 + 4 × 8 = 252 ≤ 254,
+               so the grid keeps its 5 + 4 wrap and gains nothing to scroll. The colour inside
+               grows from 32px to 36px with it. */
+            className="w-10 max-md:w-11"
           >
             {/* 40px cell − 4px border − 4px inset = **32px of colour**. It was 16px: the cell's
                 own `p-1.5` and the frame's `rounded-xl` chrome ate more of the swatch than the
@@ -292,13 +298,24 @@ export function BackgroundPicker({
                       .join(" ") || undefined
                   }
                   className={cn(
-                    "block size-8 cursor-pointer appearance-none rounded-[7px] border-0 bg-transparent p-0",
+                    /* ⚠ 44px on touch. This input is the ONLY route to any colour outside the
+                       nine presets, and `size-8` made it a 32px target — the `PreviewOptionFrame`
+                       around it looks like it adds slop, but that padding is on a plain
+                       `<span>`, not a `<label>`, so tapping it does nothing at all. The live
+                       target really was 32px.
+                       The radius steps with the size so the swatch stays concentric inside the
+                       frame's own `rounded-xl` chrome. */
+                    "block size-8 max-md:size-11 max-md:rounded-[9px] cursor-pointer appearance-none rounded-[7px] border-0 bg-transparent p-0",
                     // The platform draws the swatch inside its own two shadow parts; without
                     // these it arrives as a bevelled grey chip with 2px of inset padding that
                     // no amount of styling on the input itself can reach.
                     "[&::-moz-color-swatch]:rounded-[7px] [&::-moz-color-swatch]:border-0",
                     "[&::-webkit-color-swatch-wrapper]:p-0",
                     "[&::-webkit-color-swatch]:rounded-[7px] [&::-webkit-color-swatch]:border-0",
+                    /* The platform swatch draws its own corners, so the touch radius has to
+                       reach it too or a 44px chip renders with 7px corners inside 9px ones. */
+                    "max-md:[&::-moz-color-swatch]:rounded-[9px]",
+                    "max-md:[&::-webkit-color-swatch]:rounded-[9px]",
                     BUILDER_SCROLL_CLEAR,
                   )}
                 />

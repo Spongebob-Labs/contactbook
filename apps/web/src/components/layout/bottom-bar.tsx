@@ -42,8 +42,8 @@ export function BottomBar({ className }: BottomBarProps) {
         // `64px`: with `border-box`, a bare 64px height plus this padding would squeeze
         // the four items into `64px - inset` and leave their labels under the indicator,
         // while the shell reserves the full `64px + inset` below the content (§8D.3).
-        "h-[calc(var(--bottombar-height)+env(safe-area-inset-bottom))]",
-        "pb-[env(safe-area-inset-bottom)]",
+        "h-[calc(var(--bottombar-height)+env(safe-area-inset-bottom,0px))]",
+        "pb-[env(safe-area-inset-bottom,0px)]",
         className,
       )}
     >

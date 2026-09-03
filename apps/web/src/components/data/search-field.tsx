@@ -70,7 +70,13 @@ export function SearchField({
               type="button"
               aria-label={clearLabel}
               onClick={() => onValueChange("")}
-              className="inline-flex size-5 items-center justify-center rounded-xs text-ink-3 hover:text-ink"
+              /* 20px of glyph, 44px of target on touch. `-me-2` pulls the widened box back so
+                 the input's trailing gutter does not grow with it and the field keeps its
+                 height. */
+              className={cn(
+                "inline-flex size-5 items-center justify-center rounded-xs text-ink-3 hover:text-ink",
+                "max-md:-me-2 max-md:size-11",
+              )}
             >
               <X aria-hidden="true" className="size-4" />
             </button>

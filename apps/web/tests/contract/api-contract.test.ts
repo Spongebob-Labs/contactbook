@@ -108,10 +108,11 @@ describe("API coverage", () => {
   const spec = specOperations();
   const client = clientOperations();
 
-  it("the snapshot holds the 36 operations this integration was scoped against", () => {
+  it("the snapshot holds the 38 operations this integration was scoped against", () => {
     // A guard on the guard: if the snapshot is refreshed and the count moves, every
     // assertion below is measuring a different API than the one the UI was mapped to.
-    expect(spec).toHaveLength(36);
+    // 36 -> 38 when card-update notifications landed: /cards/{id}/audience and /notify.
+    expect(spec).toHaveLength(38);
   });
 
   it("implements every operation in the spec", () => {

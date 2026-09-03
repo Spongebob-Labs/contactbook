@@ -46,14 +46,22 @@ export function ContactRow({ contact, href, as = "li", className }: ContactRowPr
       data-contact-row={contact.id}
       data-contact-opted-out={contact.optedOutAt === null ? undefined : ""}
       className={cn(
-        "flex flex-col gap-1 border-b border-line py-4 last:border-b-0",
+        /* `relative` is the containing block for the stretched link below. */
+        "relative flex flex-col gap-1 border-b border-line py-4 last:border-b-0",
         "md:flex-row md:items-baseline md:justify-between md:gap-6",
         className,
       )}
     >
       <p className="flex min-w-0 items-baseline gap-2 text-base text-ink">
         {href ? (
-          <Link href={href} className="min-w-0 truncate text-ink underline-offset-4 hover:underline">
+          /* The stacked mobile row is ~72px tall and this inline link was its only target —
+             24px of it, and only as wide as the name. `after:absolute after:inset-0` makes the
+             whole row the hit area without adding a second tab stop or a second accessible
+             name; the `<Row>` root carries the `relative` it anchors to. */
+          <Link
+            href={href}
+            className="min-w-0 truncate text-ink underline-offset-4 after:absolute after:inset-0 hover:underline"
+          >
             {label}
           </Link>
         ) : (

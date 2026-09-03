@@ -84,8 +84,15 @@ const SIDE: Record<SheetSide, string> = {
      (§8D.3's safe-area rule). */
   bottom:
     "fixed inset-x-0 bottom-0 max-h-[85dvh] overflow-y-auto rounded-t-2xl " +
-    "border-x-0 border-b-0 px-5 pt-3 " +
-    "pb-[calc(var(--space-5)_+_env(safe-area-inset-bottom))] " +
+    "border-x-0 border-b-0 pt-3 " +
+    /* ⚠ The horizontal padding carries the LEFT and RIGHT insets too, not just the bottom
+       one. A landscape notch is on a side edge, and this sheet is `inset-x-0` — so a flat
+       `px-5` puts the outer ~44px column of its content under the notch. `max()` rather
+       than `calc(… + …)`: the inset is 0 in portrait, and 20px + 0 is the number we want
+       there, while 20px + 44px would be 64px of gutter in landscape for no reason. */
+    "ps-[max(var(--space-5),env(safe-area-inset-left,0px))] " +
+    "pe-[max(var(--space-5),env(safe-area-inset-right,0px))] " +
+    "pb-[calc(var(--space-5)_+_env(safe-area-inset-bottom,0px))] " +
     "data-[state=open]:animate-[cb-sheet-in_var(--dur-slow)_var(--ease-out)] " +
     "data-[state=closed]:animate-[cb-sheet-out_var(--dur-slow)_var(--ease-in)]",
   /* Full height against the left edge: no radius and no border on the three flush sides,
@@ -94,7 +101,13 @@ const SIDE: Record<SheetSide, string> = {
   left:
     "fixed inset-y-0 left-0 flex w-[min(20rem,88vw)] flex-col overflow-y-auto " +
     "rounded-l-none rounded-r-xl border-y-0 border-l-0 " +
-    "px-5 py-5 ps-[calc(var(--space-5)_+_env(safe-area-inset-left))] " +
+    "px-5 ps-[calc(var(--space-5)_+_env(safe-area-inset-left,0px))] " +
+    /* ⚠ The drawer is `inset-y-0`, so it owns the full fixed viewport — including the strip
+       under the home indicator and the strip behind the notch. A flat `py-5` left the last
+       nav row 14px beneath a 34px indicator, which is untappable. Both ends carry their
+       inset for the same reason the bottom sheet carries its own. */
+    "pt-[calc(var(--space-5)_+_env(safe-area-inset-top,0px))] " +
+    "pb-[calc(var(--space-5)_+_env(safe-area-inset-bottom,0px))] " +
     "data-[state=open]:animate-[cb-drawer-in_var(--dur-slow)_var(--ease-out)] " +
     "data-[state=closed]:animate-[cb-drawer-out_var(--dur-slow)_var(--ease-in)]",
 };

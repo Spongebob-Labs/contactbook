@@ -234,7 +234,12 @@ export function ProfileFieldRow({
       </div>
 
       {editing ? null : (
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 lg:shrink-0">
+        <div className=/* ⚠ The row gap is the one that matters on a phone. This cluster is up to six
+             44px controls — Edit, Reveal, Move up, Move down, Delete and a Switch — whose
+             max-content is ~382px against a 296px content box, so it wraps to two rows. At
+             `gap-y-2` those rows sat 8px apart, which for two rows of 44px targets is a
+             mis-tap waiting to happen. 12px between rows, 8px within one. */
+          "flex flex-wrap items-center gap-x-2 gap-y-3 lg:gap-x-4 lg:gap-y-2 lg:shrink-0">
           <SensitiveToggle
             fieldId={field.id}
             fieldLabel={field.label}
@@ -404,7 +409,10 @@ function ReorderControls({
   onMove: (direction: -1 | 1) => void;
 }) {
   return (
-    <span className="inline-flex items-center gap-1">
+    /* ⚠ `gap-2` on touch. Move-up and move-down are a 44px pair that do OPPOSITE things, and at
+       `gap-1` they sat 4px apart — the closest pair of adjacent, mutually-undoing targets in the
+       product. 8px is still a tight pair visually and doubles the margin for a miss. */
+    <span className="inline-flex items-center gap-2 lg:gap-1">
       <Button
         variant="ghost"
         iconOnly

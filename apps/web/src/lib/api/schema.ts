@@ -86,7 +86,8 @@ export type ApiContactSource = (typeof API_CONTACT_SOURCES)[number];
 export const API_SHARE_LINK_STATUSES = ["ACTIVE", "REVOKED"] as const;
 export type ApiShareLinkStatus = (typeof API_SHARE_LINK_STATUSES)[number];
 
-export const API_TEMPLATE_PURPOSES = ["OTP", "CARD_SHARE"] as const;
+/** `CARD_UPDATE` landed with card-update notifications — it is the purpose the notify send uses. */
+export const API_TEMPLATE_PURPOSES = ["OTP", "CARD_SHARE", "CARD_UPDATE"] as const;
 export type ApiTemplatePurpose = (typeof API_TEMPLATE_PURPOSES)[number];
 
 export const API_TEMPLATE_APPROVALS = ["APPROVED", "PENDING", "REJECTED", "UNKNOWN"] as const;
@@ -454,6 +455,55 @@ export interface CreateCardDto extends CardAppearanceDto {
 export interface UpdateCardDto extends CardAppearanceDto {
   name?: string;
   kind?: ApiCardKind;
+}
+
+/* ── card-update notifications ───────────────────────────────────────────────────────── */
+
+/**
+ * One active recipient of a card, and how far behind they are.
+ *
+ * `GET /cards/{id}/audience` returns **ACTIVE ShareLinks only** — a revoked or never-shared
+ * contact simply is not in the list, so there is no `status` to filter here.
+ */
+export interface AudienceRecipientDto {
+  /** ⚠ The id `POST /cards/{id}/notify` takes. Read it off here; never look it up elsewhere. */
+  shareLinkId: string;
+  contactId: string;
+  contactDisplayName: string | null;
+  contactPhoneE164: string;
+  /** `null` only for a link minted before this feature existed. */
+  lastNotifiedVersion: number | null;
+  /** `currentVersion - (lastNotifiedVersion ?? 0)`. `0` means caught up. */
+  versionsBehind: number;
+  viewCount: number;
+  lastViewedAt: string | null;
+}
+
+export interface AudienceResponseDto {
+  currentVersion: number;
+  recipients: AudienceRecipientDto[];
+}
+
+/** ⚠ All-or-nothing: one id that is not an ACTIVE link on THIS card 404s the whole call. */
+export interface NotifyCardDto {
+  /** Max 500, each a UUID. Validate against a fresh `audience` before sending. */
+  shareLinkIds: string[];
+}
+
+/**
+ * ⚠ **`ENQUEUED` is not "delivered".**
+ *
+ * This comes back synchronously, before the WhatsApp send has been attempted — the send happens
+ * later, out of the request path, through the outbox/Cloud Tasks pipeline. A `201` means the
+ * request reached the queue and nothing more. There is no webhook and no push: the only way to
+ * learn the outcome is to re-fetch `audience` and see whether `versionsBehind` reached `0`.
+ *
+ * The enum has exactly one member on purpose — a failed send returns this same value.
+ */
+export interface NotifyResultDto {
+  shareLinkId: string;
+  outboxMessageId: string;
+  status: "ENQUEUED";
 }
 
 export interface CardFieldEntryDto {

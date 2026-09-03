@@ -90,7 +90,7 @@ export function EmptyState({
     <div
       data-empty-state="first-run"
       className={cn(
-        "w-full rounded-lg border border-line bg-surface px-8 py-12",
+        "w-full rounded-lg border border-line bg-surface px-5 py-10 sm:px-8 sm:py-12",
         align === "center" && "text-center",
         className,
       )}

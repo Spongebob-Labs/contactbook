@@ -1199,3 +1199,35 @@
     transform: translateY(40px) scale(0.972);
   }
 }
+
+/* ── The hand-over flow's one move ───────────────────────────────────────────
+   The connector shaft drawing itself toward the stage that just became current,
+   in `components/marketing/handover-flow.tsx`.
+
+   ⚠ IT LIVES HERE FOR THE SAME REASON `.mk-ledger`'s RULING DOES: one grep
+   site for a value that must not be retyped. `102` is the shaft's own length in
+   the arrow's viewBox — `<line x1="2" x2="104">` — and a keyframe that started
+   from a different number would either leave a stub of line undrawn or overrun
+   the arrowhead. The component sets `stroke-dasharray` to the same 102 and
+   `stroke-dashoffset` to 0, so the number appears exactly twice and the two
+   sites are one edit apart.
+
+   ⚠ THE BASE STATE IS A COMPLETE LINE, AND THE ANIMATION ONLY REPLAYS ITS
+   ARRIVAL. `stroke-dashoffset: 0` is declared inline on the element, so with no
+   JavaScript, with `marketing.spec.ts`'s durations zeroed, and under reduced
+   motion below, every arrow in the diagram is fully drawn. This keyframe runs
+   only while a shaft is `lit`, which is a state a reader's own pointer or
+   keyboard caused. An arrow that grew from nothing on intersection would be an
+   arrow that is MISSING for a reader whose script failed — `mk-motion.tsx`'s
+   first rule, and the failure mode the whole motion layer is built against. */
+@media (prefers-reduced-motion: no-preference) {
+  [data-flow-arrow-shaft="lit"] {
+    animation: mk-flow-draw var(--mk-dur-settle) var(--mk-ease);
+  }
+}
+
+@keyframes mk-flow-draw {
+  from {
+    stroke-dashoffset: 102;
+  }
+}

@@ -82,7 +82,7 @@ export function AppShell({ children, className }: AppShellProps) {
         data-app-content=""
         className={cn(
           "flex min-w-0 flex-1 flex-col",
-          "pb-[calc(var(--bottombar-height)+env(safe-area-inset-bottom))] md:pb-0",
+          "pb-[calc(var(--bottombar-height)+env(safe-area-inset-bottom,0px))] md:pb-0",
         )}
       >
         {/* `tabIndex={-1}` is what makes the skip link actually move focus rather than

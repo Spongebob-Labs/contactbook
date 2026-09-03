@@ -611,11 +611,39 @@ function Builder({
            empty gutter and took that width off the controls — which is what made the colour
            grid five ~80px cells and printed "Periwink…" for Periwinkle. Everything past 400px
            goes to the panel, which is the pane that has more to show at a wider viewport. */
-        className="lg:grid-cols-[minmax(0,1fr)_400px] lg:gap-6"
-        /* The mobile cap. 50svh, measured: it leaves the card a viewport taller than its own
-           hero at 360×800 while still landing the tab rail above the fold and clear of the
-           64px bottom bar, so AC-29 holds and the controls stay reachable without scrolling. */
-        pinnedClassName="max-h-[50svh]"
+        /* ⚠ The row gap is 16px on a phone and `SplitView`'s own 32px from `lg` up.
+           Below `lg` this "gap" is the space between a preview PINNED to the top of the
+           viewport and the section rail directly beneath it — not a gutter between two
+           independent panes. 32px of blank canvas there reads as a gap in the layout rather
+           than as breathing room, and it is 32px taken from the ~220px the control panel gets
+           on a short phone. The preview's own bottom hairline (see `pinnedClassName`) is what
+           separates the two now, so the space does not have to. */
+        className="gap-4 lg:grid-cols-[minmax(0,1fr)_400px] lg:gap-6"
+        /**
+         * The mobile pane, from the one token that owns this number.
+         *
+         * ⚠ **A definite `h-`, not a `max-h-`, and the preview inside it is `h-full`.** Both
+         * halves matter. It was `max-h-[50svh]` here against `h-[58svh]` in
+         * `builder-preview.tsx`, and because this pane clips, the 8svh difference was cut off
+         * rather than reported — 65px on a 375×812 phone, which took the bottom of the card and
+         * the entire "name · palette" caption with it. Two files each declaring the height of
+         * the same box is the whole bug; `--builder-preview-h` in `tokens.css` is now the only
+         * place it is written, and this pane is the only consumer that sets it.
+         *
+         * 38svh capped at 300px rather than 50svh: half a phone viewport spent on a preview
+         * left the controls 342px on an 812px screen and 146px on a 640px one, and the controls
+         * are what the reader is using. AC-29 still holds — the preview is on screen without
+         * scrolling at every viewport — it simply stops being the larger half.
+         *
+         * `pb-3` and the hairline are what make it read as a pinned layer rather than as
+         * content that happens to be at the top: without an edge, the card's bottom sits
+         * directly against the section rail scrolling underneath it.
+         */
+        pinnedClassName={cn(
+          "h-[var(--builder-preview-h)] max-h-[var(--builder-preview-h)] pb-3",
+          "border-b border-line",
+          "lg:h-auto lg:max-h-[calc(100svh-var(--space-16))] lg:border-b-0 lg:pb-0",
+        )}
       >
         {/* ── the rail and the panel ────────────────────────────────────────────
             ⚠ **One `Tabs.Root`, and it owns the only piece of view state on this screen.**

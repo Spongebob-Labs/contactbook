@@ -97,8 +97,17 @@ export function BuilderHeader({
          panel and the preview is a rounded device — a full-width hairline across the top of
          both is the one edge on this screen that belongs to no object. */
       className={cn(
-        "flex flex-wrap items-center gap-x-3 gap-y-3 rounded-xl border border-line",
-        "bg-canvas px-3 py-2.5 shadow-[var(--elevation-1)] sm:px-4",
+        "flex flex-wrap items-center gap-x-3 rounded-xl border border-line",
+        /* ⚠ The row gap is tighter on a phone, and it is not a cosmetic tightening.
+           This toolbar WRAPS below `sm` — the title takes one line and the meter/Save block
+           takes another — so `gap-y-3` plus `py-2.5` twice made it 110px tall. On a 640px
+           Android that is 17% of the viewport spent on chrome, above a 243px preview, leaving
+           the panel the reader is actually working in about 223px. 8px of row gap and 8px of
+           vertical padding give 20px back without crowding anything: the two rows are still
+           clearly two rows. From `sm` up it does not wrap at all, so the original rhythm is
+           restored there rather than compromised everywhere. */
+        "gap-y-2 py-2 sm:gap-y-3 sm:py-2.5",
+        "bg-canvas px-3 shadow-[var(--elevation-1)] sm:px-4",
       )}
     >
       {/* ── the way back out of focus mode ─────────────────────────────────────
@@ -134,6 +143,15 @@ export function BuilderHeader({
           placeholder="Name this card"
           className={cn(
             "w-full min-w-0 rounded-lg bg-transparent px-2 py-1",
+            /* ⚠ `text-ellipsis` on an `<input>`, and it does real work here.
+               A 48-character card name in a 264px field on a phone simply ran off the right
+               edge of the toolbar and stopped — a hard cut mid-glyph with no signal that
+               there was more, which reads as a broken panel rather than as a long name.
+               `text-overflow: ellipsis` applies to a text input while it is NOT focused in
+               every engine that matters, so the name reads as "Work — Kestrel Telecom, ne…"
+               at rest and reverts to normal scrolling the moment it is tapped, which is
+               exactly the behaviour you want from a field you are about to edit. */
+            "text-ellipsis",
             // The display face, at the section-title step — this is the title of the screen and
             // the only thing on the toolbar that should read as one.
             //

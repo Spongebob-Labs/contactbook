@@ -2,6 +2,7 @@ import { TriangleAlert } from "lucide-react";
 import type { ReactElement } from "react";
 
 import { EMPTY_CARD_NOTE } from "@/components/app";
+import { cn } from "@/lib/cn";
 
 /**
  * §11 E-01 — **the single most important guard in this run.**
@@ -67,7 +68,17 @@ export function EmptyCardWarning({ onAddFields }: { onAddFields: () => void }): 
          that maps nothing, and an assertive live region on load talks over the page title.
          It is polite when it appears mid-edit, which is when it is news. */
       role="status"
-      className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-lg bg-warning-wash px-5 py-4"
+      /* ⚠ Stacked on a phone, one row from `sm` up.
+         The `<p>` in here is `min-w-0 flex-1`, so its flex basis is 0 and `flex-wrap` can never
+         break the line — the paragraph is simply squeezed by whatever shares the row. At a
+         320px viewport that left the warning 142px beside a 20px icon and a 62px link, setting
+         "this card shares nothing" as a four-line ribbon. It is the most important guard on
+         this screen and it was the worst-set text on it. Stacking gives it the full 256px
+         measure. */
+      className={cn(
+        "flex flex-col items-start gap-3 rounded-lg bg-warning-wash px-5 py-4",
+        "sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4 sm:gap-y-3",
+      )}
     >
       <TriangleAlert
         aria-hidden="true"

@@ -5,6 +5,7 @@ import { useId, type ReactNode } from "react";
 
 import { cn } from "@/lib/cn";
 import { Field } from "./label";
+import { TOUCH_HIT_44 } from "./touch-target";
 
 /**
  * RadioGroup — Radix owns the roving tabindex and the arrow-key wrap, which is the part
@@ -109,6 +110,8 @@ export function RadioGroup({
                   className={cn(
                     "inline-flex size-5 shrink-0 items-center justify-center rounded-full",
                     "border bg-surface transition-colors duration-[var(--dur-fast)] ease-out",
+                    /* 20px drawn, 44px reachable on touch. See `touch-target.ts`. */
+                    TOUCH_HIT_44,
                     "data-[state=checked]:border-accent",
                     "disabled:cursor-not-allowed disabled:bg-surface-sunk",
                     invalid ? "border-danger" : "border-line-control",

@@ -99,8 +99,9 @@ export function BuilderPreview({ resolved }: BuilderPreviewProps): ReactElement 
       data-builder-preview=""
       /* A definite height below `lg` so the device below can flex inside it: `max-height` alone
          gives a flex child nothing to distribute, and the frame would then measure its own
-         content and never shrink. It matches the cap the builder puts on the pinned pane, so
-         the caption below is inside it rather than pushing past it.
+         content and never shrink. The height is INHERITED from the pinned pane rather than
+         restated here — see the `className` note below and `--builder-preview-h` in
+         `tokens.css` — so the caption is always inside the visible box rather than past it.
 
          ⚠ **The stage is bare now — no border, no ground, no padding — and the hairline that
          used to be here has not been deleted so much as MOVED onto the device below.** It was
@@ -109,7 +110,14 @@ export function BuilderPreview({ resolved }: BuilderPreviewProps): ReactElement 
          layer's texture edge at devicePixelRatio 2. The seam lands on whatever box coincides
          with the pane, and the device shell now does — it is a real, opaque, shadowed edge on
          exactly that rectangle, which covers the artefact far better than a hairline did. */
-      className="flex h-[58svh] flex-col items-center gap-3 lg:h-auto"
+      /* ⚠ `h-full`, and it must never go back to a declared `svh` again.
+         The pane above this is `--builder-preview-h` tall and clips; this stage used to say
+         `h-[58svh]` while that pane said `max-h-[50svh]`, and the 8svh difference was silently
+         cut off — 65px on a 375x812 phone, which is the bottom of the card frame plus the whole
+         caption. `h-full` makes the stage exactly the pane, so the flex column below can only
+         distribute space that actually exists and nothing can be lost. `tokens.css` carries the
+         number and the full account of the bug. */
+      className="flex h-full flex-col items-center gap-3 lg:h-auto"
     >
       {/* ── the device ───────────────────────────────────────────────────────────
           ⚠ **The black bezel is gone.** It was an opaque `--ink` shell with 8px of padding and
@@ -289,7 +297,8 @@ function InertActions({ resolved }: { resolved: ResolvedCard }): ReactElement {
  * ratio and the header's height. Four numbers in four other files. So the budget is taken from
  * where the frame actually is:
  *
- *   · **below `lg`** the frame is a flex child of a fixed-height (`50svh`) root, so flexbox has
+ *   · **below `lg`** the frame is a flex child of a root whose height comes from the pinned
+ *     pane (`--builder-preview-h`), so flexbox has
  *     already computed a definite height for it and the CSS is the budget — this hook returns
  *     `null` and writes no inline height at all;
  *   · **at `lg` and above** the root has no height, so the budget is what is left of the

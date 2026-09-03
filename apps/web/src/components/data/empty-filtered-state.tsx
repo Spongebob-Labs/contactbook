@@ -60,7 +60,7 @@ export function EmptyFilteredState({
     <div
       data-empty-state="filtered"
       className={cn(
-        "w-full rounded-lg border border-line bg-surface px-8 py-12",
+        "w-full rounded-lg border border-line bg-surface px-5 py-10 sm:px-8 sm:py-12",
         align === "center" && "text-center",
         className,
       )}

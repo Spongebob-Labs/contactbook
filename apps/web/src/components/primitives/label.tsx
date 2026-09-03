@@ -139,6 +139,23 @@ export function Field({
  * `--line-control` (3.46:1 on paper), never `--line` (1.41:1, decorative): a control
  * boundary is a non-text contrast target under 1.4.11 and AC-13 measures it.
  */
+/**
+ * The height every boxed form control resolves to — `<Input>`, `<Select>`'s trigger and
+ * `<Input>`'s addon shell.
+ *
+ * ⚠ **44px on touch, 40px on a pointer.** §8D.7 specifies 40px and that is the right number for
+ * a cursor, which is a single pixel. It is 4px under the floor a fingertip needs — Apple's HIG,
+ * Android's Material guidance and WCAG 2.5.5 arrive at 44 independently — and these three
+ * components are *every* text field, search box and dropdown in the product. Shipping the whole
+ * form layer 4px short is a defect you feel as mis-taps rather than see as a broken layout.
+ *
+ * It is one constant rather than three `h-10`s because the addon shell wraps the input: if the
+ * shell and the input inside it disagree by 4px, the field grows a visible seam.
+ *
+ * The breakpoint is `md`, the same line the shell uses to swap its rail for the bottom bar.
+ */
+export const CONTROL_HEIGHT = "h-10 max-md:h-11";
+
 export function controlClassName({
   invalid = false,
   readOnly = false,

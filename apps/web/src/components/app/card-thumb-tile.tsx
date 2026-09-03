@@ -67,7 +67,11 @@ export function CardThumbTile({
           data-card-tile-name=""
           data-tile-clamp="1"
           title={resolved.cardName}
-          className="line-clamp-1 text-lg text-ink"
+          /* ⚠ Two lines on touch, one from `lg` up. A clamped name's full text lives only in
+             `title`, and a `title` tooltip never opens on a phone — so a 40-character card
+             name was unrecoverable there. Two lines holds every name in practice; the desktop
+             grid keeps one so the tile heights stay even down a three-up row. */
+          className="line-clamp-2 text-lg text-ink lg:line-clamp-1"
         >
           {href ? (
             // A stretched link: the whole tile is the target, and there is exactly one tab

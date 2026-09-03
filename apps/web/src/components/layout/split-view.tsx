@@ -16,6 +16,15 @@ import { cn } from "@/lib/cn";
  *   pushed off-screen", and AC-29 asserts it is visible without scrolling at all three
  *   viewports. Mobile caps it at 45svh (`svh`, not `vh` — `vh` is the pre-collapse
  *   browser-chrome height on iOS, so `45vh` is taller than 45% of what the user sees).
+ *
+ *   ⚠ **A consumer that overrides this cap owns the whole height contract, both halves.**
+ *   The cap here is a `max-height` on a box that also clips, so a pinned child *taller* than
+ *   the cap does not overflow visibly and does not warn — it is silently truncated. The card
+ *   builder hit exactly that: it passed `max-h-[50svh]` while `builder-preview.tsx` gave its
+ *   own stage `h-[58svh]`, and 65px of the live preview (including its entire caption) was
+ *   cut off on a 375×812 phone. The fix was to make the override a *definite* `h-` from one
+ *   shared token and the child `h-full`, so the child can only ever be the size of the pane.
+ *   If you override `pinnedClassName`'s height, do the same: one number, and a `h-full` child.
  * · **Desktop splits ~46 / 54** in favour of the controls, per §8D.4.
  * · The panes are `region`s when labelled, so a screen-reader user can move between the
  *   preview and the controls instead of arrowing through the whole control column.

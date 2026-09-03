@@ -172,8 +172,13 @@ export function ToastProvider({ duration = 6000, children }: ToastProviderProps)
           clear of the home indicator (§8D.3's safe-area rule). */}
       <ToastPrimitive.Viewport
         className={cn(
-          "fixed z-50 flex max-h-screen w-full flex-col gap-2 p-4",
-          "bottom-[calc(var(--bottombar-height)_+_env(safe-area-inset-bottom))] right-0",
+          /* ⚠ `dvh`, never `max-h-screen`. `max-h-screen` is `100vh`, which on iOS Safari is the
+             PRE-collapse chrome height — about 114px taller than what the reader can see on an
+             iPhone SE. A full stack sized against it puts its top toasts above the visible
+             viewport, and a `fixed` element cannot be scrolled to, so those toasts are simply
+             gone. This was the only `vh` unit left in the app. */
+          "fixed z-50 flex max-h-[calc(100dvh_-_var(--space-16))] w-full flex-col gap-2 p-4",
+          "bottom-[calc(var(--bottombar-height)_+_env(safe-area-inset-bottom,0px))] right-0",
           "sm:bottom-0 sm:right-0 sm:max-w-sm",
         )}
       />

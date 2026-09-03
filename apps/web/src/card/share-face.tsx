@@ -408,6 +408,29 @@ export function ShareFace({
      transformed, so a thumbnail is pixel-identical to the card it stands for rather than a
      second layout that has to be kept in sync with the first. */
   const scale = thumbWidth / FACE_WIDTH;
+  /**
+   * ⚠ **The scale is a CSS custom property, so a consumer can step it per breakpoint.**
+   *
+   * `thumbWidth` is a prop, and a prop cannot be responsive without measuring the viewport in
+   * JavaScript — which renders one size on the server and possibly another on the client, and is
+   * exactly what §11 E-45 fails. So the number a consumer passes becomes the *fallback*, and any
+   * consumer that needs a different size at a different width sets `--card-thumb-scale` with an
+   * ordinary CSS breakpoint instead.
+   *
+   * The cards grid is the case this exists for: at a flat 200px its single mobile column left
+   * ~40% of a phone's width empty beside it, while at `md` and up 200px is exactly the two-up
+   * track. One prop cannot be both.
+   *
+   * Nothing changes for a consumer that does not set the variable — `var(…, ${scale})` resolves
+   * to precisely the value it always had, so the auth showcase and the marketing tiles are
+   * untouched.
+   *
+   * ⚠ The **width, the height and the transform all read the same variable**, and they have to:
+   * the outer box is what reserves space in the layout and the transform is what paints inside
+   * it, so a variable applied to one and not the others gives a thumbnail that either floats in
+   * a too-large box or is clipped by a too-small one.
+   */
+  const scaleVar = `var(--card-thumb-scale, ${scale})`;
   return (
     <div
       /* The scaled wrapper is the thumbnail's outer box, and the stable hook for anything that
@@ -416,13 +439,13 @@ export function ShareFace({
       data-card-thumb=""
       className={className}
       style={{
-        width: `${thumbWidth}px`,
-        height: `${Math.round(FACE_HEIGHT * scale)}px`,
+        width: `calc(${FACE_WIDTH}px * ${scaleVar})`,
+        height: `calc(${FACE_HEIGHT}px * ${scaleVar})`,
         overflow: "hidden",
         flexShrink: 0,
       }}
     >
-      <div style={{ transform: `scale(${scale})`, transformOrigin: "top left" }}>{face}</div>
+      <div style={{ transform: `scale(${scaleVar})`, transformOrigin: "top left" }}>{face}</div>
     </div>
   );
 }

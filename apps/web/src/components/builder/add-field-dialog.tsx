@@ -342,8 +342,19 @@ function AddFieldBody({
         <nav
           aria-label="Field categories"
           className={cn(
-            "flex gap-1 overflow-x-auto pb-1",
-            "sm:flex-col sm:overflow-visible sm:pb-0",
+            /* ⚠ **It WRAPS on a phone. It used to scroll, and 64% of it was off-screen.**
+               Eight pills — Suggested, Identity, Personal, Work, Business, Social, Financial,
+               Custom — measure about 658px at `px-3.5`, against 238px of dialog content at a
+               320px viewport. As `overflow-x-auto` with `whitespace-nowrap` that put five of
+               the eight categories past the right edge with no fade, no chevron, and no
+               visible scrollbar on either iOS or Android: the reader's evidence that Financial
+               exists was nothing at all. A horizontal scroller is a reasonable pattern when
+               it *looks* scrollable; this one could not, because the pills tile edge to edge.
+               `flex-wrap` costs two extra rows in a dialog that already scrolls vertically and
+               makes all eight categories visible without a gesture. `sm:` restores the vertical
+               rail, which is the shape this control is really designed as. */
+            "flex flex-wrap gap-1 pb-1",
+            "sm:flex-col sm:flex-nowrap sm:overflow-visible sm:pb-0",
             /* The separation the reference has and this did not: a hairline down the inline
                edge, with real room either side of it. `border-e`/`pe-*` rather than
                `border-r`/`pr-*` so the rule lands on the correct side under `dir="rtl"`. */
@@ -377,7 +388,14 @@ function AddFieldBody({
             data-add-field-results=""
             data-add-field-searching={searching ? "" : undefined}
             data-add-field-result-count={results.length}
-            className="flex max-h-[min(28rem,52svh)] min-w-0 flex-col overflow-y-auto"
+            /* ⚠ **The inner cap is a `sm:` rule now — below that the dialog owns the one
+               vertical scroll.** Two nested scrollers on a 667px phone is a trap rather than a
+               convenience: the dialog caps at `100dvh - 64px` = 603px and this list capped
+               itself at `min(28rem, 52svh)` = 347px, so a drag started anywhere in the list
+               scrolled the list and could not reach the dialog's own scroll — which is where
+               the create form's Add and Cancel live. On a phone the sheet is the surface; one
+               scroll, one gesture, and the sticky dialog footer keeps the action in view. */
+            className="flex min-w-0 flex-col sm:max-h-[min(28rem,52svh)] sm:overflow-y-auto"
           >
             {results.map((row) => (
               <ResultRow
@@ -543,7 +561,10 @@ function RailButton({
         /* `min-h-9` gives the rail the same rhythm as the rows beside it, so the two columns
            read as one sheet rather than as a menu bolted to a list. Still a pill, still
            `shrink-0`: below `sm` these are a horizontally scrolling strip. */
-        "flex min-h-9 shrink-0 items-center whitespace-nowrap rounded-full px-3.5 text-left text-sm",
+        /* 44px on touch, 36px on a pointer — `min-h-9` is the desktop rail's rhythm against the
+           rows beside it, and eight sub-floor pills in a row is the single densest cluster of
+           small targets in the product. */
+        "flex min-h-9 max-md:min-h-11 shrink-0 items-center whitespace-nowrap rounded-full px-3.5 text-left text-sm",
         "transition-colors duration-[var(--dur-fast)] sm:w-full",
         active ? "bg-ink text-canvas" : "text-ink-3 hover:bg-surface-sunk hover:text-ink",
       )}
@@ -622,7 +643,9 @@ function ResultRow({
       {added ? (
         <span
           data-add-field-result-added=""
-          className="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full bg-surface-sunk px-3.5 text-xs text-ink-3"
+          /* Matches the Add button's touch height so a list of added and un-added rows keeps
+             one baseline instead of alternating between 44px and 36px. */
+          className="inline-flex min-h-9 max-md:min-h-11 shrink-0 items-center gap-1.5 rounded-full bg-surface-sunk px-3.5 text-xs text-ink-3"
         >
           <Check aria-hidden="true" className="size-3.5" />
           Added
@@ -636,9 +659,14 @@ function ResultRow({
           aria-label={`Add ${row.field.label}`}
           onClick={() => onAdd(row.field.id)}
           className={cn(
-            /* `min-h-9` — the pointer-target floor this sheet is used against with a thumb, and
-               the same height as the tile opposite it, so the row has one baseline grid. */
-            "inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border border-line-control",
+            /* ⚠ 44px on touch, 36px on a pointer.
+               The comment that used to sit here called `min-h-9` "the pointer-target floor
+               this sheet is used against with a thumb" — 36px is not a floor anyone publishes.
+               Apple's HIG says 44, Material says 48, WCAG 2.5.5 says 44, and this is the only
+               control that puts a field on the card, repeated once per row down a list a thumb
+               works through. `min-h-11` below `md`; the "Added" chip opposite gets the same
+               treatment so the row keeps one baseline. */
+            "inline-flex min-h-9 max-md:min-h-11 shrink-0 items-center gap-1.5 rounded-full border border-line-control",
             "bg-surface px-3.5 text-sm text-ink transition-colors duration-[var(--dur-fast)]",
             "hover:bg-surface-sunk",
           )}
@@ -666,7 +694,15 @@ export function MaskedMarker({ sensitive }: { sensitive: boolean }): ReactElemen
   return (
     <span
       data-field-sensitive=""
-      className="inline-flex items-center gap-1 rounded-full bg-surface-sunk px-2 py-0.5 text-xs text-ink-3"
+      /* ⚠ `shrink-0` and `whitespace-nowrap`, and both are load-bearing on a phone.
+         This pill is a flex item in a row whose text column is about 105px at a 320px
+         viewport, while "Masked when shared" needs ~142px. A flex item's `min-width` is
+         `auto`, so instead of overflowing it shrank to the column and wrapped its own label
+         across two lines *inside a `rounded-full`* — a 36px-tall lozenge with a broken pill
+         silhouette, which reads as a rendering fault rather than as a label. Refusing to
+         shrink and refusing to wrap keeps the pill a pill; the row it sits in already wraps,
+         so the pill takes its own line when there is no room beside the label. */
+      className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-surface-sunk px-2 py-0.5 text-xs text-ink-3"
     >
       <EyeOff aria-hidden="true" className="size-3" />
       {sensitive ? "Sensitive" : "Masked when shared"}

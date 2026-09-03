@@ -38,6 +38,17 @@ export const Geist = loader("geist");
 export const Geist_Mono = loader("geist-mono");
 export const Space_Grotesk = loader("space");
 
+/**
+ * The app chrome's face, also loaded by the root layout.
+ *
+ * ⚠ It was missing, and the gap only surfaced when a test first imported `app/layout.tsx`
+ * directly — `tests/unit/mobile-contracts.test.tsx` reads the `viewport` export from it — at
+ * which point the whole suite died at import with `Instrument_Sans is not a function`. Nothing
+ * had imported that module before; every other test renders `AppChrome` or below, which never
+ * touches the root layout. Exactly the loud failure this file's header promises.
+ */
+export const Instrument_Sans = loader("instrument");
+
 /*
  * `Fraunces` was here, for the display face `(marketing)/layout.tsx` used to load itself. That
  * layout now loads no typeface at all — marketing draws the app's own Space Grotesk through
