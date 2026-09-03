@@ -82,6 +82,31 @@ import type { ResolvedCard } from "@/types/domain";
  * `Button` swallows its own click (see `primitives/button.tsx`), so the explanation would
  * never be reachable by the person who wanted it.
  *
+ * ## ⚠ EVERY CONTROL IN THIS BLOCK IS AN APP CONTROL. NONE OF THEM MAY BE A CARD BUTTON.
+ *
+ * The owner's "Save to contacts" shipped as `<CardActionButton surface="canvas">`, and it
+ * rendered as **a Sapphire rectangle one card wide, sixteen pixels under a Sapphire card, on
+ * the white canvas.** The two blocks read as a single card with a slice cut out of it — the
+ * client's report was *"what is this glitch onto the UI"*, and the card's own boundary was the
+ * thing that had become unreadable, on the one screen whose entire job is to make the pass
+ * legible as an object.
+ *
+ * ⚠ It is worth being precise about why no existing test caught it, because the gap is
+ * instructive. `surface="canvas"` is a *legibility* mechanism and it worked exactly as
+ * designed: `derive-palette.ts` sets `canvasActionBg` to "the palette's own ground … what
+ * every deep palette uses", and `PALETTE_CONTRACT` proves that fill clears 3:1 **against the
+ * app canvas**. Nothing ever asked whether it was distinguishable from the CARD DIRECTLY
+ * ABOVE IT — and for all five deep palettes it is not merely similar, it is the same hex.
+ * A button can be perfectly legible and still be the wrong object.
+ *
+ * So the rule for this block is positional rather than per-palette, because a per-palette fix
+ * would have to be re-derived every time a ground is added: **on the app canvas, controls wear
+ * the app's chrome.** `tokens.css` exists to disappear so that a card is the only coloured
+ * thing on screen, and the two wallet buttons below were already plain `<Button>`s — the save
+ * action was the only control in the block dressed as the card. The palette buttons stay where
+ * they belong: inside `<CardPage>`'s action slot, on the palette's own ground, where a
+ * palette-coloured button is the correct answer and the public page uses it.
+ *
  * ## Why the block renders for a card that shares nothing
  *
  * `canBuildVcf` gates the `.vcf` and every control that would write one — it does **not**
@@ -148,15 +173,31 @@ export interface WalletPassBlockProps {
   /** The one `ResolvedCard` the face, the `.vcf` and the PNG all share (I-5). */
   resolved: ResolvedCard;
   /**
-   * The `<ShareFace>` itself, plus whatever the screen pins directly to it.
+   * ⚠ **The `<ShareFace>` AND NOTHING ELSE.**
    *
    * Taken as `children` rather than rendered here so this component never becomes a second
    * place that decides how the face is mounted — see the module note on the five QR suites.
+   *
+   * It used to also carry the owner's save button, and that was a bug: `children` is rendered
+   * inside {@link WalletPassBlockProps.action}'s sibling rail, which is `overflow-x-auto`, so
+   * the button was **inside the horizontal scroller** with the rigid card. On a 320px screen
+   * the rail's client width is 296 while the face is 336, so a `w-full` button came out 40px
+   * narrower than the card *and* needed a sideways scroll to reach its own right edge. Pass
+   * the action through `action`; this slot is the card.
    */
   children: ReactNode;
+  /**
+   * The owner's primary action for this card, drawn directly under the face and **outside the
+   * scroll rail**.
+   *
+   * ⚠ It must be an APP control — `components/primitives/button` — and never a
+   * `<CardActionButton>`. See the ⚠ block in the module note: a palette-coloured button here
+   * is the same colour as the card for every deep palette, and reads as part of it.
+   */
+  action?: ReactNode;
 }
 
-export function WalletPassBlock({ resolved, children }: WalletPassBlockProps) {
+export function WalletPassBlock({ resolved, children, action }: WalletPassBlockProps) {
   const { toast } = useToast();
 
   return (
@@ -201,6 +242,12 @@ export function WalletPassBlock({ resolved, children }: WalletPassBlockProps) {
       >
         {children}
       </div>
+
+      {/* ⚠ OUTSIDE THE RAIL, DELIBERATELY. Inside it, this button joined the card in a
+          horizontal scroller and was sized by the rail's client width rather than the block's
+          — see the ⚠ on `children`. Out here it is fluid, like every other control in the
+          block, and it still sits directly under the face where the owner looks for it. */}
+      {action == null ? null : <div data-wallet-pass-action="">{action}</div>}
 
       <div data-wallet-pass-actions="" className="flex flex-col gap-3">
         {/* `break-all`: the payload is a URL and this column is 336px at every viewport, so a
