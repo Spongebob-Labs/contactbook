@@ -393,10 +393,29 @@ function FieldRow({
             spellCheck={false}
             autoComplete="off"
             className={cn(
-              "w-full rounded-md border border-transparent bg-transparent px-1.5 py-1 -mx-1.5",
+              /* ⚠ `w-[calc(100%+0.75rem)]` rather than `w-full`, because `w-full` plus
+                 `-mx-1.5` is over-constrained: the box resolves to the column's width and the
+                 browser drops the RIGHT margin, so the input's left border overhung 6px into
+                 the icon gap while its right border stopped 6px short. A 12px asymmetry is
+                 8.6% of a 140px column and it is plainly visible the moment the border is
+                 painted — which, below `md`, is always. Asking for the width the bleed
+                 actually needs makes both edges land. */
+              "w-[calc(100%+0.75rem)] -mx-1.5 rounded-md px-1.5",
               "text-sm text-ink placeholder:text-ink-4",
               "transition-colors duration-[var(--dur-fast)]",
-              "hover:border-line hover:bg-surface-sunk",
+              /* ⚠ **On touch the box is painted at rest; on a pointer it still appears on
+                 hover.** The comment above is right that a click-to-edit line is invisible
+                 until discovered — and the quiet-until-hover answer it settled on is a
+                 pointer answer. A phone has no hover: before the tap this input was a
+                 transparent border and a transparent ground carrying `text-sm text-ink`, which
+                 is pixel-identical to the static `<span>` a non-editable row renders. So on a
+                 phone the value still looked exactly like a label, which is the original
+                 complaint, unfixed.
+                 `py-2.5` also takes the line box from 28px to 44px — this is a text field the
+                 reader has to hit, not a line of prose. */
+              "border border-line-control bg-surface-sunk py-2.5",
+              "md:border-transparent md:bg-transparent md:py-1",
+              "md:hover:border-line md:hover:bg-surface-sunk",
               "focus:border-ink-4 focus:bg-canvas focus:outline-none",
               BUILDER_SCROLL_CLEAR,
             )}
@@ -424,7 +443,14 @@ function FieldRow({
             <Link
               href="/profile"
               data-field-edit-elsewhere={row.field.id}
-              className="inline-flex w-fit items-center gap-1.5 text-xs text-ink-2 underline underline-offset-4"
+              /* 44px on touch. For a masked or address row this link is the ONLY route to
+                 changing the value — the row has no editable input — so a 16px `--text-xs`
+                 line box is the difference between "I can fix this" and "this row is stuck".
+                 `-my-3` gives the padding back to the flow so the row keeps its height. */
+              className={cn(
+                "inline-flex w-fit items-center gap-1.5 text-xs text-ink-2 underline underline-offset-4",
+                "max-md:-my-3 max-md:py-3",
+              )}
             >
               <SquarePen aria-hidden="true" className="size-3.5" />
               {row.masked ? "Change it in your profile" : "Edit in your profile"}
@@ -455,7 +481,13 @@ function FieldRow({
         aria-label={`Remove ${row.field.label}`}
         onClick={onRemove}
         className={cn(
-          "mt-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-full text-ink-3",
+          /* ⚠ 44x44 on touch, 32x32 on a pointer.
+             This is the only way to take a field off a card, it is one-per-row, and it sits
+             about 18px from the end of the editable value input beside it — so at `size-8` a
+             thumb aiming at the end of a phone number was a third of a target's width away
+             from removing the field. `size-11` below `md` is the fix; the desktop rail is a
+             400px column where 32px is right and a 44px circle would crowd the row. */
+          "mt-0.5 inline-flex size-8 max-md:size-11 shrink-0 items-center justify-center rounded-full text-ink-3",
           "transition-colors duration-[var(--dur-fast)] hover:bg-surface-sunk hover:text-ink",
           BUILDER_SCROLL_CLEAR,
         )}

@@ -212,7 +212,12 @@ export function Dialog({
           {...describedByOverride}
           className={layerClassName(
             cn(
-              "fixed left-1/2 top-1/2 w-[calc(100vw_-_var(--space-8))] -translate-x-1/2 -translate-y-1/2",
+              "fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2",
+              /* `dvw`, not `vw`. `100vw` includes a classic scrollbar's width, so on a desktop
+                 window with one the box over-measures by ~15px; below `max-w-*` that is
+                 invisible, but the two units should not disagree when the height already uses
+                 `dvh`. */
+              "w-[calc(100dvw_-_var(--space-8))]",
               "max-h-[calc(100dvh_-_var(--space-16))] overflow-y-auto rounded-lg p-6",
               SIZES[size],
               className,
@@ -235,7 +240,11 @@ export function Dialog({
 
               {hideClose ? null : (
                 <DialogPrimitive.Close asChild>
-                  <Button variant="ghost" iconOnly aria-label={closeLabel} className="-mr-2 -mt-1">
+                  {/* ⚠ `-mr-2` only. The `-mt-1` that used to be here pulled a 44px corner
+                      target to within 8px of the dialog's top-right edge on a 320px phone,
+                      which on a rounded 12px corner puts part of the target outside the
+                      panel. Optical alignment is not worth a control you can miss. */}
+                  <Button variant="ghost" iconOnly aria-label={closeLabel} className="-mr-2">
                     <X aria-hidden="true" className="size-5" />
                   </Button>
                 </DialogPrimitive.Close>
@@ -245,7 +254,40 @@ export function Dialog({
             {children ? <div className="mt-4 text-base text-ink">{children}</div> : null}
 
             {footer ? (
-              <div className="mt-6 flex flex-wrap items-center justify-end gap-3 border-t border-line pt-4">
+              /**
+               * ⚠ **The footer is pinned to the bottom of the scroll box, and that is a mobile
+               * fix rather than a style.**
+               *
+               * The dialog is one scroll container: header, body and footer all live inside it.
+               * That is correct and it caps at `100dvh - 64px`, so nothing overflows the
+               * viewport. What it does not do is keep the *action* reachable. Two cases:
+               *
+               *   · **A long list.** The notify picker with eight recipients is ~990px of
+               *     content in 603px of dialog on an iPhone SE, so `Send 8 updates` sits ~390px
+               *     below the fold — the reader has to scroll to the end of a checklist to find
+               *     the button that acts on it.
+               *   · **The software keyboard.** iOS Safari does not shrink the layout viewport
+               *     for the keyboard, so `dvh` does not react to it. With ~300px of keyboard up
+               *     the bottom of a centred `fixed` dialog is *unreachable at any scroll
+               *     position*, and every dialog in this product that has a text input also has
+               *     a Save in its footer.
+               *
+               * `sticky bottom-0` inside the existing scroller answers both without adding a
+               * second one. The negative margins cancel the panel's own `p-6` so the sticky bar
+               * spans the full width and its ground covers the content scrolling underneath it —
+               * without them the row would float with 24px of transparent gutter each side and
+               * the text beneath would show through.
+               *
+               * The ground is opaque for the same reason. `bg-surface-raised` is the dialog's
+               * own panel colour, so the bar reads as part of the panel rather than as a layer
+               * on top of it.
+               */
+              <div
+                className={cn(
+                  "sticky bottom-0 z-10 -mx-6 -mb-6 mt-6 flex flex-wrap items-center justify-end gap-3",
+                  "border-t border-line bg-surface-raised px-6 pb-6 pt-4",
+                )}
+              >
                 {footer}
               </div>
             ) : null}

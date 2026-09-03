@@ -11,6 +11,9 @@ import "server-only";
 
 import { authed } from "@/lib/api/server";
 import type {
+  AudienceResponseDto,
+  NotifyCardDto,
+  NotifyResultDto,
   CardResponseDto,
   CreateCardDto,
   SetCardFieldsDto,
@@ -79,6 +82,28 @@ export function setCardFields(id: string, body: SetCardFieldsDto): Promise<CardR
  *
  * @throws `CARD_NOT_FOUND`, `CONTACT_NOT_FOUND`.
  */
+/**
+ * Everyone this card is shared with, and how far behind each is on its current version.
+ *
+ * Read-only and cheap to repeat — it is also the **only** way to learn whether a notify actually
+ * landed, since `notifyCard` answers `ENQUEUED` before the send is attempted.
+ */
+export function getCardAudience(id: string): Promise<AudienceResponseDto> {
+  return authed({ method: "GET", path: `/cards/${encodeURIComponent(id)}/audience` });
+}
+
+/**
+ * Tell the given recipients this card changed.
+ *
+ * ⚠ All-or-nothing: one id that is not an ACTIVE link on THIS card fails the whole call with
+ * `SHARE_LINK_NOT_FOUND`. Validate against a fresh `getCardAudience` first.
+ *
+ * ⚠ The `ENQUEUED` it returns is a queue receipt, not a delivery — see `NotifyResultDto`.
+ */
+export function notifyCard(id: string, body: NotifyCardDto): Promise<NotifyResultDto[]> {
+  return authed({ method: "POST", path: `/cards/${encodeURIComponent(id)}/notify`, body });
+}
+
 export function shareCard(id: string, body: ShareCardDto): Promise<ShareLinkResponseDto> {
   return authed({ method: "POST", path: `/cards/${encodeURIComponent(id)}/share`, body });
 }

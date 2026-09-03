@@ -94,12 +94,6 @@ const LABEL: Record<CollapseKey, string> = {
   false: "block",
 };
 
-/** Shown when the rail is narrow — the exact inverse of `LABEL`. */
-const MARK: Record<CollapseKey, string> = {
-  auto: "block lg:hidden",
-  true: "block",
-  false: "hidden",
-};
 
 /** Centre the icons while the rail is narrow, left-align them once it is wide. */
 const ALIGN: Record<CollapseKey, string> = {
@@ -150,22 +144,60 @@ export function Sidebar({ className }: SidebarProps) {
         className,
       )}
     >
-      <div className={cn("flex items-center border-b border-line px-3 py-4", ALIGN[key])}>
+      <div
+        className={cn(
+          "flex items-center gap-2 border-b border-line px-3 py-4",
+          // Collapsed, the wordmark is gone and only the toggle remains — so it centres in the
+          // rail rather than clinging to a left edge that no longer has anything beside it.
+          key === "true" ? "justify-center" : "justify-between",
+        )}
+      >
         <Link
           href="/dashboard"
           aria-label="Contact Book"
-          className="flex min-w-0 items-center gap-2 text-ink"
+          className={cn("flex min-w-0 items-center gap-2 text-ink", LABEL[key])}
         >
-          <span aria-hidden="true" className={cn("font-sans text-lg", MARK[key])}>
-            CB
-          </span>
-          <span
-            aria-hidden="true"
-            className={cn("truncate font-sans text-lg", LABEL[key])}
-          >
+          <span aria-hidden="true" className="truncate font-sans text-lg">
             Contact Book
           </span>
         </Link>
+        {/* ⚠ The collapse control belongs in the header, beside the wordmark — not at the foot.
+            It is the convention every app with a rail follows (VS Code, Linear, Notion, Slack),
+            and the reason is that it acts on the rail as a whole: a control for the whole
+            panel reads as belonging to that panel's top edge, while one parked at the bottom
+            sits among the account controls and reads as part of them.
+
+            Still rendered twice, and CSS still picks — see the tri-state note at the head of
+            this file. Only the position moved; whichever button is exposed is always the one
+            that does something. */}
+        <button
+          type="button"
+          aria-label="Collapse sidebar"
+          aria-controls={SIDEBAR_ID}
+          aria-expanded={true}
+          onClick={() => setOverride(true)}
+          className={cn(
+            "size-9 shrink-0 items-center justify-center rounded-md text-ink-3",
+            "transition-colors duration-[var(--dur-fast)] ease-out hover:bg-surface hover:text-ink",
+            key === "auto" ? "hidden lg:inline-flex" : key === "false" ? "inline-flex" : "hidden",
+          )}
+        >
+          <PanelLeftClose aria-hidden="true" strokeWidth={1.5} className="size-5" />
+        </button>
+        <button
+          type="button"
+          aria-label="Expand sidebar"
+          aria-controls={SIDEBAR_ID}
+          aria-expanded={false}
+          onClick={() => setOverride(false)}
+          className={cn(
+            "size-9 shrink-0 items-center justify-center rounded-md text-ink-3",
+            "transition-colors duration-[var(--dur-fast)] ease-out hover:bg-surface hover:text-ink",
+            key === "auto" ? "inline-flex lg:hidden" : key === "true" ? "inline-flex" : "hidden",
+          )}
+        >
+          <PanelLeftOpen aria-hidden="true" strokeWidth={1.5} className="size-5" />
+        </button>
       </div>
 
       {/* One `TooltipProvider` for the whole rail: running a pointer down four icons
@@ -212,37 +244,6 @@ export function Sidebar({ className }: SidebarProps) {
           })}
         </nav>
       </TooltipProvider>
-
-      <div className={cn("flex px-3 pb-2", ALIGN[key])}>
-        <button
-          type="button"
-          aria-label="Collapse sidebar"
-          aria-controls={SIDEBAR_ID}
-          aria-expanded={true}
-          onClick={() => setOverride(true)}
-          className={cn(
-            "size-10 items-center justify-center rounded-md text-ink-3",
-            "transition-colors duration-[var(--dur-fast)] ease-out hover:bg-surface hover:text-ink",
-            key === "auto" ? "hidden lg:inline-flex" : key === "false" ? "inline-flex" : "hidden",
-          )}
-        >
-          <PanelLeftClose aria-hidden="true" strokeWidth={1.5} className="size-5" />
-        </button>
-        <button
-          type="button"
-          aria-label="Expand sidebar"
-          aria-controls={SIDEBAR_ID}
-          aria-expanded={false}
-          onClick={() => setOverride(false)}
-          className={cn(
-            "size-10 items-center justify-center rounded-md text-ink-3",
-            "transition-colors duration-[var(--dur-fast)] ease-out hover:bg-surface hover:text-ink",
-            key === "auto" ? "inline-flex lg:hidden" : key === "true" ? "inline-flex" : "hidden",
-          )}
-        >
-          <PanelLeftOpen aria-hidden="true" strokeWidth={1.5} className="size-5" />
-        </button>
-      </div>
 
       {/* §11 E-14 — a 40+ character name truncates and the rail stays 240px. The chain
           that makes that true is `min-w-0` on the flex parent, `min-w-0` on the growing

@@ -22,16 +22,18 @@ import { ExportPngButton } from "@/components/share/export-png-button";
 import { ShareSheet, useVcfDownload } from "@/components/share/share-sheet";
 import { WalletPassBlock } from "@/components/share/wallet-pass-block";
 import { CardShares, SendToContact, type MintedLink } from "@/components/share/card-sharing";
+import { NotifyBanner, NotifyRecipients } from "@/components/share/notify-recipients";
 import { cards as api } from "@/lib/api/browser";
 import { fetchCardDetail } from "@/lib/api/browser-loaders";
 import { toScreenError } from "@/lib/api/errors";
+import { cn } from "@/lib/cn";
 import { useApiResource } from "@/lib/use-api";
 import { useToast } from "@/components/overlay";
 import { CARD_LINK_PENDING, formatLongDate } from "@/lib/format";
 import type {
   Contact,
   ContactCard,
-  ContactShare,
+  CardShareRow,
   FieldGroup,
   FixtureError,
   ProfileField,
@@ -115,7 +117,8 @@ export interface CardDetailData {
 }
 
 /** One share link on this card, with the recipient's name already resolved for display. */
-export type CardShareRow = ContactShare & { contactId: string; contactLabel: string };
+/** Re-exported so existing importers of this screen keep working. */
+export type { CardShareRow };
 
 /**
  * `?state=empty` — the profile has nothing to map.
@@ -202,6 +205,19 @@ function CardDetailScreen({
    * The QR is now `card.publicUrl` and is not a function of who has been sent the card.
    */
   const [minted, setMinted] = useState<MintedLink | null>(null);
+
+  /**
+   * The one re-read every sharing affordance goes through.
+   *
+   * ⚠ `setMinted(null)` matters here as much as the reload: a link minted this session is held
+   * locally so the panel can publish it immediately, and after any change to the share set the
+   * server's answer is the only honest source. Shared by revoke/restore and by notify, so a
+   * notify's reconcile cannot drift from what a revoke does.
+   */
+  const reloadShares = useCallback(() => {
+    setMinted(null);
+    reload();
+  }, [reload]);
 
 
 
@@ -334,6 +350,15 @@ function CardDetailScreen({
                   Edit
                 </Link>
 
+                {/* Renders nothing when this card has no active recipients — an owner with
+                    nobody to notify gets no control, not a disabled one. */}
+                <NotifyRecipients
+                  cardId={cardId}
+                  shares={shares}
+                  contacts={contacts}
+                  onChanged={reloadShares}
+                />
+
                 <ShareSheet
                   resolved={resolved}
                   sharesNothing={vcf === null}
@@ -399,6 +424,11 @@ function CardDetailScreen({
                 the card root, and a fixed wrapper would take the same behaviour with it. */}
             <div
               data-card-detail-preview=""
+              /* Fluid. The one rigid object on this screen is the share face, and the rail that
+                 lets it overhang a 320px viewport lives around the face itself inside
+                 `<WalletPassBlock>` — not here. Scoping it to this column instead made the
+                 block's own prose 336px wide in a 296px box, so the wallet-pass copy needed a
+                 sideways nudge to be read, which is a worse bug than the one it fixed. */
               className="min-w-0 lg:sticky lg:top-8 lg:self-start"
             >
               {/* ⚠ The face is handed to `<WalletPassBlock>` as children and is rendered by
@@ -471,9 +501,16 @@ function CardDetailScreen({
                   {resolved.qrPayload == null ? (
                     <span className="text-ink-3">{CARD_LINK_PENDING}</span>
                   ) : (
+                    /* 44px on touch. This is the card's own public URL and the one link on
+                       this screen a reader taps to check what the QR opens; `--text-sm` gives
+                       it a 20px line box. `inline-block` is required for the padding to affect
+                       the hit area, and the negative margin keeps the meta block's rhythm. */
                     <Link
                       href={resolved.qrPayload}
-                      className="text-ink underline underline-offset-4"
+                      className={cn(
+                        "text-ink underline underline-offset-4",
+                        "max-md:-my-3 max-md:inline-block max-md:py-3",
+                      )}
                     >
                       {resolved.qrPayload}
                     </Link>
@@ -520,16 +557,23 @@ function CardDetailScreen({
                 <h2 id="card-shares-heading" className="text-overline uppercase text-ink-3">
                   Sent to
                 </h2>
+                {/* ⚠ Above the list, and only when somebody is actually behind.
+
+                    It belongs here rather than in the header because it is a fact about *these
+                    recipients*, and this is already documented as the only place every link is
+                    listed. It renders nothing at all when everyone is caught up — a permanent
+                    zero-count banner trains the eye to skip the row it needs to notice. */}
+                <NotifyBanner
+                  cardId={cardId}
+                  shares={shares}
+                  contacts={contacts}
+                  onChanged={reloadShares}
+                />
+
                 <CardShares
                   cardId={cardId}
                   shares={shares}
-                  onChanged={() => {
-                    // ⚠ Cleared, not kept. Revoking the link this session minted would otherwise
-                    // leave a dead URL on the QR — the one thing a printed card must never carry.
-                    // The re-read decides what replaces it, which is the only honest source.
-                    setMinted(null);
-                    reload();
-                  }}
+                  onChanged={reloadShares}
                 />
               </section>
             </div>

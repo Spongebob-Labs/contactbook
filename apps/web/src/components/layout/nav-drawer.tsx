@@ -73,7 +73,11 @@ export function NavDrawer(): ReactElement {
           aria-haspopup="dialog"
           aria-expanded={open}
           className={cn(
-            "inline-flex size-9 shrink-0 items-center justify-center rounded-lg",
+            /* ⚠ 44x44 on touch. In focus mode the app's rail is not rendered, so this
+               hamburger is the ONLY navigation on the screen — and at `size-9` it was a 36px
+               target in the top-left corner of a phone, which is both under the floor and in
+               the hardest corner to reach one-handed. */
+            "inline-flex size-9 max-md:size-11 shrink-0 items-center justify-center rounded-lg",
             "text-ink-3 transition-colors duration-[var(--dur-fast)]",
             "hover:bg-surface-sunk hover:text-ink",
           )}

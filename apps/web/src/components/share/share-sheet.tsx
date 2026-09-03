@@ -353,7 +353,17 @@ export function ShareSheet({
                   )}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className={buttonClassName({ variant: "text-link" })}
+                  /* ⚠ The label interpolates a contact's display name, and every button carries
+                     `whitespace-nowrap` from `button.tsx`'s BASE. "Send on WhatsApp to " plus a
+                     21-character name is ~279px against 240px of dialog content at a 320px
+                     viewport — and because the dialog is `overflow-y-auto`, CSS computes its
+                     `overflow-x` to `auto` as well, so the overflow gave the DIALOG its own
+                     horizontal scrollbar. Allowing this one label to wrap is the fix; it is a
+                     sentence, not a button label with a fixed shape. */
+                  className={buttonClassName({
+                    variant: "text-link",
+                    className: "block max-w-full whitespace-normal break-words text-left",
+                  })}
                 >
                   {`Send on WhatsApp to ${lastSent.recipientLabel}`}
                 </a>

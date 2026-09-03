@@ -157,7 +157,15 @@ function rowValue(row: FieldRow): ReactElement {
       href={row.href}
       title={row.title}
       data-field-value=""
-      className="text-base text-ink underline-offset-4 hover:underline"
+      /* ⚠ 44px of target on touch. This anchor is a real `tel:` / `mailto:` / `https:` link —
+         the one on `/cards/{id}` that a reader taps to call or write — and at `--text-base` it
+         is a 24px line box. `py-2.5 -my-2.5` grows the hit region and takes the same 10px back
+         out of the flow, so the field list keeps its exact rhythm. `inline-block` is required:
+         vertical padding on an inline box paints but does not affect the hit area's layout. */
+      className={cn(
+        "text-base text-ink underline-offset-4 hover:underline",
+        "max-md:-my-2.5 max-md:inline-block max-md:py-2.5",
+      )}
       {...(row.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
     >
       {rowLines(row)}

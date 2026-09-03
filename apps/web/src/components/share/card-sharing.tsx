@@ -13,7 +13,11 @@ import { isApiError, toScreenError } from "@/lib/api/errors";
 import type { ShareLinkResponseDto } from "@/lib/api/schema";
 import { normaliseE164 } from "@/lib/contacts-parse";
 import { formatLongDate, formatPhoneDisplay } from "@/lib/format";
-import { contactLabel, type Contact, type ContactShare } from "@/types/domain";
+import {
+  contactLabel,
+  type CardShareRow,
+  type Contact,
+} from "@/types/domain";
 
 /**
  * Minting a card's link, and seeing who holds one.
@@ -357,8 +361,14 @@ export interface CardSharesProps {
   cardId: string;
   /** Re-read after a revoke or restore. */
   onChanged: () => void;
-  /** Every link minted for this card, newest first, with the contact each was sent to. */
-  shares: readonly (ContactShare & { contactLabel: string })[];
+  /**
+   * Every link minted for this card, newest first, with the contact each was sent to.
+   *
+   * `CardShareRow` rather than a narrower shape so this list can also show who has not been told
+   * about the current version — the same rows the notify picker reads, so the badge here and the
+   * selection there can never disagree about who is behind.
+   */
+  shares: readonly CardShareRow[];
 }
 
 /**
@@ -415,6 +425,14 @@ export function CardShares({ cardId, shares, onChanged }: CardSharesProps) {
               {share.status === "REVOKED" ? (
                 <Badge tone="neutral" data-share-revoked={share.shareLinkId}>
                   Revoked
+                </Badge>
+              ) : null}
+              {/* ⚠ `versionsBehind` is `null` for a revoked link — no audience entry, so it
+                  cannot be notified. Guarded with `> 0` on a nullable number rather than a
+                  truthiness check, so `null` never reads as "behind". */}
+              {(share.versionsBehind ?? 0) > 0 ? (
+                <Badge tone="warning" data-share-behind={share.shareLinkId}>
+                  Not told yet
                 </Badge>
               ) : null}
             </p>

@@ -663,30 +663,64 @@ test.describe("craft", () => {
    * wallpaper straight back:
    *
    *   · There are card objects below the hero, and they are LIVE renders rather than pictures.
-   *   · There are **exactly three** of them, they are all inside the bento, and each one is
-   *     doing a job no sentence could do — the pass and the page in the studio are recoloured
-   *     by the reader, and the third is the scan cell's symbol.
-   *   · Nothing outside `how-it-works` renders one.
+   *   · Each one is doing a job no sentence could do.
+   *   · They live in a **closed set of named homes**, with a declared shape each, and nowhere
+   *     else.
    *
-   * A fourth card appearing anywhere fails here, which is the guard the old assertion was
-   * really trying to be.
+   * ⚠ **THE SET GAINED A SECOND HOME AND THE COUNT WENT FROM TWO TO FOUR.** It began as "only
+   * in the bento" with `toHaveCount(2)`; the hand-over flow in `broadcast` added the second.
+   *
+   * ⚠ A third home — a fan of three passes in the hero — was added and then **removed at the
+   * client's word**: *"remove the cards that u just added into the hero section looking very
+   * vague and odd."* That is the fourth object rejected on that sheet, after azure→cyan, the
+   * Sapphire film, and now the fan. The hero's own test is back to banning every object, and
+   * the standing lesson is that the hero holds type and nothing else.
+   *
+   * Growing the rule rather than deleting it is the entire point, so each home declares the
+   * exact shape it may hold:
+   *
+   *     studio        1 face + 1 page   the reader recolours both
+   *     hand-over     1 face + 1 page   the pass, and the page it opens
+   *
+   * That keeps every tooth the original had. A card in a third place fails — which matters,
+   * because the build this rule was first written against had spread NINE identical
+   * `<ShareFace>` renders across the page as wallpaper.
    */
-  test("carries live product objects below the hero, and only in the bento", async ({ page }) => {
+  test("carries live product objects below the hero, and only in its two named homes", async ({
+    page,
+  }) => {
     await gotoMarketing(page);
 
-    const cards = page.locator("[data-card-root]");
-    await expect(cards).toHaveCount(2);
-    // One wallet pass and one card page, from one `ResolvedCard`, in one cell.
-    const variants = await cards.evaluateAll((ns) =>
-      ns.map((n) => n.getAttribute("data-card-variant")),
-    );
-    expect(variants.sort()).toEqual(["face", "page"]);
+    /* The closed set, each with the multiset of variants it is allowed to hold. */
+    const HOMES = [
+      { sel: '[data-bento-cell="studio"]', shape: ["face", "page"] },
+      { sel: "[data-handover-flow]", shape: ["face", "page"] },
+    ] as const;
 
-    // Both are inside the studio cell. A card that escapes into another pass is the regression.
-    const strays = await cards.evaluateAll((ns) =>
-      ns.filter((n) => n.closest('[data-bento-cell="studio"]') === null).length,
+    const cards = page.locator("[data-card-root]");
+    await expect(cards).toHaveCount(HOMES.reduce((n, h) => n + h.shape.length, 0));
+
+    const placed = await cards.evaluateAll(
+      (ns, sels) =>
+        ns.map((n) => ({
+          variant: n.getAttribute("data-card-variant"),
+          home: sels.find((sel) => n.closest(sel) !== null) ?? null,
+        })),
+      HOMES.map((h) => h.sel),
     );
-    expect(strays, "a live card is rendering outside the studio cell").toBe(0);
+
+    expect(
+      placed.filter((c) => c.home === null).map((c) => c.variant),
+      "a live card is rendering outside the three named homes",
+    ).toEqual([]);
+
+    for (const { sel, shape } of HOMES) {
+      const got = placed
+        .filter((c) => c.home === sel)
+        .map((c) => c.variant)
+        .sort();
+      expect(got, `${sel} does not hold exactly ${shape.join(" + ")}`).toEqual([...shape].sort());
+    }
 
     // ...and the hero holds none of them: it is type on a ruled sheet with no object in it.
     await expect(page.locator('[data-section="hero"] [data-card-root]')).toHaveCount(0);

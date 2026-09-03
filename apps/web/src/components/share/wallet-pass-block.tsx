@@ -173,7 +173,34 @@ export function WalletPassBlock({ resolved, children }: WalletPassBlockProps) {
         <p className="text-base text-ink">{WALLET_PASS_LEDE}</p>
       </div>
 
-      {children}
+      {/**
+       * ⚠ **The face's own rail — the one horizontal scroller on this screen, and it wraps the
+       * card and nothing else.**
+       *
+       * `<ShareFace mode="full">` is rigid at `FACE_WIDTH` = 336px and cannot be narrowed: its
+       * QR symbol clears the 140px scannable floor by a single pixel, so reflowing or scaling
+       * it yields a card that no longer decodes. The shell's `px-3` leaves `viewport - 24`:
+       *
+       *   · **360px → 336px.** Exact fit, zero slack — the arithmetic `app-shell.tsx` documents.
+       *   · **320px → 296px.** 40px short. Nothing clips between here and the document, so that
+       *     overflow reached the page and **the whole screen scrolled sideways** on an iPhone
+       *     SE, a Galaxy Fold cover screen, or any Android in split-screen (E-15 / E-53, P0).
+       *
+       * The rail is here rather than around the whole block on purpose. Wrapped around the
+       * column it took the caption and the QR note with it, so the wallet-pass *prose* was
+       * 336px wide in a 296px box and had to be nudged sideways to be read — a worse defect
+       * than the one being fixed. Around the face alone, the text and the buttons stay fluid
+       * and only the rigid object overhangs.
+       *
+       * `-mx-*` is deliberately absent: the rail sits inside the block's own edges so the card
+       * scrolls within the column it belongs to rather than bleeding to the viewport.
+       */}
+      <div
+        data-wallet-pass-rail=""
+        className="min-w-0 max-w-full overflow-x-auto overscroll-x-contain"
+      >
+        {children}
+      </div>
 
       <div data-wallet-pass-actions="" className="flex flex-col gap-3">
         {/* `break-all`: the payload is a URL and this column is 336px at every viewport, so a

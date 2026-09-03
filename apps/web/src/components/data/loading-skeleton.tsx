@@ -140,19 +140,38 @@ function Bones({ variant, count, columns }: Required<Pick<LoadingSkeletonProps, 
       );
 
     case "table":
+      /**
+       * ⚠ **The bones stack below `md`, because `<DataTable>` does.**
+       *
+       * `data-table.tsx` renders a real `<table>` from `md` up and a stacked `<ul>` of cards
+       * below it (`hidden md:table` against `flex flex-col md:hidden`). This variant drew the
+       * three-column row at every width, so on a phone it reserved a **48px** row against the
+       * ~132px stacked card that replaced it — nine rows of that is **~650px of layout shift**
+       * on `/contacts` the moment the data lands, on a column whose entire purpose (§8D.1,
+       * AC-17) is that nothing moves.
+       *
+       * The header bones go with it: there is no header row in the stacked view, so drawing one
+       * reserves a 3px band that nothing ever fills.
+       */
       return (
         <div className="flex flex-col">
-          <div className="flex gap-6 border-b border-line pb-3">
+          <div className="hidden gap-6 border-b border-line pb-3 md:flex">
             <Skeleton className="h-3 w-32 rounded-xs" />
             <Skeleton className="h-3 w-28 rounded-xs" />
             <Skeleton className="h-3 w-20 rounded-xs" />
           </div>
           <Rows count={count}>
             {() => (
-              <div className="flex gap-6 border-b border-line py-4">
+              <div className="flex flex-col gap-2 border-b border-line py-4 md:flex-row md:gap-6">
                 <Skeleton className="h-4 w-40 rounded-xs" />
-                <Skeleton className="h-4 w-32 rounded-xs" />
-                <Skeleton className="h-4 w-24 rounded-xs" />
+                {/* The stacked card's `<dl>`: three label/value pairs at `gap-1`, which is the
+                    height the phone row actually is. From `md` up these are the second and
+                    third table columns and sit on the same line as the first. */}
+                <div className="flex flex-col gap-1 md:flex-row md:gap-6">
+                  <Skeleton className="h-4 w-32 rounded-xs" />
+                  <Skeleton className="h-4 w-24 rounded-xs" />
+                  <Skeleton className="h-4 w-28 rounded-xs md:hidden" />
+                </div>
               </div>
             )}
           </Rows>
@@ -175,6 +194,12 @@ function Bones({ variant, count, columns }: Required<Pick<LoadingSkeletonProps, 
       );
 
     case "fields":
+      /**
+       * ⚠ **The action cluster is boned below `lg`, because that is where it wraps to its own
+       * row.** `ProfileFieldRow` stacks below `lg`: label, value, then a wrapped cluster of up
+       * to six 44px controls. Without a bone for that cluster this variant reserved 68px
+       * against a ~168px row, so `/profile/groups/[groupId]` jumped ~500px on load.
+       */
       return (
         <div className="flex flex-col">
           <Rows count={count}>
@@ -182,6 +207,12 @@ function Bones({ variant, count, columns }: Required<Pick<LoadingSkeletonProps, 
               <div className="flex flex-col gap-2 border-b border-line py-4">
                 <Skeleton className="h-3 w-24 rounded-xs" />
                 <Skeleton className="h-4 w-2/3 rounded-xs" />
+                <div className="flex flex-wrap items-center gap-2 lg:hidden">
+                  <Skeleton className="h-11 w-24 rounded-full" />
+                  <Skeleton className="size-11 rounded-full" />
+                  <Skeleton className="size-11 rounded-full" />
+                  <Skeleton className="size-11 rounded-full" />
+                </div>
               </div>
             )}
           </Rows>

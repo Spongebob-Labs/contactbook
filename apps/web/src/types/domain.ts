@@ -308,6 +308,28 @@ export interface ContactShare {
 }
 
 /**
+ * One row of a card's "Sent to" list: a `ContactShare` plus who it went to, plus how far behind
+ * they are on the card's current version.
+ *
+ * Lives here rather than on the card detail screen because two modules need it — the screen that
+ * renders the list and the loader that assembles it — and a type owned by a `"use client"`
+ * component would make the loader import from its own consumer.
+ *
+ * ⚠ The two notification fields are `null` for a **revoked** link, and that is load-bearing
+ * rather than a missing value: `GET /cards/{id}/audience` returns ACTIVE links only, so a revoked
+ * share has no audience entry and cannot be notified. `null` therefore means "not notifiable",
+ * which is what gates it out of the picker — never read it as "0 versions behind".
+ */
+export type CardShareRow = ContactShare & {
+  contactId: string;
+  contactLabel: string;
+  /** `currentVersion - (lastNotifiedVersion ?? 0)`. `0` = caught up, `null` = not notifiable. */
+  versionsBehind: number | null;
+  /** `null` both for a revoked link and for one minted before this feature existed. */
+  lastNotifiedVersion: number | null;
+};
+
+/**
  * What to call a contact on screen.
  *
  * `displayName` is nullable and an import routinely brings numbers without one, so every surface

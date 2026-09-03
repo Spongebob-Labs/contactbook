@@ -25,8 +25,11 @@ import { ApiError, narrowCode, parseErrorEnvelope } from "@/lib/api/errors";
 import { browserApiBase, isDirectMode } from "@/lib/api/mode";
 import { clearAccessToken, readAccessToken, writeAccessToken } from "@/lib/api/token-store";
 import type {
+  AudienceResponseDto,
   AuthMeResponseDto,
   CardResponseDto,
+  NotifyCardDto,
+  NotifyResultDto,
   CompleteOnboardingDto,
   ContactResponseDto,
   CreateCardDto,
@@ -330,7 +333,7 @@ export const contacts = {
     cb<ImportContactsResponseDto>({ method: "POST", path: "/contacts/import", body: b }),
 };
 
-/* ── cards (7) ───────────────────────────────────────────────────────────────────────── */
+/* ── cards (9) ───────────────────────────────────────────────────────────────────────── */
 
 export const cards = {
   list: (q?: { includeArchived?: boolean }) =>
@@ -345,6 +348,12 @@ export const cards = {
     cb<CardResponseDto>({ method: "PUT", path: `/cards/${id(cardId)}/fields`, body: b }),
   share: (cardId: string, b: ShareCardDto) =>
     cb<ShareLinkResponseDto>({ method: "POST", path: `/cards/${id(cardId)}/share`, body: b }),
+  /** Read-only. Safe to re-fetch freely — it is how a send's outcome is discovered. */
+  audience: (cardId: string) =>
+    cb<AudienceResponseDto>({ method: "GET", path: `/cards/${id(cardId)}/audience` }),
+  /** ⚠ Returns `ENQUEUED`, never "delivered". See `NotifyResultDto`. */
+  notify: (cardId: string, b: NotifyCardDto) =>
+    cb<NotifyResultDto[]>({ method: "POST", path: `/cards/${id(cardId)}/notify`, body: b }),
 };
 
 /* ── share-links (2) ─────────────────────────────────────────────────────────────────── */

@@ -239,14 +239,23 @@ describe("CardThumbTile (§8D.3, E-13)", () => {
     );
   });
 
-  it("clamps a 40+ character name to one line and keeps the full text in title (E-13)", () => {
+  it("clamps a 40+ character name and keeps the full text in title (E-13)", () => {
     renderWithProviders(<CardThumbTile resolved={LONG} href="/cards/card_t17_long" />);
     const name = document.querySelector("[data-card-tile-name]") as HTMLElement;
 
     expect(LONG.cardName.length).toBeGreaterThan(40);
     expect(LONG.fullName).toBe(LONG_NAME);
     expect(name).toHaveAttribute("data-tile-clamp", "1");
-    expect(name).toHaveClass("line-clamp-1");
+
+    // ⚠ **Two lines on touch, one from `lg` up — and the split is the point of E-13, not a
+    // dilution of it.** E-13 is "one long name never reflows the grid", and the clamp is what
+    // guarantees that; whether it clamps at one line or two is a legibility decision, and on a
+    // phone one line was the wrong one. A clamped name's full text lives ONLY in `title`, and
+    // a `title` tooltip never opens on a touch device — so a 40-character card name was
+    // unrecoverable there. The desktop grid keeps one line so tile heights stay even across a
+    // three-up row, where the names sit side by side and a ragged set of heights is visible.
+    expect(name).toHaveClass("line-clamp-2");
+    expect(name).toHaveClass("lg:line-clamp-1");
     expect(name).toHaveAttribute("title", LONG.cardName);
   });
 

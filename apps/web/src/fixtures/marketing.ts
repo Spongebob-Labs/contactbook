@@ -246,9 +246,25 @@ export interface BroadcastCopy {
  */
 export const broadcast = {
   heading: "No app can change your number inside someone else's phone.",
+  /*
+    ⚠ ONE PARAGRAPH, DOWN FROM TWO, AND THE SECOND ONE IS NOT DELETED — IT IS DRAWN.
+
+    The cut paragraph read: "So you write the change once and send it. The people who opted in
+    get it on WhatsApp, SMS or email and tap once to save. You press send — never automatic,
+    never silent, and those two properties are the point rather than a shortfall."
+
+    Every clause of that is now a labelled stage of `handover`: the send is stage 05, the
+    one-tap save is stage 04, and "never automatic, never silent" is what the return path's
+    own geometry says — the loop is drawn as an arrow the owner fires, not as a cycle that
+    turns on its own. A sentence and a diagram making the same point is the text-heaviness the
+    client named; the diagram is the one a reader can check against the product.
+
+    The FIRST paragraph stays and may not be cut. It is a statement about iOS and Android
+    rather than about this product, no diagram can carry it, and it is the page's
+    differentiator — see the note above.
+  */
   paragraphs: [
     "Not on iPhone, not on Android. Software that could quietly rewrite an entry in your address book could quietly rewrite anyone's. When a product implies your saved contact refreshes itself, that is the specific thing it is not doing.",
-    "So you write the change once and send it. The people who opted in get it on WhatsApp, SMS or email and tap once to save. You press send \u2014 never automatic, never silent, and those two properties are the point rather than a shortfall.",
   ],
   facts: [
     {
@@ -265,6 +281,72 @@ export const broadcast = {
     },
   ],
 } as const satisfies BroadcastCopy;
+
+/* ── The hand-over flow — the diagram in the broadcast pass ─────────────────── */
+
+/**
+ * **Labels for the flow diagram. Three steps and a return, and that is the whole budget.**
+ *
+ * ## ⚠ THIS IS THE SECOND VERSION. READ WHY THE FIRST ONE WAS REJECTED.
+ * The first attempt gave each of five stages an ordinal, a title, a full sentence of body
+ * copy and a mono line naming a REST route. The client's verdict was unambiguous — *"the worst
+ * diagram that you can just make… so text-heavy… Why is this API endpoint also given here?"*
+ * — and counting proves the charge: it removed a 45-word paragraph and put roughly 100 words
+ * back. It made the pass MORE text-heavy while claiming to fix text-heaviness.
+ *
+ * Three rules follow, and none of them is a matter of taste:
+ *
+ *   · **No routes, ever.** `GET /v1/public/links/:token` is implementation detail on a page
+ *     whose reader is deciding whether to hand out their phone number. "A little bit
+ *     technical" meant *precise and well-engineered*, not *exposes the backend*. There is no
+ *     `route` field on a step any more and one may not be added.
+ *   · **A label, not a sentence.** Two to four words. If a step needs explaining, the
+ *     drawing is wrong — fix the drawing. `broadcast.paragraphs` and `broadcast.facts` are
+ *     where prose belongs, and they already carry it.
+ *   · **Three steps, because the story has three.** The client described it as: bring the pass
+ *     up, they scan, the card opens. The fourth item is the return, which is the argument the
+ *     section exists to make.
+ *
+ * Total budget below: **11 words of visible copy**, against the 45-word paragraph the diagram
+ * replaced. That ratio is the point of the whole exercise and a future edit should check it.
+ *
+ * ## ⚠ STAGE 1 DEPICTS WALLET DELIVERY, WHICH IS NOT SIGNED SERVER-SIDE YET
+ * `components/share/wallet-pass-block.tsx` states the truth on the surface that offers the
+ * control — *"Neither button installs anything yet"* — because a `.pkpass` needs a signing
+ * server this build does not have. The owner's decision on 2026-09-03 was to draw the wallet
+ * step regardless: the pass work is queued, and a drawing of where the object lives is not a
+ * button that fails in somebody's hand.
+ *
+ * What that does not licence is a claim. "Your pass" names an object and stops — no install,
+ * no download, no control. And no disclosure language may appear here: this page has nowhere
+ * to put one, and `marketing.spec.ts` fails the build on six roadmap phrases.
+ */
+export interface HandoverStep {
+  /** Stable id — the test hook and the React key. Never rendered. */
+  readonly id: string;
+  /** ⚠ Two to four words. See the module note; a sentence here is the rejected version. */
+  readonly label: string;
+}
+
+export interface HandoverCopy {
+  /** Names the diagram for a screen reader. The only long string, and it is never painted. */
+  readonly caption: string;
+  readonly steps: readonly HandoverStep[];
+  /** The return path's label. The section's argument, in six words. */
+  readonly loop: string;
+}
+
+export const handover = {
+  caption:
+    "You hand over a pass, they scan it, and your card opens in their browser. " +
+    "When you edit it later, the link they already have shows the change.",
+  steps: [
+    { id: "pass", label: "Your pass" },
+    { id: "scan", label: "They scan it" },
+    { id: "card", label: "Your card opens" },
+  ],
+  loop: "You edit it \u2014 their link never changes",
+} as const satisfies HandoverCopy;
 
 /* ── Assistant — the WhatsApp query pillar ─────────────────────────────────── */
 

@@ -74,7 +74,10 @@ export function FieldGroupSection({
       data-field-group-section={group.id}
       data-group-category={group.category}
       data-group-open={open ? "true" : "false"}
-      className="border-b border-line py-6 last:border-b-0"
+      /* The vertical rhythm moves ONTO the toggle below `lg` — see its own note. `py-3` here
+         plus `py-3` inside the button is the same 24px of separation the `py-6` gave, except
+         that half of it is now tappable instead of being dead space around a 26px strip. */
+      className="border-b border-line py-3 last:border-b-0 lg:py-6"
     >
       <h2>
         <button
@@ -83,7 +86,16 @@ export function FieldGroupSection({
           aria-controls={panelId}
           data-group-toggle={group.id}
           onClick={() => onOpenChange(!open)}
-          className="flex w-full items-center gap-3 text-left"
+          /* ⚠ **44px on touch, and this is the single most important target on `/profile`.**
+             Groups default to COLLAPSED below 768px (`profile-client.tsx` keys that off a
+             `(max-width: 767px)` query), so this toggle is the only route to any profile field
+             on a phone — and it was a 26px strip. The `py-6` that gave it breathing room was on
+             the parent `<section>`, i.e. *outside* the button, so none of it was tappable.
+             Moving the padding inside makes the same pixels the target. */
+          className={cn(
+            "flex w-full items-center gap-3 text-left",
+            "min-h-11 py-3 lg:min-h-0 lg:py-0",
+          )}
         >
           <ChevronDown
             aria-hidden="true"

@@ -183,6 +183,33 @@
   --prose-max: 36em;
   --bottombar-height: 64px;
 
+  /* ── The builder's pinned preview, below `lg` ────────────────────────────
+     ⚠ ONE NUMBER, IN ONE PLACE. It used to be two, in two files, and they
+     disagreed: `split-view.tsx` capped the pinned pane at `50svh` with
+     `overflow: hidden`, while `builder-preview.tsx` gave its stage `58svh`.
+     A taller child inside a shorter clipping parent silently loses the
+     difference — measured on a 375x812 phone: a 406px pane around a 471px
+     stage, so **65px of the live preview was cut off**, taking the bottom of
+     the card frame and the whole `[data-builder-preview-summary]` caption
+     ("Work · Emerald") with it. The caption was not truncated; it rendered
+     195px below the visible edge of its own container.
+
+     `min()` rather than a bare `svh` because the two ends of the phone range
+     need different answers. At 38% a 640px-tall Android (still the most common
+     handset height in the product's own market) gives the preview 243px and
+     leaves the controls a workable column; without the 300px ceiling a tall
+     812px iPhone would hand the preview 309px, and a 916px Pro Max 348px —
+     spending the extra viewport on a preview that is already legible instead
+     of on the panel, which is the pane the reader is actually working in.
+
+     `svh`, never `vh`: on iOS `vh` is the PRE-collapse browser-chrome height,
+     so `38vh` is taller than 38% of what the reader can see.
+
+     ⚠ Consumed by `builder-client.tsx` (the pane's height) and
+     `builder-preview.tsx` (which is `h-full` inside it). Neither may declare a
+     height of its own again — that is the bug this token exists to close. */
+  --builder-preview-h: min(38svh, 300px);
+
   /* ── The two card variants ───────────────────────────────────────────────
      THIS IS THE ARCHITECTURAL FIX. The old build had one 400×860 canvas that
      had to hold identity + QR + two buttons + every field the user added, so

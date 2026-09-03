@@ -108,7 +108,14 @@ export function FinishPicker({
           data-finish-option={id}
           name={FINISHES[id].name}
           selected={id === selected}
-          className="w-[5.5rem]"
+          /* ⚠ Fluid thirds on a phone, the fixed 88px from `sm` up.
+             3 × 88 + 2 × 8 = 280px, and the panel's inner width at a 320px viewport is 254px —
+             so the row wrapped 2 + 1 and put Flat and Gradient above an orphaned Mesh. That
+             breaks the control's entire premise: these cells are renderings precisely so the
+             three can be compared side by side, and a comparison split across a line break is
+             not one. `calc((100% - 1rem) / 3)` is the same three-across at 79px, which still
+             resolves the gradient's rake and the mesh's lobes. */
+          className="w-[calc((100%-1rem)/3)] sm:w-[5.5rem]"
         >
           {/* 56px over an 88px cell. Small enough that three sit in a row without the row
               owning the panel; tall enough that the gradient's rake and the mesh's three lobes
@@ -164,7 +171,12 @@ export function TexturePicker({
           data-texture-option={id}
           name={TEXTURES[id].name}
           selected={id === selected}
-          className="w-[3.75rem]"
+          /* ⚠ Fluid quarters on a phone, the fixed 60px from `sm` up.
+             Five cells at 60px plus four 8px gaps is 332px against 254px of panel at a 320px
+             viewport, so the row wrapped 3 + 2. Four-across at 60.5px keeps the grain legible
+             (`topo` tiles at 64px, `grain` at 160px, so these are crops either way and the
+             comparison is between crops of equal size) and leaves a clean 4 + 1. */
+          className="w-[calc((100%-1.5rem)/4)] sm:w-[3.75rem]"
         >
           {/* Square, 60px. A texture is judged on its *grain* rather than on its composition,
               and a square shows more repeats per pixel than the wide cell this used to be —
@@ -233,7 +245,13 @@ function SegmentedChoice<T extends string>({
           value={id}
           {...{ [dataAttr]: id }}
           className={cn(
-            "cursor-pointer rounded-[6px] px-3 py-1.5 text-sm transition-colors",
+            /* ⚠ 44px tall on touch, 32px on a pointer.
+               13px of `--text-sm` is a 20px line box, and `py-1.5` twice made these segments
+               32px — the Strength and Size dials are three of them each, six sub-floor targets
+               sitting side by side. `py-3` takes it to 44 and the widths were checked: Subtle +
+               Medium + Strong at `px-3.5` is 202px inside a 254px panel, so nothing wraps. */
+            "cursor-pointer rounded-[6px] text-sm transition-colors",
+            "px-3.5 py-3 sm:px-3 sm:py-1.5",
             "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
             id === value
               ? "bg-surface text-ink shadow-[0_1px_2px_rgba(0,0,0,0.06)]"

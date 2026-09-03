@@ -3,7 +3,7 @@
 import type { ComponentPropsWithRef, ReactNode } from "react";
 
 import { cn } from "@/lib/cn";
-import { Field, controlClassName } from "./label";
+import { Field, CONTROL_HEIGHT, controlClassName } from "./label";
 
 /**
  * Text input — 40px box, `--radius-sm`, `--line-control` boundary (§8.6, §8.3).
@@ -64,10 +64,23 @@ export function Input({
             aria-invalid={invalid || undefined}
             aria-describedby={describedBy}
             data-readonly={readOnly ? "true" : undefined}
+            /* ⚠ 44px on touch, 40px on a pointer — `CONTROL_HEIGHT`, shared with `<Select>`
+               and the addon shell below so all three agree. §8D.7's 40px is a mouse number;
+               a fingertip needs 44 (HIG, Material, WCAG 2.5.5) and every search field, phone
+               field and name field in the product resolves to this one class. */
             className={
               leadingAddon || trailingAddon
-                ? cn("h-10 min-w-0 flex-1 bg-transparent text-base text-ink", "placeholder:text-ink-3", className)
-                : controlClassName({ invalid, readOnly, className: cn("h-10", className) })
+                ? cn(
+                    CONTROL_HEIGHT,
+                    "min-w-0 flex-1 bg-transparent text-base text-ink",
+                    "placeholder:text-ink-3",
+                    className,
+                  )
+                : controlClassName({
+                    invalid,
+                    readOnly,
+                    className: cn(CONTROL_HEIGHT, className),
+                  })
             }
           />
         );
@@ -80,7 +93,9 @@ export function Input({
             className={controlClassName({
               invalid,
               readOnly,
-              className: "flex items-center gap-2 px-3",
+              /* The shell carries the height and the input inside it matches — one constant,
+                 so the two cannot disagree and leave a seam down the field. */
+              className: cn(CONTROL_HEIGHT, "flex items-center gap-2 px-3"),
             })}
           >
             {leadingAddon ? (

@@ -5,7 +5,7 @@ import { Check, ChevronDown, ChevronUp } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { cn } from "@/lib/cn";
-import { Field, controlClassName } from "./label";
+import { Field, CONTROL_HEIGHT, controlClassName } from "./label";
 
 /**
  * Select — Radix for the behaviour (typeahead, roving focus, Escape, scroll-into-view),
@@ -97,7 +97,10 @@ export function Select({
             className={controlClassName({
               invalid,
               className: cn(
-                "flex h-10 items-center justify-between gap-2 text-left",
+                /* Same 44/40 as `<Input>`, from the same constant — a Select beside an Input
+                   in one form must not be 4px shorter than it. */
+                CONTROL_HEIGHT,
+                "flex items-center justify-between gap-2 text-left",
                 "data-[placeholder]:text-ink-3",
                 className,
               ),
@@ -120,7 +123,9 @@ export function Select({
                 contentClassName,
               )}
             >
-              <SelectPrimitive.ScrollUpButton className="flex h-6 items-center justify-center text-ink-3">
+              <SelectPrimitive.ScrollUpButton className=/* 24px was a hairline of a target. `h-8` plus the viewport's own native scrolling on
+     touch makes the affordance usable without changing the menu's rhythm. */
+    "flex h-8 items-center justify-center text-ink-3">
                 <ChevronUp aria-hidden="true" className="size-4" />
               </SelectPrimitive.ScrollUpButton>
 
@@ -133,7 +138,9 @@ export function Select({
                 {children}
               </SelectPrimitive.Viewport>
 
-              <SelectPrimitive.ScrollDownButton className="flex h-6 items-center justify-center text-ink-3">
+              <SelectPrimitive.ScrollDownButton className=/* 24px was a hairline of a target. `h-8` plus the viewport's own native scrolling on
+     touch makes the affordance usable without changing the menu's rhythm. */
+    "flex h-8 items-center justify-center text-ink-3">
                 <ChevronDown aria-hidden="true" className="size-4" />
               </SelectPrimitive.ScrollDownButton>
             </SelectPrimitive.Content>
@@ -163,7 +170,11 @@ export function SelectOptionItem({
       value={value}
       disabled={disabled}
       className={cn(
-        "relative flex cursor-default select-none items-center gap-2 rounded-md py-2 pl-8 pr-3",
+        "relative flex cursor-default select-none items-center gap-2 rounded-md pl-8 pr-3",
+        /* 40px on a pointer (24px line box + 8 either side), 44px on touch. The field-type
+           menu is 21 options long, so this row height is the one a thumb has to hit 21 times
+           in a row — the case where 4px short reads as "it picked the wrong one". */
+        "py-2 max-md:py-2.5",
         "text-base text-ink",
         "data-highlighted:bg-accent-wash data-highlighted:text-ink",
         "data-[state=checked]:text-accent",

@@ -6,6 +6,7 @@ import { useId, type ReactNode } from "react";
 
 import { cn } from "@/lib/cn";
 import { Label } from "./label";
+import { TOUCH_HIT_44 } from "./touch-target";
 
 /**
  * Checkbox — Radix root, our 20px box.
@@ -60,6 +61,10 @@ export function Checkbox({
         aria-invalid={invalid || undefined}
         className={cn(
           "inline-flex size-5 shrink-0 items-center justify-center rounded-xs border bg-surface",
+          /* 20px of drawn box, 44px of touch region. The visible label is `htmlFor`-linked
+             below and is also tappable — but `hideLabel` takes it out of the layout, and then
+             this 20px square is the only target on the row. See `touch-target.ts`. */
+          TOUCH_HIT_44,
           "text-accent-ink transition-colors duration-[var(--dur-fast)] ease-out",
           "data-[state=checked]:bg-accent data-[state=checked]:border-accent",
           "data-[state=indeterminate]:bg-accent data-[state=indeterminate]:border-accent",

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, type ReactElement } from "react";
 
 import { resolveCard } from "@/card/resolve-card";
-import { CardThumbTile, ContactRow, StatRow, type StatSpec } from "@/components/app";
+import { CardThumbTile } from "@/components/app";
 import {
   EmptyState,
   ErrorPanel,
@@ -14,9 +14,20 @@ import {
   resolveDataScreenState,
 } from "@/components/data";
 import { buttonClassName } from "@/components/primitives/button";
-import { useFixture } from "@/lib/fixture-gateway";
-import type { Contact, ContactCard, ResolvedCard } from "@/types/domain";
-import type { FixtureDb } from "@/fixtures";
+import { fetchDashboardData } from "@/lib/api/browser-loaders";
+import { useApiResource } from "@/lib/use-api";
+import { attention, cardReach, sharingByWeek, totals } from "@/lib/dashboard/metrics";
+import type {
+  Attention,
+  CardReach,
+  DashboardTotals,
+  WeekBucket,
+} from "@/lib/dashboard/metrics";
+import { ActivityChart } from "@/components/dashboard/activity-chart";
+import { ReachBars } from "@/components/dashboard/reach-bars";
+import { StatTile } from "@/components/dashboard/stat-tile";
+import { AttentionList } from "@/components/dashboard/attention-list";
+import type { ContactCard, ResolvedCard } from "@/types/domain";
 
 /**
  * `/dashboard` — the owner's landing surface (spec §8D.3 dashboard row, §4.4 step 1,
@@ -59,7 +70,7 @@ import type { FixtureDb } from "@/fixtures";
  */
 
 /** §8D.3: "a 'Recent contacts' list of 5". */
-const RECENT_CONTACT_COUNT = 5;
+const ATTENTION_BONE_COUNT = 3;
 
 /**
  * Shared by the screen root and the Suspense fallback so the two occupy the same box and
@@ -76,54 +87,56 @@ const SHELL_CLASS = "mt-10 flex flex-col gap-12 pb-16";
 const GRID_CLASS =
   "grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,18rem)] lg:items-start lg:gap-14";
 
-/**
- * Newest first, by the ISO timestamp. Never mutates the frozen fixture array.
- *
- * Three field names because three entities each carry their own: a card is `updatedAt`, and a
- * contact is `createdAt` — it used to be `savedAt`, which went with the saved-lead model.
- */
-function byRecency<
-  T extends {
-    readonly updatedAt?: string;
-    readonly createdAt?: string;
-    readonly savedAt?: string;
-  },
->(a: T, b: T): number {
-  const left = a.updatedAt ?? a.createdAt ?? a.savedAt ?? "";
-  const right = b.updatedAt ?? b.createdAt ?? b.savedAt ?? "";
-  return right.localeCompare(left);
-}
+
+/** What `fetchDashboardData` returns — named so `readDashboard` is not typed against a loader. */
+type DashboardApiData = Awaited<ReturnType<typeof fetchDashboardData>>;
 
 interface DashboardData {
-  stats: readonly StatSpec[];
+  totals: DashboardTotals;
+  weeks: readonly WeekBucket[];
+  reach: readonly CardReach[];
+  attention: readonly Attention[];
   featured: ResolvedCard | null;
   cards: readonly ContactCard[];
-  recentContacts: readonly Contact[];
 }
 
 /**
  * Everything the success surface renders, derived once.
  *
- * `resolveCard` is pure (I-4) but not free, and `useFixture` returns a **fresh result
- * object on every render** — so this is memoised on the fixture database itself, which is
- * a frozen module constant with a stable identity, and never on the result wrapper.
+ * `resolveCard` is pure (I-4) but not free, and the resource hook returns a **fresh result
+ * object on every render** — so this is memoised on the loaded data itself, which the hook
+ * keeps referentially stable between loads, and never on the result wrapper around it.
  */
-function readDashboard(db: FixtureDb): DashboardData {
-  const cards = db.cards;
-  const newest = [...cards].sort(byRecency)[0];
+function readDashboard(db: DashboardApiData): DashboardData {
+  const metricCards = db.cards.map((card) => ({
+    id: card.id,
+    name: card.name,
+    fieldIds: card.fieldIds,
+  }));
+
+  /* Newest first by `updatedAt` — the card the owner most recently touched, which is what
+     "most recent" means to the person who touched it. */
+  const featuredCard = [...db.cards].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
 
   return {
-    stats: [
-      { id: "cards", label: "Cards", value: cards.length, href: "/cards" },
-      { id: "contacts", label: "Contacts", value: db.contacts.length, href: "/contacts" },
-      { id: "fields", label: "Fields", value: db.fields.length, href: "/profile" },
-    ],
+    cards: db.cards,
+    totals: totals({
+      cards: metricCards,
+      contactCount: db.contacts.length,
+      fieldCount: db.fields.length,
+      links: db.links,
+      behind: db.behind,
+    }),
+    weeks: sharingByWeek(db.links, new Date()),
+    reach: cardReach(metricCards, db.links),
+    attention: attention(metricCards, db.links, db.behindByCardId),
     featured:
-      newest === undefined ? null : resolveCard(newest, db.user, db.groups, db.fields),
-    cards,
-    recentContacts: [...db.contacts].sort(byRecency).slice(0, RECENT_CONTACT_COUNT),
+      featuredCard === undefined
+        ? null
+        : resolveCard(featuredCard, db.user, db.groups, db.fields),
   };
 }
+
 
 /** The featured card, its caption and the one way into the builder. */
 function RecentCard({ resolved }: { resolved: ResolvedCard }): ReactElement {
@@ -155,45 +168,6 @@ function RecentCard({ resolved }: { resolved: ResolvedCard }): ReactElement {
   );
 }
 
-/** The five most recently saved contacts, and the way to the rest of them. */
-function RecentContacts({
-  contacts,
-  cards,
-}: {
-  contacts: readonly Contact[];
-  cards: readonly ContactCard[];
-}): ReactElement {
-  return (
-    <section data-dashboard-region="recent-contacts">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2 border-b border-line pb-4">
-        <h2 className="text-lg text-ink">Recent contacts</h2>
-        <Link href="/contacts" className={buttonClassName({ variant: "text-link" })}>
-          All contacts
-        </Link>
-      </div>
-
-      {contacts.length === 0 ? (
-        // Unreachable with the shipped fixtures — the whole screen is empty before this
-        // is — but a heading with nothing under it is worse than a sentence.
-        <p data-prose className="mt-6 text-base text-ink-3">
-          No contacts yet. Import your address book and they will appear here.
-        </p>
-      ) : (
-        <ul data-dashboard-contact-list="">
-          {contacts.map((contact) => (
-            // `cards` is gone: a contact no longer has a source card, so there is nothing for
-            // the row to resolve a slug against.
-            <ContactRow
-              key={contact.id}
-              contact={contact}
-              href={`/contacts/${contact.id}`}
-            />
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-}
 
 /**
  * The loading family: layout-matched bones, never a spinner (§8D.1).
@@ -225,12 +199,12 @@ function DashboardBones(): ReactElement {
           <LoadingSkeleton variant="stats" label="Loading your totals" />
         </div>
       </div>
-      <div data-dashboard-region="recent-contacts">
-        <LoadingSkeleton
-          variant="list"
-          count={RECENT_CONTACT_COUNT}
-          label="Loading recent contacts"
-        />
+      {/* The charts' box, reserved. The rule this column serves is that **nothing shifts**
+          when the data lands, so the bones have to occupy the same two-up grid the charts
+          will — a stats skeleton alone would let two figures appear under a settled layout,
+          which is exactly the shift it forbids. */}
+      <div data-dashboard-region="attention">
+        <LoadingSkeleton variant="list" count={ATTENTION_BONE_COUNT} label="Loading what needs attention" />
       </div>
     </>
   );
@@ -262,10 +236,12 @@ export function DashboardSkeleton(): ReactElement {
 
 export function DashboardClient(): ReactElement {
   const router = useRouter();
-  // The identity selector: `FIXTURE_DB` and `EMPTY_FIXTURE_DB` are frozen module
-  // constants, so `data` is referentially stable and safe to memoise on — unlike the
-  // result wrapper around it, which is new on every render.
-  const { state, data, error } = useFixture((db) => db);
+  /* ⚠ `GET /cards` + `/contacts` + `/share-links` + the profile reads + one `/audience` per
+     card — all visible in the Network tab. This screen ran on `useFixture` until now, which
+     meant it reported the fixture set's 9 cards, 8 contacts and 35 fields to every owner and
+     drew a card whose link pointed at `card.example`. Numbers on a dashboard are read as
+     facts about the reader's own data; inventing them is worse than showing nothing. */
+  const { state, data, error } = useApiResource(fetchDashboardData);
 
   const dashboard = useMemo(() => (data === null ? null : readDashboard(data)), [data]);
 
@@ -303,15 +279,66 @@ export function DashboardClient(): ReactElement {
   } else {
     body = (
       <>
-        <div className={GRID_CLASS}>
-          {dashboard.featured === null ? null : (
-            <RecentCard resolved={dashboard.featured} />
-          )}
-          <div data-dashboard-region="stats" className="lg:order-1">
-            <StatRow stats={dashboard.stats} />
+        {/* Row 1 — the five headline numbers. Discrete panels with gaps, deliberately not a
+            `border-y` band: `PageHeader` already closes with a rule, so a banded row put two
+            hairlines around forty pixels of empty space and read as a stray banner.
+
+            Every tile carries a hint, including Cards. One tile without one left a hole in an
+            otherwise even row — the raggedness was as much of the problem as the rules. */}
+        {/* ⚠ **Five tiles, two columns on a phone — so the fifth spans the row rather than
+            dangling beside a void.**
+            5 into 2 leaves a half-empty third row, and a lone tile with an empty cell next to
+            it reads as content that failed to load. `col-span-2` closes the row; the tile
+            switches to its `row` layout at the same breakpoint, because a box twice as wide as
+            it is tall cannot keep a stacked column without becoming mostly empty. From `sm` up
+            the grid is 3 across (5 = 3 + 2, no orphan) and `xl` is 5 across, so neither the
+            span nor the row layout applies above a phone. */}
+        <div
+          data-dashboard-region="stats"
+          className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5"
+        >
+          <StatTile label="Cards" value={dashboard.totals.cards} hint="Built so far" />
+          <StatTile
+            label="People reached"
+            value={dashboard.totals.peopleReached}
+            hint="Hold a live link"
+          />
+          <StatTile label="Opens" value={dashboard.totals.totalOpens} hint="Across every card" />
+          <StatTile
+            label="Not opened"
+            value={dashboard.totals.neverOpened}
+            hint="Sent, never viewed"
+            actionable
+          />
+          <div className="col-span-2 sm:col-span-1">
+            <StatTile
+              label="Not told"
+              value={dashboard.totals.behind}
+              hint="Behind on a change"
+              actionable
+              row
+            />
           </div>
         </div>
-        <RecentContacts contacts={dashboard.recentContacts} cards={dashboard.cards} />
+
+        {/* Row 2 — the two charts get the full width between them. Nested in the featured
+            card's column they resolved to ~280px at a 1280px viewport, which puts twelve weekly
+            columns at 21px each and truncates every card name in the reach list. A chart that
+            has to be decoded is not doing its job. */}
+        <div data-dashboard-region="charts" className="grid gap-10 lg:grid-cols-2 lg:gap-14">
+          <ActivityChart weeks={dashboard.weeks} />
+          <ReachBars rows={dashboard.reach} />
+        </div>
+
+        {/* Row 3 — what to do, beside the card most recently touched. Pairing them fills the
+            column the card would otherwise leave empty, and puts the actions next to the thing
+            they act on. */}
+        <div className={GRID_CLASS}>
+          {dashboard.featured === null ? null : <RecentCard resolved={dashboard.featured} />}
+          <div className="lg:order-1">
+            <AttentionList rows={dashboard.attention} />
+          </div>
+        </div>
       </>
     );
   }

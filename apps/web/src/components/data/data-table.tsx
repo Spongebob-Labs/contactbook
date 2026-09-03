@@ -126,10 +126,23 @@ export function DataTable<T>({
           const href = getRowHref?.(row);
           const title = primaryColumn ? primaryColumn.cell(row) : null;
           return (
-            <li key={getRowKey(row)} className="flex flex-col gap-2 border-b border-line py-4">
+            /* ⚠ `relative`, paired with the stretched link below. Below `md` this row is a
+               ~132px stacked card whose only tap target was the inline name link — about 24px
+               tall and only as wide as the name itself, so a four-character contact gave a
+               28×24 target inside a 132px box. 82% of the row did nothing. */
+            <li
+              key={getRowKey(row)}
+              className="relative flex flex-col gap-2 border-b border-line py-4"
+            >
               <p className="text-base text-ink">
                 {href ? (
-                  <Link href={href} className="text-ink underline-offset-4 hover:underline">
+                  /* `after:absolute after:inset-0` makes the whole `<li>` the hit area while
+                     the accessible name stays the row's title and the link stays a single
+                     tab stop. Same pattern `card-thumb-tile.tsx` and `stat-row.tsx` use. */
+                  <Link
+                    href={href}
+                    className="text-ink underline-offset-4 after:absolute after:inset-0 hover:underline"
+                  >
                     {title}
                   </Link>
                 ) : (

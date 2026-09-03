@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Instrument_Sans, Space_Grotesk } from "next/font/google";
 
 import "@/styles/globals.css";
@@ -101,6 +101,38 @@ const instrumentSans = Instrument_Sans({
   variable: "--font-instrument",
   display: "swap",
 });
+
+/**
+ * ⚠ **`viewportFit: "cover"` is what makes every `env(safe-area-inset-*)` in this app resolve
+ * to a real number.**
+ *
+ * Without a `viewport` export Next injects `width=device-width, initial-scale=1` and nothing
+ * else, so `viewport-fit` defaults to `auto`. Under `auto` iOS Safari lays the document out
+ * *inside* the safe area itself and every `env(safe-area-inset-*)` computes **0px** — which
+ * means the five places that already reason carefully about the home indicator were all
+ * arithmetic against zero:
+ *
+ *   · `bottom-bar.tsx` — the bar's height *and* its bottom padding
+ *   · `app-shell.tsx`  — the content column's bottom padding, so the last row of every list
+ *   · `sheet.tsx`      — the bottom sheet's padding, and the left drawer's leading inset
+ *   · `toast.tsx`      — the toast stack's offset above the bar
+ *
+ * They were not wrong; they were inert. `cover` extends the layout viewport under the notch and
+ * the indicator and hands those insets their true values, so the code that spends them starts
+ * working. It is paired with a `, 0px` fallback at every `env()` call site: an `env()` with no
+ * fallback is invalid at parse time on an engine without support, which would have taken the
+ * whole `height` declaration with it and collapsed the 64px bar to `auto`.
+ *
+ * `maximumScale` and `userScalable` are deliberately **not** set. Capping zoom is the usual
+ * companion to a `viewport` tag and it is an accessibility failure (WCAG 1.4.4) — the fix for
+ * "iOS zooms when I focus an input" is a 16px control font, which `globals.css` now applies,
+ * not a pinch-zoom ban.
+ */
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+};
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),

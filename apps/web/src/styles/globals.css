@@ -350,9 +350,86 @@
     overflow-wrap: anywhere;
   }
 
+  /* ── User strings that are NOT field values ──────────────────────────────
+     The rule above is scoped to `[data-field-value]`, and these four carry
+     owner- or contact-authored text with no break opportunity in it:
+
+       · an email address — no space, no hyphen, so `min-content` is the whole
+         string. At 320px the content box is 296px, which is about 40 characters
+         at `--text-base`; a 45-character work address measures ~337px and
+         scrolled the document sideways by 41px.
+       · a contact's display name, set at `--text-h2`
+       · a private note, which routinely has a pasted URL in it
+       · an error digest, which is an unbroken hash
+
+     They are listed rather than folded into a blanket `* { overflow-wrap }`
+     because breaking mid-word is a *concession*, correct only where the
+     alternative is a horizontal scrollbar. Prose must keep breaking on spaces. */
+  [data-identity-email],
+  [data-contact-name],
+  [data-contact-notes],
+  [data-error-digest] {
+    overflow-wrap: anywhere;
+  }
+
   /* The measure cap — 68 characters. */
   [data-prose] {
     max-width: var(--prose-max);
+  }
+}
+
+/* ── 4b. iOS Safari's focus zoom ─────────────────────────────────────────────
+   ⚠ **This is the rule that stops the whole page zooming every time somebody
+   taps a field on an iPhone**, and it is the single most-felt mobile defect in
+   the app.
+
+   Mobile Safari zooms the layout viewport whenever a focused `<input>`,
+   `<textarea>` or native `<select>` computes a font-size **below 16px**. It does
+   not zoom back out on blur — the reader has to pinch. Every text control in
+   this product was under the line:
+
+     · the shared control skin (`primitives/label.tsx`) sets `text-base`, and
+       `--text-base` is **15px** → 16/15 = 1.067x on every field in the app
+     · the builder's inline field-value input sets `text-sm` → **13px** → 1.23x
+     · Tailwind v4's preflight sets `font: inherit` on form controls, so an
+       input with no font-size class inherits `body`'s 15px and zooms too
+
+   The fix is a floor on the *control*, not a change to the type scale.
+   `--text-base: 15px` is a deliberate body size and `tokens.css` documents the
+   steps as viewport-invariant, so raising it would re-set every screen in the
+   product to fix a phone bug. 16px is also **only** applied below `md`, where
+   the zoom exists — the desktop control keeps its 15px.
+
+   `1rem` rather than `16px`: a reader who has raised their browser's base font
+   should get a proportionally larger control, and the zoom threshold moves with
+   them.
+
+   Unlayered, because `text-sm` and `text-base` are utilities and utilities beat
+   `@layer base` — the offending sizes are exactly those utilities, so the floor
+   has to sit outside the cascade layers to win. It is a `min` via `max()`
+   semantics in spirit; written as a plain declaration because the only sizes it
+   overrides are all smaller than 16px, and any control that deliberately sets a
+   LARGER size (the OTP boxes at 17px, the builder's card-name title at 20px)
+   is excluded by selector rather than by an override.
+
+   ⚠ **Excluded by `:not()`, not by a second rule that reverts them.** The two
+   controls that are already ABOVE 16px are display type that happens to be
+   editable — the OTP boxes at 17px and the builder's card-name title at 20px —
+   and a 16px declaration would make them *smaller*, which is the opposite of
+   what a floor means. A follow-up rule using `revert-layer` cannot fix that:
+   these declarations are unlayered, so `revert-layer` rolls back past the
+   author layers entirely rather than to the utility that set 17px. Keeping them
+   out of the match is the only version that behaves.
+
+   ⚠ The alternative fix — `maximum-scale=1` on the viewport tag — is an
+   accessibility failure (WCAG 1.4.4 requires 200% zoom) and is deliberately not
+   used. See the `viewport` export in `app/layout.tsx`. */
+
+@media (max-width: 767px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([data-otp-box]):not([data-builder-name]),
+  textarea,
+  select {
+    font-size: 1rem;
   }
 }
 

@@ -27,6 +27,8 @@ export {
 } from "./select";
 export type { SelectOption, SelectOptionItemProps, SelectProps } from "./select";
 
+export { TOUCH_HIT_44, TOUCH_HIT_44_Y } from "./touch-target";
+
 export { Checkbox } from "./checkbox";
 export type { CheckboxProps } from "./checkbox";
 

@@ -131,6 +131,7 @@ export function Hero() {
             style={{ left: "calc(-1 * var(--mk-ledger-gutter))" }}
           />
 
+
           {/*
             ⚠ EVERY MEASURE STAYS ON THE TYPE ELEMENT, NEVER ON THE `<Arrival>` AROUND IT.
 

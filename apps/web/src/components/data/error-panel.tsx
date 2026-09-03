@@ -238,7 +238,7 @@ export function ErrorPanel({
       className={cn(
         // Flat, hairline-framed, no elevation — separation is the rule, not a shadow
         // (§8.7). 480px per §6.10.
-        "mx-auto w-full max-w-[480px] rounded-lg border border-line bg-surface px-8 py-10",
+        "mx-auto w-full max-w-[480px] rounded-lg border border-line bg-surface px-5 py-8 sm:px-8 sm:py-10",
         className,
       )}
     >

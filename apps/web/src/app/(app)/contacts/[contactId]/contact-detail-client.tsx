@@ -23,6 +23,7 @@ import { TextArea } from "@/components/primitives/textarea";
 import { contacts as api } from "@/lib/api/browser";
 import { fetchContactDetail } from "@/lib/api/browser-loaders";
 import { toScreenError } from "@/lib/api/errors";
+import { cn } from "@/lib/cn";
 import { formatLongDate, formatPhoneDisplay } from "@/lib/format";
 import { useApiResource } from "@/lib/use-api";
 import {
@@ -87,7 +88,13 @@ export function ContactBackLink(): ReactElement {
     <Link
       href="/contacts"
       data-contact-back=""
-      className="inline-flex w-fit items-center gap-2 text-sm text-ink-3 underline-offset-4 hover:text-ink hover:underline"
+      /* 44px on touch — this is the only way back from a contact on a phone, and at
+         `--text-sm` it is a 20px line box. The negative margin keeps the header's spacing. */
+      className={cn(
+        "inline-flex w-fit items-center gap-2 text-sm text-ink-3 underline-offset-4",
+        "hover:text-ink hover:underline",
+        "max-md:-my-3 max-md:py-3",
+      )}
     >
       <ArrowLeft aria-hidden="true" className="size-4" />
       Back to contacts
@@ -149,7 +156,12 @@ function ShareRow({ share }: { share: ContactShare }) {
         <p className="flex min-w-0 items-baseline gap-2 text-base text-ink">
           <Link
             href={`/cards/${share.cardId}`}
-            className="min-w-0 truncate underline-offset-4 hover:underline"
+            /* 44px on touch. Each of these is a link to a card this contact holds — the row's
+               only action — and a 24px line box is under the floor. */
+            className={cn(
+              "min-w-0 truncate underline-offset-4 hover:underline",
+              "max-md:-my-2.5 max-md:py-2.5",
+            )}
           >
             {share.cardName}
           </Link>
