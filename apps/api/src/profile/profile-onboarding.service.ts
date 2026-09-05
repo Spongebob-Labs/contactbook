@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import {
+  CardKind,
   FieldCategory,
   FieldGroupCategory,
   FieldType,
@@ -10,6 +11,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AppConfigService } from '../config/app-config.service';
 import { AppLogger } from '../common/logging/app-logger.service';
 import { ApiError } from '../common/errors/api-error';
+import { generateShareToken } from '../sharing/share-token.util';
 import { prepareFieldValueForWrite } from './profile-field-value.util';
 import { ProfileService } from './profile.service';
 import type { CompleteOnboardingDto } from './dto/onboarding/complete-onboarding.dto';
@@ -138,6 +140,31 @@ export class ProfileOnboardingService {
         },
       });
 
+      // A brand-new user has nothing to share yet — give them one starter
+      // card, curated with the two contact details onboarding just collected
+      // (the OTP-verified phone and the email they typed), so "share my
+      // card" is possible the moment onboarding finishes rather than only
+      // after a separate card-builder trip. Ordinary CardField rows on an
+      // ordinary Card — nothing here is special-cased downstream (editable,
+      // deletable, re-curatable exactly like any card the owner builds by
+      // hand). Deliberately NOT `name` — the owner's name is already shown
+      // on every public card automatically (PublicCardResponseDto.owner),
+      // it isn't a ProfileField and was never going to be curatable here.
+      const [phoneFieldId, emailFieldId] = await this.createLooseFields(
+        tx,
+        userId,
+        FieldCategory.PERSONAL,
+        [
+          { type: FieldType.PHONE, label: 'Mobile', value: user.phoneE164 },
+          {
+            type: FieldType.EMAIL,
+            label: 'Email',
+            value: dto.identity.primaryEmail,
+          },
+        ],
+      );
+      await this.createDefaultCard(tx, userId, [phoneFieldId, emailFieldId]);
+
       if (dto.personal) {
         await this.createLooseFields(
           tx,
@@ -225,16 +252,23 @@ export class ProfileOnboardingService {
 
   // ------------------------------------------------------- transaction helpers
 
+  /** Returns the created fields' ids, in the same order as `specs` — needed
+   *  by the default-card step below to know which fieldIds to curate onto
+   *  it. Existing callers that don't need the ids simply don't use them. */
   private async createLooseFields(
     tx: Prisma.TransactionClient,
     userId: string,
     category: FieldCategory,
     specs: FieldSpec[],
-  ): Promise<void> {
+  ): Promise<string[]> {
     let position = await this.nextFieldPosition(tx, userId);
+    const fieldIds: string[] = [];
     for (const spec of specs) {
-      await this.createField(tx, userId, category, null, spec, position++);
+      fieldIds.push(
+        await this.createField(tx, userId, category, null, spec, position++),
+      );
     }
+    return fieldIds;
   }
 
   /** Creates the group only if there is something to put in it — a
@@ -280,7 +314,7 @@ export class ProfileOnboardingService {
     groupId: string | null,
     spec: FieldSpec,
     position: number,
-  ): Promise<void> {
+  ): Promise<string> {
     const fieldId = randomUUID();
     const { value, isEncrypted } = prepareFieldValueForWrite(
       this.config.fieldEncryptionKey,
@@ -300,6 +334,37 @@ export class ProfileOnboardingService {
         groupId,
       },
     });
+    return fieldId;
+  }
+
+  /** One card, curated with exactly the fieldIds given, in that order. Mints
+   *  its own publicToken via the same generator ShareLink uses — Card.
+   *  publicToken is required (non-nullable) at the schema level, so this
+   *  can't be skipped or deferred. No CardVersion/currentVersion bump here:
+   *  currentVersion's schema default (1) already represents "this card as
+   *  created," matching how CardsService.setFields() treats a card's first
+   *  real edit — the very first PUT /cards/:id/fields the owner makes after
+   *  this diffs against these curated fields as the live "previous" state,
+   *  with no special-casing needed (see card-version-diff.util.ts). */
+  private async createDefaultCard(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    fieldIds: string[],
+  ): Promise<void> {
+    const card = await tx.card.create({
+      data: {
+        userId,
+        name: 'My Card',
+        kind: CardKind.PERSONAL,
+        publicToken: generateShareToken(),
+      },
+    });
+    let position = 0;
+    for (const fieldId of fieldIds) {
+      await tx.cardField.create({
+        data: { cardId: card.id, fieldId, position: position++ },
+      });
+    }
   }
 
   private async nextFieldPosition(
