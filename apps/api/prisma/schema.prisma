@@ -564,3 +564,36 @@ model Message {
   @@index([correlationId])
   @@map("messages")
 }
+
+/// Raw capture of every inbound WhatsApp message, from anyone, whether or not
+/// it resolves to a known Contact/User/Card — deliberately not `Message`
+/// (whose `purpose` enum is template-send semantics; an unsolicited message
+/// from a stranger doesn't have one). This is the interaction history: two
+/// phone numbers touched at a point in time, nothing more inferred. Resolving
+/// *who* on our side this relates to (a scan code, a known Contact) is a
+/// separate, not-yet-built concern — see docs/architecture/hld.md Flow 3.
+///
+/// `rawPayload` keeps the entire webhook body verbatim so a field nobody
+/// thought to add a column for isn't silently lost — the structured columns
+/// below are just the ones known to be useful for the GET endpoint today.
+model InboundMessage {
+  id                String   @id @default(uuid())
+  provider          String   @default("twilio")
+  /// Twilio's MessageSid — the dedup key. Twilio retries a webhook delivery
+  /// on a non-2xx or a timeout; without this constraint a retry double-logs
+  /// the same message as two separate "interactions."
+  providerMessageId String   @unique
+  fromPhoneE164     String
+  toPhoneE164       String
+  body              String?
+  /// WhatsApp's own display name for the sender, when Twilio provides one —
+  /// never something we asked for or verified, just whatever their WhatsApp
+  /// profile says at send time.
+  profileName       String?
+  rawPayload        Json
+  receivedAt        DateTime @default(now())
+
+  @@index([fromPhoneE164, receivedAt(sort: Desc)])
+  @@index([receivedAt(sort: Desc)])
+  @@map("inbound_messages")
+}
