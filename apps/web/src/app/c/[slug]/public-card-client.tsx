@@ -4,18 +4,20 @@ import { useState, type ReactElement } from "react";
 
 import { buildVcf, canBuildVcf } from "@/card/build-vcf";
 import { CardPage } from "@/card/card-page";
+import { ConnectFlow } from "@/components/public-card/connect-flow";
 import { PublicCardActions } from "@/components/public-card/public-card-actions";
 import { useVcfDownload } from "@/components/share/share-sheet";
 import type { ResolvedCard } from "@/types/domain";
 
 /**
- * The card a stranger sees, and the two things they can do with it.
+ * The card a stranger sees, and the three things they can do with it.
  *
  * ## Why this is a client component at all
  * `<CardPage>` renders on the server perfectly well — the reason for a client boundary is
  * **Save to contacts**, which writes a `.vcf` into a blob URL and clicks a synthetic anchor. That
  * needs a browser. So the page stays a Server Component (it does the fetch), and only the action
- * tier is hydrated.
+ * tier is hydrated. **"Save & connect"** is the second reason, and a stronger one: it is two
+ * POSTs with request state between them.
  *
  * ## The vCard is written once
  * `buildVcf` runs here and the result is handed to the download — never rebuilt at the moment of
@@ -25,8 +27,24 @@ import type { ResolvedCard } from "@/types/domain";
  * `canBuildVcf` gates it: a card that shares nothing has **no** download control rather than one
  * that refuses. `buildVcf` throws `EmptyCardError` in that case instead of writing the old build's
  * 73-byte name-only file (§11 E-01/E-02).
+ *
+ * ## ⚠ The zero-field card has no actions at all, connect included
+ * The `vcf === null` gate below predates connect and suppresses the **whole** action tier, so a
+ * card sharing nothing renders no "Save & connect" either. That is not an argument that it
+ * should not — a scanner connecting to an empty card is arguably the *most* useful case, since
+ * the owner can then notify them the moment they map a field. It is preserved deliberately:
+ * `public-card.spec.ts`'s E-02/AC-36 test asserts `data-card-action-count="0"` on `/c/prya-blank`
+ * with reasoning written entirely about the save button, and quietly turning that 0 into a 1 is a
+ * product decision, not a wiring detail. Flagged rather than taken.
  */
-export function PublicCardClient({ resolved }: { resolved: ResolvedCard }): ReactElement {
+export function PublicCardClient({
+  resolved,
+  token,
+}: {
+  resolved: ResolvedCard;
+  /** The share token from `/c/[slug]` — the only input the connect endpoints need. */
+  token: string;
+}): ReactElement {
   const { savePending, downloadVcf } = useVcfDownload();
   // Written once, on first render, and reused by every click.
   const [vcf] = useState(() => (canBuildVcf(resolved) ? buildVcf(resolved) : null));
@@ -40,6 +58,7 @@ export function PublicCardClient({ resolved }: { resolved: ResolvedCard }): Reac
             resolved={resolved}
             savePending={savePending}
             onSaveToContacts={(card) => downloadVcf(card, vcf)}
+            connect={<ConnectFlow resolved={resolved} token={token} />}
           />
         )
       }

@@ -63,6 +63,74 @@ export const FIELD_TYPE_LABELS: Record<FieldType, string> = {
 };
 
 /**
+ * **What a value of each kind looks like — the placeholder, and the keyboard to type it on.**
+ *
+ * ## Why this lives beside {@link FIELD_TYPE_LABELS}
+ * Two surfaces ask an owner to type a raw field value: this popover and the builder's
+ * one-line field composer. Both need the same answer to *"what goes in this box?"*, and the
+ * client's note was that the box says nothing at all once you have chosen a kind — you pick
+ * **Social link** and the input is still an empty rectangle. A second copy of these examples in
+ * the builder would be a second thing to keep true, so they are `Record<FieldType, …>` here,
+ * beside the labels, **total by annotation** exactly as those are: a new `FieldType` cannot be
+ * added without deciding what one looks like.
+ *
+ * ⚠ **Reserved domains only.** These are demo values on a real screen, so they follow the same
+ * rule the fixtures do (RFC 2606 / 6761 — `example`, `.example`, `.invalid`). The hygiene suite
+ * walks `FIXTURE_DB` rather than source, so it will not catch a real domain typed here; that is
+ * a reason to be careful, not a licence. `you@studio.com` used to sit in this file's own email
+ * placeholder and is gone with this change.
+ *
+ * ⚠ **The four structured kinds get no placeholder.** `BANK_ACCOUNT`, `DIGITAL_WALLET`,
+ * `CRYPTO_WALLET` and `PHOTO` are not free text — they have their own editors, and a
+ * one-line example would teach the wrong shape. Empty string means "no hint", not "no entry".
+ */
+export const FIELD_TYPE_PLACEHOLDERS: Record<FieldType, string> = {
+  PHONE: "+91 98765 43210",
+  LANDLINE: "+91 22 2612 3456",
+  FAX: "+91 22 2612 3457",
+  EMAIL: "you@example.com",
+  ADDRESS: "Flat 12, Sunder Nagar, Mumbai 400018",
+  URL: "yourstudio.example",
+  SOCIAL_LINK: "linkedin.com/in/yourname",
+  PHOTO: "",
+  TEXT: "Anything you want on the card",
+  DATE: "8 March 1991",
+  JOB_TITLE: "Head of Partnerships",
+  COMPANY: "Fernwood Studio",
+  REG_NUMBER: "U74999MH2019PTC123456",
+  DEPARTMENT: "Revenue & Alliances",
+  RELATION: "Brother",
+  STATUS: "Taking partnership intros this quarter",
+  LOCATION_TRACKING: "Sharing with saved contacts",
+  BANK_ACCOUNT: "",
+  DIGITAL_WALLET: "",
+  CRYPTO_WALLET: "",
+  CUSTOM: "Anything you want on the card",
+};
+
+/**
+ * The on-screen keyboard each kind should summon.
+ *
+ * ⚠ `inputMode`, not `type`. `type="email"` and `type="url"` bring native constraint validation
+ * with them, which would silently block a submit this form validates itself — and the two
+ * disagree: the form's own rule is "not blank", the browser's is a full grammar. `inputMode`
+ * changes the phone keyboard and nothing else, which is the whole benefit and none of the risk.
+ * It is the pattern `signin/phone` and `contacts-list-client` already use.
+ *
+ * `undefined` means the ordinary text keyboard.
+ */
+export const FIELD_TYPE_INPUT_MODES: Partial<
+  Record<FieldType, "tel" | "email" | "url" | "numeric">
+> = {
+  PHONE: "tel",
+  LANDLINE: "tel",
+  FAX: "tel",
+  EMAIL: "email",
+  URL: "url",
+  SOCIAL_LINK: "url",
+};
+
+/**
  * The order the picker offers them in: the eight a person reaches for first, then the rest.
  * `PHOTO` is last because the avatar slot consumes it and it never renders as a row (§6.6).
  */
@@ -195,7 +263,7 @@ export function AddFieldPopover({ group, onAdd, variant = "secondary" }: AddFiel
         <Input
           label="Value"
           value={value}
-          placeholder="you@studio.com"
+          placeholder={FIELD_TYPE_PLACEHOLDERS.EMAIL}
           hint="Every card you build can tick this field on."
           onChange={(event) => setValue(event.target.value)}
         />

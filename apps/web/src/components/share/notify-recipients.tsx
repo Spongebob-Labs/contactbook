@@ -35,6 +35,62 @@ import { Dialog } from "@/components/overlay";
 import { useToast } from "@/components/overlay";
 import type { CardShareRow } from "@/types/domain";
 
+/**
+ * Exactly what the picker needs to name and address one recipient — no more.
+ *
+ * ⚠ It used to take `CardShareRow[]`, which is `ContactShare` plus notify data, so it demanded
+ * `url`, `cardName`, `createdAt` and `firstViewedAt` that this component never reads. That was
+ * fine while the only caller was the card-detail screen (which assembles those from three
+ * endpoints anyway) and became a problem the moment the **builder** needed to open this dialog
+ * after a save: the builder has `GET /cards/:id/audience` and nothing else, and the honest
+ * choices were to fire two more requests or to fabricate the four missing fields.
+ *
+ * Narrowing the prop is the third option and the right one. `CardShareRow` is structurally
+ * assignable to this, so the card-detail call site is unchanged, and `audience` alone is now
+ * enough to build a target — see `toNotifyTargets`.
+ */
+export interface NotifyTarget {
+  shareLinkId: string;
+  contactId: string;
+  contactLabel: string;
+  status: "ACTIVE" | "REVOKED";
+  /** `currentVersion - (lastNotifiedVersion ?? 0)`. `0` = caught up, `null` = not notifiable. */
+  versionsBehind: number | null;
+  lastNotifiedVersion: number | null;
+}
+
+/** `CardShareRow` must stay usable as a target — the card-detail screen passes it straight in. */
+const _assignable: NotifyTarget = null as unknown as CardShareRow;
+void _assignable;
+
+/**
+ * Build targets from an `audience` response alone.
+ *
+ * ⚠ `audience` lists ACTIVE links only, which is why `status` is hard-coded rather than read —
+ * a revoked link simply is not in the response. The label falls back the same way
+ * `contactLabel` does everywhere else: a name if there is one, else the number, never a blank
+ * cell where a name should be.
+ */
+export function toNotifyTargets(
+  recipients: readonly {
+    shareLinkId: string;
+    contactId: string;
+    contactDisplayName: string | null;
+    contactPhoneE164: string;
+    versionsBehind: number;
+    lastNotifiedVersion: number | null;
+  }[],
+): readonly NotifyTarget[] {
+  return recipients.map((r) => ({
+    shareLinkId: r.shareLinkId,
+    contactId: r.contactId,
+    contactLabel: r.contactDisplayName?.trim() || r.contactPhoneE164,
+    status: "ACTIVE" as const,
+    versionsBehind: r.versionsBehind,
+    lastNotifiedVersion: r.lastNotifiedVersion,
+  }));
+}
+
 /** How long to wait before reading the audience back. The send is a queue hop, not a round trip. */
 export const RECONCILE_DELAY_MS = 4000;
 
@@ -45,21 +101,38 @@ export const RECONCILE_DELAY_MS = 4000;
  * be notified at all. Filtering on the field rather than on `status` keeps this honest even if a
  * row's status and its audience membership ever disagree.
  */
-export function notifiableRows(shares: readonly CardShareRow[]): readonly CardShareRow[] {
+export function notifiableRows(shares: readonly NotifyTarget[]): readonly NotifyTarget[] {
   return shares.filter((s) => s.versionsBehind !== null && s.status === "ACTIVE");
 }
 
 /** Rows that have not been told about the current version. Drives the banner's existence. */
-export function behindRows(shares: readonly CardShareRow[]): readonly CardShareRow[] {
+export function behindRows(shares: readonly NotifyTarget[]): readonly NotifyTarget[] {
   return notifiableRows(shares).filter((s) => (s.versionsBehind ?? 0) > 0);
 }
 
 export interface NotifyRecipientsProps {
   cardId: string;
-  shares: readonly CardShareRow[];
+  shares: readonly NotifyTarget[];
   /** Re-read the card detail, so `versionsBehind` reflects what actually landed. */
   onChanged: () => void;
-  trigger?: React.ReactNode;
+  /**
+   * The control that opens the dialog.
+   *
+   * `undefined` gives the default "Notify recipients" button. **`null` gives no trigger at
+   * all**, for a caller that opens this programmatically — the builder does exactly that after
+   * a save, where the prompt is the consequence of pressing Save and a second button would be
+   * a control nobody pressed.
+   */
+  trigger?: React.ReactNode | null;
+  /**
+   * Controlled open state. Omit for the self-managed button; supply both to drive it from
+   * outside.
+   *
+   * ⚠ Both or neither. `open` without `onOpenChange` produces a dialog the owner cannot
+   * dismiss — Cancel, Escape and the backdrop all route through here.
+   */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   /**
    * The owner's whole contact registry, so the dialog can account for anyone it is NOT showing.
    *
@@ -97,10 +170,21 @@ export function NotifyRecipients({
   trigger,
   contacts = [],
   reconcileDelayMs = RECONCILE_DELAY_MS,
+  open: openProp,
+  onOpenChange,
 }: NotifyRecipientsProps) {
   const { toast } = useToast();
   const notifiable = notifiableRows(shares);
-  const [open, setOpen] = useState(false);
+  const [openSelf, setOpenSelf] = useState(false);
+
+  /* Controlled when the caller supplies `open`, self-managed otherwise. One `setOpen` for the
+     rest of the component so nothing below has to know which mode it is in. */
+  const controlled = openProp !== undefined;
+  const open = controlled ? openProp : openSelf;
+  const setOpen = (next: boolean) => {
+    if (!controlled) setOpenSelf(next);
+    onOpenChange?.(next);
+  };
   const [selected, setSelected] = useState<ReadonlySet<string>>(
     () => new Set(notifiable.map((s) => s.shareLinkId)),
   );
@@ -167,7 +251,8 @@ export function NotifyRecipients({
     <Dialog
       open={open}
       onOpenChange={openChanged}
-      trigger={trigger ?? <Button variant="secondary">Notify recipients</Button>}
+      /* `null` means "no trigger" — see the prop's note. `undefined` still gets the default. */
+      trigger={trigger === null ? undefined : (trigger ?? <Button variant="secondary">Notify recipients</Button>)}
       overline="Notify"
       title="Tell recipients this card changed"
       description={
@@ -247,7 +332,7 @@ export function NotifyRecipients({
 
 export interface NotifyBannerProps {
   cardId: string;
-  shares: readonly CardShareRow[];
+  shares: readonly NotifyTarget[];
   onChanged: () => void;
   /** Passed straight through to the picker — see `NotifyRecipientsProps.contacts`. */
   contacts?: readonly { id: string }[];

@@ -2,7 +2,7 @@
 
 import * as TabsPrimitive from "@radix-ui/react-tabs";
 import { useSearchParams } from "next/navigation";
-import { LayoutPanelTop, Palette, Rows3, type LucideIcon } from "lucide-react";
+import { Palette, Rows3, type LucideIcon } from "lucide-react";
 import { useCallback, useState, type ReactElement } from "react";
 
 import { cn } from "@/lib/cn";
@@ -77,14 +77,29 @@ export const BUILDER_SECTIONS: readonly BuilderSectionDef[] = [
     id: "fields",
     label: "Fields",
     intro:
-      "What this card shares, in the order it appears. Values come from your profile — editing one here changes it on every card that uses it.",
+      /* ⚠ REWRITTEN THREE TIMES, AND IT IS SHORTER EVERY TIME. It read "What this card shares,
+         in the order it appears" (false — the list is the whole profile, and it promises an
+         order the panel deliberately does not offer), then "Tick what this card shares. Values
+         come from your profile — editing one changes it on every card that uses it."
+
+         ⚠ That second sentence is now a footnote UNDER the list (`field-picker.tsx`), not part
+         of the intro, and the difference matters: the head is the card's *name* now, so
+         everything beside it competes with the title of the screen. The consequence of editing
+         a value belongs after the list, where the values are. Client, 2026-09-07: *"then simply
+         'Choose the fields for your card'"*. */
+      "Choose the fields for your card.",
     icon: Rows3,
   },
   {
     id: "design",
     label: "Design",
     intro:
-      "The colour this card wears and how it is painted. Every ink, button and line is derived from your colour, so the card stays readable whatever you pick.",
+      /* ⚠ Trimmed with the Fields intro, and for a reason the screenshot made obvious: the
+         second sentence was *"Every ink, button and line is derived from your colour…"*, which
+         is verbatim the caption on this panel's own Background row a hundred pixels below it.
+         The same words twice on one screen make neither copy the authority, and the row's copy
+         is the one sitting beside the control it describes. */
+      "The colour this card wears, and how it is painted.",
     icon: Palette,
   },
 ];

@@ -356,6 +356,76 @@ export const cards = {
     cb<NotifyResultDto[]>({ method: "POST", path: `/cards/${id(cardId)}/notify`, body: b }),
 };
 
+/* ── public connect (2) — anonymous, and deliberately not in `endpoints/` ───────────── */
+
+/**
+ * The QR-scan "Save & connect" pair, `POST /public/links/{token}/connect/otp/{request,verify}`.
+ *
+ * ## Why these live here and nowhere else
+ * Three properties set them apart from the 38 operations above, and each one is a reason:
+ *
+ * 1. **They are anonymous.** The caller is a stranger who scanned a QR code, not a signed-in
+ *    owner. No guard on the API side, no credential on ours.
+ * 2. **They are `@ApiExcludeController()`**, exactly like `GET /public/links/{token}`. So they
+ *    are absent from `GET /api/docs-json`, which means they cannot go in `src/lib/api/endpoints`:
+ *    `tests/contract/api-contract.test.ts` asserts that directory implements *nothing the spec
+ *    does not define*, and would fail on a path the snapshot has never heard of. Their request
+ *    and response types are declared below rather than in `schema.ts` for the same reason —
+ *    that file mirrors the snapshot, and there is nothing there to mirror. This is the same
+ *    treatment `public-card.ts` already gives the resolve endpoint's payload.
+ * 3. **They are browser-only.** Both are POSTs made from a hydrated control on `/c/{slug}`;
+ *    there is no server-render path that needs them.
+ *
+ * ## They bypass the refresh retry, on purpose
+ * `cb()` treats a 401 as "the access token went stale" and spends a single-use refresh token to
+ * recover. Neither of these endpoints can produce a 401 — they have no guard — so a 401 here
+ * would mean something has gone wrong upstream, and burning a refresh token in response would
+ * revoke the token family of any owner who happens to be signed in while scanning their own
+ * card. So they call `send()` directly. Same envelope, same `ApiError`, no rotation.
+ */
+
+/** `POST …/connect/otp/request` → 202. Not in the snapshot; see the note above. */
+export interface ConnectOtpRequestResult {
+  sent: true;
+  /** Present only outside production, and only when Twilio is unconfigured. */
+  devCode?: string;
+}
+
+/** `POST …/connect/otp/verify` → 200. A second verify by the same scanner is a no-op, not an error. */
+export interface ConnectResult {
+  connected: true;
+}
+
+export const publicConnect = {
+  /**
+   * Sends a WhatsApp OTP to the **scanner's** number.
+   *
+   * @throws {ApiError} `SHARE_LINK_NOT_FOUND` (404) / `SHARE_LINK_REVOKED` (410) if the token is
+   * dead — checked before anything is sent; `OTP_COOLDOWN` (409, with `details.retryAfterSeconds`)
+   * or `OTP_RATE_LIMITED` (409, no retry-after) under the login flow's own limits: 60s between
+   * requests, 5 per hour per phone.
+   */
+  otpRequest: (token: string, phoneE164: string) =>
+    send<ConnectOtpRequestResult>({
+      method: "POST",
+      path: `/public/links/${id(token)}/connect/otp/request`,
+      body: { phoneE164 },
+    }),
+  /**
+   * Proves the scanner owns the number and mints their `ShareLink` — no account, no session.
+   *
+   * @throws {ApiError} `OTP_NOT_FOUND` (404, expired or never requested), `OTP_INVALID` (409,
+   * wrong digits, attempt counted), `OTP_ATTEMPTS_EXCEEDED` (409, this code is now dead) or
+   * `CANNOT_CONNECT_TO_SELF` (409, the number is the card owner's own).
+   */
+  otpVerify: (token: string, phoneE164: string, code: string) =>
+    send<ConnectResult>({
+      method: "POST",
+      path: `/public/links/${id(token)}/connect/otp/verify`,
+      body: { phoneE164, code },
+    }),
+};
+
 /* ── share-links (2) ─────────────────────────────────────────────────────────────────── */
 
 export const shareLinks = {

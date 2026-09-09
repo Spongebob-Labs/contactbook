@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { fetchPublicCard, type PublicCardResult } from "@/lib/api/public-card";
 import { resolvePublicCard } from "@/lib/api/public-card-map";
@@ -22,8 +23,10 @@ import { PublicCardClient } from "./public-card-client";
  * stranger's view cannot drift from the owner's — and the design, the ordering and the masking
  * rules all come along without being re-implemented.
  *
- * `<CardPage>` is mobile-first by construction: the card is the page on a phone, full-bleed, with
- * the actions beneath it.
+ * `<CardPage>` is mobile-first by construction. As of 2026-09-09 the card is no longer the page:
+ * it is an **inset, rounded object floating on the page**, in the share face's own radius, border
+ * and elevation — see `card.css` §1b for the client's reasoning and the numbers. The actions sit
+ * beneath the identity, inside it.
  *
  * ## ⚠ One unverified detail, and how to settle it in one page-load
  * The endpoint is **undocumented in Swagger**, so its exact response field names are unconfirmed —
@@ -156,22 +159,56 @@ export default async function PublicCardPage({ params }: PageProps<"/c/[slug]">)
       data-public-shape={result.card.shape}
       // The two card typefaces are opted into only by routes that draw a card (§8.4, AC-17).
       data-card-fonts=""
-      /* ⚠ **THE OPT-IN THAT MAKES THE GROUND PAINT THE WHOLE SCREEN.**
+      /* ⚠ **THE OPT-IN THAT MAKES THE CARD AN OBJECT — the only route that sets it.**
 
-         `card.css` promotes `[data-card-ground]` to `position: fixed` only under this
-         attribute; without it the ground stays `absolute`, pinned to the card article, and the
-         article is exactly as tall as its content. A card sharing one field therefore painted a
-         short band of colour with the app's white canvas below it — the background looking like
-         a function of how many fields the owner mapped, which it is not.
+         `card.css` §1b keys the whole treatment off this attribute: the page's gutter, the
+         card's `max-width`, its radius, its `--c-face-border` hairline, its `--elevation-card`,
+         the `flex: 1` that makes its ground independent of the field count, and the arrival
+         animation. Without it `<CardPage>` renders exactly as it does inside the builder's
+         preview and the marketing tiles, which is what those two surfaces need — they are
+         already inside frames of their own and must not gain a second inset.
 
-         It went missing because the attribute lived on `<PublicCardView>`, and this route does
-         not use that component — it renders `<CardPage>` directly. So the marker belongs here,
-         on the route that actually draws the card, where it cannot be orphaned by a component
-         swap again. `tests/e2e/public-card.spec.ts` asserts it. */
+         ⚠ **What this attribute used to do, and why the change matters here.** It promoted
+         `[data-card-ground]` to `position: fixed`, so the ground painted the whole viewport and
+         a one-field card could not draw a short band of colour with white below it. That
+         invariant is unchanged and still asserted; only its mechanism moved, because a fixed
+         layer cannot be inset or rounded (`inset: 0` on it resolves against the initial
+         containing block). §1b holds it with `flex: 1` on the article instead.
+
+         The marker lives on the route that actually draws the card, not on a component: it went
+         missing once already because it sat on `<PublicCardView>`, which this route does not
+         render. `tests/e2e/public-card.spec.ts` asserts it. */
       data-card-page-surface=""
       className="flex min-h-full flex-1 flex-col bg-canvas"
     >
-      <PublicCardClient resolved={resolved} />
+      <PublicCardClient resolved={resolved} token={slug} />
+
+      {/* ⚠ **§8D.5's caption, restored — it had been orphaned, and now it has a home.**
+
+          One line, ≥768px only: below that the viewport belongs to the card and the fields are
+          what the reader came for. (They arrived *by* a QR, which is why there is deliberately
+          no second QR on this page — see the head of `card-page.tsx`.)
+
+          It went missing the same way the `data-card-page-surface` marker did: it lived inside
+          `<PublicCardView>`, which this route does not render. `public-card.spec.ts` has been
+          asserting it on every project since, and failing.
+
+          ⚠ **It sits OUTSIDE the card, and that is the improvement.** In the old component it
+          was the last line *inside* a full-bleed card, printed on the owner's palette — our
+          mark on their surface. Now that the card is an inset object (`card.css` §1b) there is
+          a real page underneath it, and a caption on that page is what it always wanted to be:
+          the floor the card is standing on, in the app's own ink, not a footer the owner
+          appears to have written. The card's `flex: 1` yields the line's height to it. */}
+      <p
+        data-public-card-made-with=""
+        className="hidden shrink-0 pt-3 text-center text-xs text-ink-3 md:block"
+      >
+        {/* No underline-offset utility: `card.css` states the offset and the thickness for
+            every link on this surface, so this one cannot disagree with the field rows. */}
+        <Link href="/" className="underline">
+          Made with Contact Book
+        </Link>
+      </p>
     </main>
   );
 }

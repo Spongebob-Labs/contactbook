@@ -14,15 +14,31 @@ const PORT = 3100;
 const BASE_URL = `http://localhost:${PORT}`;
 
 /**
- * The stub that puts a card of a known shape on `/c/{token}` (`tests/stubs/public-card-api.mjs`).
+ * The stub API (`tests/stubs/api.mjs`).
  *
- * `/c/[slug]` resolves server-side, so `page.route()` cannot reach it — without this the whole
- * route is untestable, which is exactly how the ground regression shipped unseen.
+ * ⚠ It now serves the **authenticated** surface as well as `/c/{token}`, and that widening is
+ * what un-blocks the `(app)` suites. `/c/[slug]` and every `(app)` screen resolve server-side,
+ * so `page.route()` cannot reach either — without a stub the public route was untestable (how
+ * the ground regression shipped unseen) and, after the API migration, so was every gated
+ * screen: `(app)/layout.tsx` got a 404 for `GET /profile/me`, and `proxy.ts` bounced the
+ * navigation to `/signin/phone`. `card-detail.spec.ts` and `builder.spec.ts` were asserting
+ * against a phone-number form.
+ *
+ * Its data comes from `src/fixtures` via `tests/global-setup.ts` — one source of truth. Reads
+ * are real; writes are accepted and not persisted. See the stub's own header.
  */
 const STUB_API_PORT = 8788;
 
 export default defineConfig({
   testDir: "./tests/e2e",
+  /**
+   * Writes the fixture snapshot the API stub serves.
+   *
+   * Here rather than inside the stub because Playwright transpiles this config and its setup
+   * (resolving the `@/` alias), while the stub is a plain-Node process and this workspace has
+   * no TypeScript runner for it.
+   */
+  globalSetup: "./tests/global-setup.ts",
   fullyParallel: true,
   forbidOnly: true,
   retries: 0,
@@ -64,7 +80,7 @@ export default defineConfig({
   // 10-minute suite budget (N-7), hence the generous timeout.
   webServer: [
     {
-      command: `node tests/stubs/public-card-api.mjs`,
+      command: `node tests/stubs/api.mjs`,
       port: STUB_API_PORT,
       env: { STUB_API_PORT: String(STUB_API_PORT) },
       timeout: 30_000,

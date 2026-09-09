@@ -1,126 +1,100 @@
 "use client";
 
-import { Plus, SquarePen, X } from "lucide-react";
+import { SquarePen } from "lucide-react";
 import Link from "next/link";
-import { useMemo, type ReactElement } from "react";
+import { useMemo, useState, type ReactElement } from "react";
 
-import { Button } from "@/components/primitives";
+import { FIELD_CATEGORY_LABELS } from "@/components/app";
+import { Checkbox } from "@/components/primitives";
 import { cn } from "@/lib/cn";
 import type { FieldGroup, FieldType, ProfileField } from "@/types/domain";
 
-import { AddFieldDialog, MaskedMarker, type CreatedField } from "./add-field-dialog";
-import { buildFieldRows, offerableRows, selectedRows, type BuilderFieldRow } from "./field-rows";
-import { PanelHead } from "./panel-head";
+import { MaskedMarker, NewFieldRow, type CreatedField } from "./field-sources";
+import { FIELD_CATEGORY_ORDER, buildFieldRows, type BuilderFieldRow } from "./field-rows";
 import { BUILDER_SCROLL_CLEAR } from "./scroll-clear";
 
 /**
  * The **Fields** section — a card is a *filter over the owner's profile*, and this is the filter.
  *
- * ## What this used to be, and why it is not that any more
+ * ## ⚠ FOURTH LAYOUT. THE THREE BEFORE IT BROKE ONE OF TWO RULES, AND THE RULES ARE THE DESIGN.
  *
- * It was **every** profile field, grouped into seven headed sections, each row a checkbox. On
- * the fixture profile that is 34 checkboxes and roughly 1,400px of column, and it answered the
- * wrong question. The owner's question is *"what is on this card?"*, and a list of everything
- * with two things ticked makes them find the answer by scanning for ticks.
+ *     1. Tapping a field must change only that row, in place.
+ *     2. Nothing on this panel may cost attention unless it is the work.
  *
- * So the section is now the shape Linktree uses for the same job:
+ * · **A modal** (`add-field-dialog.tsx`, deleted). The result of an add was behind an overlay
+ *   sitting on top of the very preview it changed. Client: *"why it opens a pop-up?"*
+ * · **Two columns below the card's own field list** (deleted). Worse, and measurably: the panel
+ *   is itself `overflow-y-auto`, and the offer list added a second `max-h-[22rem] overflow-y-auto`
+ *   **inside** it — a scrollbar in a scrollbar. With eight fields on the card the add controls
+ *   began ~970px down, and pressing `+` moved the row ~900px above the finger, off screen.
+ *   Client: *"the user will be scrolling up and up… he has to scroll down and go on to the new
+ *   field."*
+ * · **A ticked list beside a permanent "Add a new field" column** — rule 1 fixed, rule 2 broken.
+ *   Standing open beside the list, every time the panel opened, were: a search box over the
+ *   profile, a titled column head, a labelled **Kind** select, a labelled **Value** box, a submit
+ *   and a sentence explaining them — six objects for the two things an owner does *rarely*, taking
+ *   a third of the panel's width from the list, which is what they do *always*. Client, 2026-09-07:
+ *   *"still quite noisy. I would remove the kind and the value. Also remove the search bar."*
  *
- *   1. a **header row** — the section's `<h2>` and a primary **+ Add**;
- *   2. **the fields already on this card**, one row each, with their values and a remove
- *      control per row;
- *   3. an **empty state** when the card maps nothing, offering the same + Add.
+ * ⚠ The argument for that third layout — "two headed columns make the screen self-describing" —
+ * is the trap worth recording: it is true of a screen read once and false of a screen used daily.
+ * Self-describing is what the panel's **one sentence of intro** is for. Standing controls up to
+ * describe themselves charges the frequent case for the rare one.
  *
- * Choosing from the profile happens in `add-field-dialog.tsx`, behind that button.
+ * ## What this is now: one list, ticked, with the composer as its first row
  *
- * ## ⚠ The list is in the card's order, not the order they were added
+ *     ┌ + New field ─────────────────────────────────────┐   ← one row until asked for
+ *     ├──────────────────────────────────────────────────┤
+ *     │ PERSONAL                                          │
+ *     │ ☑ Mobile              +91 99532 66232             │
+ *     │ ☐ Home address        Alpha 2, Greater Noida       │
+ *     │ WORK                                              │
+ *     │ ☑ Job title           [ SDE                     ] │
+ *     └──────────────────────────────────────────────────┘
+ *     Values come from your profile — editing one changes it on every card that uses it.
  *
- * `selectedRows` sorts with §6.4's own comparator — the one `resolveCard` uses — so row three
- * here is row three on the card and property three in the `.vcf`. Insertion order was the other
- * option and it is worse for one specific reason: a list that disagrees with the card it
- * describes teaches the owner that the order is arbitrary, and the order is not arbitrary — it
- * is what makes the exported file byte-stable. **This is not a reorder control and there is no
- * drag handle.** Linktree has one; we do not, because our rows are not links on a page the owner
- * owns the layout of, they are vCard properties.
+ * Five properties, each answering one of the defects above:
  *
- * ## ⚠ The old failure this file exists to not repeat — and what it actually was
+ *   · **Travel is zero.** There is no "add control" to reach: the row you are looking at is the
+ *     control. Its position cannot depend on the field count, because there is only one list.
+ *   · **⚠ NOTHING RE-SORTS ON TICK.** Stable profile order, always — see {@link ordered}. The
+ *     tick changes and the row stays under the finger. Sorting ticked rows to the top would
+ *     reintroduce the whole bug in miniature: tap a field, watch it leap somewhere else.
+ *   · **One scroll container.** The panel's. The nested scroller went with the list it belonged
+ *     to.
+ *   · **⚠ No search.** Deleted on the client's instruction and it was the right call on the
+ *     numbers: a profile is *tens* of fields grouped under seven category bands, not hundreds,
+ *     so scanning is scanning and not hunting — and the box was the heaviest object in the
+ *     column, above the list it filtered. `rowMatches` survives in `field-rows.ts` for a surface
+ *     that genuinely lists hundreds; nothing here calls it.
+ *   · **The card's own field list is gone, and its absence is the point.** It restated, in
+ *     ~105px per row, exactly what `<BuilderPreview>` renders beside it — Address, SDE and
+ *     Business appeared twice on one screen — and that duplication is what pushed everything
+ *     else past the fold. The preview answers "what does this card share?"; this list answers
+ *     "what could it?".
  *
- * §8D.4's second recorded failure: the old build's Step 2 embedded a **12-row profile editor**,
- * so one screen had two competing commit affordances and no answer to which one had been
- * pressed. For a long time this file honoured that by having no inputs at all, and
- * `builder.spec.ts` enforced it by counting them and asserting zero.
+ * ## ⚠ This component no longer renders the panel's head
+ * The head is the **card's name**, and it is rendered once by `builder-client.tsx` above the tab
+ * panels — because Radix keeps every `Tabs.Content` mounted, so a head per panel would put two
+ * `[data-builder-name]` inputs in the document. See `panel-head.tsx`.
  *
- * **That was a proxy, and it has been replaced by the invariant itself.** The rows are editable
- * now — the owner changes a phone number where they are looking at it — and the ruling is
- * unharmed, because the ruling was never "no inputs":
+ * ## ⚠ The tick renders on the card immediately, and that is not this component's doing
+ * `onToggle` reaches `builder-client.tsx`'s `toggleField`, which dispatches into the reducer
+ * **synchronously** — `state.fieldIds` → `builderCard(state)` → `resolveCard(...)` →
+ * `<BuilderPreview>`. The API write that follows is fire-and-forget and the UI never waits on
+ * it. So the field appears on the card in the same frame as the tick, offline included, and
+ * `builder.spec.ts` asserts exactly that rather than trusting it.
  *
- * 1. **One commit affordance.** Every keystroke goes to the reducer; the single "Save changes"
- *    in the toolbar commits the lot. **No row saves itself**, and a per-row Save would be
- *    §8D.4's failure again, once per row.
- * 2. **Nothing in this list creates a field.** Editing a value that exists is not authoring one,
- *    and the suite checks that every input here belongs to a row already on the card. Making a
- *    *new* field happens in one place — `New field` inside `<AddFieldDialog>` — which writes to
- *    the profile and never to the card's field set, so this rule survives intact.
- *
- * ## ⚠ An edit here is an edit to the PROFILE, and the copy has to say so
- *
- * A card is a *filter over the owner's profile, not a copy* (PRODUCT.md). There is one work
- * mobile, and every card mapping it shows the same one — so changing it here changes it on all
- * of them. That is stated in the section's own intro (`BUILDER_SECTIONS`) and again in the Save
- * toast, because a screen that quietly edited five other cards would be the most expensive kind
- * of surprise this product can produce.
- *
- * ## Which rows are editable, and why the rest are not
- *
- * `row.editable` comes from `isInlineEditable` — one definition, on the row model, read by both
- * surfaces. **A masked field is never editable here**: §7.3 says a masked value must not reach
- * the DOM "not as text, not in an attribute", and `<input value={…}>` is that attribute. An
- * `ADDRESS` is excluded for a different reason — seven components a one-line box would flatten
- * — and both kinds of row offer a link to `/profile` instead of an input.
- *
- * ## What a row may show, and what it may never show
- *
- * A non-sensitive value already renders on a public card, so showing it here is not a
- * disclosure — and it is the only way to tell two work numbers apart. A **masked** field shows a
- * marker and *no value node at all*: §7.3 puts reveal in `/profile` and nowhere else, so the raw
- * string is absent from this document entirely — not as text, not in a `title`. `isMaskedField`
- * decides that, upstream in `field-rows.ts`, and both this list and the dialog read the same
- * rows so they cannot disagree about it.
- *
- * ## Hooks
- *
- * | hook | what it marks |
- * |---|---|
- * | `[data-field-picker]` | the section root |
- * | `[data-add-field-open]` | the **+ Add** button (header and empty state both carry it) |
- * | `[data-field-rows]` | the list of fields on the card, with `data-field-count` |
- * | `[data-field-row="{id}"]` | one field on the card |
- * | `[data-field-row-icon]` | that row's type glyph — decorative, `aria-hidden` |
- * | `[data-field-remove="{id}"]` | that row's remove control |
- * | `[data-field-row-value]` | a row's display value — **absent on a masked or editable row** |
- * | `[data-field-row-input="{id}"]` | that row's value input — **only on an editable row** |
- * | `[data-field-row-note="{id}"]` | a blank/shape note under the input |
- * | `[data-field-edit-elsewhere="{id}"]` | the `/profile` link a non-editable row offers |
- * | `[data-fields-empty]` | the card maps nothing, but the profile has fields |
- * | `[data-field-picker-empty]` | the *profile* has nothing (§11 E-08) |
- * | `[data-add-field]` | the `/profile` deep link |
- *
- * The dialog's own hooks — `[data-add-field-dialog]`, `[data-add-field-search]`,
- * `[data-add-field-category]`, `[data-add-field-result]` — are documented in
- * `add-field-dialog.tsx`. They are **portalled**, so they land under `<body>`, outside both
- * `[data-field-picker]` and `[data-builder]`.
- *
- * ⚠ `[data-field-option="{id}"]` still means "a row for this field" and is on **both** surfaces:
- * this list, and the dialog's result rows. That is the honest reading of the attribute and it is
- * what keeps older locators pointing at something real — but it means a bare
- * `[data-field-option="x"]` matches twice while the dialog is open and trips Playwright's strict
- * mode. **Scope it**: `[data-field-picker] [data-field-option="x"]` for the card's copy,
- * `[data-add-field-dialog] [data-field-option="x"]` for the offer.
+ * ## Reordering is deliberately not supported
+ * Confirmed with the client, 2026-09-03. It is the one thing a profile-ordered list makes
+ * harder: card order lives in `state.fieldIds` and is visible in the preview, but there is no
+ * handle to drag here. If it is ever wanted, this list is the wrong home for it — a short "on
+ * this card" strip above the list would be, and that is a different change.
  */
-
 export interface FieldPickerProps {
   groups: readonly FieldGroup[];
   fields: readonly ProfileField[];
-  /** The ids currently on the card. */
+  /** The ids currently on the card. Drives every tick. */
   selected: readonly string[];
   onToggle: (fieldId: string, on: boolean) => void;
   /**
@@ -129,9 +103,9 @@ export interface FieldPickerProps {
    */
   onEditValue: (fieldId: string, value: string) => void;
   /**
-   * Create a profile field and put it on this card — forwarded to `<AddFieldDialog>`.
+   * Create a profile field and put it on this card.
    *
-   * Optional so a surface with no API to write to can omit it; the create control is then absent
+   * Optional so a surface with no API to write to can omit it; the composer row is then absent
    * rather than present and broken.
    */
   onCreateField?: (draft: {
@@ -141,24 +115,6 @@ export interface FieldPickerProps {
   }) => Promise<CreatedField | null>;
   /** True while that create is in flight. */
   creatingField?: boolean;
-  /**
-   * The panel head's copy, from this section's `BUILDER_SECTIONS` entry.
-   *
-   * ⚠ Passed in rather than written here, and that is the point: the rail, the panel title and
-   * this component would otherwise be three places that name the same section, and the one that
-   * goes stale is always the one nobody is looking at.
-   */
-  title: string;
-  intro: string;
-  /**
-   * Whether the Add-field dialog is open.
-   *
-   * ⚠ Lifted out of this component deliberately, and the earlier note arguing the opposite is
-   * superseded: the E-01 warning bar — which lives above the split view, outside this panel —
-   * now opens the same dialog. State with two openers cannot belong to one of them.
-   */
-  addOpen: boolean;
-  onAddOpenChange: (open: boolean) => void;
 }
 
 export function FieldPicker({
@@ -167,145 +123,129 @@ export function FieldPicker({
   selected,
   onToggle,
   onCreateField,
-  creatingField,
+  creatingField = false,
   onEditValue,
-  title,
-  intro,
-  addOpen,
-  onAddOpenChange,
 }: FieldPickerProps): ReactElement {
+  const [composing, setComposing] = useState(false);
 
-  /** Every offerable field in the profile. One derivation, read by both surfaces. */
   const rows = useMemo(() => buildFieldRows(groups, fields), [groups, fields]);
-  /* ⚠ What the **dialog** may offer — §11 E-07 applied here and not in the row model, so a
-     field the owner has blanked keeps its row in the list below while disappearing from the
-     things they can add. See `offerableRows`. */
-  const offerable = useMemo(() => offerableRows(rows), [rows]);
-  /** What the card carries, in the order the card renders it. */
-  const onCard = useMemo(() => selectedRows(rows, selected), [rows, selected]);
+  const chosen = useMemo(() => new Set(selected), [selected]);
 
   /**
-   * §11 E-08 — the profile itself is empty, reached by `?state=empty`. Distinct from "this card
-   * maps nothing": there is nothing to *offer*, so there is no + Add to offer it with, and the
-   * only useful thing this section can say is "go and make a field".
+   * ⚠ THE PROFILE'S OWN ORDER, AND IT MUST NOT DEPEND ON `selected`.
+   *
+   * `buildFieldRows` already returns rows in the profile's display order. Nothing here re-sorts
+   * by ticked-ness, and `selected` is deliberately absent from this memo's inputs — so a tick
+   * cannot move a row. That is the rule in the module note, expressed as a dependency array.
    */
-  const profileEmpty = offerable.length === 0;
+  const ordered = useMemo(
+    () =>
+      FIELD_CATEGORY_ORDER.map((category) => ({
+        category,
+        rows: rows.filter((row) => row.category === category),
+      })).filter((section) => section.rows.length > 0),
+    [rows],
+  );
+
+  const empty = rows.length === 0;
 
   return (
-    <div data-field-picker="" className="flex flex-col gap-4">
-      {/* ── header row ─────────────────────────────────────────────────────────── */}
-      {/* ⚠ The panel head lives here rather than in `builder-client.tsx` because the **+ Add**
-          button sits on the title's baseline and the button opens a dialog whose state belongs
-          to this component. It is the same `<PanelHead>` the other two panels render, given the
-          same copy from the same `BUILDER_SECTIONS` entry — so "Fields looks different from
-          Design" is not a thing that can drift, only the file that calls it differs. */}
-      {/* ⚠ Offered even when the profile is empty, which it did not used to be. The dialog could
-          only *select* back then, so on an empty profile it had nothing to show and the button
-          was a door into an empty room. It can author now, so it is exactly the right door — and
-          withholding it would leave an empty profile with no way forward at all. */}
-      <PanelHead title={title} intro={intro} action={<AddButton onClick={() => onAddOpenChange(true)} />} />
+    /**
+     * ⚠ `@container`, NOT A VIEWPORT BREAKPOINT — AND THE MEASUREMENTS SAY SO.
+     *
+     * This panel sits inside `SplitView`'s content column, beside a 400px pinned preview and
+     * after a nav rail, so its width has almost no relationship to the viewport's. Measured:
+     *
+     *     viewport   390   768  1024  1280  1440  1920
+     *     panel      324   654   374   630   790  1014
+     *
+     * **1024 is narrower than 768** — that is where the split view turns on and hands 400px to
+     * the preview. No `lg:` / `xl:` rule can express "wide at 768, narrow at 1024, wide at
+     * 1280"; a viewport breakpoint would put the change at the single narrowest width in the
+     * whole range. The list is one column at every width now, so what the container query still
+     * decides is the shape of a *row* — see `FieldRow`.
+     */
+    <div data-field-picker="" className="@container/picker flex flex-col gap-2.5">
+      <section
+        data-field-list-card=""
+        /* Named rather than headed. A visible "Existing profile fields" title restated the
+           panel's own intro one line above it; the accessible name says the same thing to a
+           screen reader for nothing. */
+        aria-label="Your profile fields"
+        className={cn(
+          "@container/list flex min-w-0 flex-col overflow-hidden rounded-xl border border-line",
+        )}
+      >
+        {/* ⚠ FIRST ROW OF THE LIST, CLOSED. Anchored to the top so its distance from the
+            reader cannot grow with the field count — the defect the client reported twice. */}
+        {onCreateField === undefined ? null : (
+          <NewFieldRow
+            open={composing}
+            onOpenChange={setComposing}
+            creating={creatingField}
+            onCreate={async (draft) => {
+              const created = await onCreateField(draft);
+              if (created !== null) setComposing(false);
+              return created;
+            }}
+          />
+        )}
 
-      {profileEmpty ? (
-        <div
-          data-field-picker-empty=""
-          className="flex flex-col items-start gap-3 rounded-lg border border-line bg-surface-sunk px-6 py-8"
-        >
-          <p className="text-base text-ink">There are no fields to add yet.</p>
-          <p data-prose className="text-sm text-ink-3">
-            A card shares fields from your profile, so there has to be something in your profile
-            first. Make one here and it lands in your profile and on this card at once.
-          </p>
-          <AddButton onClick={() => onAddOpenChange(true)} />
-        </div>
-      ) : onCard.length === 0 ? (
-        /* The card maps nothing on a healthy profile. Deliberately *not* the E-01 warning —
-           that bar is above the split view and owns the consequence ("anyone who scans it will
-           only get your name"). This says what to do about it, once, where the doing happens. */
-        <div
-          data-fields-empty=""
-          className="flex flex-col items-start gap-3 rounded-lg border border-dashed border-line bg-surface-sunk px-6 py-8"
-        >
-          <p className="text-base text-ink">This card doesn&rsquo;t share anything yet.</p>
-          <p data-prose className="text-sm text-ink-3">
-            Add fields from your profile and they appear on the card as you go. Editing a field
-            once changes it on every card that maps it.
-          </p>
-          <AddButton onClick={() => onAddOpenChange(true)} />
-        </div>
-      ) : (
-        <>
-          <ul
-            data-field-rows=""
-            /* The count the e2e suite reads. It is the number of rows this list renders, which
-               is not `resolved.fieldCount` — a mapped PHOTO is a row here and is consumed by
-               the avatar there — so it is published separately rather than inferred. */
-            data-field-count={onCard.length}
-            className="flex flex-col gap-2"
-          >
-            {onCard.map((row) => (
-              <FieldRow
-                key={row.field.id}
-                row={row}
-                onEditValue={(value) => onEditValue(row.field.id, value)}
-                onRemove={() => onToggle(row.field.id, false)}
-              />
+        {empty ? (
+          <div data-field-picker-empty="" className="flex flex-col items-start gap-2 px-4 py-6">
+            <p className="text-sm text-ink">Your profile has no fields yet.</p>
+            <p data-prose className="text-xs text-ink-3">
+              A card shares fields from your profile.{" "}
+              <span className="text-ink">New field</span> makes one and ticks it onto this card at
+              the same time.
+            </p>
+          </div>
+        ) : (
+          <div data-field-list="" className="flex flex-col">
+            {ordered.map((section) => (
+              <section key={section.category} data-field-group={section.category}>
+                {/* ⚠ An `<h3>`, and the level is not cosmetic: the panel's `<h2>` is the
+                    `sr-only` section name in `panel-head.tsx`, so these are its children and
+                    the outline runs 1 → 2 → 3 with nothing skipped. It used to be an `<h4>`
+                    under the deleted column heading. Set quiet, on a tinted band, so the
+                    category reads as a divider rather than as a title. */}
+                <h3 className="bg-surface-sunk px-4 py-1.5 text-[0.6875rem] font-medium uppercase tracking-wide text-ink-3">
+                  {FIELD_CATEGORY_LABELS[section.category]}
+                </h3>
+                <ul className="flex flex-col">
+                  {section.rows.map((row) => (
+                    <FieldRow
+                      key={row.field.id}
+                      row={row}
+                      on={chosen.has(row.field.id)}
+                      onToggle={(next) => onToggle(row.field.id, next)}
+                      onEditValue={(value) => onEditValue(row.field.id, value)}
+                    />
+                  ))}
+                </ul>
+              </section>
             ))}
-          </ul>
-        </>
-      )}
+          </div>
+        )}
+      </section>
 
-      <AddFieldDialog
-        open={addOpen}
-        onOpenChange={onAddOpenChange}
-        rows={offerable}
-        selected={selected}
-        /* Add only. The dialog never removes, and it never closes itself on an add — see the
-           note there on why an owner adds three fields in one pass. */
-        onAdd={(fieldId) => onToggle(fieldId, true)}
-        onCreateField={onCreateField}
-        creating={creatingField}
-      />
+      {/* ⚠ The one thing the intro used to say and no longer does — moved out of the head and
+          under the list, because it is a *consequence* of editing a value rather than an
+          instruction for choosing fields, and the head is now the card's name. One line, after
+          the object it is about, which is where a footnote belongs. */}
+      {empty ? null : (
+        <p data-field-picker-note="" data-prose className="px-1 text-xs text-ink-3">
+          Values come from your profile — editing one changes it on every card that uses it.
+        </p>
+      )}
     </div>
   );
 }
 
-/**
- * The one control that opens the modal, rendered in two places.
- *
- * Both carry `[data-add-field-open]` and both are the same component, because "the header's Add
- * and the empty state's Add do the same thing" is the sort of claim that stops being true the
- * second time somebody edits one of them.
- */
-function AddButton({ onClick }: { onClick: () => void }): ReactElement {
-  return (
-    <Button
-      type="button"
-      data-add-field-open=""
-      onClick={onClick}
-      /* `BUILDER_SCROLL_CLEAR` for the same reason the checkboxes carried it: at 360 the
-         pinned preview is `sticky` over the top of this column, and a control focused by
-         keyboard scrolls to just under it without a scroll margin. */
-      className={BUILDER_SCROLL_CLEAR}
-    >
-      <Plus aria-hidden="true" className="size-4" />
-      Add
-    </Button>
-  );
-}
+/* ── one row ─────────────────────────────────────────────────────────────────── */
 
-/**
- * How a value that does not look like its type is reported: quietly, and without blocking.
- *
- * ⚠ Deliberately shape checks and not validation. §11 E-01 owns the only blocked Save in this
- * builder (an empty card) and nothing else may grow a second one — a card whose owner typed a
- * work extension into a phone field is their card, not an error state. What these earn is a
- * line of text under the input, so a typo is visible before it is handed to a stranger.
- */
 function valueNote(row: BuilderFieldRow, value: string): string | null {
   if (value.trim() === "") {
-    /* §11 E-07, said where it happens. A blank value is not a field: `resolveCard` drops it,
-       so the row has already vanished from the card two inches to the right. Saying so beats
-       letting the owner wonder why the preview lost a line while they were typing. */
     return "Blank fields are not shared, so this one is off the card until you fill it in.";
   }
   if (row.field.type === "EMAIL" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())) {
@@ -317,184 +257,136 @@ function valueNote(row: BuilderFieldRow, value: string): string | null {
   return null;
 }
 
-/** One field on the card: what it is, what it says, how to change it, and how to take it off. */
+/**
+ * A field, and whether this card shares it.
+ *
+ * ## ⚠ THE VALUE EDITOR APPEARS ONLY ON A TICKED ROW
+ * A row you are not sharing does not need an input, and 35 inputs on one panel is what made the
+ * old rows ~105px tall. Ticked rows get the editor; unticked rows print the value and stay
+ * short. That is the whole of the height saving, and it also means the editable surface is
+ * exactly the set of things that reach the card.
+ *
+ * ⚠ There is no per-row commit and there must not be one. The value is the profile's, shared by
+ * every card that maps it, and `onEditValue` is live into the reducer so the preview keeps up
+ * with the keystroke. A Save button here would imply this one card owns the value.
+ */
 function FieldRow({
   row,
+  on,
+  onToggle,
   onEditValue,
-  onRemove,
 }: {
   row: BuilderFieldRow;
+  on: boolean;
+  onToggle: (next: boolean) => void;
   onEditValue: (value: string) => void;
-  onRemove: () => void;
 }): ReactElement {
   const inputId = `builder-field-${row.field.id}`;
   const noteId = `${inputId}-note`;
-  const note = row.editable ? valueNote(row, row.field.value) : null;
+  const note = on && row.editable ? valueNote(row, row.field.value) : null;
 
   return (
     <li
       data-field-row={row.field.id}
-      /* Retained from the checkbox list: `[data-field-option="{id}"]` has always meant "a row
-         for this field", and it still does. It is on the dialog's result rows too. */
+      /* ⚠ Kept from every previous layout: `builder.spec.ts` and the field-row helpers address
+         a row by these, and renaming them would silently orphan those selectors. */
       data-field-option={row.field.id}
+      data-field-on={on ? "" : undefined}
       data-field-editable={row.editable ? "" : undefined}
-      /* ⚠ A row of its own rather than a hairline-separated line item, and the reason is what
-         the row *is*: one thing this card shares, which the owner adds, edits, and takes away.
-         A divided list reads as a table of values; a stack of rows reads as a set of objects,
-         which is what the card page below turns each of them into. */
       className={cn(
-        "flex items-start gap-3 rounded-xl border border-line bg-canvas px-3 py-2.5",
-        "transition-colors duration-[var(--dur-fast)] focus-within:border-ink-4 hover:bg-surface",
+        "flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2",
+        "border-b border-line last:border-b-0",
+        "transition-colors duration-[var(--dur-fast)]",
+        /* Ticked rows are tinted. In a 35-row list the checkbox alone is a 16px signal; a row
+           tint is what makes "what is on this card?" answerable at a glance. */
+        on ? "bg-surface" : "hover:bg-surface/60",
       )}
     >
-      {/* The same type glyph the modal's rows carry, from the same `FIELD_RENDERERS` element on
-          the same row model. Decorative and `aria-hidden`: the label says what the field is. */}
-      <span
-        data-field-row-icon=""
-        aria-hidden="true"
-        className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-surface-sunk text-ink-2"
-      >
-        {row.icon}
+      {/* ⚠ `hideLabel`, so this component owns the row's layout rather than the primitive's
+          label/description stack. That stack is what forced the value under the label and left
+          most of a 498px row empty — the "sparse and unstyled" the client saw. */}
+      <Checkbox
+        checked={on}
+        onCheckedChange={(next) => onToggle(next === true)}
+        data-field-tick={row.field.id}
+        hideLabel
+        label={`Share ${row.field.label} on this card`}
+        rowClassName="shrink-0"
+      />
+
+      <span className="flex min-w-0 flex-1 items-center gap-2">
+        <span className={cn("truncate text-sm", on ? "font-medium text-ink" : "text-ink-2")}>
+          {row.field.label}
+        </span>
+        {row.masked ? <MaskedMarker sensitive={row.field.isSensitive} /> : null}
       </span>
 
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <span className="flex flex-wrap items-center gap-2">
-          {/* ⚠ A real `<label>` on the editable rows. The field's name is the input's name —
-              anything else would leave six inputs in this list announcing themselves as
-              "edit text" and nothing more. */}
-          {row.editable ? (
-            <label htmlFor={inputId} className="text-xs text-ink-3">
-              {row.field.label}
-            </label>
-          ) : (
-            <span className="text-sm text-ink">{row.field.label}</span>
+      {/*
+        ⚠ THE VALUE SITS ON THE ROW'S RIGHT, NOT UNDER THE LABEL.
+        A `@container/list` query, not a viewport one: this column is ~300px inside a narrow
+        panel and ~500px inside a wide one, at the same viewport. Below 22rem of column the
+        value takes its own line (`w-full`); above it, it shares the row and the list reads as
+        a table of label/value pairs instead of a stack of two-line blocks.
+      */}
+      {on && row.editable ? (
+        <input
+          id={inputId}
+          type="text"
+          data-field-row-input={row.field.id}
+          value={row.field.value}
+          onChange={(event) => onEditValue(event.target.value)}
+          aria-label={`${row.field.label} value`}
+          aria-describedby={note === null ? undefined : noteId}
+          spellCheck={false}
+          autoComplete="off"
+          className={cn(
+            "w-full min-w-0 rounded-md border border-line-control bg-canvas px-2 py-1.5",
+            "text-sm text-ink placeholder:text-ink-4",
+            "transition-colors duration-[var(--dur-fast)]",
+            "focus:border-ink-4 focus:outline-none",
+            "@min-[22rem]/list:w-[46%] @min-[22rem]/list:shrink-0",
+            BUILDER_SCROLL_CLEAR,
           )}
-          {row.masked ? <MaskedMarker sensitive={row.field.isSensitive} /> : null}
+        />
+      ) : row.display === null ? null : (
+        <span
+          data-field-row-value=""
+          data-field-option-value=""
+          className={cn(
+            "block w-full min-w-0 truncate text-xs text-ink-3",
+            "@min-[22rem]/list:w-[46%] @min-[22rem]/list:shrink-0 @min-[22rem]/list:text-right",
+          )}
+        >
+          {row.display}
         </span>
+      )}
 
-        {row.editable ? (
-          /* ⚠ **An input, not a value that turns into one when clicked.**
-             A click-to-edit line is invisible until it is discovered, and the whole complaint
-             this answers was that the value looked like a label. It is styled quietly — no
-             chrome until hover or focus — but it is a real text box at rest, which is the only
-             way a control announces itself without a second affordance beside it.
+      {/* Only a ticked, non-editable row needs the way out to `/profile`, and only a ticked
+          editable one can have a note. Both take their own line under the pair. */}
+      {on && !row.editable ? (
+        <Link
+          href="/profile"
+          data-field-edit-elsewhere={row.field.id}
+          className={cn(
+            "inline-flex w-full items-center gap-1.5 text-xs text-ink-2 underline underline-offset-4",
+            "@min-[22rem]/list:w-auto",
+          )}
+        >
+          <SquarePen aria-hidden="true" className="size-3.5" />
+          {row.masked ? "Change it in your profile" : "Edit in your profile"}
+        </Link>
+      ) : null}
 
-             ⚠ **No per-row Save, ever.** §8D.4's second recorded failure was a builder with two
-             competing commit affordances and no answer to which one had been pressed. Every
-             keystroke goes to the reducer and the one "Save changes" in the toolbar commits the
-             lot — the same rule the colour picker and the name field already obey. */
-          <input
-            id={inputId}
-            type="text"
-            data-field-row-input={row.field.id}
-            value={row.field.value}
-            onChange={(event) => onEditValue(event.target.value)}
-            aria-describedby={note === null ? undefined : noteId}
-            spellCheck={false}
-            autoComplete="off"
-            className={cn(
-              /* ⚠ `w-[calc(100%+0.75rem)]` rather than `w-full`, because `w-full` plus
-                 `-mx-1.5` is over-constrained: the box resolves to the column's width and the
-                 browser drops the RIGHT margin, so the input's left border overhung 6px into
-                 the icon gap while its right border stopped 6px short. A 12px asymmetry is
-                 8.6% of a 140px column and it is plainly visible the moment the border is
-                 painted — which, below `md`, is always. Asking for the width the bleed
-                 actually needs makes both edges land. */
-              "w-[calc(100%+0.75rem)] -mx-1.5 rounded-md px-1.5",
-              "text-sm text-ink placeholder:text-ink-4",
-              "transition-colors duration-[var(--dur-fast)]",
-              /* ⚠ **On touch the box is painted at rest; on a pointer it still appears on
-                 hover.** The comment above is right that a click-to-edit line is invisible
-                 until discovered — and the quiet-until-hover answer it settled on is a
-                 pointer answer. A phone has no hover: before the tap this input was a
-                 transparent border and a transparent ground carrying `text-sm text-ink`, which
-                 is pixel-identical to the static `<span>` a non-editable row renders. So on a
-                 phone the value still looked exactly like a label, which is the original
-                 complaint, unfixed.
-                 `py-2.5` also takes the line box from 28px to 44px — this is a text field the
-                 reader has to hit, not a line of prose. */
-              "border border-line-control bg-surface-sunk py-2.5",
-              "md:border-transparent md:bg-transparent md:py-1",
-              "md:hover:border-line md:hover:bg-surface-sunk",
-              "focus:border-ink-4 focus:bg-canvas focus:outline-none",
-              BUILDER_SCROLL_CLEAR,
-            )}
-          />
-        ) : (
-          /* Not editable here, and the row says which of the two reasons applies. A masked row
-             still prints **no value node at all** — not empty, absent (§7.3). */
-          <>
-            {row.display === null ? null : (
-              <span
-                data-field-row-value=""
-                /* Kept under its old name too: `[data-field-option-value]` is what the masking
-                   assertions look for, and the claim they make ("a masked field prints no value
-                   here") is exactly as true of this list as it was of the checkbox one. */
-                data-field-option-value=""
-                className="truncate text-xs text-ink-3"
-              >
-                {row.display}
-              </span>
-            )}
-            {/* ⚠ A real `<a href="/profile">`, not a modal or an inline reveal. For a masked
-                row that is §7.3 — reveal exists in one place and this is not it — and for an
-                address it is honesty about scope: a seven-component postal address needs the
-                profile's own editor, not a one-line box that would silently flatten it. */}
-            <Link
-              href="/profile"
-              data-field-edit-elsewhere={row.field.id}
-              /* 44px on touch. For a masked or address row this link is the ONLY route to
-                 changing the value — the row has no editable input — so a 16px `--text-xs`
-                 line box is the difference between "I can fix this" and "this row is stuck".
-                 `-my-3` gives the padding back to the flow so the row keeps its height. */
-              className={cn(
-                "inline-flex w-fit items-center gap-1.5 text-xs text-ink-2 underline underline-offset-4",
-                "max-md:-my-3 max-md:py-3",
-              )}
-            >
-              <SquarePen aria-hidden="true" className="size-3.5" />
-              {row.masked ? "Change it in your profile" : "Edit in your profile"}
-            </Link>
-          </>
-        )}
-
-        {note === null ? null : (
-          /* `role="status"`, not `alert`: nothing failed and nothing is blocked. It is the same
-             register as the Design panel's clamp note, for the same reason. */
-          <span
-            id={noteId}
-            data-field-row-note={row.field.id}
-            role="status"
-            className="text-xs text-ink-2"
-          >
-            {note}
-          </span>
-        )}
-      </div>
-
-      <button
-        type="button"
-        data-field-remove={row.field.id}
-        /* Named for the field. "Remove" six times over is six identical stops for anyone
-           navigating by control, and this one is destructive-ish — it changes what the card
-           shares (§8.8, AC-25). */
-        aria-label={`Remove ${row.field.label}`}
-        onClick={onRemove}
-        className={cn(
-          /* ⚠ 44x44 on touch, 32x32 on a pointer.
-             This is the only way to take a field off a card, it is one-per-row, and it sits
-             about 18px from the end of the editable value input beside it — so at `size-8` a
-             thumb aiming at the end of a phone number was a third of a target's width away
-             from removing the field. `size-11` below `md` is the fix; the desktop rail is a
-             400px column where 32px is right and a 44px circle would crowd the row. */
-          "mt-0.5 inline-flex size-8 max-md:size-11 shrink-0 items-center justify-center rounded-full text-ink-3",
-          "transition-colors duration-[var(--dur-fast)] hover:bg-surface-sunk hover:text-ink",
-          BUILDER_SCROLL_CLEAR,
-        )}
-      >
-        <X aria-hidden="true" className="size-4" />
-      </button>
+      {note === null ? null : (
+        <span
+          id={noteId}
+          data-field-row-note={row.field.id}
+          role="status"
+          className="w-full text-xs text-ink-2"
+        >
+          {note}
+        </span>
+      )}
     </li>
   );
 }
-

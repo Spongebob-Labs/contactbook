@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
@@ -68,6 +68,57 @@ function hoistedOverlaySheet(): HTMLStyleElement | null {
   );
 }
 
+/**
+ * Every route the app actually serves, read off the filesystem.
+ *
+ * ⚠ THIS REPLACED A REGEX THAT WAS WRITTEN OUT TWICE — once for the nav and once for the
+ * footer — listing the routes by hand:
+ *
+ *     /^(\/|\/templates|\/signin\/phone|\/signup\/first-name|\/#[a-z-]+)$/
+ *
+ * Two copies of a manifest is two things to forget, and what they were really asserting was
+ * "this href goes somewhere that exists". Adding `/corporate`, `/waitlist` and `/contact` broke
+ * both copies while breaking nothing about the site — the tests were measuring their own stale
+ * list. Derived from `src/app`, the assertion becomes the property, and the next route needs no
+ * edit here at all.
+ *
+ * A `(group)` segment is a Next.js layout group and contributes nothing to the URL, so it is
+ * stripped — which is what makes `(marketing)/corporate/page.tsx` resolve to `/corporate`.
+ */
+function servedRoutes(): Set<string> {
+  const appDir = resolve(process.cwd(), "src/app");
+  const out = new Set<string>();
+
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = resolve(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (/^page\.tsx?$/.test(entry.name)) {
+        const route = full
+          .slice(appDir.length)
+          .replace(/\/page\.tsx?$/, "")
+          .replace(/\/\([^/]+\)/g, "");
+        out.add(route === "" ? "/" : route);
+      }
+    }
+  };
+  walk(appDir);
+  return out;
+}
+
+/** An in-page hash, or a route the app serves. Dynamic segments are matched by shape. */
+function expectRoutable(href: string | null, routes: Set<string>) {
+  expect(href, "a link with no href").toBeTruthy();
+  const path = href!.split("#")[0]!.split("?")[0]!;
+  if (path === "") return; // a bare `#section` link
+  const known =
+    routes.has(path) ||
+    [...routes].some((r) =>
+      new RegExp(`^${r.replace(/\[[^\]]+\]/g, "[^/]+")}$`).test(path),
+    );
+  expect(known, `${href} points at a route the app does not serve`).toBe(true);
+}
+
 describe("PillNav — the floating pill bar (spec §8D.6, §8.7)", () => {
   it("renders one wordmark, three centre links and two CTAs — six links, no more", () => {
     renderWithProviders(<PillNav />);
@@ -80,29 +131,37 @@ describe("PillNav — the floating pill bar (spec §8D.6, §8.7)", () => {
       "href",
       "/",
     );
-    expect(within(nav).getByRole("link", { name: "Templates" })).toHaveAttribute(
+    /* `Templates` left the nav on 2026-09-09. It is reachable from the Example cards section
+       and from the footer, and the brief's suggested nav has no room for a fourth section link
+       once "For companies" earns its place. */
+    expect(within(nav).getByRole("link", { name: "For companies" })).toHaveAttribute(
       "href",
-      "/templates",
+      "/corporate",
     );
     expect(within(nav).getByRole("link", { name: "How it works" })).toHaveAttribute(
       "href",
       "/#how-it-works",
     );
-    // Pricing is gone from the page — every figure on it was invented — so the nav's third
-    // section link is the questions instead. A visitor with a doubt is the visitor this page
-    // is written for, so the FAQ earns the slot.
-    expect(within(nav).getByRole("link", { name: "Questions" })).toHaveAttribute(
+    // The third section link was "Questions" → `/#faq` until 2026-09-08. The FAQ section is
+    // deleted — five accordion answers on a one-scroll overview page is the text-heaviness the
+    // client pushed back on — so the slot goes to the example cards, which is the question a
+    // visitor actually arrives with: what will mine look like?
+    expect(within(nav).getByRole("link", { name: "Example cards" })).toHaveAttribute(
       "href",
-      "/#faq",
+      "/#cards",
+    );
+    expect(within(nav).getByRole("link", { name: "Join the waitlist" })).toHaveAttribute(
+      "href",
+      "/waitlist",
     );
     expect(within(nav).getByRole("link", { name: "Log in" })).toHaveAttribute(
       "href",
       "/signin/phone",
     );
-    expect(within(nav).getByRole("link", { name: "Get started" })).toHaveAttribute(
-      "href",
-      "/signup/first-name",
-    );
+    /* The primary control was "Get started" → `/signup/first-name` until 2026-09-09. That is
+       the right control for a launched product and the wrong one for a pre-launch site: the
+       page's whole ask is the waitlist, and a nav sending people elsewhere competes with its
+       own page. Asserted above as "Join the waitlist". */
   });
 
   it("gives every link an accessible name (AC-25)", () => {
@@ -129,13 +188,11 @@ describe("PillNav — the floating pill bar (spec §8D.6, §8.7)", () => {
     expect(container.querySelectorAll("svg")).toHaveLength(0);
   });
 
-  it("routes every destination into the §6.1 manifest", () => {
+  it("points every destination at a route the app actually serves", () => {
     renderWithProviders(<PillNav />);
-
+    const routes = servedRoutes();
     for (const link of screen.getAllByRole("link")) {
-      expect(link.getAttribute("href")).toMatch(
-        /^(\/|\/templates|\/signin\/phone|\/signup\/first-name|\/#[a-z-]+)$/,
-      );
+      expectRoutable(link.getAttribute("href"), routes);
     }
   });
 });
@@ -171,9 +228,20 @@ describe("SiteFooter — the multi-column footer (spec §8D.6 M-9)", () => {
   it("keeps the gallery reachable from the footer at every width", () => {
     renderWithProviders(<SiteFooter />);
 
-    expect(
-      within(screen.getByRole("contentinfo")).getByRole("link", { name: "Templates" }),
-    ).toHaveAttribute("href", "/templates");
+    /**
+     * Asserted by HREF, not by link text. This read `getByRole("link", { name: "Templates" })`
+     * and broke when the label became "All nine designs" — which is a copy edit, not a
+     * regression in reachability. The property this test is named for is that the gallery is
+     * reachable from the footer at every width, because `PillNav` drops its section links
+     * below 768px and the footer becomes the page's whole navigation there. The label is free
+     * to change; the destination is not.
+     */
+    const footer = within(screen.getByRole("contentinfo"));
+    const toGallery = footer
+      .getAllByRole("link")
+      .filter((a) => a.getAttribute("href") === "/templates");
+    expect(toGallery, "the footer has no link to the gallery").toHaveLength(1);
+    expect(toGallery[0]!.textContent?.trim()).toBeTruthy();
   });
 
   it("renders no icons and no emoji (F-07, and the plan's own footer rule)", () => {
@@ -190,9 +258,7 @@ describe("SiteFooter — the multi-column footer (spec §8D.6 M-9)", () => {
 
     for (const link of within(screen.getByRole("contentinfo")).getAllByRole("link")) {
       expect(link.textContent?.trim()).not.toBe("");
-      expect(link.getAttribute("href")).toMatch(
-        /^(\/|\/templates|\/signin\/phone|\/signup\/first-name|\/#[a-z-]+)$/,
-      );
+      expectRoutable(link.getAttribute("href"), servedRoutes());
     }
   });
 });

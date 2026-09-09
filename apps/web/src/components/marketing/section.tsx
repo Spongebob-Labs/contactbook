@@ -50,7 +50,26 @@ export interface SectionProps {
    * ⚠ `amber` is also the primary action fill. A pass on that tone may not carry the primary
    * CTA — the button would be its own ground at 1.0:1. No section takes it today.
    */
-  tone?: "white" | "paper" | "clay" | "pistachio" | "periwinkle" | "amber" | "ink";
+  /**
+   * ⚠ THREE GROUNDS, AND THE MIGRATION SHIMS ARE GONE, 2026-09-08.
+   *
+   *   · `white` — the default
+   *   · `wash`  — #F2FAF8, the near-white brand-green tint. Alternates with white so a section
+   *               boundary needs no border and no rule.
+   *   · `deep`  — #286257, the brand green at 7.03:1, carrying WHITE text. Used exactly once
+   *               (the close), which is what makes it read as an ending.
+   *
+   * `paper`, `clay`, `pistachio`, `periwinkle`, `amber` and `ink` were kept for one build as
+   * aliases pointing at white or the wash, so that sections still awaiting their rewrite kept
+   * compiling. Every one of those sections has now been rewritten or deleted, so the shims are
+   * deleted with them — a shim nobody removes becomes a second palette again, which is the
+   * exact defect `marketing.css`'s HUES block was written against.
+   *
+   * The nine card grounds are untouched and are what the example tiles wear. The four washes
+   * were the marketing layer's *dilution* of them, and diluting a measured palette is what
+   * produced the substitution rule DESIGN.md used to carry.
+   */
+  tone?: "white" | "wash" | "deep";
   /** The hero, which is not a pass — it is the sky the deck sits on. */
   bare?: boolean;
   labelledBy?: string;
@@ -61,13 +80,16 @@ export interface SectionProps {
 
 const GROUND: Record<NonNullable<SectionProps["tone"]>, string> = {
   white: "bg-mk-white",
-  paper: "bg-mk-paper",
-  clay: "bg-mk-clay",
-  pistachio: "bg-mk-pistachio",
-  periwinkle: "bg-mk-periwinkle",
-  amber: "bg-mk-amber",
-  ink: "bg-mk-ink",
+  wash: "bg-mk-wash",
+  deep: "bg-mk-green-deep",
 };
+
+/**
+ * The tones that carry WHITE text, so a section can hand its children the right ink without
+ * every one of them re-deriving it. `deep` is the brand green at 7.03:1 — white reads 12.4:1
+ * on it.
+ */
+const DARK_GROUND = new Set(["deep"]);
 
 /** design.md's 1200px page with its gutters. */
 export const CONTENT_COLUMN = "mx-auto w-full max-w-mk-page px-6 md:px-10";
@@ -113,15 +135,23 @@ export function Section({
       // `scroll-mt` clears the fixed bar AND the pass's own overlap, so a jumped-to heading
       // lands inside its pass rather than under the lip of the one above it.
       className={mkcn(
-        // The overlap lives on the SECTION, not on the pass inside it.
+        // ⚠ FLAT AND FULL-BLEED, 2026-09-08. This used to pull itself up by
+        // `--mk-pass-overlap` and inset itself by `px-3 md:px-6` so that each section read as
+        // a rounded pass riding over the lip of the one above it — the page as a wallet of
+        // the product's own cards.
         //
-        // It was `-mt-[…] first:mt-0` on `[data-pass]`, and `[data-pass]` is the only child of
-        // its section — so `:first-child` matched all eight passes, `first:mt-0` won on
-        // specificity, and the overlap never applied to any of them. The deck did not stack.
+        // It goes because the brief asks for a page that "just scrolls down", and an
+        // overlapping stack makes every boundary a visual event: eight of them in a row is
+        // the opposite of calm, and the reader is made to notice the furniture instead of
+        // the argument. A ground change is now the only separator, which is why `wash`
+        // exists.
         //
-        // `relative` is what makes DOM order the paint order, so each pass rides over the lip
-        // of the one before it rather than under it. Without it the stack inverts.
-        "relative z-0 -mt-[var(--mk-pass-overlap)] scroll-mt-32 px-3 md:px-6",
+        // The ground is on the SECTION now rather than on an inset child, so it runs edge to
+        // edge at every width. `--mk-pass-overlap` and `--mk-pass-shadow` are unreferenced
+        // from here on.
+        "relative scroll-mt-28",
+        GROUND[tone],
+        DARK_GROUND.has(tone) ? "text-mk-white" : "",
         className,
       )}
     >
@@ -142,17 +172,7 @@ export function Section({
         sequence rather than a scroll one, because nobody scrolls to the first thing they see.
       */}
       <MkRevealGroup selector="[data-pass]" move="deal" stagger={false}>
-        <div
-          data-pass=""
-          className={mkcn(
-            "relative mx-auto w-full max-w-[1320px]",
-            "rounded-[28px] md:rounded-[36px]",
-            GROUND[tone],
-            PASS_PAD,
-            className?.includes("shadow-none") ? "" : "",
-          )}
-          style={{ boxShadow: "var(--mk-pass-shadow)" }}
-        >
+        <div data-pass="" className={mkcn("relative", PASS_PAD)}>
           <div className={mkcn(CONTENT_COLUMN, innerClassName)}>{children}</div>
         </div>
       </MkRevealGroup>

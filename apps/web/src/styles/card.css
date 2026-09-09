@@ -6,10 +6,10 @@
    card root, and geometry is inline in `card-page.tsx`. What is left here is
    the four things a `style` attribute cannot say:
 
-     1. the ground's positioning, including the ONE rule that turns it from a
-        pinned layer into a fixed one;
-     2. `@keyframes` and the staggered delay — the card's single authored
-        moment;
+     1. the ground's positioning, and the geometry that turns the card on
+        `/c/{slug}` into an inset, rounded object rather than a full-bleed
+        rectangle (§1b);
+     2. `@keyframes` and the staggered delay — the card's authored arrival;
      3. `:hover` / `:active` — response, not performance;
      4. the browser's own surfaces: `::selection`, the scrollbar, the caret,
         link underline metrics, tabular figures.
@@ -38,23 +38,25 @@
 
 /* ── 1. The ground ────────────────────────────────────────────────────────────
 
-   ⚠ **`absolute` is the default and `fixed` is opted into. Do not invert this.**
+   ⚠ **`absolute` everywhere, and there is no longer a `fixed` variant. The
+   third rule that used to live here has been deleted — see §1b for why.**
 
-   `position: fixed` is contained by an ancestor with a transform, a filter or
-   `contain`, and by NOTHING else — `overflow` does not make a containing block.
-   `<CardPage>` renders in three places and two of them are scrolled frames: the
-   builder's phone-width preview (`[data-preview-frame]`) and the marketing
-   page's card objects. A ground that were `fixed` by default would escape both
-   and paint the whole browser viewport the card's colour.
+   The short version: the ground was promoted to `position: fixed` under
+   `[data-card-page-surface]` so it painted the whole viewport regardless of
+   how many fields the card carried. `/c/{slug}` no longer wants the whole
+   viewport — it wants an inset, rounded card — and a fixed layer can be
+   neither inset nor rounded, because `inset: 0` on it resolves against the
+   initial containing block. §1b keeps the invariant that motivated the fixed
+   ground (the ground is not a function of the field count) with `flex: 1` on
+   the article instead.
 
-   So the safe rendering is the default, and `[data-card-page-surface]` — which
-   `public-card-view.tsx` puts on the document-level card and nothing else does
-   — is what asks for the real thing. DESIGN.md's "the ground holds still" then
-   costs exactly one declaration.
-
-   `background-attachment: fixed` would have been the one-liner and is not used:
-   iOS Safari does not implement it dependably, and a phone browser is the only
-   surface this page is guaranteed to be read on. */
+   Do not reintroduce `fixed` here. Besides §1b, `<CardPage>` renders in three
+   places and two of them are scrolled frames — the builder's phone-width
+   preview (`[data-preview-frame]`) and the marketing page's card objects — and
+   a fixed ground escapes both, because `overflow` does not make a containing
+   block. `background-attachment: fixed` is not the answer either: iOS Safari
+   does not implement it dependably, and a phone browser is the only surface
+   this page is guaranteed to be read on. */
 
 /* ⚠ **Three positions, and the base one is `relative` rather than `absolute`.**
 
@@ -65,9 +67,9 @@
    would collapse every one of those cells to zero height and, in any cell that
    is not itself positioned, escape to the nearest ancestor that is.
 
-   So the base rule leaves the ground a box it can be sized in, and the two rules
-   below take over only where the ground really is a layer: inside a card page,
-   and — for the fixed treatment — only under the document-level marker. */
+   So the base rule leaves the ground a box it can be sized in, and the rule
+   below takes over only where the ground really is a layer: inside a card
+   page. */
 [data-card-ground] {
   position: relative;
   /* Above the card root's own background, below every `position: relative`
@@ -83,8 +85,147 @@
   inset: 0;
 }
 
-[data-card-page-surface] [data-card-variant="page"] > [data-card-ground] {
-  position: fixed;
+/* ── 1b. THE CARD IS AN OBJECT ON A PAGE ──────────────────────────────────────
+
+   ⚠ **The client's change of 2026-09-09, and the only thing he asked for on
+   this page by name.** In substance: the QR face and the templates are
+   *"striking, beautiful"* — and then you scan one, land here, and the card
+   *"displays all fields but looks like a plain, basic card."*
+
+   He was right, and the cause was that one card had three presentations and
+   only one of them was not an object:
+
+     · `<ShareFace>` — 336×500, `--face-radius`, `--c-face-border`,
+       `--elevation-card`. A physical thing. This is what he was shown.
+     · The builder's preview — `[data-preview-frame]` is `rounded-[26px]` with
+       a hairline and `--elevation-2`, and it is `overflow-y-auto`, which CLIPS
+       the card inside it to that radius. So the owner designs a card with
+       rounded corners…
+     · `/c/{slug}` — `width: 100%`, the ground `position: fixed`, and no radius
+       anywhere. …and the recipient got a full-bleed rectangle.
+
+   The recipient's view was the only one that was not a card, and it is the one
+   that sells the product. So it becomes one — in the **share face's own three
+   declarations**, not in a new set of numbers invented here:
+
+       border-radius: var(--radius-xl)     — the same 20px as --face-radius
+       border: 1px solid var(--c-face-border, transparent)
+       box-shadow: var(--elevation-card)
+
+   `--c-face-border` is why this is not a grey ring around a deep card: it is
+   `transparent` on every palette but Paper, whose ground is the same white as
+   the page and would otherwise have no edge at all. That per-palette answer
+   already existed on the face; it is reused rather than re-derived. And
+   `tokens.css` describes `--elevation-card` as the one exception to flat
+   elevation, "because it is a physical object on a page" — which is now true
+   of two objects rather than one.
+
+   ⚠ **`--cb-page-inset: 12px` is not a taste value.** `tokens.css`, on
+   `--face-w`: "336 + 12px page padding each side == 360, the narrowest
+   supported viewport." At 360px this card therefore lands at exactly
+   `--face-w`: the scanned card and the face that was scanned are the same
+   width on the narrowest phone, which is what "consistent with the current
+   style" has to mean if it means anything measurable.
+   `env(safe-area-inset-*)` raises the gutter on a notched device, never
+   lowers it.
+
+   ⚠ **This does NOT contradict "the deck is flat" (DESIGN.md, 2026-09-08).**
+   That withdrew inset, radius and shadow from the *marketing sections* —
+   bands of one scrolling argument, where a raised edge makes the reader
+   notice the furniture instead of the point. This is a single card object on
+   a phone. Do not harmonise the two.
+
+   ⚠ **Everything here is scoped to `[data-card-page-surface]`**, which only
+   `app/c/[slug]/page.tsx` sets. The builder's preview and the marketing cards
+   render the same component and must not gain a second inset inside a frame
+   that already has one.                                                      */
+
+[data-card-page-surface] {
+  /* The gutter the card floats in — both axes, so the result is an object and
+     not a full-height column that happens to have side margins. */
+  --cb-page-inset: 12px;
+
+  padding-top: max(var(--cb-page-inset), env(safe-area-inset-top));
+  padding-bottom: max(var(--cb-page-inset), env(safe-area-inset-bottom));
+  padding-left: max(var(--cb-page-inset), env(safe-area-inset-left));
+  padding-right: max(var(--cb-page-inset), env(safe-area-inset-right));
+
+
+  /* ⚠ **No `min-height` here, and that is checked rather than assumed.** This
+     element already carries Tailwind's `min-h-full`, and `<body>` is
+     `min-h-full flex flex-col` above it. Measured in Chromium on the rendered
+     page, a zero-field card gets `main` at the full 812px and the article at
+     788px (812 less the 12px gutter each way) from that chain alone — so the
+     ground fills the card at zero fields without anything further.
+
+     A `100svh` floor was added here and then removed: it was redundant, and it
+     was reached for on the strength of a bad measurement (see the note on
+     `flex` below). Do not re-add one without measuring first. */
+}
+
+[data-card-page-surface] [data-card-variant="page"] {
+  /* ⚠ **`flex: 1` is what replaces the fixed ground, and it is load-bearing.**
+
+     The ground used to be `position: fixed` right here, so that it painted the
+     whole screen however few fields the owner had mapped — "the background is
+     not a function of the field count", which the client stated twice and
+     which is not being given up.
+
+     A fixed ground simply cannot be the ground of an inset card: `inset: 0` on
+     it resolves against the initial containing block, so it paints straight
+     through the gutter out to the phone's edges, and a radius on it rounds the
+     *viewport* rather than the card.
+
+     So the ground goes back to `absolute` — the base rule above, which now
+     applies on every surface — and the ARTICLE takes the screen instead.
+     `main` is a flex column at viewport height; `flex: 1` hands its whole
+     height to the card, and `flex-grow` cannot shrink a box below its content,
+     so a twenty-five-field card still lays out at full height and the document
+     scrolls. A zero-field card is a full inset sheet of colour. Same
+     invariant, one declaration, and now it can have corners.
+
+     This is exactly the pairing `builder-preview.tsx` already uses with
+     `className="flex-1"` on the same component, for the same reason.
+
+     ⚠ **`flex: 1` is correct, and a detour is worth recording so nobody
+     repeats it.** `flex: 1` expands to `1 1 0%` — basis zero, shrink enabled —
+     which looks unsafe for a card taller than the screen, and was briefly
+     "fixed" here to `1 0 auto`. It needed no fix: a flex item's `min-height`
+     is `auto`, which floors it at its content, and Chromium confirms it —
+     twenty fields at 375×420 lay out at 1767px under `1 1 0%` and `1 0 auto`
+     alike, ground included.
+
+     The apparent collapse that prompted the change was an artefact of
+     measuring through a hidden browser pane, where every rect reads 0×0.
+     Measure layout in a real headless browser, not a backgrounded one. */
+  flex: 1;
+
+  /* The card's own measure: the 460px content column plus the body's 24px of
+     inline padding each side. The column inside is untouched at every width —
+     the card is simply the box that has appeared around it. */
+  max-width: calc(var(--page-measure) + 2 * var(--space-6));
+  margin-inline: auto;
+
+  /* The share face's edge, verbatim. See the ⚠ above. */
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--c-face-border, transparent);
+  box-shadow: var(--elevation-card);
+}
+
+/* The ground fills the card and takes its corners with it.
+
+   `inherit` rather than a repeated literal, and it chains: the ground inherits
+   the radius from the article, and the motif layer inherits the same value
+   from the ground in turn. One number, stated once, above.
+
+   ⚠ The ground is `inset: 0`, i.e. the article's PADDING box, which is 1px
+   inside the border. So `inherit` gives it a radius 1px larger than its own
+   box wants — deliberately: the sliver that shows at each corner is the card's
+   own hairline, which is what a hairline is for. Rounding it down would leave
+   a 1px notch of page canvas instead. */
+[data-card-page-surface] [data-card-variant="page"] > [data-card-ground],
+[data-card-ground] > [data-card-ground-motif] {
+  border-radius: inherit;
 }
 
 /* The motif — `pattern` and `grain`. A child rather than a second background
@@ -128,11 +269,53 @@
   }
 }
 
+/* ⚠ **The card arrives, and then its contents do. Two keyframes, one moment.**
+
+   Added 2026-09-09 with §1b, and it only makes sense because of §1b: a
+   full-bleed rectangle has nothing to arrive — there is no edge to come in
+   from, so fading the old page in was fading the whole screen in, which is a
+   flash and not a motion. An inset card has a shape, and a shape can land.
+
+   ⚠ **`translate` and `opacity` only. No `scale`, deliberately.** DESIGN.md
+   records the same decision for the marketing `deal` band and gives the reason
+   plainly: "scaling a band scales its type, so the browser rasterises the
+   glyphs at the wrong size". A card is mostly type. The temptation to add a
+   `scale(0.98)` here is exactly the thing that comment exists to stop.
+
+   `--dur-slow` (380ms) rather than `--dur-base`: this is the page's whole
+   entrance, and the same duration the mobile bottom sheet uses — the other
+   place in the product where a rounded object arrives on a phone. */
+@keyframes cb-card-arrive {
+  from {
+    opacity: 0;
+    translate: 0 12px;
+  }
+}
+
 @media (prefers-reduced-motion: no-preference) {
+  [data-card-page-surface] [data-card-variant="page"] {
+    /* `backwards`, for the same reason every other animation in this file is —
+       see the ⚠ above `cb-stack-rise`. The landed state is the DEFAULT; the
+       keyframe only says where the card came from, so the e2e harness's
+       zeroed durations leave a fully painted card rather than an invisible
+       one. */
+    animation: cb-card-arrive var(--dur-slow) var(--ease-out) backwards;
+  }
+
   [data-card-page-surface] [data-card-variant="page"] [data-card-actions] > *,
   [data-card-page-surface] [data-card-variant="page"] [data-card-fields] > li {
     animation: cb-stack-rise var(--dur-base) var(--ease-out) backwards;
-    animation-delay: min(calc(var(--cb-rise-index, 0) * 40ms), 560ms);
+    /* ⚠ `--cb-rise-base` offsets the whole stagger so the rows follow the
+       card in rather than racing it. 120ms is a third of the card's own
+       380ms — late enough to read as consequence, early enough that the two
+       motions overlap and read as ONE arrival rather than two events. */
+    animation-delay: calc(
+      var(--cb-rise-base, 0ms) + min(calc(var(--cb-rise-index, 0) * 40ms), 560ms)
+    );
+  }
+
+  [data-card-page-surface] [data-card-variant="page"] {
+    --cb-rise-base: 120ms;
   }
 
   /* The two card actions are a slot, so their index cannot be written on them
@@ -225,6 +408,33 @@
   box-shadow: none;
 }
 
+/* ⚠ **The press, on touch — where until now there was no feedback at all.**
+
+   Everything above is inside `(hover: hover) and (pointer: fine)`, correctly:
+   `:hover` sticks after a tap on a touch screen, so the lift has to be kept
+   off phones. But the consequence was that the whole response system was
+   desktop-only, and this page is read on a phone almost exclusively. Tapping
+   a field button did nothing until the mail client opened — and on a slow
+   handset that gap is long enough to tap twice.
+
+   So the press gets its own rule for the pointer that cannot hover. It nudges
+   1px INTO the page rather than lifting: there is no hover state here to
+   return from, so the movement has to be the press itself. `opacity` carries
+   the rest, because the button's background is an inline style and an inline
+   declaration beats any stylesheet rule that is not `!important` — the same
+   constraint §3 works around with an inset ring, answered the cheaper way
+   where a fade is enough.
+
+   ⚠ Ordered AFTER the rule above and matching the same selectors at the same
+   specificity, which is what lets it win on `translate`. Do not move it. */
+@media (hover: none) and (prefers-reduced-motion: no-preference) {
+  [data-card-variant="page"] [data-card-action-button][data-card-row-surface]:active,
+  [data-card-variant="page"] [data-card-action]:active {
+    translate: 0 1px;
+    opacity: 0.9;
+  }
+}
+
 /* ── 4. Browser surfaces ──────────────────────────────────────────────────────
 
    The parts we did not draw still ship as part of the card. Defaults here are
@@ -271,30 +481,38 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* The document scrollbar, while a card page is mounted.
+/* ── The document scrollbar: deliberately NOT themed. ────────────────────────
 
-   It has to be `:root`: the viewport's scrollbar belongs to the document
-   element, not to the card, and the card's `--c-*` properties are declared on
-   the card root and cannot reach up. `public-card-view.tsx` therefore lifts two
-   resolved colours onto `documentElement` in an effect and removes them on
-   unmount — see the note there. Without that attribute this rule matches
-   nothing, which is the correct behaviour on every other route. */
-:root[data-card-page-scroll] {
-  scrollbar-width: thin;
-  scrollbar-color: var(--cb-scroll-thumb) var(--cb-scroll-track);
-}
+   ⚠ **Four rules were deleted here on 2026-09-09, and the reason is §1b.**
 
-/* Safari and Chrome before 121 ignore the two properties above. The overlay
-   scrollbar they draw instead is the OS default, which is the thing this rule
-   exists to replace. */
-:root[data-card-page-scroll]::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-:root[data-card-page-scroll]::-webkit-scrollbar-track {
-  background: var(--cb-scroll-track);
-}
-:root[data-card-page-scroll]::-webkit-scrollbar-thumb {
-  background: var(--cb-scroll-thumb);
-  border-radius: var(--radius-full);
-}
+   They styled `:root[data-card-page-scroll]` — `scrollbar-width: thin` plus a
+   `-webkit-scrollbar` track and thumb — tinted from `--cb-scroll-track` and
+   `--cb-scroll-thumb`, two values a client effect lifted onto
+   `documentElement` (a custom property declared on the card root cannot travel
+   upward to the document element, which is what owns the viewport's
+   scrollbar).
+
+   That was right while the card WAS the page: a full-bleed coloured surface
+   with an OS-grey scrollbar down its edge looks unfinished, and DESIGN.md
+   calls a default scrollbar the cheapest signal that a page was assembled
+   rather than built.
+
+   It is wrong now. The card is a 508px object floating on white, and the
+   document's scrollbar is on the white page beside it — so a scrollbar in the
+   card's ground colour is a stripe of, say, oxblood attached to nothing,
+   further from the card than the card is wide. The house default on white
+   chrome is the correct answer for a white page.
+
+   ⚠ **Both properties were also dead code, and that is worth recording
+   separately** so nobody "restores" them by reviving the effect. The only
+   thing that ever set `data-card-page-scroll` was
+   `components/public-card/public-card-view.tsx`, and `/c/[slug]` does not
+   render that component — it draws `<CardPage>` directly. So these rules had
+   matched nothing on the real page since that swap. Same orphaning as the
+   `[data-card-page-surface]` marker, which is why THAT one now lives on the
+   route rather than on a component.
+
+   `public-card-view.tsx` is itself unreferenced — nothing imports it. It, the
+   effect, and the `[data-public-card-made-with]` caption inside it are a
+   separate cleanup, and the caption in particular is a product question (does
+   a recipient's page carry our mark?) rather than a styling one.           */

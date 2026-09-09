@@ -92,12 +92,23 @@ export type {
 export { FieldPicker } from "./field-picker";
 export type { FieldPickerProps } from "./field-picker";
 
-/* The Fields section is three files now: the section itself, the modal it opens, and the row
-   model both of them read. The row model is exported because it is where the masking rule, the
-   §11 E-07 blank-value rule and §6.4's ordering are enforced *once* — a future surface that
-   lists profile fields should call `buildFieldRows` rather than grow a fourth opinion. */
-export { AddFieldDialog, SUGGESTED_RAIL_ID } from "./add-field-dialog";
-export type { AddFieldDialogProps, CreatedField } from "./add-field-dialog";
+/* The Fields section is three files: the ticked list, the small parts beside it
+   (`field-sources.tsx` — the masked marker and the composer row) and the row model both read.
+   The row model is exported because it is where the masking rule, the §11 E-07 blank-value rule
+   and §6.4's ordering are enforced *once* — a future surface that lists profile fields should
+   call `buildFieldRows` rather than grow a fourth opinion. */
+/* ⚠ `AddFieldDialog` is gone — the modal it rendered was replaced by two permanent columns on
+   the Fields panel. See `field-sources.tsx` for why. `SUGGESTED_RAIL_ID` went with it: it
+   ranked entries in the dialog's category rail, and there is no rail. */
+/* ⚠ `AddFieldDialog` and `FieldSources` are both gone — a modal, then two columns below the
+   card's own field list, both rejected for the same reason. The panel is one ticked list now;
+   see `field-picker.tsx`. */
+/* ⚠ `FieldSearch` is gone — the client removed the search box ("won't be too many fields"),
+   and `rowMatches` in `field-rows.ts` is the only survivor of it. `NewFieldPanel` is gone too:
+   the permanent two-input column it rendered is a one-row composer now, closed until asked
+   for. `field-sources.tsx` carries both arguments. */
+export { MaskedMarker, NewFieldRow } from "./field-sources";
+export type { CreatedField } from "./field-sources";
 
 export {
   FIELD_CATEGORY_ORDER,

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useMemo, useState, useTransition, type ReactElement } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition, type ReactElement } from "react";
 
 import {
   DataTable,
@@ -28,6 +28,8 @@ import { toScreenError } from "@/lib/api/errors";
 import { normaliseE164, parseImportLines } from "@/lib/contacts-parse";
 import { formatLongDate, formatPhoneDisplay } from "@/lib/format";
 import { useApiResource } from "@/lib/use-api";
+import type { InboundConnect } from "@/app/api/inbound/connects/route";
+import { fetchInboundConnects } from "@/lib/api/inbound-connects";
 import { contactLabel, type Contact, type ContactSource, type FixtureError } from "@/types/domain";
 
 /**
@@ -83,6 +85,21 @@ const KNOWN_SOURCES: ReadonlySet<string> = new Set<string>(SOURCE_ORDER);
 /** A pseudo-filter alongside the four sources — it answers a question people actually ask. */
 const OPTED_OUT_FILTER = "OPTED_OUT";
 
+/**
+ * ⚠ **"Messaged you" — the inbound half of this screen, and the loop this file's own header
+ * says was lost.**
+ *
+ * That header records that `/contacts` used to be *"a list of inbound leads, with columns for
+ * the card they scanned"*, and that the columns became *number* and *cards sent* because the
+ * API had no source for the inbound side. `GET /inbound-messages` is now that source.
+ *
+ * ⚠ It answers **"this person has written to you"** and deliberately not *"this person scanned
+ * card X"*. An inbound row carries no `cardId`, `shareLinkId` or `userId` — see
+ * `app/api/inbound/connects/route.ts`. Labelling this column "Scanned" would be inventing a
+ * link the data does not contain.
+ */
+const MESSAGED_FILTER = "MESSAGED_YOU";
+
 function matchesQuery(contact: Contact, needle: string): boolean {
   if (needle.length === 0) return true;
   const haystack = `${contact.displayName ?? ""} ${contact.phoneE164}`.toLowerCase();
@@ -90,11 +107,17 @@ function matchesQuery(contact: Contact, needle: string): boolean {
 }
 
 /** Chips are a union, not an intersection: "imported or opted out", which is what a reader means. */
-function matchesFilters(contact: Contact, selected: readonly string[]): boolean {
+function matchesFilters(
+  contact: Contact,
+  selected: readonly string[],
+  connects: Readonly<Record<string, InboundConnect>>,
+): boolean {
   if (selected.length === 0) return true;
-  return selected.some((id) =>
-    id === OPTED_OUT_FILTER ? contact.optedOutAt !== null : contact.source === id,
-  );
+  return selected.some((id) => {
+    if (id === OPTED_OUT_FILTER) return contact.optedOutAt !== null;
+    if (id === MESSAGED_FILTER) return connects[contact.id] !== undefined;
+    return contact.source === id;
+  });
 }
 
 /* ── the data this screen renders ─────────────────────────────────────────────────────── */
@@ -147,7 +170,10 @@ export function ContactsListSkeleton(): ReactElement {
  * one with `display:none`, because §8D.3 drops *table semantics* on mobile rather than squeezing
  * four columns into 360px — and CSS cannot make a `<table>` stop being a table.
  */
-function contactColumns(shareCounts: Record<string, number>): readonly DataTableColumn<Contact>[] {
+function contactColumns(
+  shareCounts: Record<string, number>,
+  connects: Readonly<Record<string, InboundConnect>>,
+): readonly DataTableColumn<Contact>[] {
   return [
     {
       id: "name",
@@ -192,6 +218,45 @@ function contactColumns(shareCounts: Record<string, number>): readonly DataTable
                 <span className="sr-only"> {count === 1 ? "card" : "cards"}</span>
               </>
             )}
+          </span>
+        );
+      },
+    },
+    {
+      /**
+       * ⚠ **"Messaged you", not "Scanned".** See {@link MESSAGED_FILTER}: an inbound row has no
+       * card on it, so this column can report that somebody reached out and nothing about why.
+       *
+       * The em-dash for "never" is the same device the *Cards sent* column uses, with the same
+       * screen-reader sentence beside it — a bare "—" announces as nothing at all.
+       */
+      id: "messaged",
+      header: "Messaged you",
+      align: "end",
+      cell: (contact) => {
+        const connect = connects[contact.id];
+        if (connect === undefined) {
+          return (
+            <span data-contact-messaged={contact.id} className="text-ink-3">
+              <span aria-hidden="true">—</span>
+              <span className="sr-only">Has not messaged you</span>
+            </span>
+          );
+        }
+        return (
+          <span
+            data-contact-messaged={contact.id}
+            data-contact-messaged-count={connect.messageCount}
+            className="inline-flex items-baseline gap-2"
+          >
+            <time dateTime={connect.lastReceivedAt} className="text-ink tabular-nums">
+              {formatLongDate(connect.lastReceivedAt)}
+            </time>
+            <span className="sr-only">
+              {connect.messageCount === 1
+                ? "1 message received, most recently on this date"
+                : `${connect.messageCount} messages received, most recently on this date`}
+            </span>
           </span>
         );
       },
@@ -396,17 +461,52 @@ function ContactsListScreen({
     searchParams
       .getAll(SOURCE_PARAM)
       .map((value) => value.toUpperCase())
-      .filter((value) => KNOWN_SOURCES.has(value) || value === OPTED_OUT_FILTER),
+      .filter(
+        (value) =>
+          KNOWN_SOURCES.has(value) ||
+          value === OPTED_OUT_FILTER ||
+          value === MESSAGED_FILTER,
+      ),
   );
 
   const contacts = useMemo(() => data?.contacts ?? [], [data]);
   const shareCounts = useMemo(() => data?.shareCounts ?? {}, [data]);
 
+  /**
+   * ⚠ A SEPARATE FETCH, AND IT GOES TO OUR OWN ROUTE — NOT TO `/api/cb/*`.
+   *
+   * `GET /inbound-messages` is not ownership-scoped (the API says so itself), so the browser
+   * must never call it: the raw response carries other users' numbers and message bodies.
+   * `app/api/inbound/connects/route.ts` joins it against this caller's own contacts on the
+   * server and returns only the matches. See that file's header.
+   *
+   * Its own state, not folded into `fetchContactsData`, because it must degrade on its own: a
+   * failure here loses one column, while a failure in the registry loses the screen. Same
+   * reasoning as `shareCounts` already follows in the loader.
+   */
+  const [connects, setConnects] = useState<Readonly<Record<string, InboundConnect>>>({});
+  const [unknownCount, setUnknownCount] = useState(0);
+
+  useEffect(() => {
+    let live = true;
+    void fetchInboundConnects().then((result) => {
+      if (!live || result === null) return;
+      setConnects(
+        Object.fromEntries(result.connects.map((connect) => [connect.contactId, connect])),
+      );
+      setUnknownCount(result.unknownCount);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+
   const needle = query.trim().toLowerCase();
 
   const visible = useMemo(
-    () => contacts.filter((c) => matchesFilters(c, selected) && matchesQuery(c, needle)),
-    [contacts, needle, selected],
+    () =>
+      contacts.filter((c) => matchesFilters(c, selected, connects) && matchesQuery(c, needle)),
+    [connects, contacts, needle, selected],
   );
 
   const filters = useMemo<readonly FilterOption[]>(() => {
@@ -425,8 +525,14 @@ function ContactsListScreen({
     if (optedOut > 0) {
       options.push({ id: OPTED_OUT_FILTER, label: "Opted out", count: optedOut });
     }
+    /* Same rule as above: offered only when it would match something. A "Messaged you 0" chip
+       is a control that can only ever return nothing. */
+    const messaged = contacts.filter((c) => connects[c.id] !== undefined).length;
+    if (messaged > 0) {
+      options.push({ id: MESSAGED_FILTER, label: "Messaged you", count: messaged });
+    }
     return options;
-  }, [contacts]);
+  }, [connects, contacts]);
 
   const clearFilters = useCallback(() => {
     setQuery("");
@@ -503,7 +609,7 @@ function ContactsListScreen({
       <DataTable
         caption="Contacts"
         hideCaption
-        columns={contactColumns(shareCounts)}
+        columns={contactColumns(shareCounts, connects)}
         rows={visible}
         getRowKey={(contact) => contact.id}
         getRowHref={(contact) => `/contacts/${contact.id}`}
@@ -618,6 +724,24 @@ function ContactsListScreen({
             resultsLabel={`${visible.length} of ${contacts.length} contacts`}
           />
         </FilterBar>
+      ) : null}
+
+      {/*
+        ⚠ A COUNT, AND DELIBERATELY NOT THE NUMBERS.
+
+        Somebody messaged the product's WhatsApp number and is not in this registry. Telling the
+        owner that is useful; telling them *who* is not ours to tell — an unmatched sender may be
+        another user's contact, because `GET /inbound-messages` is a raw unscoped capture. The
+        route handler drops the numbers server-side for exactly this reason, so there is nothing
+        here to leak even by accident. Do not "improve" this into a list with an Add button.
+      */}
+      {unknownCount > 0 ? (
+        <p data-inbound-unknown={unknownCount} className="text-sm text-ink-3">
+          {unknownCount === 1
+            ? "1 number that isn’t in your contacts has messaged you."
+            : `${unknownCount} numbers that aren’t in your contacts have messaged you.`}{" "}
+          Add them above to see what they sent and send them a card.
+        </p>
       ) : null}
 
       {body}

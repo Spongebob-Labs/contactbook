@@ -1,7 +1,14 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { PROJECT_VIEWPORT, gotoReady } from "../helpers/e2e";
+import { signIn } from "../helpers/session";
 import { STATE_QUERIES, withState } from "../helpers/routes";
+
+/* ⚠ `/contacts` is a gated route — `proxy.ts` bounces it to `/signin/phone` without a session
+   cookie. See `tests/helpers/session.ts` for why a forged-`exp` token is the right seam. */
+test.beforeEach(async ({ context, baseURL }) => {
+  await signIn(context, baseURL!);
+});
 
 /**
  * `/contacts` and `/contacts/[contactId]` — the saved-contact surfaces (spec §6.1 R-14 and
@@ -565,4 +572,78 @@ test("the detail screen renders with no uncaught page errors", async ({ page }) 
   await screenRoot(page);
 
   expect(errors).toEqual([]);
+});
+
+/* ── inbound activity ─────────────────────────────────────────────────────────────── */
+
+/**
+ * ⚠ **THE BROWSER MUST NEVER CALL `/inbound-messages` DIRECTLY.**
+ *
+ * That endpoint is not ownership-scoped — the API says so in its own description, and it is
+ * tagged `webhooks`. Its raw response carries other users' phone numbers, WhatsApp display
+ * names and message bodies. The join against the caller's own contacts happens in
+ * `app/api/inbound/connects/route.ts`, on the server, where the surplus can be discarded
+ * before anything is serialised.
+ *
+ * This is the assertion that keeps that true. `endpoints/inbound-messages.ts` is `server-only`
+ * so a `"use client"` import fails the build — but a hand-written `fetch("/api/cb/…")` in a
+ * client component would slip straight past that, and this is what catches it.
+ */
+test("the browser never requests the unscoped inbound endpoint", async ({ page }) => {
+  const direct: string[] = [];
+  page.on("request", (request) => {
+    if (/\/inbound-messages/.test(request.url())) direct.push(request.url());
+  });
+
+  await gotoReady(page, CONTACTS);
+  await page.waitForTimeout(1500);
+
+  expect(
+    direct,
+    "a client component is calling the raw, unscoped inbound capture — route it through " +
+      "/api/inbound/connects instead",
+  ).toEqual([]);
+});
+
+/**
+ * The feature itself: a contact who has written to us is marked, one who has not is not, and
+ * the strangers are reduced to a count with no numbers attached.
+ */
+test("marks the contacts who have messaged you, and counts the ones you don't have", async ({
+  page,
+}) => {
+  await gotoReady(page, CONTACTS);
+
+  const marked = page.locator("[data-contact-messaged-count]");
+  await expect(marked, "no contact was marked as having messaged you").not.toHaveCount(0);
+
+  /* The stub seeds two messages from the first fixture contact. */
+  await expect(marked.first()).toHaveAttribute("data-contact-messaged-count", "2");
+
+  /* ⚠ And the stranger is a COUNT ONLY. The stub seeds `+919000000001`, which is not in the
+     fixture registry — it stands for another user's contact. Its number must not be anywhere
+     in the DOM. */
+  const unknown = page.locator("[data-inbound-unknown]");
+  await expect(unknown).toHaveCount(1);
+
+  const html = await page.content();
+  expect(
+    html.includes("919000000001"),
+    "an unmatched sender's phone number reached the page — that is somebody else's data",
+  ).toBe(false);
+});
+
+/**
+ * ⚠ The chip's count needs its own spacing: `Chip` puts every child inside one `<span>`, so the
+ * `gap-2` on its flex shell never lands between a label and the count beside it. It shipped
+ * reading "Added by you4".
+ */
+test("a filter chip separates its label from its count", async ({ page }) => {
+  await gotoReady(page, CONTACTS);
+  const chip = page.locator("[data-filter-bar] [data-chip]").first();
+  await expect(chip).toBeVisible();
+  expect(
+    (await chip.innerText()).trim(),
+    "the chip's count is jammed against its label",
+  ).toMatch(/\D\s\d+$/);
 });

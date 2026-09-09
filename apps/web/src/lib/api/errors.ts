@@ -56,6 +56,14 @@ export type ApiErrorCode =
   | "CARD_SHARE_TEMPLATE_NOT_CONFIGURED"
   // share links
   | "SHARE_LINK_NOT_FOUND"
+  /** The owner revoked this link — 410, from resolve and from both connect endpoints. */
+  | "SHARE_LINK_REVOKED"
+  /**
+   * QR-scan connect only: the number typed into "Save & connect" is the card owner's own.
+   * Reachable only by an owner scanning their own card, which is a normal thing to do while
+   * testing — so it gets real copy rather than degrading to `UNKNOWN`.
+   */
+  | "CANNOT_CONNECT_TO_SELF"
   // templates
   | "TEMPLATE_ALREADY_REGISTERED"
   | "TEMPLATE_NOT_FOUND"
@@ -156,6 +164,8 @@ const KNOWN_CODES = new Set<string>([
   "PHOTO_NOT_A_CARD_FIELD",
   "CARD_SHARE_TEMPLATE_NOT_CONFIGURED",
   "SHARE_LINK_NOT_FOUND",
+  "SHARE_LINK_REVOKED",
+  "CANNOT_CONNECT_TO_SELF",
   "TEMPLATE_ALREADY_REGISTERED",
   "TEMPLATE_NOT_FOUND",
   "BAD_REQUEST",
@@ -347,6 +357,18 @@ const COPY: Readonly<Record<ApiErrorCode, Copy>> = {
     kind: "not-found",
     title: "We couldn't find that link",
     detail: "It may have been removed. Refresh your shared links.",
+    retryable: false,
+  },
+  SHARE_LINK_REVOKED: {
+    kind: "forbidden",
+    title: "This card is no longer shared",
+    detail: "The owner turned this link off. Ask them for a new one.",
+    retryable: false,
+  },
+  CANNOT_CONNECT_TO_SELF: {
+    kind: "unknown",
+    title: "That's your own card",
+    detail: "Use a different number, or share the card with someone else instead.",
     retryable: false,
   },
   TEMPLATE_ALREADY_REGISTERED: {
