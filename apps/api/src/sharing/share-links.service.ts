@@ -21,9 +21,13 @@ type ShareLinkWithContactAndCard = ShareLink & {
   contact: { phoneE164: string; displayName: string | null };
 };
 
-/** The include shape both public-resolve paths (ShareLink and Card.publicToken) need. */
+/** The include shape both public-resolve paths (ShareLink and Card.publicToken) need.
+ *  `user.id`/`user.phoneE164` aren't surfaced by assemblePublicCard() — they exist
+ *  for card-connect.service.ts, which needs to know exactly who a QR's owner is. */
 const PUBLIC_CARD_INCLUDE = {
-  user: { select: { firstName: true, lastName: true } },
+  user: {
+    select: { id: true, firstName: true, lastName: true, phoneE164: true },
+  },
   fields: {
     where: { visible: true },
     orderBy: { position: 'asc' as const },
@@ -69,8 +73,31 @@ export class ShareLinksService {
     const card = await this.cards.findOwned(userId, cardId);
     const contact = await this.contacts.findOwned(userId, dto.contactId);
 
+    const owner = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+    });
+    const ownerName =
+      [owner.firstName, owner.lastName].filter(Boolean).join(' ') || 'Someone';
+
+    return this.ensureActiveLinkAndNotify(card, contact, ownerName);
+  }
+
+  /**
+   * Core of share(): given an already-resolved card and contact — regardless
+   * of how they were resolved, an owner-initiated share (share() above) or an
+   * anonymous QR-scan "Save & connect" (card-connect.service.ts) — ensures an
+   * ACTIVE ShareLink exists and enqueues the card-share WhatsApp send when
+   * there's something new to notify about. Idempotent exactly like share()
+   * used to be inline: re-calling on an already-ACTIVE link is a no-op on the
+   * messaging side, just re-returns the existing link.
+   */
+  async ensureActiveLinkAndNotify(
+    card: { id: string; currentVersion: number; name: string },
+    contact: { id: string; phoneE164: string; displayName: string | null },
+    ownerName: string,
+  ): Promise<ShareLinkResponseDto> {
     const existing = await this.prisma.shareLink.findUnique({
-      where: { cardId_contactId: { cardId, contactId: contact.id } },
+      where: { cardId_contactId: { cardId: card.id, contactId: contact.id } },
     });
 
     if (existing && existing.status === 'ACTIVE') {
@@ -83,12 +110,6 @@ export class ShareLinksService {
         },
       });
     }
-
-    const owner = await this.prisma.user.findUniqueOrThrow({
-      where: { id: userId },
-    });
-    const ownerName =
-      [owner.firstName, owner.lastName].filter(Boolean).join(' ') || 'Someone';
 
     // ShareLink write + outbox enqueue in the SAME transaction — architecture
     // invariant #3. The transport (this.enqueuer.enqueue) is deliberately
@@ -115,7 +136,7 @@ export class ShareLinksService {
         : await tx.shareLink.create({
             data: {
               token: generateShareToken(),
-              cardId,
+              cardId: card.id,
               contactId: contact.id,
               lastNotifiedVersion: card.currentVersion,
             },
@@ -143,7 +164,7 @@ export class ShareLinksService {
     this.enqueuer.enqueue(outboxId, 'outbound');
     this.logger.info('sharing.card_share_enqueued', {
       shareLinkId: link.id,
-      cardId,
+      cardId: card.id,
       contactId: contact.id,
     });
 
@@ -222,6 +243,56 @@ export class ShareLinksService {
    * knowing which kind of link it's holding.
    */
   async resolvePublic(token: string): Promise<PublicCardResponseDto> {
+    const resolved = await this.resolveTokenToLinkOrCard(token);
+
+    if (resolved.kind === 'link') {
+      const { link } = resolved;
+      await this.prisma.shareLink.update({
+        where: { id: link.id },
+        data: {
+          viewCount: { increment: 1 },
+          lastViewedAt: new Date(),
+          firstViewedAt: link.firstViewedAt ?? new Date(),
+        },
+      });
+
+      return this.assemblePublicCard(link.card);
+    }
+
+    // Fire-and-forget, same style as the viewCount bump above — a scan is an
+    // anonymous stranger with no ShareLink row to increment, so this is
+    // CardScan's whole reason to exist. Never allowed to fail the page load.
+    void this.prisma.cardScan
+      .create({ data: { cardId: resolved.card.id } })
+      .catch((err) =>
+        this.logger.error('sharing.card_scan_write_failed', {
+          cardId: resolved.card.id,
+          err: err instanceof Error ? err.message : String(err),
+        }),
+      );
+
+    return this.assemblePublicCard(resolved.card);
+  }
+
+  /**
+   * The same token resolution resolvePublic() uses (ShareLink first, then
+   * Card.publicToken, with the same revoked/archived checks) but WITHOUT
+   * either view-tracking side effect (ShareLink.viewCount, CardScan) — for
+   * card-connect.service.ts, which resolves a token to check who its owner
+   * is and whether it's still live, not to record a page view.
+   */
+  async resolveActiveCard(token: string): Promise<CardForPublicResolve> {
+    const resolved = await this.resolveTokenToLinkOrCard(token);
+    return resolved.kind === 'link' ? resolved.link.card : resolved.card;
+  }
+
+  private async resolveTokenToLinkOrCard(token: string): Promise<
+    | {
+        kind: 'link';
+        link: ShareLink & { card: CardForPublicResolve };
+      }
+    | { kind: 'card'; card: CardForPublicResolve }
+  > {
     const link = await this.prisma.shareLink.findUnique({
       where: { token },
       include: { card: { include: PUBLIC_CARD_INCLUDE } },
@@ -239,17 +310,7 @@ export class ShareLinksService {
           'This link has been revoked by its owner.',
         );
       }
-
-      await this.prisma.shareLink.update({
-        where: { id: link.id },
-        data: {
-          viewCount: { increment: 1 },
-          lastViewedAt: new Date(),
-          firstViewedAt: link.firstViewedAt ?? new Date(),
-        },
-      });
-
-      return this.assemblePublicCard(link.card);
+      return { kind: 'link', link };
     }
 
     const card = await this.prisma.card.findUnique({
@@ -270,19 +331,7 @@ export class ShareLinksService {
       );
     }
 
-    // Fire-and-forget, same style as the viewCount bump above — a scan is an
-    // anonymous stranger with no ShareLink row to increment, so this is
-    // CardScan's whole reason to exist. Never allowed to fail the page load.
-    void this.prisma.cardScan
-      .create({ data: { cardId: card.id } })
-      .catch((err) =>
-        this.logger.error('sharing.card_scan_write_failed', {
-          cardId: card.id,
-          err: err instanceof Error ? err.message : String(err),
-        }),
-      );
-
-    return this.assemblePublicCard(card);
+    return { kind: 'card', card };
   }
 
   private async assemblePublicCard(

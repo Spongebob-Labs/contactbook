@@ -113,7 +113,17 @@ export class OtpService {
     return shouldUseDevFallback ? { devCode: code } : {};
   }
 
-  async verify(phoneE164: string, code: string): Promise<{ userId: string }> {
+  /**
+   * Validates a code and consumes the challenge — full stop. Deliberately
+   * does NOT touch `User`: this is the primitive a flow needs when it wants
+   * "prove you control this phone number" without that proof also being a
+   * login (see sharing/card-connect.service.ts — a QR-scan verifier must
+   * never gain a ContactBook account just by connecting to someone's card).
+   * `verify()` below is `verifyChallenge()` plus the login-specific
+   * user.upsert(), kept as its own method so AuthController's flow is
+   * unchanged.
+   */
+  async verifyChallenge(phoneE164: string, code: string): Promise<void> {
     const challenge = await this.prisma.otpChallenge.findFirst({
       where: { phoneE164, consumedAt: null, expiresAt: { gt: new Date() } },
       orderBy: { createdAt: 'desc' },
@@ -151,6 +161,10 @@ export class OtpService {
       where: { id: challenge.id },
       data: { consumedAt: new Date() },
     });
+  }
+
+  async verify(phoneE164: string, code: string): Promise<{ userId: string }> {
+    await this.verifyChallenge(phoneE164, code);
 
     const user = await this.prisma.user.upsert({
       where: { phoneE164 },

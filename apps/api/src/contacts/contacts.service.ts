@@ -54,6 +54,23 @@ export class ContactsService {
   }
 
   /**
+   * The QR-scan "Save & connect" path — card-connect.service.ts calls this
+   * once a scanner has verified their phone. Same upsert-by-(ownerId, phone)
+   * shape as upsertByPhone/import, tagging a newly-created row `source:
+   * QR_SCAN`. Returns the raw row (not a response DTO): the caller is
+   * another service, not a controller serving this back to the scanner.
+   * Only `source` differs on create — an existing contact's source is never
+   * overwritten, same convention as import().
+   */
+  async upsertFromScan(ownerId: string, phoneE164: string): Promise<Contact> {
+    return this.prisma.contact.upsert({
+      where: { ownerId_phoneE164: { ownerId, phoneE164 } },
+      create: { ownerId, phoneE164, source: 'QR_SCAN' },
+      update: {},
+    });
+  }
+
+  /**
    * Bulk add — the actual expected onboarding path for contacts, e.g. after
    * the FE reads the device address book. Upserts each entry the same way
    * upsertByPhone does, tagging newly-created rows `source: IMPORTED` so

@@ -125,9 +125,11 @@ Admin-ish surface for managing the WhatsApp Content Templates that `/cards/:id/s
 through. Not something an end-user ever touches; likely irrelevant to end-user-facing FE work
 unless you're building an internal ops screen.
 
-### Public — no auth, separate skill
+### Public — no auth, separate skills
 `GET /public/links/:token` and the page that calls it are covered in full by the
-**`contactbook-share-page`** skill — load that instead when building `/c/[token]`.
+**`contactbook-share-page`** skill — load that instead when building `/c/[token]`. The
+QR-scan "Save & connect" actions on that same page (`.../connect/otp/request`, `.../verify`) are
+their own skill: **`contactbook-qr-scan-connect`**.
 
 ## The live spec
 
@@ -152,11 +154,11 @@ Don't build UI implying these exist:
   exist now, as of 2026-09-02) and exactly what they don't.
 - **Per-contact field visibility.** Every contact holding a link to the same card sees the
   exact same fields — no "hide this field from this one person" override yet.
-- **QR scan-to-connect.** `Card.publicUrl` (a real, working QR target — see above) exists, but
-  there's no `ScanCode` model or inbound-scan tracking beyond the anonymous `CardScan` count the
-  public resolver writes on every hit. The "scan a badge, both parties get a WhatsApp message"
-  handshake is a separate, not-yet-built feature — don't build UI implying a scan captures the
-  scanner's identity or notifies the owner.
+- **QR scan-to-connect exists now** (as of 2026-09-08, branch `feat/qr-scan-connect`, not yet
+  merged) but is opt-in, not automatic — a plain scan is still just the anonymous `CardScan`
+  count it always was. `POST /public/links/:token/connect/otp/request` + `/verify` let a scanner
+  deliberately prove their own phone and become a real, notifiable recipient. Full guide:
+  **`contactbook-qr-scan-connect`**.
 - **Per-view analytics beyond a raw count.** `ShareLink` tracks `viewCount`/`firstViewedAt`/
   `lastViewedAt` only — no event-level detail (which field got tapped, vCard downloads, etc.).
 - **vCard download.** `GET /public/links/:token/vcard.vcf` is designed, not built. If you need
