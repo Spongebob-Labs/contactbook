@@ -195,9 +195,14 @@ const ACTION_MIN_HEIGHT = 52;
  *
  * Container query units (`cqi`) are the textbook fix here and they are **not usable on this
  * component**: `container-type: inline-size` applies `contain: layout`, which makes the element
- * a containing block for `position: fixed` descendants — and the card's whole ground rests on
- * `[data-card-ground]` being fixed to the *viewport* on `/c/{slug}`. A container query on the
- * card root would silently pin the ground to the card and undo "the ground holds still".
+ * a containing block for `position: fixed` descendants.
+ *
+ * ⚠ That argument has changed shape but not conclusion. It used to be fatal — the ground WAS
+ * `position: fixed` to the viewport on `/c/{slug}`, and a container query on the card root would
+ * have pinned it to the card and silently undone it. As of `card.css` §1b the ground is
+ * `absolute` on every surface, so `contain: layout` no longer breaks it. The sizes still are not
+ * container queries, for the second reason below: they are chosen against the two widths the card
+ * is read at, and a container query would make a name's size a function of the viewport again.
  *
  * So the sizes are absolute and chosen against the two widths the card is ever read at. They are
  * a scale rather than four literals so a change is a change to the *system*: the display size is
@@ -292,12 +297,18 @@ export function CardPage({ resolved, actions, className }: CardPageProps): React
        showed through underneath — which reads, correctly, as the card losing its background
        for a reason that has nothing to do with colour. Field count is not a design axis.
 
-       So: the card is a flex column and the body below the hero is the flexible track. Where
-       the card is given room (the builder's phone frame, a marketing tile) the body takes all
-       of it and the ground is painted edge to edge whether the card shares five fields or none.
-       Where it is not (`/c/{slug}`, where the parent's height is indefinite) there is no free
-       space to distribute, every box keeps exactly the height it had, and the fixed ground goes
-       on painting the viewport as before.
+       So: the card is a flex column and the body below the hero is the flexible track. Wherever
+       the card is given room — the builder's phone frame, a marketing tile, and now `/c/{slug}`
+       too — the body takes all of it and the ground is painted edge to edge whether the card
+       shares five fields or none.
+
+       ⚠ **`/c/{slug}` used to be the exception and no longer is.** The parent's height there is
+       indefinite, so there was no free space to distribute and the invariant was held instead by
+       promoting the ground to `position: fixed`, i.e. by painting the viewport. That ended when
+       the card became an inset, rounded object: a fixed layer can be neither inset nor rounded.
+       `card.css` §1b now gives the article `flex: 1` on that surface, which is the same mechanism
+       as the other two consumers rather than a second one. Nothing in THIS file changed for it —
+       which is the point of the absence the file rests on.
 
        ⚠ Still no height, no max-height and no overflow — the absence the whole file rests on.
        `flex-grow` cannot shrink a box below its content: a twenty-five-field card is laid out
@@ -370,12 +381,18 @@ export function CardPage({ resolved, actions, className }: CardPageProps): React
              which is what keeps `banner`'s canvas sheet running to the bottom edge of a short
              card instead of ending halfway down it. */
           flexGrow: 1,
-          /* A sheet, not a rectangle. When the body is canvas and the ground behind it is
-             painted, the two meet on a hard 480px edge — which reads as a rendering artefact
-             rather than as a decision. Rounding the top corners makes the same two colours
-             read as paper laid on a surface, which is what `banner` and `hero` are. Top only:
-             the sheet runs to the bottom of the document and a bottom radius would imply an
-             end that is not there. */
+          /* ⚠ **No radius here, and the comment this replaced claimed one.**
+
+             What stood here described rounding the body's top corners "so the two colours read
+             as paper laid on a surface" — for `banner` and `hero`, two layouts deleted with the
+             `HeaderLayout` axis. It was never applied: the style object below sets padding and
+             nothing else, so the sentence had been describing an intention for some months. That
+             is worse than no comment, and it is why this one is explicit.
+
+             The radius the card actually has belongs to the ARTICLE, once, and it comes from
+             `card.css` §1b — where it can be scoped to `/c/{slug}` and kept off the builder's
+             preview, which is already inside a rounded, clipping frame of its own. The body is
+             transparent on the painted ground, so it has no edge of its own to round. */
           paddingTop: "var(--space-8)",
           paddingBottom: "var(--space-10)",
           paddingInline: "var(--space-6)",

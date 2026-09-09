@@ -12,6 +12,17 @@
       "port": 5173,
       "url": "http://localhost:5173",
       "autoPort": true
+    },
+    {
+      "name": "web-card-stub",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "web",
+        "preview:stub"
+      ],
+      "port": 3100,
+      "url": "http://localhost:3100"
     }
   ]
 }

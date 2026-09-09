@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
 
 import { Download, MessageCircle } from "lucide-react";
 
@@ -10,11 +10,23 @@ import { whatsappActionFor } from "@/components/public-card/whatsapp-button";
 import type { ResolvedCard } from "@/types/domain";
 
 /**
- * The two actions on a scanned card, and deliberately only two.
+ * The three actions on a scanned card, and deliberately only three.
  *
- * Save the contact, or start a conversation. Everything else a link-in-bio product would put
- * here is already in the field list below, as a real labelled row with a working `href` —
- * turning six of those rows into six more buttons is how a contact card becomes a link tree.
+ * Save the contact, start a conversation, or connect. Everything else a link-in-bio product
+ * would put here is already in the field list below, as a real labelled row with a working
+ * `href` — turning six of those rows into six more buttons is how a contact card becomes a
+ * link tree.
+ *
+ * ## Why `connect` arrives as a node rather than a handler
+ * The other two are one-shot: a synthetic click on a blob URL, and an `href`. "Save & connect"
+ * is a four-state flow with its own request state, so it owns that state itself and is handed
+ * in already built — this component decides *where* it sits, not *what* it does. Passing a
+ * callback instead would move the OTP stage machine into the component whose entire job is
+ * choosing three colourways.
+ *
+ * It renders last on purpose. Saving to contacts is what the reader came to do; connecting is
+ * the thing they did not know they could do, and it reads as an offer in third position and as
+ * a demand in first.
  *
  * Both controls are conditional on the data actually supporting them: no phone number means
  * no WhatsApp button, and a card whose fields produce a `.vcf` with nothing but a name gets a
@@ -26,12 +38,15 @@ export interface PublicCardActionsProps {
   resolved: ResolvedCard;
   onSaveToContacts: (resolved: ResolvedCard) => void;
   savePending: boolean;
+  /** The "Save & connect" flow, already built. `null` renders no connect action at all. */
+  connect?: ReactNode;
 }
 
 export function PublicCardActions({
   resolved,
   onSaveToContacts,
   savePending,
+  connect = null,
 }: PublicCardActionsProps): ReactElement {
   const shape = resolved.template.shape.buttonShape;
 
@@ -53,7 +68,7 @@ export function PublicCardActions({
   const saveable = canBuildVcf(resolved);
   const whatsapp = whatsappActionFor(resolved);
 
-  const count = (saveable ? 1 : 0) + (whatsapp === null ? 0 : 1);
+  const count = (saveable ? 1 : 0) + (whatsapp === null ? 0 : 1) + (connect === null ? 0 : 1);
 
   return (
     <div
@@ -98,6 +113,8 @@ export function PublicCardActions({
           Message on WhatsApp
         </CardActionButton>
       )}
+
+      {connect}
     </div>
   );
 }

@@ -221,38 +221,73 @@ test("every field button is full-width and thumb-sized", async ({ page }) => {
 });
 
 /**
- * ⚠ **The ground paints the whole screen, whatever the card carries.**
+ * ⚠ **The ground fills the CARD, whatever the card carries — the same invariant, new mechanism.**
  *
- * `card.css` promotes `[data-card-ground]` to `position: fixed` only under
- * `[data-card-page-surface]`. That attribute used to live on `<PublicCardView>` — a component
- * this route does not render; it draws `<CardPage>` directly — so the marker was orphaned, the
- * ground stayed `absolute`, and it pinned to the card article, whose height is exactly its
- * content. A card sharing one or two fields therefore painted a short band of colour with the
- * app's white canvas below it, on both phone and desktop.
+ * The client stated it twice: the background is not a function of the field count. A card
+ * sharing one field must not paint a short band of colour with white below it.
  *
- * Field count is not a design axis. This asserts the opt-in is present and that the ground
- * really does cover the viewport, so a future component swap cannot orphan it again in silence.
+ * How that is held changed on 2026-09-09. It used to be held by promoting `[data-card-ground]`
+ * to `position: fixed` under `[data-card-page-surface]`, i.e. by painting the whole viewport.
+ * The card is now an inset, rounded object (`card.css` §1b) and a fixed layer can be neither
+ * inset nor rounded — `inset: 0` on one resolves against the initial containing block — so the
+ * ground went back to `absolute` and the ARTICLE takes the screen instead, via `flex: 1`.
+ *
+ * So this test now asserts the invariant directly rather than through its old implementation:
+ * the ground is exactly the card, and the card is exactly the screen minus its gutter. The
+ * `position` assertion is kept and INVERTED rather than deleted — reintroducing `fixed` here
+ * would paint through the gutter to the phone's edges and is precisely the "simplification" a
+ * future reader might reach for.
  */
-test("the ground covers the viewport, however few fields the card shares", async ({ page }) => {
+test("the ground fills the card, however few fields the card shares", async ({ page }) => {
   // The worst case on purpose: a card that maps nothing at all is the shortest article the
-  // route can produce, so it is where an `absolute` ground fails most visibly.
+  // route can produce, so it is where a content-height ground fails most visibly.
   await gotoReady(page, CARD_WITH_NO_FIELDS);
 
   await expect(page.locator("[data-card-page-surface]")).toHaveCount(1);
 
   const ground = page.locator("[data-card-ground]").first();
-  await expect(ground).toHaveCSS("position", "fixed");
+  /* ⚠ Not `fixed`. See the note above before changing this. */
+  await expect(ground).toHaveCSS("position", "absolute");
 
-  const covers = await ground.evaluate((node) => {
-    const box = node.getBoundingClientRect();
+  const geometry = await page.evaluate(() => {
+    const article = document.querySelector('[data-card-variant="page"]') as HTMLElement;
+    const g = document.querySelector("[data-card-ground]") as HTMLElement;
+    const a = article.getBoundingClientRect();
+    const b = g.getBoundingClientRect();
     return {
-      wide: box.width >= window.innerWidth,
-      tall: box.height >= window.innerHeight,
+      article: { w: a.width, h: a.height, top: a.top, left: a.left, right: a.right },
+      ground: { w: b.width, h: b.height },
+      radius: getComputedStyle(article).borderTopLeftRadius,
+      groundRadius: getComputedStyle(g).borderTopLeftRadius,
+      viewport: { w: window.innerWidth, h: window.innerHeight },
     };
   });
 
-  expect(covers.wide, "the ground does not span the viewport's width").toBe(true);
-  expect(covers.tall, "the ground does not span the viewport's height").toBe(true);
+  /* The ground IS the card. Within 2px each way for the article's own 1px hairline, which the
+     ground sits inside — see the ⚠ on the `border-radius: inherit` rule in `card.css`. */
+  expect(Math.abs(geometry.ground.w - geometry.article.w)).toBeLessThanOrEqual(2);
+  expect(Math.abs(geometry.ground.h - geometry.article.h)).toBeLessThanOrEqual(2);
+
+  /* And the card is the screen minus its gutter — which is what makes the ground's height
+     independent of the field count on a card that maps none. */
+  expect(geometry.article.h).toBeGreaterThanOrEqual(geometry.viewport.h - 26);
+
+  /* Inset from every edge, so it reads as an object rather than a column with side margins. */
+  expect(geometry.article.top).toBeGreaterThanOrEqual(11);
+  expect(geometry.article.left).toBeGreaterThanOrEqual(11);
+  expect(geometry.viewport.w - geometry.article.right).toBeGreaterThanOrEqual(11);
+
+  /* ⚠ The width the CSS claims: `min(viewport - 24, --page-measure + 2 * --space-6)`. At
+     vp-360 that is 336px, which is `--face-w` — the share face's own width, and the whole
+     argument for a 12px gutter rather than a rounder-looking number. */
+  const expected = Math.min(geometry.viewport.w - 24, 460 + 48);
+  expect(Math.abs(geometry.article.w - expected)).toBeLessThanOrEqual(1);
+
+  /* Rounded, and the ground rounded with it. A radius on the card that the painted layer does
+     not follow is a square block of colour inside a rounded box — the exact defect this
+     change existed to fix, one level down. */
+  expect(parseFloat(geometry.radius)).toBeGreaterThanOrEqual(16);
+  expect(parseFloat(geometry.groundRadius)).toBeGreaterThanOrEqual(16);
 });
 
 test("renders the card's own templateId, not a default", async ({ page }) => {
@@ -611,23 +646,30 @@ test("generateMetadata produces a per-card title and description", async ({ page
 /* ── the material system: the ground, the motion, the browser's own surfaces ─────── */
 
 /**
- * ⚠ **THE GROUND HOLDS STILL.** The one claim in DESIGN.md that is invisible in a screenshot
- * and therefore invisible in review.
+ * ⚠ **THE CARD SCROLLS AS ONE OBJECT — and this replaces "the ground holds still".**
  *
- * It is a `position: fixed` painted element behind `position: relative` content —
- * deliberately **not** `background-attachment: fixed`, which iOS Safari does not implement
- * dependably and which is exactly the surface this page is read on. A future edit that
- * "simplifies" this back to a background on the card root would look identical in every static
- * screenshot in this suite and would lose the effect entirely, so the assertion is dynamic:
- * scroll the page and prove the content moved while the ground did not.
+ * DESIGN.md's original claim was that the ground is a `position: fixed` painted layer and the
+ * content column scrolls *over* it. That was the right answer while the card WAS the page. It
+ * stopped being the right answer on 2026-09-09, when the card became an inset, rounded object
+ * (`card.css` §1b): a fixed layer resolves `inset: 0` against the initial containing block, so
+ * it paints through the gutter to the phone's edges, and a radius on it rounds the viewport.
  *
- * The viewport is shortened here rather than the fixture being made longer. A five-field card
- * fits inside 900px at `vp-1440`, so the scroll this test depends on would be a no-op on one
- * of the three projects — and a scroll test that cannot scroll passes for the wrong reason.
+ * A held-still ground would also have been *wrong* for the new composition, not merely awkward
+ * to implement. Content sliding out of the top of a rounded card that stayed put would spill
+ * into the gutter — text in the margin, above the card's own top edge — because there is no
+ * overflow container anywhere in `card-page.tsx` and there must not be one.
+ *
+ * So the effect asserted here is the new one, and it is still invisible in a static screenshot:
+ * the ground is locked to the CARD. Scroll, and the ground and the content must move together
+ * by exactly the same amount, while the ground stays exactly as tall as the article. An edit
+ * that reattached the ground to the viewport, or that let it keep a content-height of its own,
+ * would look identical in every screenshot in this suite and would be caught here.
+ *
+ * The viewport is shortened rather than the fixture lengthened. A five-field card fits inside
+ * 900px at `vp-1440`, so the scroll would be a no-op on one of the three projects — and a
+ * scroll test that cannot scroll passes for the wrong reason.
  */
-test("the ground is a fixed layer and does not move when the content scrolls", async ({
-  page,
-}) => {
+test("the card scrolls as one object, ground locked to the card", async ({ page }) => {
   await gotoReady(page, CARD_WITH_PHONE);
   await page.setViewportSize({ width: page.viewportSize()?.width ?? 360, height: 420 });
 
@@ -638,21 +680,27 @@ test("the ground is a fixed layer and does not move when the content scrolls", a
 
   const before = await page.evaluate(() => {
     const g = document.querySelector("[data-card-ground]") as HTMLElement;
+    const a = document.querySelector('[data-card-variant="page"]') as HTMLElement;
     const n = document.querySelector("[data-card-name]") as HTMLElement;
     return {
       position: getComputedStyle(g).position,
       ground: g.getBoundingClientRect().top,
-      height: Math.round(g.getBoundingClientRect().height),
+      groundHeight: Math.round(g.getBoundingClientRect().height),
+      articleHeight: Math.round(a.getBoundingClientRect().height),
       viewport: window.innerHeight,
       name: n.getBoundingClientRect().top,
       scrollable: document.documentElement.scrollHeight - document.documentElement.clientHeight,
     };
   });
 
-  expect(before.position).toBe("fixed");
-  /* It is the viewport, not the card: `inset: 0` on a fixed element resolves against the
-     initial containing block. That is what makes the content column scroll *over* it. */
-  expect(before.height).toBe(before.viewport);
+  /* ⚠ `absolute`, not `fixed`. The note above is the whole reason. */
+  expect(before.position).toBe("absolute");
+
+  /* It is the card, not the viewport. On a card long enough to scroll, the article is TALLER
+     than the screen — so this also proves the ground is not silently viewport-sized. */
+  expect(Math.abs(before.groundHeight - before.articleHeight)).toBeLessThanOrEqual(2);
+  expect(before.articleHeight).toBeGreaterThan(before.viewport);
+
   expect(before.scrollable, "the page must actually be scrollable for this to prove anything")
     .toBeGreaterThan(80);
 
@@ -666,7 +714,8 @@ test("the ground is a fixed layer and does not move when the content scrolls", a
 
   expect(after.y).toBe(80);
   expect(after.name - before.name, "the content must scroll").toBe(-80);
-  expect(after.ground, "the ground must not").toBe(before.ground);
+  /* Together, to the pixel. A ground that lagged or held still is the regression. */
+  expect(after.ground - before.ground, "the ground must scroll WITH the card").toBe(-80);
 });
 
 /**
@@ -706,56 +755,58 @@ test("every row is fully painted with the animation killed", async ({ page }) =>
 /**
  * The parts we did not draw still ship as part of the card.
  *
- * DESIGN.md calls a default scrollbar and a default underline the cheapest signal that a page
- * was assembled rather than built, so all four are stated. The scrollbar is the awkward one and
- * the reason it is worth a test: the viewport's scrollbar belongs to `documentElement`, the
- * card's colours live on the card root, and a custom property cannot travel upward — so
- * `public-card-view.tsx` lifts two resolved values onto `:root` in an effect. An effect that
- * silently stopped running would leave the OS scrollbar and nothing else would notice.
+ * ⚠ **The scrollbar assertions were removed on 2026-09-09, and they were failing before that.**
+ *
+ * They asserted a `:root[data-card-page-scroll]` attribute plus a `--cb-scroll-track` equal to
+ * the palette's ground, both lifted onto `documentElement` by an effect in
+ * `components/public-card/public-card-view.tsx`. This route does not render that component — it
+ * draws `<CardPage>` directly — so nothing had set the attribute since that swap and this test
+ * was red on every project for a reason that had nothing to do with the card.
+ *
+ * The rules are gone from `card.css` rather than revived, and the reason is a design one now:
+ * the card is a 508px object floating on white (§1b), so its document scrollbar runs down the
+ * white page beside it. A scrollbar in the card's ground colour would be a stripe of oxblood
+ * attached to nothing. See the note at the foot of `card.css`.
+ *
+ * What remains is what this route really does own: tabular figures on values, stated underline
+ * metrics, and the on-palette flags `::selection` and the caret are keyed off.
  */
-test("themes the browser's own surfaces from the card's palette", async ({ page }) => {
+test("states the type details the browser would otherwise default", async ({ page }) => {
   await gotoReady(page, CARD_WITH_FINANCIALS);
 
-  /* ⚠ Waited for, not assumed. The scrollbar's two colours are lifted onto `documentElement`
-     by a client effect — they have to be, because the viewport's scrollbar belongs to the
-     document element and the card's `--c-*` properties are declared on the card root — so they
-     land after hydration rather than in the server's HTML. `gotoReady` waits out React's
-     streamed reveal and the fonts; it does not and should not wait for every effect. */
-  await page.waitForFunction(() =>
-    document.documentElement.hasAttribute("data-card-page-scroll"),
-  );
-
   const surfaces = await page.evaluate(() => {
-    const de = document.documentElement;
     const value = document.querySelector("[data-card-field-value]") as HTMLElement;
-    const link = document.querySelector("[data-public-card-made-with] a") as HTMLElement;
     return {
-      scrollAttr: de.getAttribute("data-card-page-scroll"),
-      scrollbarWidth: getComputedStyle(de).scrollbarWidth,
-      thumb: de.style.getPropertyValue("--cb-scroll-thumb"),
-      track: de.style.getPropertyValue("--cb-scroll-track"),
       /* A phone number and an account number are read as data; proportional figures make the
          digits shift width under the eye. */
       numerals: getComputedStyle(value).fontVariantNumeric,
-      underlineOffset: getComputedStyle(link).textUnderlineOffset,
-      underlineThickness: getComputedStyle(link).textDecorationThickness,
       /* Which ground each region stands on — `card.css` keys `::selection` and the caret off
          this, because `--c-ink` is WHITE on the five deep palettes and a single ink-tinted
-         selection rule would paint white on white the moment a reader dragged across the
-         `banner` layout's canvas body. */
+         selection rule would paint white on white the moment a reader dragged across a
+         canvas-bodied card. */
       hero: document.querySelector("[data-card-hero]")?.getAttribute("data-card-on-palette"),
       body: document.querySelector("[data-card-body]")?.getAttribute("data-card-on-palette"),
     };
   });
 
-  expect(surfaces.scrollAttr).not.toBeNull();
-  expect(surfaces.scrollbarWidth).toBe("thin");
-  expect(surfaces.thumb).not.toBe("");
-  /* The track is the card's own ground, read off the palette rather than guessed. */
-  expect(surfaces.track).toBe(TEMPLATE_PALETTES.oxblood.ground);
   expect(surfaces.numerals).toContain("tabular-nums");
-  expect(surfaces.underlineOffset).toBe("3px");
-  expect(surfaces.underlineThickness).toBe("1.5px");
+
+  /* ⚠ The underline metrics are read on a DIFFERENT fixture, deliberately. The masking card's
+     rows are all notes rather than buttons (a masked value is never actionable — AC-33), so it
+     is the one card on the route that can carry no field anchor at all. Measuring a real field
+     button is the point; falling back to whatever anchor happened to be in the document would
+     have quietly measured the made-with caption instead. */
+  await gotoReady(page, CARD_WITH_PHONE);
+  const underline = await page.evaluate(() => {
+    const link = document.querySelector("[data-card-action-button]") as HTMLElement;
+    return {
+      offset: getComputedStyle(link).textUnderlineOffset,
+      thickness: getComputedStyle(link).textDecorationThickness,
+    };
+  });
+
+  expect(underline.offset).toBe("3px");
+  expect(underline.thickness).toBe("1.5px");
   /* ⚠ **Both are `true` now, and the second one changed.** With `HeaderLayout` gone there is
      one composition — the palette runs the full height and the field stack stands on it — so
      `bodyOnPalette` is no longer a thing a card can be false about. It read "false" here while
