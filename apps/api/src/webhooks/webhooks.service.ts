@@ -32,13 +32,15 @@ export class WebhooksService {
   ) {}
 
   /**
-   * Records one inbound webhook hit, verbatim. Deduped on Twilio's own
-   * MessageSid (`providerMessageId`) — Twilio retries a webhook delivery on
-   * anything but a fast 2xx, and a retry must not double-log the same
-   * message as two separate rows. A duplicate is treated as success, not an
-   * error: from the caller's perspective (the controller, which must always
-   * answer 2xx so Twilio stops retrying) this is exactly as done as a fresh
-   * insert.
+   * Records one inbound webhook hit, verbatim. Deduped on the
+   * `(fromPhoneE164, toPhoneE164)` pair, not on Twilio's MessageSid — this
+   * table is a "have these two ever connected" log, one row per pair EVER,
+   * not one row per message. Both a Twilio retry of a delivery already
+   * recorded, and a genuinely new second message from an already-logged
+   * sender, hit the same unique constraint and are treated identically: a
+   * no-op, not an error. From the caller's perspective (the controller,
+   * which must always answer 2xx so Twilio stops retrying) this is exactly
+   * as done as a fresh insert either way.
    */
   async recordInbound(params: TwilioInboundParams): Promise<void> {
     const providerMessageId = params.MessageSid;
@@ -56,12 +58,14 @@ export class WebhooksService {
     try {
       await this.prisma.inboundMessage.create({
         data: {
+          source: 'WHATSAPP_MESSAGE',
           providerMessageId,
           fromPhoneE164,
           toPhoneE164,
           body: params.Body ?? null,
           profileName: params.ProfileName ?? null,
           rawPayload: params as Prisma.InputJsonValue,
+          resolvedOwnerId: null,
         },
       });
       this.logger.info('webhooks.inbound_recorded', {
@@ -69,8 +73,10 @@ export class WebhooksService {
         providerMessageId,
       });
     } catch (err) {
-      // P2002 on providerMessageId = a Twilio retry of a delivery we already
-      // recorded. Not an error — same outcome as if this were the first time.
+      // P2002 on (fromPhoneE164, toPhoneE164) = this pair is already on
+      // file — either a Twilio retry of a delivery we already recorded, or a
+      // genuinely new message from a sender we've logged before. Not an
+      // error — same outcome as if this were the first time.
       if (
         err &&
         typeof err === 'object' &&
@@ -90,21 +96,24 @@ export class WebhooksService {
     query: ListInboundMessagesQueryDto,
   ): Promise<InboundMessageResponseDto[]> {
     const rows = await this.prisma.inboundMessage.findMany({
-      where: query.fromPhoneE164
-        ? { fromPhoneE164: query.fromPhoneE164 }
-        : undefined,
+      where: {
+        ...(query.fromPhoneE164 && { fromPhoneE164: query.fromPhoneE164 }),
+        ...(query.source && { source: query.source }),
+      },
       orderBy: { receivedAt: 'desc' },
       take: query.limit ?? DEFAULT_LIMIT,
     });
 
     return rows.map((row) => ({
       id: row.id,
+      source: row.source,
       provider: row.provider,
       providerMessageId: row.providerMessageId,
       fromPhoneE164: row.fromPhoneE164,
       toPhoneE164: row.toPhoneE164,
       body: row.body,
       profileName: row.profileName,
+      resolvedOwnerId: row.resolvedOwnerId,
       receivedAt: row.receivedAt,
     }));
   }

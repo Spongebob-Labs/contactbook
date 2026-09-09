@@ -50,11 +50,12 @@ model User {
   createdAt                    DateTime  @default(now())
   updatedAt                    DateTime  @updatedAt
 
-  refreshTokens RefreshToken[]
-  profileFields ProfileField[]
-  fieldGroups   ProfileFieldGroup[]
-  cards         Card[]
-  contacts      Contact[]
+  refreshTokens   RefreshToken[]
+  profileFields   ProfileField[]
+  fieldGroups     ProfileFieldGroup[]
+  cards           Card[]
+  contacts        Contact[]
+  inboundMessages InboundMessage[]
 
   @@map("users")
 }
@@ -565,35 +566,56 @@ model Message {
   @@map("messages")
 }
 
-/// Raw capture of every inbound WhatsApp message, from anyone, whether or not
-/// it resolves to a known Contact/User/Card — deliberately not `Message`
-/// (whose `purpose` enum is template-send semantics; an unsolicited message
-/// from a stranger doesn't have one). This is the interaction history: two
-/// phone numbers touched at a point in time, nothing more inferred. Resolving
-/// *who* on our side this relates to (a scan code, a known Contact) is a
-/// separate, not-yet-built concern — see docs/architecture/hld.md Flow 3.
+enum InboundMessageSource {
+  WHATSAPP_MESSAGE // raw webhook hit, Twilio → POST /webhooks/twilio/inbound
+  QR_SCAN_CONNECT // a stranger scanned a card's QR and verified their phone — see sharing/card-connect.service.ts
+}
+
+/// The interaction/connection log: one row per (fromPhoneE164, toPhoneE164)
+/// pair, EVER — not one row per event. A second real WhatsApp message, or a
+/// second QR-scan-connect, between a pair already on file produces no new
+/// row; that's what `@@unique([fromPhoneE164, toPhoneE164])` enforces. This
+/// was originally message-only (deduped on Twilio's MessageSid); it now also
+/// covers the QR-scan "Save & connect" flow, which involves no WhatsApp
+/// message at all — hence `source` and the nullable message-only columns.
+///
+/// `toPhoneE164` means different things per `source`, deliberately: for
+/// WHATSAPP_MESSAGE it's always our fixed business number (so the unique
+/// pair degenerates to "one row per sender"); for QR_SCAN_CONNECT it's the
+/// scanned card's OWNER's phone (so the same scanner connecting to two
+/// different owners still gets two rows — a genuinely distinct connection
+/// each time).
+///
+/// `resolvedOwnerId` is the "who on our side is this about" field: always
+/// set for QR_SCAN_CONNECT (we know exactly whose card was scanned), always
+/// null for WHATSAPP_MESSAGE (no scan-code-in-message-body resolution exists
+/// yet — see docs/architecture/hld.md Flow 3).
 ///
 /// `rawPayload` keeps the entire webhook body verbatim so a field nobody
 /// thought to add a column for isn't silently lost — the structured columns
 /// below are just the ones known to be useful for the GET endpoint today.
 model InboundMessage {
-  id                String   @id @default(uuid())
-  provider          String   @default("twilio")
-  /// Twilio's MessageSid — the dedup key. Twilio retries a webhook delivery
-  /// on a non-2xx or a timeout; without this constraint a retry double-logs
-  /// the same message as two separate "interactions."
-  providerMessageId String   @unique
+  id       String               @id @default(uuid())
+  source   InboundMessageSource @default(WHATSAPP_MESSAGE)
+  provider String               @default("twilio")
+  /// Twilio's MessageSid. Null for QR_SCAN_CONNECT rows, which have no
+  /// Twilio delivery behind them at all.
+  providerMessageId String? @unique
   fromPhoneE164     String
   toPhoneE164       String
   body              String?
   /// WhatsApp's own display name for the sender, when Twilio provides one —
   /// never something we asked for or verified, just whatever their WhatsApp
   /// profile says at send time.
-  profileName       String?
-  rawPayload        Json
-  receivedAt        DateTime @default(now())
+  profileName     String?
+  rawPayload      Json?
+  resolvedOwnerId String?
+  resolvedOwner   User?    @relation(fields: [resolvedOwnerId], references: [id], onDelete: SetNull)
+  receivedAt      DateTime @default(now())
 
+  @@unique([fromPhoneE164, toPhoneE164])
   @@index([fromPhoneE164, receivedAt(sort: Desc)])
   @@index([receivedAt(sort: Desc)])
+  @@index([resolvedOwnerId])
   @@map("inbound_messages")
 }

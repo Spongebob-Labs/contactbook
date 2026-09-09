@@ -28,11 +28,13 @@ export class InboundMessagesController {
 
   @Get()
   @ApiOperation({
-    summary: 'Raw history of inbound WhatsApp messages',
+    summary: 'History of inbound WhatsApp messages and QR-scan connections',
     description:
-      'Every message that has hit our WhatsApp number, from anyone, whether or not it ' +
-      'resolves to a known Contact or User — no ownership scoping, this is a raw capture. ' +
-      'Newest first, capped at 500 rows per call.',
+      'One row per (fromPhoneE164, toPhoneE164) pair, ever — a real WhatsApp message and a ' +
+      'QR-scan "Save & connect" both land here, distinguished by `source`. A second message ' +
+      '(or a second scan) between a pair already on file produces no new row. No ownership ' +
+      'scoping (`resolvedOwnerId` narrows QR_SCAN_CONNECT rows, but this endpoint itself ' +
+      "returns everyone's). Newest first, capped at 500 rows per call.",
   })
   @ApiResponse({ status: 200, type: [InboundMessageResponseDto] })
   async list(

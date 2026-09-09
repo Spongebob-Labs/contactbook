@@ -12,6 +12,8 @@ import { CardsService } from './cards.service';
 import { ShareLinksController } from './share-links.controller';
 import { ShareLinksService } from './share-links.service';
 import { PublicLinksController } from './public-links.controller';
+import { CardConnectController } from './card-connect.controller';
+import { CardConnectService } from './card-connect.service';
 import { WhatsAppTemplateController } from './whatsapp-template.controller';
 
 @Module({
@@ -20,9 +22,10 @@ import { WhatsAppTemplateController } from './whatsapp-template.controller';
     CardsController,
     ShareLinksController,
     PublicLinksController,
+    CardConnectController,
     WhatsAppTemplateController,
   ],
-  providers: [CardsService, ShareLinksService],
+  providers: [CardsService, ShareLinksService, CardConnectService],
 })
 export class SharingModule implements OnModuleInit {
   constructor(

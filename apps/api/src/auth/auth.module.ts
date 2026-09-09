@@ -21,7 +21,12 @@ import { ApiError } from '../common/errors/api-error';
   // otherwise fail to satisfy JwtService with "not available in the X
   // module", since exporting JwtAuthGuard alone doesn't carry its own
   // dependencies along with it.
-  exports: [JwtModule, JwtAuthGuard],
+  //
+  // OtpService is exported too: sharing/card-connect.service.ts needs
+  // verifyChallenge()/request() to verify a QR-scan connector's phone
+  // without creating them a session — the flow AuthController itself never
+  // needed to expose outside this module until now.
+  exports: [JwtModule, JwtAuthGuard, OtpService],
 })
 export class AuthModule implements OnModuleInit {
   constructor(
