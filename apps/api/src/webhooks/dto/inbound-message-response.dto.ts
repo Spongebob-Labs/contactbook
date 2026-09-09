@@ -11,8 +11,9 @@ export class InboundMessageResponseDto {
     description:
       'WHATSAPP_MESSAGE = a real inbound WhatsApp webhook hit. ' +
       'QR_SCAN_CONNECT = a stranger scanned a card QR and verified their ' +
-      'phone via the public "Save & connect" flow — no WhatsApp message ' +
-      'involved at all.',
+      'phone via the public "Save & connect" flow. CARD_SHARE = an owner ' +
+      'shared a card with a contact. Neither of the latter two involves an ' +
+      'actual WhatsApp message Twilio delivered to us.',
   })
   source!: InboundMessageSource;
 
@@ -29,7 +30,8 @@ export class InboundMessageResponseDto {
   @ApiProperty({
     example: '+919876543210',
     description:
-      'Whoever initiated contact — the message sender, or the QR scanner.',
+      'Whoever initiated contact — the message sender, the QR scanner, or ' +
+      'the card owner (for a CARD_SHARE row).',
   })
   fromPhoneE164!: string;
 
@@ -37,7 +39,8 @@ export class InboundMessageResponseDto {
     example: '+15551234567',
     description:
       'For WHATSAPP_MESSAGE, our fixed WhatsApp business number. For ' +
-      'QR_SCAN_CONNECT, the phone number of the card owner who was scanned.',
+      'QR_SCAN_CONNECT, the phone number of the card owner who was scanned. ' +
+      'For CARD_SHARE, the phone number of the contact the card was shared with.',
   })
   toPhoneE164!: string;
 
@@ -56,8 +59,9 @@ export class InboundMessageResponseDto {
     example: '3f1c2b3a-4d5e-4f6a-8b9c-0d1e2f3a4b5c',
     description:
       'The ContactBook User this row resolves to, if any. Always set for ' +
-      "QR_SCAN_CONNECT (the scanned card's owner). Always null for " +
-      'WHATSAPP_MESSAGE today — no scan-code-in-message resolution exists yet.',
+      'QR_SCAN_CONNECT and CARD_SHARE (both know exactly which owner this ' +
+      'is about). Always null for WHATSAPP_MESSAGE today — no ' +
+      'scan-code-in-message resolution exists yet.',
   })
   resolvedOwnerId!: string | null;
 

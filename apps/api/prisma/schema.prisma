@@ -569,27 +569,38 @@ model Message {
 enum InboundMessageSource {
   WHATSAPP_MESSAGE // raw webhook hit, Twilio → POST /webhooks/twilio/inbound
   QR_SCAN_CONNECT // a stranger scanned a card's QR and verified their phone — see sharing/card-connect.service.ts
+  CARD_SHARE // an owner shared a card with a contact — see sharing/share-links.service.ts share()
 }
 
 /// The interaction/connection log: one row per (fromPhoneE164, toPhoneE164)
-/// pair, EVER — not one row per event. A second real WhatsApp message, or a
-/// second QR-scan-connect, between a pair already on file produces no new
-/// row; that's what `@@unique([fromPhoneE164, toPhoneE164])` enforces. This
-/// was originally message-only (deduped on Twilio's MessageSid); it now also
-/// covers the QR-scan "Save & connect" flow, which involves no WhatsApp
-/// message at all — hence `source` and the nullable message-only columns.
+/// pair, EVER — not one row per event. A second real WhatsApp message, a
+/// second QR-scan-connect, or a re-share with the same contact, between a
+/// pair already on file produces no new row; that's what
+/// `@@unique([fromPhoneE164, toPhoneE164])` enforces. This was originally
+/// message-only (deduped on Twilio's MessageSid); it now also covers the
+/// QR-scan "Save & connect" flow and an owner-initiated card share, neither
+/// of which is a WhatsApp message Twilio delivered to us — hence `source`
+/// and the nullable message-only columns.
 ///
-/// `toPhoneE164` means different things per `source`, deliberately: for
-/// WHATSAPP_MESSAGE it's always our fixed business number (so the unique
-/// pair degenerates to "one row per sender"); for QR_SCAN_CONNECT it's the
-/// scanned card's OWNER's phone (so the same scanner connecting to two
-/// different owners still gets two rows — a genuinely distinct connection
-/// each time).
+/// `fromPhoneE164`/`toPhoneE164` mean different things per `source`,
+/// deliberately — in every case `from` is whoever's action created this
+/// connection, `to` is who they connected with:
+///   - WHATSAPP_MESSAGE: from = the sender, to = our fixed business number
+///     (so the unique pair degenerates to "one row per sender")
+///   - QR_SCAN_CONNECT: from = the scanner (they took the action), to = the
+///     scanned card's OWNER's phone (so the same scanner connecting to two
+///     different owners still gets two rows — a genuinely distinct
+///     connection each time)
+///   - CARD_SHARE: from = the OWNER (they took the action), to = the
+///     contact's phone (so the same owner sharing multiple different cards
+///     with the same contact still logs once — this is "has this owner
+///     ever connected with this contact," not "how many cards were shared")
 ///
 /// `resolvedOwnerId` is the "who on our side is this about" field: always
-/// set for QR_SCAN_CONNECT (we know exactly whose card was scanned), always
-/// null for WHATSAPP_MESSAGE (no scan-code-in-message-body resolution exists
-/// yet — see docs/architecture/hld.md Flow 3).
+/// set for QR_SCAN_CONNECT and CARD_SHARE (both know exactly which
+/// ContactBook User this event is about), always null for WHATSAPP_MESSAGE
+/// (no scan-code-in-message-body resolution exists yet — see
+/// docs/architecture/hld.md Flow 3).
 ///
 /// `rawPayload` keeps the entire webhook body verbatim so a field nobody
 /// thought to add a column for isn't silently lost — the structured columns
@@ -598,8 +609,8 @@ model InboundMessage {
   id       String               @id @default(uuid())
   source   InboundMessageSource @default(WHATSAPP_MESSAGE)
   provider String               @default("twilio")
-  /// Twilio's MessageSid. Null for QR_SCAN_CONNECT rows, which have no
-  /// Twilio delivery behind them at all.
+  /// Twilio's MessageSid. Null for QR_SCAN_CONNECT/CARD_SHARE rows, which
+  /// have no Twilio delivery behind them at all.
   providerMessageId String? @unique
   fromPhoneE164     String
   toPhoneE164       String

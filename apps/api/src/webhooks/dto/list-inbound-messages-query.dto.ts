@@ -15,7 +15,7 @@ export class ListInboundMessagesQueryDto {
   @ApiPropertyOptional({
     enum: InboundMessageSource,
     description:
-      'Only rows of this kind — a real message, or a QR-scan connect.',
+      'Only rows of this kind — a real message, a QR-scan connect, or a card share.',
   })
   @IsOptional()
   @IsEnum(InboundMessageSource)
