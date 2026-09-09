@@ -1,170 +1,141 @@
-import { hero } from "@/fixtures/marketing";
+import { resolveCard } from "@/card/resolve-card";
+import { ShareFace } from "@/card/share-face";
+import { FIXTURE_DB } from "@/fixtures";
+import { hero, heroCard, liveCard, marketingUser } from "@/fixtures/marketing";
 
+import { HeroCard } from "./hero-card";
 import { mkcn } from "./mk-cn";
 import { Arrival } from "./mk-motion";
 import { CONTENT_COLUMN, Section } from "./section";
 import { Display, MkButtonLink, Prose } from "./type";
 
 /**
- * The hero — a sheet of ruled paper, a margin rule, and the entry written on it.
+ * The first viewport.
  *
- * ## ⚠ THE SKY AND THE FILM ARE GONE, AT THE CLIENT'S WORD, AND NEITHER IS COMING BACK QUIETER
+ * ## ⚠ THE RULED SHEET IS GONE, AND SO IS "THE HERO IS TYPE-ONLY"
  *
- * *"The blue colour and the video being rendered there are both looking the worst of all, so I
- * want you to just remove both of them… It should be text, and behind that, you have to think
- * about what you could add better than this."*
+ * This hero was, in order: a coloured gradient with centred type, a gradient with a big tilted
+ * card, a gradient with a silent film, a sheet of ruled contact-book paper with a fan of three
+ * real cards, and then that same sheet with nothing on it at all. Four objects were rejected
+ * and the rule written afterwards was "the hero is type-only; do not put an object on that
+ * sheet."
  *
- * Both objects are deleted rather than softened, because the instruction named both. What is
- * worth recording is the pattern the deletion sits in, since it is now three heroes deep:
+ * It now carries an animated card, on the client's own brief — *"the opening page I'm
+ * picturing is very clean and clear, with a little bit of text (large text) explaining what
+ * this is, and then a visual of contact cards being updated"* — and with sign-off. The reason
+ * this is a different proposition rather than a fifth attempt at the same mistake: the four
+ * rejected objects were **pictures of a card**, placed in the empty half of the screen to fill
+ * it. `<LiveCard>` is the product's single claim, performed. A stranger who reads nothing has
+ * still watched a contact card go out of date and repair itself, which is the sentence beside
+ * it.
  *
- *   1. azure → cyan gradient, centred type — *"looking very childish."*
- *   2. Sapphire → Onyx gradient, centred type, a tilted card — *"looking very big."*
- *   3. Sapphire → Onyx gradient, centred type, a film — *"the worst of all."*
+ * The ruling went with it. Two reasons, and the second is the real one: the brief asks for
+ * white space, calm and minimal in three separate places — and a texture underneath a moving
+ * object is two things competing for the same attention. `--mk-ledger-*` is retained in
+ * `marketing.css` and nothing renders it; `--mk-ledger-lead` is still this file's top padding,
+ * which is why the token could not simply be deleted.
  *
- * Every rejection was read as a colour note and answered with a new gradient, which is why the
- * note arrived three times. **The ground was never the defect.** A full-bleed coloured rectangle
- * with centred type is the shape every generated landing page ships; no hue rescues it, and the
- * fourth gradient would have been rejected too. What the reader was actually looking at was
- * seven hundred vertical pixels of surface doing no work, and a 68ch subhead centred under a
- * centred headline, which gives the eye no axis to return to at the start of each line.
+ * ## The composition
+ * Type ranged left against the column, card to the right, and the headline is DELIBERATELY
+ * narrow — the two clauses stack, which is what gives the eye an axis to return to. Below
+ * `lg` the card drops under the copy rather than shrinking beside it: a 360px card next to a
+ * headline in a 400px column is two things fighting, and the card is the one that loses
+ * legibility.
  *
- * ## What replaces it, and why this metaphor rather than a nicer gradient
- *
- * The page already argues this two sections down, in `problem`: *"A paper contact book worked
- * because somebody maintained it. You crossed out an address and wrote the new one above it,
- * and the book stayed true because you tended it."*
- *
- * That is the product's thesis, and the hero was illustrating **weather**. It is now the thing
- * the page is about: a sheet of ruled paper, a margin rule down the left, and the headline
- * written on it as the first entry. Four properties earn it over another gradient —
- *
- *   · it is *structure*, not a colour field, which is the actual complaint;
- *   · it sets the argument up instead of contradicting it;
- *   · it costs no bytes — one repeating gradient, no image, no video, no library — so the
- *     page's LCP candidate stops being a 220KB video poster and becomes text;
- *   · it is the product's own object, so the hero is not borrowing an aesthetic from anywhere.
- *
- * ## ⚠ THE RULED GROUND CARRIES ONE INK LEVEL. `--mk-stone` IS ILLEGAL IN THIS SECTION.
- *
- * The same rule the four washes already follow, reached the same way — by measuring. There is
- * no rule density at which the ruling is visible AND stone clears 4.5:1:
- *
- *     rule @ 3%   ground #eeeeef   stone 4.28:1   FAIL
- *     rule @ 4%   ground #ececec   stone 4.20:1   FAIL
- *     rule @ 7%   ground #e6e6e6   stone 3.98:1   FAIL   ← shipped
- *     rule @ 8%   ground #e3e3e4   stone 3.87:1   FAIL
- *
- * So every level of copy here is `--mk-ink` at full strength — 13.95:1 over a rule, 15.97:1
- * between them — and the hierarchy is carried by size and weight alone. That is better
- * typography than a greyed sub anyway; a secondary tone is a habit, not a decision.
- *
- * ## The other contrast consequence: Amber cannot be the CTA on this ground
- *
- * `amber` measures **1.92:1 on paper** and has no findable boundary there, which is a WCAG
- * 1.4.11 failure rather than an ugly one — the control stops being locatable before its label
- * is read. DESIGN.md already states the rule and the substitution: *"a light pass wanting a
- * primary action uses `dark`."* So the primary is Onyx, 15.97:1 against the sheet, and it is
- * the only saturated mass on the hero — which is what makes it the focal point rather than one
- * of two competing pills. The secondary is the new `line` variant, a ring at ink/55 measuring
- * 3.81:1 on bare paper and 3.31:1 where it crosses a rule — the worst case, still clear.
- * `glass` needs a dark backdrop to be a surface at all, and went with the sky.
- *
- * ## Left-aligned, and that is the "channelled" part of the brief
- *
- * Centred type has no reading axis: every line starts somewhere different, so the eye hunts for
- * the next line's beginning. Ranged left against the margin rule there is one vertical edge and
- * the whole block — headline, lead, actions, caveat — hangs off it in reading order. The margin
- * rule is not decoration; it is that axis, drawn.
- *
- * ## One authored moment, and it moved rather than being deleted
- *
- * DESIGN.md allows the page exactly one and forbids scroll reveals outright. It was the film.
- * With the film gone the hero would have had no motion at all, so the moment is now the margin
- * rule drawing down on load, with the copy arriving against it in the existing 70ms sequence —
- * the page gets ruled, then written on. One sentence, one moment, and it is the same sentence
- * the ground is making rather than a second effect bolted beside it. Both halves are CSS
- * keyframes on transform only; see `marketing.css` for why that is the only version that
- * survives the harness, a failed script and `prefers-reduced-motion`.
+ * ## Motion here is all LOAD, never scroll
+ * Nobody scrolls to the first thing they see, and DESIGN.md forbids arming above-the-fold
+ * content — a reader would watch the hero jump on every load, and a stuck observer would
+ * present as "the top of the page is broken". So: `line` wipes the two clauses on, `copy`
+ * raises the block under them, and the card is simply present from the first frame and starts
+ * its own loop after mount. Nothing in this section waits for an IntersectionObserver.
  */
 
 /**
- * The headline set as its two clauses, one per line.
+ * ⚠ THE CLAUSES ARE EXPLICIT, NOT SPLIT ON PUNCTUATION.
  *
- * ⚠ This is a TYPOGRAPHIC decision on existing copy, not a copy change: the fixture still holds
- * one string, the accessible name is still that whole string, and `hero.headline` is what SEO
- * and the tests read. Splitting on the sentence boundary at render time is what turns a
- * four-line rag into two deliberate lines that each occupy exactly one rule of the ledger.
- *
- * The lookbehind keeps the full stop on the line it belongs to. A `split(". ")` would eat it.
+ * This was `hero.headline.split(/(?<=\.)\s+/)`, which worked only because the old headline was
+ * two sentences ("Hand over one card. Keep it true for years."). The client's locked line is
+ * one — "Never lose contact." — so the same expression yields a single clause, the staged wipe
+ * collapses into one block fade, and the headline loses the axis that the whole composition is
+ * built on. The break is a typographic decision about this line and belongs in the file that
+ * sets it.
  */
-const HEADLINE_LINES = hero.headline.split(/(?<=\.)\s+/);
+const HEADLINE_LINES = [
+  { text: "Never lose", accent: false },
+  /**
+   * ⚠ THE ACCENT IS THE BRAND, AND IT IS LEGAL AT THIS SIZE ONLY.
+   *
+   * Every headline on the client's deck sets one word in the brand green — "How it *Works*",
+   * "This Week's Example: *Charlie Moretti*" — and it is the single thing that makes a white
+   * page read as ContactBook instead of as any white page.
+   *
+   * The green used is `--mk-green-display` (#43A491), which measures 3.01:1 on white. That
+   * clears the large-text bar of 3:1 and NOTHING ELSE: this word is 88px at the top of the
+   * clamp and 44px at the bottom, both comfortably "large". The brand value itself (#5ABCA9)
+   * is 2.28:1 and may never be a word at any size. Do not copy this pattern down to a
+   * paragraph or a label — `--mk-green-ink` is the level for those.
+   */
+  { text: "contact.", accent: true },
+] as const;
 
 export function Hero() {
+  /* One resolve per render, on the server. The pass and the card behind it cannot disagree
+     about whose card this is, because there is one `ResolvedCard`. */
+  const resolvedHeroCard = resolveCard(
+    heroCard,
+    marketingUser,
+    FIXTURE_DB.groups,
+    FIXTURE_DB.fields,
+  );
+
   return (
-    <Section
-      id="hero"
-      bare
-      tone="paper"
-      labelledBy="hero-headline"
-      className="overflow-hidden bg-mk-paper"
-    >
-      {/* The ruling, and only the ruling. The paper is on the section above it so the mask can
-          fade the rules out at both ends without taking the ground with them — masked together,
-          the sheet would dissolve into whatever is behind the page. `aria-hidden` because a
-          screen reader announcing the stationery before the headline is noise. */}
-      {/* `inset-y-0 right-0` and a LEFT that `.mk-ledger` computes for itself — the ruling
-          begins at the margin rule, not at the viewport edge. See `--mk-ledger-gutter`. */}
-      <div aria-hidden="true" data-hero-ledger="" className="mk-ledger absolute inset-y-0 right-0" />
-
-      <div className={mkcn(CONTENT_COLUMN, "relative pt-[var(--mk-ledger-lead)] pb-20 md:pb-28")}>
-        {/*
-          The copy block, and the margin rule is positioned against THIS box rather than the
-          viewport — so the rule keeps a real margin from the text at 360 instead of sliding
-          under the phone's edge, and it ends where the entry ends instead of running the full
-          height of a section whose height it knows nothing about.
-        */}
-        <div className="relative">
-          <span
-            aria-hidden="true"
-            data-hero-margin-rule=""
-            className="mk-ledger-margin absolute top-0 h-full w-px"
-            style={{ left: "calc(-1 * var(--mk-ledger-gutter))" }}
-          />
-
-
+    <Section id="hero" bare tone="white" labelledBy="hero-headline" className="bg-mk-white">
+      <div
+        className={mkcn(
+          CONTENT_COLUMN,
+          "relative pt-[var(--mk-ledger-lead)] pb-20 md:pb-28",
+          // The card's column is only created at `lg`. `items-center` rather than `start`:
+          // the card is a tall object and the type block is short, and aligning their tops
+          // leaves the card hanging into the section below it.
+          "grid grid-cols-1 items-center gap-10 lg:grid-cols-12 lg:gap-10",
+        )}
+      >
+        <div className="lg:col-span-7">
           {/*
             ⚠ EVERY MEASURE STAYS ON THE TYPE ELEMENT, NEVER ON THE `<Arrival>` AROUND IT.
 
             The measures are in `ch`, and `ch` resolves against the font-size of the element the
             rule lands on. Moved up one level onto a wrapper, `max-w-mk-measure-display` stops
-            being 24 characters of a 72px headline and becomes 24 characters of inherited 16px
-            body copy — which renders the hero headline one word per line, with the correct class
-            in the markup and the correct value in the stylesheet. It is the same failure mode
-            `mk-cn.ts` exists to prevent, arriving by a different road, and it cost a build.
-
-            So `<Arrival>` carries spacing and layout only. Nothing typographic.
+            being 24 characters of an 88px headline and becomes 24 characters of inherited 16px
+            body copy — which renders the headline one word per line, with the correct class in
+            the markup and the correct value in the stylesheet. It cost a build once.
           */}
           {/*
             ⚠ THE CLIP LIVES ON EACH CLAUSE, NOT ON A WRAPPER AROUND THE HEADING.
 
-            The headline is staged per line, which is the whole reason to use a wipe rather than
-            a block fade — two clauses appearing one after the other reads as writing, and one
-            clipped `<h1>` reads as a curtain. `<Arrival as="span">` exists for this: a `<div>`
-            inside an `<h1>` is invalid HTML, and hand-rolling the data attribute here would put
-            a motion decision in a section file instead of in the vocabulary.
+            Two clauses appearing one after the other reads as writing; one clipped `<h1>` reads
+            as a curtain. `<Arrival as="span">` exists for this — a `<div>` inside an `<h1>` is
+            invalid HTML, and hand-rolling the attribute here would put a motion decision in a
+            section file instead of in the vocabulary.
           */}
           <Display id="hero-headline" data-hero-headline="" className="max-w-mk-measure-display">
             {HEADLINE_LINES.map((line, i) => (
-              <Arrival key={line} as="span" variant="line" index={i} className="block">
-                {line}
+              <Arrival
+                key={line.text}
+                as="span"
+                variant="line"
+                index={i}
+                className={mkcn("block", line.accent && "text-mk-green-display")}
+              >
+                {line.text}
               </Arrival>
             ))}
           </Display>
 
           {/*
-            One offset for the whole block below the headline, inherited. `display: contents`
-            so the wrapper generates no box and every margin below still resolves against the
-            copy column exactly as it did.
+            One offset for the whole block below the headline, inherited. `display: contents` so
+            the wrapper generates no box and every margin below still resolves against the copy
+            column exactly as it did.
 
             420ms is measured, not picked: clause two starts at 140ms and its 1100ms wipe is
             visibly complete well before it ends, so the lead begins while the headline is still
@@ -172,15 +143,23 @@ export function Hero() {
             finish reads as a slideshow.
           */}
           <div style={{ display: "contents", ["--mk-arrive-offset" as string]: "420ms" }}>
+            {/* The brand's own functional explainer, one step down from the headline and set at
+                the lead size. It is the line that appears under the wordmark on the deck's
+                cover, so it is the one piece of copy on this page that is load-bearing as
+                identity rather than as argument. */}
             <Arrival index={0} className="mt-6 md:mt-8">
-              {/* `tone="ink"` is not a default here, it is the constraint from the module header:
-                  stone fails on every ruled ground. Full strength, sized down instead. */}
               <Prose size="lead" tone="ink" className="max-w-mk-measure">
                 {hero.subhead}
               </Prose>
             </Arrival>
 
-            <Arrival index={1} className="mt-9 flex flex-wrap items-center gap-3 md:mt-12 md:gap-4">
+            <Arrival index={1} className="mt-4">
+              <Prose tone="stone" className="max-w-mk-measure">
+                {hero.lead}
+              </Prose>
+            </Arrival>
+
+            <Arrival index={2} className="mt-9 flex flex-wrap items-center gap-3 md:mt-11 md:gap-4">
               <MkButtonLink href={hero.primary.href} variant="dark" size="lg" data-hero-cta="">
                 {hero.primary.label}
               </MkButtonLink>
@@ -189,15 +168,58 @@ export function Hero() {
               </MkButtonLink>
             </Arrival>
 
-            {/* Tighter to the controls than the controls are to the lead — it is a footnote ON
-                the buttons ("no app for the person you hand it to"), not a fourth statement. The
-                gap sizes the grouping: 48px above the controls, 20px below them. */}
-            <Arrival index={2} className="mt-5 md:mt-5">
-              <Prose size="small" tone="ink" className="max-w-mk-measure-tight">
+            {/* Tighter to the controls than the controls are to the copy — it is a footnote ON
+                the buttons, not a fourth statement. */}
+            <Arrival index={3} className="mt-5">
+              <Prose size="small" tone="stone" className="max-w-mk-measure-tight">
                 {hero.aside}
               </Prose>
             </Arrival>
           </div>
+        </div>
+
+        {/*
+          The card carries no arrival move of its own.
+
+          It is present and complete from the first frame — it has to be, because the front face
+          is server rendered and it is what a reader with reduced motion keeps — so there is
+          nothing to animate on. Wrapping it in an `<Arrival>` would fade in the one element on
+          the page whose whole argument is that it is already there and already true.
+
+          ⚠ THE FACE IS RESOLVED HERE, ON THE SERVER, AND HANDED DOWN AS AN ELEMENT.
+          `resolveCard` reads the fixture database and `<QrZone>` computes the symbol at render
+          time; both belong on the server, and `<HeroCard>` is a client island because it owns a
+          timer and a press. Passing the rendered face across that boundary is what keeps the QR
+          out of the browser's main thread entirely.
+        */}
+        {/*
+          ⚠ `-mx-3` ON A PHONE, AND IT IS THE FACE'S OWN BUDGET RATHER THAN A NUDGE.
+
+          `FACE_WIDTH` is 336 because the face is rigid and had to fit a 360px viewport with the
+          card screen's 12px padding each side: 336 + 12 + 12 = 360 exactly. This column pads
+          itself by 24 (`px-6`), which leaves 312 — so at 360 the card was being squeezed to 312
+          and its QR shrank with it, under the 140px scannable floor. The test caught it at
+          vp-360 and passed at 768 and 1440, which is exactly the kind of thing only a test
+          catches.
+
+          Giving back 12px each side reproduces the budget the face was derived against. The
+          page still does not scroll sideways at 360 — asserted by "never scrolls sideways".
+        */}
+        <div className="-mx-3 md:mx-0 lg:col-span-5">
+          <HeroCard
+            face={<ShareFace resolved={resolvedHeroCard} mode="full" />}
+            frontLabel={hero.cardFrontLabel}
+            backLabel={hero.cardBackLabel}
+            caption={liveCard.caption}
+          />
+          {/* `aria-hidden` because the control's own label already says what a press does; read
+              out as well it would be the same instruction twice. This is for eyes only. */}
+          <p
+            aria-hidden="true"
+            className="mt-5 text-center text-mk-caption text-mk-pebble"
+          >
+            {hero.cardHint}
+          </p>
         </div>
       </div>
     </Section>

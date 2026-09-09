@@ -1,9 +1,10 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
 
 import { MAX_PAYLOAD_BYTES, payloadByteLength } from "@/card/qr-geometry";
 import { resolveCard } from "@/card/resolve-card";
 import { TEMPLATE_LIST } from "@/card/templates";
-import { FIXTURE_DB, cardLedgerDemo } from "@/fixtures";
+import { FIXTURE_DB } from "@/fixtures";
+import { heroCard, marketingUser } from "@/fixtures/marketing";
 
 import { PROJECT_VIEWPORT, gotoReady, screenshotElement } from "../helpers/e2e";
 import { decodeQrPng, decodeWithRetry } from "../helpers/qr-decode";
@@ -178,42 +179,70 @@ test("QR-T5 · the zero-field card's QR decodes (E-02, §8A)", async ({ page }) 
  * a symbol on this page is honest AND cannot resolve to a real person's card — which is the
  * stronger guarantee, because it holds however large the symbol is rendered.
  */
-test("QR-T5 · the homepage's real symbol decodes and its preview carries no card URL", async ({
+test("QR-T5 · every symbol on the homepage is real, and the hero's decodes through its flip", async ({
   page,
 }, testInfo) => {
   const viewport = PROJECT_VIEWPORT[testInfo.project.name];
-  const exhibitPayload = resolveCard(
-    cardLedgerDemo,
-    FIXTURE_DB.user,
+
+  /**
+   * ⚠ THE HOMEPAGE'S SYMBOL CENSUS CHANGED ON 2026-09-09, AND THE DECODE IS NOW THE POINT.
+   *
+   * It was one full-size symbol (a scan exhibit inside the bento) and one thumb (the studio
+   * cell). Both are gone with the bento. The page now renders:
+   *
+   *   · **one `full` symbol** — the hero's card, which is a real `<ShareFace>` at its authored
+   *     336×500 on the FRONT FACE OF A FLIP, and
+   *   · **six `thumb` symbols** — the example-cards section, one per palette.
+   *
+   * The decode below is the most valuable assertion in this file now, because of where that
+   * symbol sits. DESIGN.md is explicit that the pass's QR has ONE pixel of clearance over
+   * `MIN_QR_SIZE_PX` and that a transform on an ancestor spends headroom that does not exist —
+   * and a 3D flip is exactly such a transform. The flip is `rotateY` alone with no scale, so the
+   * resting front face should be pixel-identical to an untransformed one. "Should be" is not
+   * good enough for a scanning target: this decodes the real raster, through
+   * `transform-style: preserve-3d`, at every viewport. If a future hand adds a scale, a
+   * `perspective` tweak or a `will-change` that pins a mid-flight raster, this goes red and the
+   * message says why.
+   */
+  const heroPayload = resolveCard(
+    heroCard,
+    marketingUser,
     FIXTURE_DB.groups,
     FIXTURE_DB.fields,
   ).qrPayload;
 
   await gotoReady(page, "/");
 
-  /* One full-size symbol and one scaled thumb. Counted rather than assumed. */
   const real = page.locator('[data-qr-zone][data-qr-mode="full"]');
-  const thumb = page.locator('[data-qr-zone][data-qr-mode="thumb"]');
-  await expect(real).toHaveCount(1);
-  await expect(thumb).toHaveCount(1);
+  const thumbs = page.locator('[data-qr-zone][data-qr-mode="thumb"]');
+  await expect(real, "the hero's card is the page's one full-size symbol").toHaveCount(1);
+  await expect(thumbs, "one thumb per example card").toHaveCount(6);
+
+  /* The hero's face must be showing — it is what the server renders and the flip's resting
+     state — or this would be measuring the back of a card. */
+  await expect(page.locator("button[data-hero-card]")).toHaveAttribute("data-face", "front");
 
   expect(
     await decodeZone(real),
-    `the homepage's scan exhibit did not decode at ${viewport}px — it is captioned as ` +
-      "something a reader may point a phone at, so a dead symbol there is a broken promise",
-  ).toBe(exhibitPayload);
+    `the hero's symbol did not decode at ${viewport}px. It sits on the front face of a 3D flip, ` +
+      "so the first thing to suspect is a transform on an ancestor — a scale, a perspective " +
+      "change, or a cached raster from `will-change`. Per §14.6 the fix is the geometry or the " +
+      "animation, never this assertion",
+  ).toBe(heroPayload);
 
-  /* ⚠ The guarantee, restated where it now lives. Every symbol on this page is real, so what
-     must hold is that no symbol here can resolve to a REAL person's card: the marketing page
-     renders fixtures, and every fixture URL is on an RFC 2606 reserved domain. */
-  for (const zone of [real, thumb]) {
+  /* ⚠ The guarantee, restated where it now lives. Every symbol on this page is a REAL encode of
+     a real fixture URL, so what must hold is that none of them can resolve to an actual
+     person's card: the marketing page renders fixtures, and every fixture URL is on an RFC 2606
+     reserved domain nobody can own. That holds however large a symbol is rendered, which is a
+     stronger guarantee than the fake payload it replaced. */
+  for (const zone of [real, thumbs.first(), thumbs.last()]) {
     const html = await zone.evaluate((node) => node.outerHTML);
     expect(html, "a marketing symbol must not embed a resolvable production URL").not.toContain(
       "contactbook.app",
     );
   }
   expect(
-    exhibitPayload,
+    heroPayload,
     "the marketing fixture must sit on a domain nobody can own",
   ).toContain(".example/");
 });

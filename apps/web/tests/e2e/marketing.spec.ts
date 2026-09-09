@@ -3,9 +3,9 @@ import { resolve } from "node:path";
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
-import { MARKETING_SECTION_IDS, faq } from "@/fixtures/marketing";
+import { hero, MARKETING_SECTION_IDS } from "@/fixtures/marketing";
 
-import { PROJECT_VIEWPORT, boxOf, gotoReady } from "../helpers/e2e";
+import { gotoReady } from "../helpers/e2e";
 
 /**
  * `/` — THE WALLET DECK.
@@ -32,8 +32,6 @@ const PAGE = "/";
 const SECTION_IDS = MARKETING_SECTION_IDS;
 
 /** The ids the chrome links at. `/#pricing` is gone with the section. */
-const CHROME_ANCHOR_IDS = ["how-it-works", "faq"] as const;
-
 const BANNED_PHRASES = [
   "Effortlessly",
   "Seamlessly",
@@ -79,8 +77,20 @@ test.describe("the deck", () => {
     expect(rendered).toEqual([...SECTION_IDS]);
   });
 
-  test("every section but the hero is a pass with real depth", async ({ page }) => {
+  test("every section is flat, full-bleed, and its ground alternates", async ({ page }) => {
     await gotoMarketing(page);
+
+    /* ⚠ THIS TEST WAS INVERTED ON 2026-09-08 AND THE INVERSION IS THE REDESIGN.
+       It read: eight passes, each with a shadow carrying a real offset and a radius of at least
+       24px — the page as a wallet, every section an inset card riding over the lip of the one
+       above. The client's website brief asks for a page that "just scrolls down", and eight
+       overlapping passes make every boundary a visual event.
+
+       So the claim is now the opposite, and it is asserted rather than merely allowed to
+       happen: a pass has NO shadow, NO radius and NO inset, and the only thing separating two
+       sections is that their grounds differ. That last clause is the load-bearing one — with a
+       flat page and no rule between sections, an alternation bug does not look like a bug, it
+       looks like one very long section. */
     const passes = await page.locator("[data-pass]").evaluateAll((ns) =>
       ns.map((n) => {
         const c = getComputedStyle(n);
@@ -91,24 +101,68 @@ test.describe("the deck", () => {
         };
       }),
     );
-    // Eight passes; the hero is the sky they lie on, not one of them.
     expect(passes).toHaveLength(SECTION_IDS.length - 1);
     for (const p of passes) {
-      // A pass without a shadow is a rectangle, and the whole structure is depth.
-      expect(p.shadow, `${p.id} has no shadow`).not.toBe("none");
-      // The craft floor: a shadow must carry an offset and a blur, never be a flat halo.
-      expect(p.shadow, `${p.id} shadow has no offset`).toMatch(/\dpx/);
-      expect(p.radius, `${p.id} radius`).toBeGreaterThanOrEqual(24);
+      expect(p.shadow, `${p.id} still carries a pass shadow`).toBe("none");
+      expect(p.radius, `${p.id} still carries a pass radius`).toBe(0);
+    }
+
+    /* Grounds, in document order, read off the SECTION — the ground moved off the inset child
+       and onto the section itself so that it runs edge to edge at every width. */
+    const grounds = await page
+      .locator("[data-section]")
+      .evaluateAll((ns) =>
+        ns.map((n) => ({
+          id: n.getAttribute("data-section"),
+          bg: getComputedStyle(n).backgroundColor,
+        })),
+      );
+
+    /* Every section paints its own ground. A transparent section inherits whatever is behind
+       it, which is how an alternation silently collapses into one colour. */
+    for (const g of grounds) {
+      expect(g.bg, `${g.id} paints no ground of its own`).not.toBe("rgba(0, 0, 0, 0)");
+    }
+
+    /* And no two adjacent sections share one. This is the whole separator. */
+    for (let i = 1; i < grounds.length; i += 1) {
+      expect(
+        grounds[i]!.bg,
+        `${grounds[i - 1]!.id} and ${grounds[i]!.id} share a ground, so their boundary is invisible`,
+      ).not.toBe(grounds[i - 1]!.bg);
     }
   });
 
-  test("the chrome's anchors exist and clear the fixed bar", async ({ page }) => {
+  /**
+   * **Every in-page link in the chrome points at a section that exists, and lands clear of the
+   * fixed bar.**
+   *
+   * ⚠ THE TARGET LIST IS READ OFF THE RENDERED NAV, NOT HARD-CODED, AND THAT IS THE FIX.
+   * It was `const CHROME_ANCHOR_IDS = ["how-it-works", "faq"]` — a second copy of the nav's
+   * targets, sitting in the test file. When `faq` was deleted the nav still linked to `#faq`
+   * and this test still looked for `#faq`, so it failed for the right reason by luck: it was
+   * asserting against its own stale copy rather than against the nav. Derived from the DOM, the
+   * assertion becomes "the nav never links to nothing", which is the property worth having and
+   * needs no maintenance when the page changes again.
+   */
+  test("every in-page nav link points at a section that clears the fixed bar", async ({ page }) => {
     await gotoMarketing(page);
-    for (const id of CHROME_ANCHOR_IDS) {
+
+    const targets = await page.evaluate(() =>
+      [...document.querySelectorAll('nav a[href*="#"]')]
+        .map((a) => (a.getAttribute("href") ?? "").split("#")[1])
+        .filter((id): id is string => Boolean(id) && id !== "main"),
+    );
+
+    /* The nav is expected to carry in-page links at all — a chrome with none would pass every
+       assertion below by iterating an empty list. */
+    expect(targets.length, "the chrome carries no in-page links").toBeGreaterThan(0);
+
+    for (const id of targets) {
       const el = page.locator(`#${id}`);
-      await expect(el).toHaveCount(1);
+      await expect(el, `the nav links to #${id}, which is not on the page`).toHaveCount(1);
       const top = await el.evaluate((n) => Number.parseFloat(getComputedStyle(n).scrollMarginTop));
-      expect(top, `${id} scroll-margin-top`).toBeGreaterThan(0);
+      expect(top, `#${id} would land under the fixed bar`).toBeGreaterThan(0);
     }
   });
 
@@ -155,110 +209,141 @@ test.describe("the deck", () => {
  * ink level, which is illegal on this ground at every rule density.
  */
 test.describe("the hero", () => {
-  test("sets the headline in ink on paper, as two deliberate lines", async ({ page }) => {
+  test("sets the client's locked line as two clauses, with exactly one accented", async ({
+    page,
+  }) => {
     await gotoMarketing(page);
     const h = page.locator("[data-hero-headline]");
     await expect(h).toHaveCount(1);
-    /* Onyx, 15.97:1 on paper. It was white-on-sky through three builds; the sky is gone and
-       `amber`/`white`/`glass` all went with it, so this is the assertion that would fail first
-       if a fourth gradient were quietly reintroduced under the copy. */
-    await expect(h).toHaveCSS("color", "rgb(24, 26, 31)");
 
-    /* The two clauses are set on their own lines at render time. The fixture still holds ONE
-       string — this asserts the typographic split without letting the copy fork into two
-       fields that can drift out of agreement with `hero.headline`. */
-    const lines = await h.locator("span").allTextContents();
+    /* ⚠ THE COPY IS THE CLIENT'S AND IS ASSERTED VERBATIM. "Never lose contact." is the brand
+       line — it is on the deck's cover and under the wordmark — and the previous assertion
+       here was for a headline we wrote ourselves ("Hand over one card. Keep it true for
+       years."). A test on brand copy is a test on the brand, so it is exact. */
+    const spans = h.locator("span");
+    const lines = await spans.allTextContents();
     expect(lines.length, "the headline is set as its two clauses").toBe(2);
-    expect(lines.join(" ")).toBe("Hand over one card. Keep it true for years.");
+    expect(lines.join(" ")).toBe("Never lose contact.");
+
+    /* ⚠ ONE clause is ink and ONE is the brand green, and the split is asserted both ways.
+       `--mk-green-display` (#43A491) measures 3.01:1 on white, which clears the LARGE-text bar
+       and nothing else — so this word is legal at the display step and would not be legal one
+       step down. Asserting the count is what stops the accent spreading: two green clauses is
+       a green headline, and a green headline fails at 3.01:1 the moment anybody sets it
+       smaller. */
+    const colours = await spans.evaluateAll((ns) => ns.map((n) => getComputedStyle(n).color));
+    expect(colours.filter((c) => c === "rgb(24, 26, 31)"), "the ink clause").toHaveLength(1);
+    expect(colours.filter((c) => c === "rgb(65, 159, 141)"), "the accented clause").toHaveLength(
+      1,
+    );
   });
 
   /**
-   * **The ruling is in register with the type, and that is the whole difference between a page
-   * ruled for this text and lines drawn behind it.**
+   * ⚠ THE RULED SHEET IS GONE AND THE LIVE CARD REPLACES IT, 2026-09-08.
    *
-   * `--mk-ledger-rhythm` is `--mk-text-display × --mk-text-display-lh`, so one ruled row is
-   * exactly one headline line box, and `--mk-ledger-lead` anchors the pattern to the copy
-   * block's top edge. Both are shared tokens — the hero's padding is `pt-[var(--mk-ledger-lead)]`
-   * rather than a matching number — and this test is what makes that coupling load-bearing
-   * instead of a comment. Retype either as a literal and the rules drift into the letterforms.
+   * This test used to assert that the hero was a sheet of ruled contact-book paper whose rules
+   * landed on the headline's own line boxes, and that no object sat on it. Both halves are
+   * reversed on the client's website brief: the ground is white, and the hero carries an
+   * animated card. `--mk-ledger-*` survives in `marketing.css` with nothing rendering it.
+   *
+   * What replaces it is the card's own contract. The object is now a FLIP — a real
+   * `<ShareFace>` on the front and the animated card on the back — and four clauses matter:
+   *
+   *   1. **The box never changes size.** Not while flipping, not while the back's fields
+   *      change. Its row stack is a fixed number of slots whether four are filled or five, so a
+   *      field arriving or being revoked moves no other box on the page.
+   *   2. **No frame is empty.** A visitor arrives mid-cycle, so every beat must be a card
+   *      somebody designed — never a shell waiting to be filled.
+   *   3. **The front's QR clears the scannable floor at rest.** `MIN_QR_SIZE_PX` is 140 and the
+   *      symbol is authored at 141 — one pixel. A flip is a transform on an ancestor, which
+   *      DESIGN.md says spends headroom that does not exist, so this measures the symbol on the
+   *      settled front face and would catch any scale creeping into the animation.
+   *   4. **A press stops the automatic cycle for good.** A QR is a scanning target; a code that
+   *      turns away after four seconds cannot be scanned by somebody reaching for their phone.
    */
-  test("is a ruled sheet whose rules land on the headline's own line boxes", async ({ page }) => {
+  test("the hero's card holds its size, flips, and keeps its QR scannable at rest", async ({
+    page,
+  }) => {
     await gotoMarketing(page);
-    await expect(page.locator("[data-hero-ledger]")).toHaveCount(1);
-    await expect(page.locator("[data-hero-margin-rule]")).toHaveCount(1);
-    /* The sky, its bloom and the film are deleted, not hidden. A future hand putting a gradient
-       or a video back into this hero should have to argue with this line first. */
+
+    /* The ruling and its margin are gone, not hidden — and so are the three objects rejected on
+       this sheet before the card: a gradient, a device frame and a film. */
     await expect(
-      page.locator(".mk-sky, .mk-hero-glow, .mk-film-frame, [data-hero-film], [data-hero-card]"),
+      page.locator("[data-hero-ledger], [data-hero-margin-rule], .mk-ledger"),
+    ).toHaveCount(0);
+    await expect(
+      page.locator(".mk-sky, .mk-hero-glow, .mk-film-frame, [data-hero-film]"),
     ).toHaveCount(0);
 
-    const reg = await page.evaluate(() => {
-      const sec = document.querySelector('[data-section="hero"]')!;
-      const secTop = sec.getBoundingClientRect().top + window.scrollY;
+    const card = page.locator("button[data-hero-card]");
+    await expect(card).toHaveCount(1);
 
-      /* Read the rhythm off a live element rather than parsing the calc: it is a clamp times a
-         line height and only the browser knows what that is at this viewport. */
-      const probe = document.createElement("div");
-      probe.style.cssText = "position:absolute;visibility:hidden;height:var(--mk-ledger-rhythm)";
-      sec.appendChild(probe);
-      const rhythm = probe.getBoundingClientRect().height;
-      probe.remove();
+    /* The front is what the server renders and what reduced motion keeps. */
+    await expect(card).toHaveAttribute("data-face", "front");
 
-      const lead = document.createElement("div");
-      lead.style.cssText = "position:absolute;visibility:hidden;height:var(--mk-ledger-lead)";
-      sec.appendChild(lead);
-      const leadPx = lead.getBoundingClientRect().height;
-      lead.remove();
-
-      /* ⚠ Each span is one CLAUSE, and a clause WRAPS at narrow viewports — two rendered lines
-         at 360, one at 1440. So the assertion cannot be "a span is one ruled row tall"; it is
-         "a span is a WHOLE NUMBER of ruled rows tall", which holds at every width and is the
-         property that actually keeps the type in register.
-         (A `Range` over the text node was tried and is wrong: `getClientRects` returns the text
-         box — 66.5px against an 89.76px line box — so it measures the glyphs, not the leading.) */
-      const lines = [...document.querySelectorAll("[data-hero-headline] span")].map((n) => {
-        const b = n.getBoundingClientRect();
-        return { top: b.top + window.scrollY - secTop, height: b.height };
-      });
-
-      /* Distance from each line's top edge to the nearest rule. The rules sit at
-         `leadPx + n * rhythm`. */
-      const offBy = (y: number) => {
-        const k = Math.round((y - leadPx) / rhythm);
-        return Math.abs(y - (leadPx + k * rhythm));
-      };
-
-      const ledger = document.querySelector("[data-hero-ledger]")!.getBoundingClientRect();
-      const rule = document.querySelector("[data-hero-margin-rule]")!.getBoundingClientRect();
-
+    /* ── the resting front face, which is the scanning target ──────────────────────────── */
+    const front = await page.evaluate(() => {
+      const qr = document.querySelector('[data-side="front"] [data-qr-zone]');
+      const inner = document.querySelector(".mk-flip-inner");
+      const box = document.querySelector("button[data-hero-card]")!.getBoundingClientRect();
+      const r = qr?.getBoundingClientRect();
       return {
-        rhythm,
-        rowsPerLine: lines.map((l) => l.height / rhythm),
-        topsOffBy: lines.map((l) => offBy(l.top)),
-        ledgerLeft: ledger.left,
-        ruleLeft: rule.left,
+        qrPx: r ? Math.round(Math.min(r.width, r.height)) : 0,
+        innerTransform: inner ? getComputedStyle(inner).transform : "",
+        box: `${Math.round(box.width)}x${Math.round(box.height)}`,
       };
     });
 
-    /* Every clause occupies a whole number of ruled rows. Sub-pixel tolerance only — this is
-       arithmetic, not an eyeball. */
-    for (const rows of reg.rowsPerLine) {
-      expect(
-        Math.abs(rows - Math.round(rows)) * reg.rhythm,
-        `a headline clause is ${rows.toFixed(3)} ruled rows tall, not a whole number`,
-      ).toBeLessThan(1);
-      expect(Math.round(rows), "a headline clause occupies no rows").toBeGreaterThanOrEqual(1);
-    }
-    for (const [i, off] of reg.topsOffBy.entries()) {
-      expect(off, `headline line ${i} does not sit on a rule`).toBeLessThan(1);
-    }
-
-    /* On a ledger the ruling STARTS at the margin rule. Running edge to edge past it is what
-       made the vertical stroke read as an unrelated line in the first build. */
+    /* `FACE_WIDTH` x `FACE_HEIGHT` — derived in `share-face.tsx`, never retyped in the layer. */
+    expect(front.box, "the flip box is not the face's own size").toBe("336x500");
+    expect(front.qrPx, "the resting symbol is under the scannable floor").toBeGreaterThanOrEqual(
+      140,
+    );
+    /* Identity at rest. A `matrix` with a scale in it here is the failure DESIGN.md warns about,
+       and it would be invisible in a screenshot. */
     expect(
-      Math.abs(reg.ledgerLeft - reg.ruleLeft),
-      "the ruling must begin at the margin rule",
-    ).toBeLessThan(2);
+      ["none", "matrix(1, 0, 0, 1, 0, 0)"],
+      `the front face rests at ${front.innerTransform}`,
+    ).toContain(front.innerTransform);
+
+    /* ── a press turns it and takes control away from the cycle ────────────────────────── */
+    await card.click();
+    await expect(card).toHaveAttribute("data-face", "back");
+    await expect(card, "a press did not stop the automatic cycle").toHaveAttribute(
+      "data-manual",
+      "",
+    );
+
+    /* ── the back's loop, over a whole lap ─────────────────────────────────────────────── */
+    const lap = await page.evaluate(async () => {
+      const box = document.querySelector("button[data-hero-card]")!;
+      const sizes = new Set<string>();
+      const beats: string[] = [];
+      const rowCounts = new Set<number>();
+
+      const t0 = performance.now();
+      await new Promise<void>((res) => {
+        const iv = setInterval(() => {
+          const r = box.getBoundingClientRect();
+          sizes.add(`${Math.round(r.width)}x${Math.round(r.height)}`);
+          const beat =
+            box.querySelector("[data-live-card][data-beat]")?.getAttribute("data-beat") ?? "?";
+          if (beats.at(-1) !== beat) beats.push(beat);
+          rowCounts.add(box.querySelectorAll(".mk-live-row").length);
+          if (performance.now() - t0 > 13000) {
+            clearInterval(iv);
+            res();
+          }
+        }, 90);
+      });
+      return { sizes: [...sizes], beats, rowCounts: [...rowCounts] };
+    });
+
+    expect(lap.sizes, "the card changed size during the loop").toHaveLength(1);
+    expect(lap.beats.length, `the back did not advance: ${lap.beats.join(" -> ")}`).toBeGreaterThan(
+      3,
+    );
+    expect(Math.min(...lap.rowCounts), "a beat rendered an empty card").toBeGreaterThanOrEqual(4);
   });
 
   /**
@@ -278,28 +363,61 @@ test.describe("the hero", () => {
    * defaults to `tone="stone"` — a future hand adding a line here and omitting `tone="ink"`
    * gets the illegal one by default, silently, and it will look fine in a screenshot.
    */
-  test("every level of hero copy is full-strength ink, never the secondary level", async ({
+  test("every level of hero copy is a legal ink on white, and the accent is the only green", async ({
     page,
   }) => {
     await gotoMarketing(page);
-    const colours = await page.evaluate(() => {
+
+    /* ⚠ THIS RULE RELAXED ON PURPOSE, AND THE REASON IS THE GROUND.
+       It used to demand that EVERY level of hero copy be full-strength Onyx, because the hero
+       was a ruled sheet: `--mk-stone` measures 2.30–3.07:1 where it crosses a rule, so the
+       secondary tier was illegal there and hierarchy had to be carried by size and weight
+       alone. The sheet is gone. On white, stone measures 4.83:1 and pebble 4.80:1 — both legal
+       — so the hero can have a real secondary tier again.
+
+       What is asserted now is the closed SET of colours, which is a tighter rule than "all
+       ink" was loose: three inks, the accent, and white on the Onyx fill. Anything else in the
+       hero is a colour nobody measured. */
+    const LEGAL = new Set([
+      "rgb(24, 26, 31)", // --mk-ink      17.41:1 on white
+      "rgb(118, 111, 101)", // --mk-stone  4.83:1
+      "rgb(114, 112, 111)", // --mk-pebble 4.80:1
+      "rgb(65, 159, 141)", // --mk-green-display 3.01:1 on the wash — LARGE TEXT ONLY
+      "rgb(255, 255, 255)", // the label on the Onyx primary
+    ]);
+
+    const nodes = await page.evaluate(() => {
       const hero = document.querySelector('[data-section="hero"]')!;
-      const text = [...hero.querySelectorAll("h1, p, span, a")].filter(
-        (n) => (n.textContent ?? "").trim().length > 0 && n.children.length === 0,
-      );
-      return text.map((n) => ({
-        text: (n.textContent ?? "").trim().slice(0, 28),
-        color: getComputedStyle(n).color,
-        // The dark CTA's white label is the one legitimate exception: it is on an Onyx fill.
-        onFill: getComputedStyle(n.closest("a") ?? n).backgroundColor,
-      }));
+      return [...hero.querySelectorAll("h1, p, span, a")]
+        .filter((n) => (n.textContent ?? "").trim().length > 0 && n.children.length === 0)
+        /* ⚠ THE CARD'S INTERIOR IS EXCLUDED, AND IT IS NOT AN EXEMPTION.
+           The card wears the Emerald palette: its name is `ink`, its labels are `inkSoft`, its
+           monogram is `markInk` on `markBg`. Those are proven against every stop of Emerald's
+           own gradient by `tests/contract/template-palettes.test.ts`, which is a stronger check
+           than this one — it measures against the ground the ink is actually drawn on, where
+           this test's ladder is the set of colours legal ON WHITE. Adding #0A3325 to the ladder
+           below would be the wrong repair: it would make a card colour legal as page copy. */
+        .filter((n) => !n.closest("[data-hero-card]"))
+        .map((n) => ({
+          text: (n.textContent ?? "").trim().slice(0, 28),
+          color: getComputedStyle(n).color,
+          px: Number.parseFloat(getComputedStyle(n).fontSize),
+        }));
     });
-    expect(colours.length).toBeGreaterThan(3);
-    for (const c of colours) {
-      if (c.onFill === "rgb(24, 26, 31)") continue; // white label on the Onyx primary
-      expect(c.color, `"${c.text}" is not full-strength ink on the ruled ground`).toBe(
-        "rgb(24, 26, 31)",
-      );
+
+    expect(nodes.length).toBeGreaterThan(3);
+    for (const n of nodes) {
+      expect(LEGAL.has(n.color), `"${n.text}" is ${n.color}, which no level declares`).toBe(true);
+
+      /* ⚠ THE ACCENT IS SIZE-GATED, AND THIS IS THE ASSERTION THAT MATTERS MOST HERE.
+         3.01:1 is the large-text bar. The same green on a 16px paragraph is illegal and looks
+         identical in a screenshot, so the only thing that can catch it is a test. 24px is
+         WCAG's floor for large text; the accent renders at 44px on a phone and 88px wide. */
+      if (n.color === "rgb(65, 159, 141)") {
+        expect(n.px, `the green accent "${n.text}" is set at ${n.px}px, below the 3:1 large-text floor`).toBeGreaterThanOrEqual(
+          24,
+        );
+      }
     }
   });
 
@@ -312,14 +430,22 @@ test.describe("the hero", () => {
    * the same state a reader gets with no scripting, and the reason the arrival is a CSS keyframe
    * rather than a `motion` component whose `initial` is baked into the server HTML.
    *
-   * ⚠ FIVE WRAPPERS: two headline clauses plus lead, controls and caveat. It was four, and
-   * before that five including the film — the headline used to arrive as one block and is now
-   * staged per clause, which is the client's *"professional animation that should be visible"*.
+   * ⚠ SIX WRAPPERS: two headline clauses, then the explainer, the lead, the controls and the
+   * caveat. It was five — the hero gained one line of copy when the client's locked explainer
+   * ("The address book that updates itself.") was separated from the sentence under it.
+   *
+   * ⚠ THE CARD IS NOT ONE OF THEM, AND THAT IS DELIBERATE. It carries no `data-mk-arrive` and
+   * has no entrance: it is server-rendered complete, because it is also what a reader with
+   * reduced motion keeps forever. Fading in the one element whose whole argument is that it is
+   * already there and already true would be an animation working against its own content.
    */
   test("every arriving element is painted at rest once durations are zeroed", async ({ page }) => {
     await gotoMarketing(page);
     const arriving = page.locator("[data-mk-arrive]");
-    await expect(arriving).toHaveCount(5);
+    await expect(arriving).toHaveCount(6);
+
+    /* The card has no arrival of its own — see the note above. */
+    await expect(page.locator("[data-hero-card][data-mk-arrive]")).toHaveCount(0);
 
     const states = await arriving.evaluateAll((ns) =>
       ns.map((n) => {
@@ -338,31 +464,6 @@ test.describe("the hero", () => {
         s.transform,
       );
     }
-
-    /**
-     * ⚠ THE CLIP MUST NOT CLIP AT REST, AND ZERO IS THE WRONG VALUE FOR THAT.
-     *
-     * `line` finishes on `inset(-35% 0 -35% 0)` rather than `inset(0)` because the glyphs
-     * overflow their own line box — Space Grotesk runs about 1.23em of ascender-plus-descender
-     * against a 1.02em line box. A zero inset would permanently shave the caps and the tail of
-     * every `y`, `p` and `g` in the finished headline, which reads as a rendering fault rather
-     * than as an animation bug and would survive review.
-     *
-     * So the assertion is not "no clip-path": it is "the clip region is larger than the box".
-     */
-    const lines = states.filter((s) => s.variant === "line");
-    expect(lines.length, "the headline is not staged per clause").toBe(2);
-    for (const l of lines) {
-      expect(l.clip, `a headline clause rests on a clipping region: ${l.clip}`).toMatch(/-\d/);
-      expect(l.clip).not.toContain("100%");
-    }
-
-    /* The margin rule is the other half of the moment and it animates `scaleY`. With durations
-       zeroed it must be at FULL height — an `animation-fill-mode` regression here leaves the
-       rule collapsed to nothing in every screenshot and for every reader whose script fails. */
-    const rule = page.locator("[data-hero-margin-rule]");
-    const box = (await rule.boundingBox())!;
-    expect(box.height, "the margin rule is collapsed at rest").toBeGreaterThan(100);
   });
 
   /**
@@ -380,14 +481,25 @@ test.describe("the hero", () => {
     const cta = page.locator("[data-hero-cta]");
     await expect(cta).toHaveCount(1);
     expect(await cta.evaluate((n) => n.tagName)).toBe("A");
-    await expect(cta).toHaveAttribute("href", "/signup/first-name");
+    /* The brief's own control, now that `/waitlist` exists. It read `/signup/first-name` while
+       that page did not — a hero button pointing at a 404 is a defect, not a design decision,
+       so the label and target changed in the same step that built the route. */
+    await expect(cta).toHaveAttribute("href", "/waitlist");
     await expect(cta).toHaveCSS("background-color", "rgb(24, 26, 31)");
     await expect(cta).toHaveCSS("color", "rgb(255, 255, 255)");
 
     /* The secondary is the `line` variant: no fill, a ring at ink/55 measuring 3.81:1 on bare
        paper and 3.31:1 where it crosses a rule. A secondary with NO boundary on a light ground
        is the failure this variant exists to prevent, so the ring is asserted, not the colour. */
-    const secondary = page.locator('[data-section="hero"] a[href="/templates"]');
+    /* ⚠ LOCATED FROM THE COPY FIXTURE, NOT BY A HARD-CODED HREF. This has been `/templates`,
+       then `#cards`, and is now `/corporate` as each of the brief's real destinations came into
+       existence — and each move broke this line while breaking nothing about the page. What the
+       test is actually for is the two properties below: the secondary has a findable boundary,
+       and both controls clear the touch floor. Reading the target from `hero.secondary` keeps
+       it asserting those through the next rename. */
+    const secondary = page.locator(
+      `[data-section="hero"] a[href="${hero.secondary.href}"]`,
+    );
     await expect(secondary).toHaveCount(1);
     const ring = await secondary.evaluate((n) => getComputedStyle(n).boxShadow);
     expect(ring, "the secondary action has no visible boundary").not.toBe("none");
@@ -401,115 +513,254 @@ test.describe("the hero", () => {
   });
 
   /**
-   * The copy is legible on the ground it is ACTUALLY drawn on — which, on a ruled sheet, is not
-   * the paper. It is the paper with a 1px rule composited over it, and that is the sample this
-   * test takes: the worst case, not the average one.
+   * The copy is legible on the ground it is ACTUALLY drawn on.
+   *
+   * ⚠ THE WORST GROUND CHANGED. It used to be "the paper with a 1px rule composited over it",
+   * because the hero was ruled and a rule at 7% Onyx darkened the sheet under every line of
+   * type. There is no ruling now, so the worst ground on the page is the darkest thing any
+   * body copy sits on — which is `--mk-wash`, the near-white brand-green tint that every second
+   * section wears.
+   *
+   * ⚠ AND IT SWEEPS THE WHOLE PAGE, NOT JUST THE HERO. The old test measured the hero because
+   * the hero was the one surface with a texture under it. The alternation introduced a second
+   * ground for every section, so the interesting question moved: it is no longer "is this
+   * headline legible" but "did anything become illegible when its section changed colour".
+   *
+   * Large text is exempted at 3:1 rather than skipped, because the green accent lives there and
+   * is legal only under that bar.
    *
    * WCAG 2.x, transcribed the same way as `src/lib/contrast.ts`.
    */
-  test("the hero copy clears AA over a rule, not just over bare paper", async ({ page }) => {
+  test("every line of copy on the page clears AA on the ground it is drawn on", async ({
+    page,
+  }) => {
     await gotoMarketing(page);
-    const worst = await page.evaluate(() => {
+    const failures = await page.evaluate(() => {
       const lin = (c: number) => {
         const x = c / 255;
         return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4;
       };
       const lum = (rgb: number[]) =>
-        0.2126 * lin(rgb[0]) + 0.7152 * lin(rgb[1]) + 0.0722 * lin(rgb[2]);
-      const parse = (s: string) => s.match(/\d+(\.\d+)?/g)!.slice(0, 3).map(Number);
-      const resolve = (value: string) => {
-        const el = document.createElement("span");
-        el.style.color = value;
-        document.body.appendChild(el);
-        const rgb = parse(getComputedStyle(el).color);
-        el.remove();
-        return rgb;
-      };
-
-      /* Read the ground and the rule off the live tokens, so a retune moves this test's inputs
-         instead of leaving it measuring last month's sheet. */
-      const cs = getComputedStyle(document.documentElement);
-      const paper = resolve(cs.getPropertyValue("--mk-paper").trim());
-      const inkRule = cs.getPropertyValue("--mk-ledger-ink").trim();
-      const alpha = Number.parseFloat(inkRule.match(/\/\s*([\d.]+)\s*\)/)?.[1] ?? "0");
-      const ink = resolve(cs.getPropertyValue("--mk-ink").trim());
-
-      /* The worst ground in the hero: the paper with a rule drawn on it. */
-      const overRule = paper.map((c, i) => ink[i] * alpha + c * (1 - alpha));
-
+        0.2126 * lin(rgb[0]!) + 0.7152 * lin(rgb[1]!) + 0.0722 * lin(rgb[2]!);
       const ratio = (a: number[], b: number[]) => {
         const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p);
-        return (x + 0.05) / (y + 0.05);
+        return (x! + 0.05) / (y! + 0.05);
+      };
+      /**
+       * Any computed colour → `[r, g, b, a]` in sRGB.
+       *
+       * ⚠ IT MUST HANDLE `oklab()`, AND THE FIRST CUT OF THIS TEST DID NOT — which produced the
+       * single most convincing false failure in the run. Tailwind v4 implements an opacity
+       * modifier (`text-mk-white/75`) as a `color-mix()`, and Chrome serialises the result as
+       * `oklab(0.999994 0.0000455678 0.0000200868 / 0.75)`. Scraped for numbers, that reads as
+       * rgb(1, 0, 0) — near-black — so white-at-75%-on-Onyx was reported at 1.16:1 against a
+       * 4.5 bar. The copy was always fine; the parser was measuring a different colour.
+       *
+       * Every `/opacity` utility on the page arrives this way, so this is not an edge case, and
+       * a regex over a colour string is not a colour parser.
+       */
+      const parse = (v: string): number[] => {
+        const nums = v.match(/-?[\d.]+(?:e-?\d+)?/g)?.map(Number) ?? [];
+        const alpha = v.includes("/") ? (nums[3] ?? 1) : (nums[3] ?? 1);
+
+        if (v.startsWith("oklab(") || v.startsWith("oklch(")) {
+          const L = nums[0] ?? 0;
+          let [a, b] = [nums[1] ?? 0, nums[2] ?? 0];
+          if (v.startsWith("oklch(")) {
+            /* Polar to rectangular: C, H(deg) → a, b. */
+            const h = ((nums[2] ?? 0) * Math.PI) / 180;
+            [a, b] = [(nums[1] ?? 0) * Math.cos(h), (nums[1] ?? 0) * Math.sin(h)];
+          }
+          /* Oklab → linear sRGB (Björn Ottosson's matrices), then the sRGB transfer curve. */
+          const l_ = L + 0.3963377774 * a! + 0.2158037573 * b!;
+          const m_ = L - 0.1055613458 * a! - 0.0638541728 * b!;
+          const s_ = L - 0.0894841775 * a! - 1.291485548 * b!;
+          const [l, m, sh] = [l_ ** 3, m_ ** 3, s_ ** 3];
+          const linear = [
+            4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * sh,
+            -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * sh,
+            -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * sh,
+          ];
+          const enc = (c: number) => {
+            const v2 = c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055;
+            return Math.max(0, Math.min(255, v2 * 255));
+          };
+          return [enc(linear[0]!), enc(linear[1]!), enc(linear[2]!), alpha];
+        }
+
+        return [nums[0] ?? 0, nums[1] ?? 0, nums[2] ?? 0, alpha];
+      };
+      /** Composite a translucent ink over its ground, which is what the eye actually receives. */
+      const over = (fg: number[], bg: number[]) =>
+        [0, 1, 2].map((i) => fg[i]! * fg[3]! + bg[i]! * (1 - fg[3]!));
+
+      /**
+       * The ground this text is drawn on, or `null` when it is not this test's to measure.
+       *
+       * ⚠ `null` MEANS A GRADIENT, AND SKIPPING IT IS THE HONEST ANSWER RATHER THAN A HOLE.
+       * An element painting a `background-image` has no single ground — a card ground is two
+       * stops at an angle — and `getComputedStyle` will happily report its `backgroundColor` as
+       * transparent, which is how the first cut of this test "measured" white-on-Emerald as
+       * 1:1 and reported forty-odd false failures. Text on those grounds is proven, stop by
+       * stop, by `tests/contract/template-palettes.test.ts`, which is the suite that owns the
+       * nine palettes. This test owns the page's own flat grounds — white, the wash, Onyx — and
+       * the thing it is really guarding is that nothing became illegible when the alternation
+       * changed a section's colour.
+       */
+      const groundOf = (el: Element): number[] | null => {
+        let n: Element | null = el;
+        while (n) {
+          const cs = getComputedStyle(n);
+          if (cs.backgroundImage && cs.backgroundImage !== "none") return null;
+          const bg = parse(cs.backgroundColor);
+          if (bg[3] === 1) return bg.slice(0, 3);
+          n = n.parentElement;
+        }
+        return [255, 255, 255];
       };
 
-      /* Every distinct rendered text colour in the hero, against the worst ground, excluding
-         labels sitting on a filled control. */
-      const hero = document.querySelector('[data-section="hero"]')!;
-      const nodes = [...hero.querySelectorAll("h1, p, span, a")].filter(
-        (n) =>
-          (n.textContent ?? "").trim().length > 0 &&
-          n.children.length === 0 &&
-          getComputedStyle(n.closest("a") ?? n).backgroundColor !== "rgb(24, 26, 31)",
-      );
-      return Math.min(...nodes.map((n) => ratio(parse(getComputedStyle(n).color), overRule)));
+      const out: { text: string; ratio: number; need: number; px: number }[] = [];
+      const nodes = [
+        ...document.querySelectorAll(
+          "main h1, main h2, main h3, main p, main li, main a, main span, main dt, main dd",
+        ),
+      ]
+        .filter((n) => (n.textContent ?? "").trim().length > 0 && n.children.length === 0)
+        /**
+         * ⚠ THE EMBEDDED PRODUCT OBJECTS ARE OUT OF SCOPE, AND THIS IS A LIMIT OF THE METHOD
+         * RATHER THAN A WAIVER.
+         *
+         * `<CardGround>` paints a card's surface as an absolutely positioned SIBLING layer, not
+         * as a background on any ancestor of its text. A DOM walk-up therefore cannot see it —
+         * it falls through to the page's white and reports white-on-Emerald as 1:1. That is a
+         * false failure, and a test that cries wolf on twenty rows gets its expectations edited
+         * rather than its subject fixed.
+         *
+         * Their contrast is not unchecked: `tests/contract/template-palettes.test.ts` proves
+         * every ink of every one of the nine palettes against every stop of its own gradient, at
+         * 7:1 for the primary tier — a harder bar than this test applies. What THIS test owns is
+         * the page's own flat grounds and the copy drawn straight onto them, which is where the
+         * alternation between white and the wash can silently take a colour under its bar. It
+         * has already caught exactly that, twice.
+         */
+        .filter(
+          (n) =>
+            !n.closest(
+              "[data-hero-card], [data-card-root], [data-bento-cell], [data-qr-zone], [data-example-card]",
+            ),
+        );
+
+      for (const n of nodes) {
+        const cs = getComputedStyle(n);
+        if (cs.visibility === "hidden" || cs.display === "none") continue;
+        const ground = groundOf(n);
+        if (!ground) continue;
+
+        const px = Number.parseFloat(cs.fontSize);
+        const bold = Number.parseInt(cs.fontWeight, 10) >= 700;
+        /* WCAG's large-text definition: 24px, or 18.66px when bold. */
+        const need = px >= 24 || (bold && px >= 18.66) ? 3 : 4.5;
+        const r = ratio(over(parse(cs.color), ground), ground);
+        if (r < need) {
+          out.push({
+            text: (n.textContent ?? "").trim().slice(0, 40),
+            ratio: Math.round(r * 100) / 100,
+            need,
+            px,
+          });
+        }
+      }
+      return out;
     });
+
     expect(
-      worst,
-      "hero copy must clear AA where it crosses a rule, which is its worst ground",
-    ).toBeGreaterThanOrEqual(4.5);
+      failures,
+      `copy below AA on its own ground:\n${failures.map((f) => `  ${f.ratio}:1 (needs ${f.need}) at ${f.px}px — "${f.text}"`).join("\n")}`,
+    ).toEqual([]);
   });
 
   /**
    * ⚠ Reduced motion removes TRAVEL, never CONTENT.
    *
-   * The hero's moment is the margin rule drawing down. Under reduced motion the animation is
-   * dropped entirely, which must leave the rule at rest and at full height — not collapsed,
-   * and not mid-draw. This replaces the film's reduced-motion test, whose claim was the same
-   * one about a different object.
+   * The hero's moment has been, in turn: a margin rule drawing down, a card's field loop, and
+   * now a flip. The object keeps changing and the claim does not.
+   *
+   * Under reduced motion the card must hold its FRONT face — the real wallet pass, complete,
+   * with its QR — and must not flip or start the back's loop. The front is the right thing to
+   * keep: it is what the server renders, and it is the face that carries the scanning target.
+   *
+   * The implementation earns this the strong way rather than by zeroing a duration: neither
+   * component starts a timer or observes anything, so there is no animation to interrupt and
+   * nothing that can be left half-applied.
    */
-  test("reduced motion keeps the margin rule at full height and drops the draw", async ({
-    page,
-  }) => {
+  test("reduced motion holds the front face and never clips the headline", async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await gotoMarketing(page);
-    const state = await page.locator("[data-hero-margin-rule]").evaluate((n) => {
-      const c = getComputedStyle(n);
-      return { anim: c.animationName, transform: c.transform, height: n.getBoundingClientRect().height };
-    });
-    expect(state.anim, "the draw must not run under reduced motion").toBe("none");
-    expect(["none", "matrix(1, 0, 0, 1, 0, 0)"]).toContain(state.transform);
-    expect(state.height, "reduced motion collapsed the rule instead of stilling it").toBeGreaterThan(
-      100,
+
+    const card = page.locator("button[data-hero-card]");
+    await expect(card).toHaveCount(1);
+    await expect(card).toHaveAttribute("data-face", "front");
+
+    /* It stays there. A cycle that merely starts slower is still a cycle. */
+    await page.waitForTimeout(5200);
+    await expect(card, "the card flipped under reduced motion").toHaveAttribute(
+      "data-face",
+      "front",
     );
+
+    /* The front's QR is still a real, resting symbol — reduced motion removes travel, not
+       content, and this is the one piece of content on the card a phone can act on. */
+    const qrPx = await page.evaluate(() => {
+      const r = document
+        .querySelector('[data-side="front"] [data-qr-zone]')
+        ?.getBoundingClientRect();
+      return r ? Math.round(Math.min(r.width, r.height)) : 0;
+    });
+    expect(qrPx).toBeGreaterThanOrEqual(140);
+
+    /* And the back is present and settled rather than mid-edit, because a press still reveals
+       it and it must not be caught halfway through a story it never started telling. */
+    const rest = await page.evaluate(() => {
+      const back = document.querySelector('[data-side="back"] [data-live-card]');
+      return {
+        beat: back?.getAttribute("data-beat"),
+        states: [...(back?.querySelectorAll(".mk-live-row") ?? [])].map((r) =>
+          r.getAttribute("data-state"),
+        ),
+        running: [...(back?.querySelectorAll("*") ?? [])]
+          .map((e) => getComputedStyle(e).animationName)
+          .filter((a) => a && a !== "none"),
+      };
+    });
+    expect(rest.beat).toBe("settle");
+    expect(new Set(rest.states), "the back is mid-edit under reduced motion").toEqual(
+      new Set(["stable"]),
+    );
+    expect(rest.running, "an animation runs inside the card under reduced motion").toEqual([]);
 
     /**
      * ⚠ **THE HEADLINE MUST CARRY NO CLIP AT ALL UNDER REDUCED MOTION.**
      *
      * `line` is the only move on this page that hides content while it runs, so it is the only
      * one where "reduced motion" could turn into "reduced content" — a stuck or skipped clip is
-     * a headline that is simply not there. The reduced-motion rule drops the animation entirely
-     * rather than shortening it, which leaves `clip-path: none` because the value only ever
-     * existed inside the keyframes. Asserting `none` (and not merely "non-clipping") is what
-     * catches a future hand moving the clip onto the base rule and gating only the duration.
+     * a headline that is simply not there. The rule drops the animation entirely rather than
+     * shortening it, which leaves `clip-path: none` because the value only ever existed inside
+     * the keyframes. Asserting `none` is what catches a future hand moving the clip onto the
+     * base rule and gating only the duration.
      */
     const clips = await page
       .locator('[data-hero-headline] [data-mk-arrive="line"]')
       .evaluateAll((ns) =>
-        ns.map((n) => ({ clip: getComputedStyle(n).clipPath, anim: getComputedStyle(n).animationName })),
+        ns.map((n) => ({
+          clip: getComputedStyle(n).clipPath,
+          anim: getComputedStyle(n).animationName,
+        })),
       );
     expect(clips.length).toBe(2);
     for (const c of clips) {
       expect(c.anim, "the wipe ran under reduced motion").toBe("none");
       expect(c.clip, "reduced motion left the headline clipped").toBe("none");
     }
-
-    /* And the ruling is painted rather than mid-fade — reduced motion removes travel, not the
-       page's ground. */
-    const ledger = await page
-      .locator("[data-hero-ledger]")
-      .evaluate((n) => ({ op: getComputedStyle(n).opacity, anim: getComputedStyle(n).animationName }));
-    expect(ledger.anim).toBe("none");
-    expect(Number.parseFloat(ledger.op), "the ruling is faded out under reduced motion").toBe(1);
   });
 });
 
@@ -536,9 +787,20 @@ test.describe("what the page may and may not claim", () => {
     await expect(page.locator('[data-section="assistant"]')).toHaveCount(0);
 
     /* The words a roadmap section reaches for. If one appears, something unbuilt is being
-       described and it needs a disclosure this page no longer has anywhere to put. */
+       described and it needs a disclosure this page no longer has anywhere to put.
+
+       ⚠ "waitlist" LEFT THIS LIST ON 2026-09-09, AND IT IS THE ONLY ONE THAT SHOULD HAVE.
+       It was banned when the page mentioned a waitlist that did not exist. `/waitlist` is now a
+       real page with a real form, and more to the point a waitlist is not a promise about an
+       unshipped *capability* — it is the honest way to say the product is not open yet, which
+       is the opposite of the thing this test guards. Every other phrase here describes a
+       feature as nearly-available without committing to anything, and all of them stay.
+
+       What this test still catches, and must: a section describing a product feature the build
+       does not have. It caught exactly that once — a WhatsApp assistant section whose most
+       important sentence was that the feature did not exist. */
     const body = (await page.locator("main").innerText()).toLowerCase();
-    for (const phrase of ["coming soon", "coming next", "not built yet", "in beta", "waitlist", "early access"]) {
+    for (const phrase of ["coming soon", "coming next", "not built yet", "in beta", "early access"]) {
       expect(body, `the page promises something unshipped: "${phrase}"`).not.toContain(phrase);
     }
   });
@@ -572,23 +834,18 @@ test.describe("what the page may and may not claim", () => {
 /* ── Content ─────────────────────────────────────────────────────────────────── */
 
 test.describe("content", () => {
-  test("opens an answer on click, and every trigger starts closed", async ({ page }) => {
-    await gotoMarketing(page);
-    const triggers = section(page, "faq").getByRole("button");
-    await expect(triggers).toHaveCount(faq.entries.length);
-    for (let i = 0; i < faq.entries.length; i += 1) {
-      await expect(triggers.nth(i)).toHaveAttribute("aria-expanded", "false");
-    }
-    await triggers.first().click();
-    await expect(triggers.first()).toHaveAttribute("aria-expanded", "true");
-    await expect(section(page, "faq").locator("[data-faq-answer]").first()).toBeVisible();
-  });
+  /* ⚠ THE FAQ TEST WAS DELETED HERE. `faq-accordion.tsx` is gone: five accordion questions on
+     a one-scroll overview page is exactly the text-heaviness the client pushed back on
+     (*"so text-heavy"*, *"just to the point, crisp"*). Two of its answers survive inside
+     `solution` — the one about nothing being installed, and the one about no app being able to
+     rewrite an entry in someone else's phone. The rest can return on their own page, at which
+     point this test comes back with them. */
 
   test("the close carries exactly one action", async ({ page }) => {
     await gotoMarketing(page);
     const links = section(page, "start").getByRole("link");
     await expect(links).toHaveCount(1);
-    await expect(links).toHaveAttribute("href", "/signup/first-name");
+    await expect(links).toHaveAttribute("href", "/waitlist");
   });
 });
 
@@ -628,102 +885,136 @@ test.describe("craft", () => {
   });
 
   /**
-   * ⚠ THE HERO NOW CARRIES NO OBJECT AT ALL, AND THAT IS THE ASSERTION.
+   * ⚠ THE HERO CARRIES EXACTLY ONE OBJECT, AND ITS IDENTITY IS THE ASSERTION.
    *
-   * This was "the hero's one object is the film, in a frame that is not a second card", and
-   * before that it counted a tilted card. The hero has held, in turn: a card, then a card drawn
-   * around a film that already rendered a card, then a film alone. All three are gone —
-   * *"remove both of them… it should be text."*
+   * The history matters here more than in any other test in this file. This hero has held, and
+   * had rejected: an azure→cyan gradient with centred type; a Sapphire gradient with a big
+   * tilted card; the same gradient with a silent film; and a fan of three real `<ShareFace>`
+   * passes on a ruled sheet — the last of those built, tested and rejected on sight. After the
+   * fourth, this test asserted `toHaveCount(0)` on every object, and the rule written beside it
+   * was "the hero is type-only".
    *
-   * So the claim inverts. There is no object in the hero, and the guard is that none comes
-   * back: not a card, not a film, not a device frame, not a mockup. The hero is type on a ruled
-   * sheet, and the one authored moment is a hairline being drawn, which is not an object.
+   * It now carries `<LiveCard>`, on the client's explicit brief — *"a visual of contact cards
+   * being updated... a card in the middle, you see the fields updating, flying off, updating,
+   * new ones"* — and with sign-off. The distinction that makes this a different proposition
+   * rather than a fifth attempt at the same mistake: the four rejected objects were PICTURES OF
+   * A CARD, placed in the empty half of the screen to fill it. This one performs the product's
+   * only claim, and a visitor who reads nothing has still watched a card go out of date and
+   * repair itself.
+   *
+   * So the guard is no longer "no object". It is **one object, with two faces**:
+   *
+   *   · exactly one `[data-hero-card]`, and nothing else that reads as an object
+   *   · no film, no device frame, no gradient sheet, no third card
+   *   · the front is a REAL `<ShareFace>` with a real QR, and the back is the live card
+   *
+   * ⚠ THE "NO QR IN THE HERO" CLAUSE WAS DELETED, AND IT WAS RIGHT UNTIL IT WASN'T.
+   * It read: no QR anywhere in the hero, because the symbol has one pixel of clearance over the
+   * 140px floor and a transform on an ancestor spends headroom that does not exist — which was
+   * the mechanical argument for the hero's card being a bespoke rendition rather than a real
+   * pass. The client asked for the opposite: the card in the hero should be the product's own
+   * QR card, flipping to reveal the fields.
+   *
+   * The constraint did not go away; it moved into the flip's design. The turn is `rotateY`
+   * alone, so both faces rest at an identity-equivalent transform and the resting symbol is
+   * exactly the size it was authored. That is asserted by measurement in "holds its size,
+   * flips, and keeps its QR scannable at rest" — which is a stronger guard than banning the
+   * component was.
+   *
+   * If the object is rejected, the lesson is NOT "try a seventh object".
    */
-  test("the hero carries no object — no card, no film, no frame", async ({ page }) => {
+  test("the hero carries exactly one object — a real card with two faces", async ({ page }) => {
     await gotoMarketing(page);
     const hero = page.locator('[data-section="hero"]');
-    await expect(hero.locator("[data-hero-card], [data-hero-film], [data-card-root]")).toHaveCount(
-      0,
-    );
-    await expect(hero.locator("video, img, canvas, svg")).toHaveCount(0);
+
+    /* One flip, two faces, and the faces are the real components. */
+    await expect(hero.locator("button[data-hero-card]")).toHaveCount(1);
+    await expect(hero.locator('[data-side="front"] [data-qr-zone]')).toHaveCount(1);
+    await expect(hero.locator('[data-side="back"] [data-live-card]')).toHaveCount(1);
+
+    /* The four objects rejected on this sheet before it stay out. */
+    await expect(
+      hero.locator("[data-hero-film], .mk-sky, .mk-film-frame, video, canvas"),
+    ).toHaveCount(0);
+
+    /* ⚠ IT IS A REAL BUTTON, AND THAT IS NOT A DETAIL. The card is pressable — a QR is a
+       scanning target and a reader has to be able to stop it turning — so it has to be reachable
+       by keyboard and announce what a press does. A `<div>` with an `onClick` would look
+       identical and be unusable without a mouse. */
+    const control = hero.locator("button[data-hero-card]");
+    expect(await control.evaluate((n) => n.tagName)).toBe("BUTTON");
+    const label = await control.getAttribute("aria-label");
+    expect(label, "the flip control has no accessible name").toBeTruthy();
+    expect(label!.toLowerCase(), "the label does not say what a press does").toContain("press");
+
+    /* And the label follows the face, so it never describes the side already showing. */
+    const before = label!;
+    await control.click();
+    await expect(control).not.toHaveAttribute("aria-label", before);
+
+    /* The faces themselves are hidden from assistive technology: a screen reader gets the
+       control's label and the figure's caption, not two card renders read out in sequence, one
+       of which rewrites itself every two seconds. */
+    for (const side of ["front", "back"]) {
+      await expect(hero.locator(`[data-side="${side}"]`)).toHaveAttribute("aria-hidden", "true");
+    }
+
+    /* The only images in the hero are drawn icons. The portraits are monograms, so the first
+       viewport still makes no image request at all. */
+    await expect(hero.locator("img")).toHaveCount(0);
   });
 
   /**
-   * ⚠ THIS TEST WAS INVERTED, AND THE INVERSION IS THE POINT OF THE REDESIGN.
+   * **There are real product objects below the hero, and they live in a closed set of named
+   * homes.**
    *
-   * It read `expect(page.locator("[data-card-root]")).toHaveCount(0)` — no live card anywhere
-   * below the hero. That rule was written against a build which had spread NINE identical
-   * `<ShareFace mode="thumb">` renders across the page as wallpaper, and banning the component
-   * was the wrong instrument for the right complaint: the defect was decoration, not the
-   * product.
+   * ## Why the rule is shaped like this
+   * It began as its opposite — `expect(page.locator("[data-card-root]")).toHaveCount(0)`, no
+   * live card anywhere below the hero — written against a build that had spread NINE identical
+   * `<ShareFace mode="thumb">` renders across the page as wallpaper. Banning the component was
+   * the wrong instrument for the right complaint: the defect was decoration, not the product.
+   * What the page was left with was eight passes of prose the client read exactly as it was
+   * built — *"just text, text, text and nothing else"*.
    *
-   * What the page was left with was eight passes of prose on tinted grounds, which the client
-   * read exactly as it was built — *"just text, text, text and nothing else"*. So the rule is
-   * now the other way round and it is bounded, because an unbounded version invites the
-   * wallpaper straight back:
+   * So the rule is bounded rather than absolute, because an unbounded version invites the
+   * wallpaper straight back: card objects exist, each is doing a job no sentence could do, and
+   * they live **only** in homes named here.
    *
-   *   · There are card objects below the hero, and they are LIVE renders rather than pictures.
-   *   · Each one is doing a job no sentence could do.
-   *   · They live in a **closed set of named homes**, with a declared shape each, and nowhere
-   *     else.
+   * ## ⚠ BOTH HOMES CHANGED IN THIS REBUILD, AND THE COUNT IS THE SAME BY COINCIDENCE
+   * They were `studio` (in the bento) and `hand-over` (in `broadcast`); both components are
+   * deleted. The homes are now:
    *
-   * ⚠ **THE SET GAINED A SECOND HOME AND THE COUNT WENT FROM TWO TO FOUR.** It began as "only
-   * in the bento" with `toHaveCount(2)`; the hand-over flow in `broadcast` added the second.
+   *     problem    1 card   the "after" half of the before/after, read off the hero's last beat
+   *     solution   3 cards  the pressable filter exhibit
    *
-   * ⚠ A third home — a fan of three passes in the hero — was added and then **removed at the
-   * client's word**: *"remove the cards that u just added into the hero section looking very
-   * vague and odd."* That is the fourth object rejected on that sheet, after azure→cyan, the
-   * Sapphire film, and now the fan. The hero's own test is back to banning every object, and
-   * the standing lesson is that the hero holds type and nothing else.
-   *
-   * Growing the rule rather than deleting it is the entire point, so each home declares the
-   * exact shape it may hold:
-   *
-   *     studio        1 face + 1 page   the reader recolours both
-   *     hand-over     1 face + 1 page   the pass, and the page it opens
-   *
-   * That keeps every tooth the original had. A card in a third place fails — which matters,
-   * because the build this rule was first written against had spread NINE identical
-   * `<ShareFace>` renders across the page as wallpaper.
+   * A card in a third place fails, which is the tooth that matters.
    */
-  test("carries live product objects below the hero, and only in its two named homes", async ({
+  test("carries live product objects below the hero, and only in its named homes", async ({
     page,
   }) => {
     await gotoMarketing(page);
 
-    /* The closed set, each with the multiset of variants it is allowed to hold. */
-    const HOMES = [
-      { sel: '[data-bento-cell="studio"]', shape: ["face", "page"] },
-      { sel: "[data-handover-flow]", shape: ["face", "page"] },
-    ] as const;
+    const homes = { problem: 1, solution: 3 } as const;
 
-    const cards = page.locator("[data-card-root]");
-    await expect(cards).toHaveCount(HOMES.reduce((n, h) => n + h.shape.length, 0));
-
-    const placed = await cards.evaluateAll(
-      (ns, sels) =>
-        ns.map((n) => ({
-          variant: n.getAttribute("data-card-variant"),
-          home: sels.find((sel) => n.closest(sel) !== null) ?? null,
-        })),
-      HOMES.map((h) => h.sel),
-    );
-
-    expect(
-      placed.filter((c) => c.home === null).map((c) => c.variant),
-      "a live card is rendering outside the three named homes",
-    ).toEqual([]);
-
-    for (const { sel, shape } of HOMES) {
-      const got = placed
-        .filter((c) => c.home === sel)
-        .map((c) => c.variant)
-        .sort();
-      expect(got, `${sel} does not hold exactly ${shape.join(" + ")}`).toEqual([...shape].sort());
+    /* `[data-live-card]` is the marketing card object; `[data-solution-card]` is a pressable
+       card in the exhibit. Counting them per section is what bounds the rule. */
+    for (const [id, expected] of Object.entries(homes)) {
+      const count = await page
+        .locator(`[data-section="${id}"] [data-live-card], [data-section="${id}"] [data-solution-card]`)
+        .count();
+      expect(count, `${id} holds ${count} card objects, not ${expected}`).toBe(expected);
     }
 
-    // ...and the hero holds none of them: it is type on a ruled sheet with no object in it.
-    await expect(page.locator('[data-section="hero"] [data-card-root]')).toHaveCount(0);
+    /* And nowhere else below the hero. `cards` is excluded by name: its six tiles are NOT card
+       objects — they carry a type name and three or four field labels, which is why they are
+       tiles and why `/templates` exists for the real thing. */
+    const strays = await page.evaluate(() => {
+      const allowed = new Set(["hero", "problem", "solution"]);
+      return [...document.querySelectorAll("[data-live-card], [data-solution-card]")]
+        .map((n) => n.closest("[data-section]")?.getAttribute("data-section") ?? "?")
+        .filter((id) => !allowed.has(id));
+    });
+    expect([...new Set(strays)], "a card object appeared outside its named homes").toEqual([]);
   });
 
   /**
@@ -832,11 +1123,49 @@ test.describe("craft", () => {
         .locator(`[data-section="${id}"] [data-pass]`)
         .evaluate((n) => n.getAttribute("data-mk-reveal"));
 
-    /* `problem` is the first pass and sits inside the first viewport at every project width. */
-    expect(await stateOf("problem"), "the first pass was armed above the fold").toBeNull();
+    /**
+     * ⚠ THIS USED TO NAME `problem` AND ASSERT IT WAS UNARMED, on the comment "the first pass
+     * sits inside the first viewport at every project width". That stopped being true the day
+     * the hero gained its card: below `lg` the card stacks UNDER the copy, the hero roughly
+     * doubles in height, and `problem` is no longer on screen at 360 or 768 — so it arms, which
+     * is the rule working rather than failing.
+     *
+     * A test that hard-codes which section happens to be visible is a test that breaks every
+     * time the hero's height changes. So the invariant is asserted directly instead:
+     * **nothing intersecting the first viewport is armed, and something below it is.**
+     * Viewport-independent, and it says what the rule actually is.
+     */
+    const arming = await page.evaluate(() => {
+      const vh = window.innerHeight;
+      return [...document.querySelectorAll("[data-section]")].flatMap((sec) => {
+        const pass = sec.querySelector("[data-pass]");
+        if (!pass) return []; // the hero is not a pass
+        const top = pass.getBoundingClientRect().top;
+        return [
+          {
+            id: sec.getAttribute("data-section"),
+            onScreen: top < vh,
+            state: pass.getAttribute("data-mk-reveal"),
+          },
+        ];
+      });
+    });
+
+    const wronglyArmed = arming.filter((a) => a.onScreen && a.state === "armed");
+    expect(
+      wronglyArmed.map((a) => a.id),
+      "a pass already on screen was armed, so the reader watches it jump on load",
+    ).toEqual([]);
+
+    expect(
+      arming.some((a) => !a.onScreen && a.state === "armed"),
+      "no pass below the fold armed at all, so the deck's scroll move never runs",
+    ).toBe(true);
 
     const far = page.locator('[data-section="start"] [data-pass]');
-    expect(await stateOf("start"), "a pass below the fold was not armed").toBe("armed");
+    expect(await stateOf("start"), "the last pass, far below the fold, was not armed").toBe(
+      "armed",
+    );
 
     await far.scrollIntoViewIfNeeded();
     await expect
@@ -865,6 +1194,156 @@ test.describe("craft", () => {
 });
 
 /* ── Source rules ────────────────────────────────────────────────────────────── */
+
+test.describe("the type scale actually lands", () => {
+  /**
+   * **Every `text-mk-*` size utility in the markup resolves to the size it names.**
+   *
+   * This guards the one failure mode `components/marketing/mk-cn.ts` exists for, and it has now
+   * shipped twice. `twMerge` resolves conflicts by sorting a class into a *class group*; it
+   * knows Tailwind's own scales and can only guess at a custom one. For `text-*` it asks "does
+   * this value look like a size?" — and `mk-heading-xl` does not, so unless the name is listed
+   * in `mk-cn.ts` it is filed as a text COLOUR. Put it next to a real colour and twMerge keeps
+   * the last one and silently drops the font size.
+   *
+   * It fails in the browser only, and it fails quietly: the class is in the markup, the CSS
+   * rule exists in the stylesheet, and the class never reaches the element. The first time, it
+   * rendered every headline on the page at the inherited 15px. The second time,
+   * `text-mk-heading-xl` was bridged in `marketing.css` but missing from `mk-cn.ts`, and the
+   * close's headline came out at 18px — smaller than the paragraph beneath it — beside
+   * `text-mk-white`.
+   *
+   * A code review cannot see it and a snapshot only sees it if someone looks closely at the
+   * right element. Comparing the computed size against the token the class names is the only
+   * thing that catches it, and it catches every future instance rather than that one.
+   */
+  test("no `text-mk-*` size utility is silently dropped", async ({ page }) => {
+    await gotoMarketing(page);
+
+    const mismatches = await page.evaluate(() => {
+      const root = getComputedStyle(document.documentElement);
+
+      /** The bridged size tokens, read off the live stylesheet rather than restated here. */
+      const NAMES = [
+        "display",
+        "heading-xl",
+        "heading-lg",
+        "heading",
+        "heading-sm",
+        "subheading",
+        "body",
+        "body-sm",
+        "caption",
+        "eyebrow",
+      ];
+
+      /* Resolve each token to px by measuring it, because the values are `clamp()` expressions
+         and only the browser knows what they are at this viewport. */
+      const probe = document.createElement("span");
+      probe.style.position = "absolute";
+      probe.style.visibility = "hidden";
+      document.body.appendChild(probe);
+      const expected = new Map<string, number>();
+      for (const name of NAMES) {
+        const raw = root.getPropertyValue(`--mk-text-${name}`).trim();
+        if (!raw) continue;
+        probe.style.fontSize = raw;
+        expected.set(name, Number.parseFloat(getComputedStyle(probe).fontSize));
+      }
+      probe.remove();
+
+      const out: { name: string; got: number; want: number; text: string; cls: string }[] = [];
+      for (const el of document.querySelectorAll('main [class*="text-mk-"]')) {
+        for (const cls of el.classList) {
+          const name = cls.startsWith("text-mk-") ? cls.slice("text-mk-".length) : null;
+          if (!name || !expected.has(name)) continue;
+          const got = Number.parseFloat(getComputedStyle(el).fontSize);
+          const want = expected.get(name)!;
+          /* A whole pixel of tolerance: sub-pixel rounding differs between a probe span and a
+             laid-out element, and this test is looking for a size that was DROPPED, which is
+             always wrong by much more than a pixel. */
+          if (Math.abs(got - want) > 1) {
+            out.push({
+              name,
+              got,
+              want,
+              text: (el.textContent ?? "").trim().slice(0, 32),
+              cls: el.className,
+            });
+          }
+        }
+      }
+      return out;
+    });
+
+    expect(
+      mismatches,
+      `a size utility did not reach its element — check mk-cn.ts's font-size group:\n${mismatches
+        .map((m) => `  text-mk-${m.name} wanted ${m.want}px, got ${m.got}px — "${m.text}"`)
+        .join("\n")}`,
+    ).toEqual([]);
+  });
+});
+
+test.describe("the brand accent", () => {
+  /**
+   * **Five sections set one phrase of their heading in the brand green, and that is the single
+   * thing that makes a white page read as ContactBook rather than as any white page.**
+   *
+   * Two properties, and both are the kind that look fine in a screenshot and are wrong:
+   *
+   *   1. **Exactly one accent per section.** `accented()` matches its phrase inside the heading
+   *      and renders the heading PLAIN if it misses — a headline is worth more than a stack
+   *      trace. That fail-open is only safe because this test turns a silent miss into a red
+   *      run. Two accents in one heading is the other failure: at that point it is a green
+   *      headline, and a green headline breaks the moment anybody sets it smaller.
+   *   2. **The accent is size-gated.** `--mk-green-display` (#419F8D) measures 3.01:1 on the
+   *      wash. That clears the LARGE-text bar of 3:1 and NOTHING else, so the same colour on a
+   *      16px paragraph is illegal and indistinguishable by eye. Only a test can catch it.
+   */
+  test("every section sets exactly one accented phrase, and only at a large size", async ({
+    page,
+  }) => {
+    await gotoMarketing(page);
+
+    const accents = await page.evaluate(() =>
+      [...document.querySelectorAll("[data-accent]")].map((n) => ({
+        section: n.closest("[data-section]")?.getAttribute("data-section") ?? "?",
+        text: (n.textContent ?? "").trim(),
+        color: getComputedStyle(n).color,
+        px: Number.parseFloat(getComputedStyle(n).fontSize),
+        weight: Number.parseInt(getComputedStyle(n).fontWeight, 10),
+      })),
+    );
+
+    /* The hero's accent is a headline clause rather than an `accented()` call, so it carries no
+       `data-accent`; it has its own assertion in "sets the client's locked line as two clauses".
+       These are the five that use the helper. */
+    const perSection = accents.reduce<Record<string, number>>((acc, a) => {
+      acc[a.section] = (acc[a.section] ?? 0) + 1;
+      return acc;
+    }, {});
+    expect(perSection, "each of the five helper sections accents exactly one phrase").toEqual({
+      problem: 1,
+      solution: 1,
+      cards: 1,
+      "how-it-works": 1,
+      belief: 1,
+    });
+
+    for (const a of accents) {
+      expect(a.color, `${a.section}'s accent is ${a.color}, not the display green`).toBe(
+        "rgb(65, 159, 141)",
+      );
+      /* WCAG's large-text floor: 24px, or 18.66px when bold. */
+      const large = a.px >= 24 || (a.weight >= 700 && a.px >= 18.66);
+      expect(
+        large,
+        `${a.section}'s accent "${a.text}" is ${a.px}px at weight ${a.weight}, below the 3:1 large-text floor`,
+      ).toBe(true);
+    }
+  });
+});
 
 test.describe("the source rules a rendered page cannot show", () => {
   test("no eyebrow or kicker above a heading, anywhere", () => {
@@ -971,236 +1450,19 @@ test.describe("the source rules a rendered page cannot show", () => {
  * What this file owns instead is everything that decides whether the symbol on `/` is the real
  * mode at the real size, which is the part a marketing edit can break.
  */
-test.describe("the bento", () => {
-  const CELLS = ["profile", "studio", "scan", "reach"] as const;
+/* ⚠ THE `the bento` DESCRIBE BLOCK WAS DELETED HERE, 2026-09-08 — SIX TESTS.
+   Its subject no longer exists. `bento.tsx`, `demo-cells.tsx` and `card-studio.tsx` were the
+   four-cell exhibit inside the old `step-list`, and all three are deleted: by the time a reader
+   reaches "how it works" the hero has animated, the problem has struck three fields out, the
+   solution has an exhibit they can press and the cards section is six coloured objects, so a
+   fifth dense section removed the contrast that made the others feel like something.
 
-  test("renders four cells, in ordinal order, and no two are the same kind", async ({ page }) => {
-    await gotoMarketing(page);
-    const grid = section(page, "how-it-works").locator("[data-bento]");
-    await expect(grid).toHaveCount(1);
-
-    const cells = page.locator("[data-bento-cell]");
-    await expect(cells).toHaveCount(CELLS.length);
-    expect(
-      await cells.evaluateAll((ns) => ns.map((n) => n.getAttribute("data-bento-cell"))),
-    ).toEqual([...CELLS]);
-
-    /* ⚠ The ordinals must read in sequence in the DOM, not merely be present. An earlier
-       arrangement mirrored the second row and printed 01 · 02 then 04 · 03, which is a numbered
-       sequence a reader scans backwards — and no assertion on the grid's geometry would have
-       said so. */
-    const ordinals = await cells.evaluateAll((ns) =>
-      ns.map((n) => (n.textContent ?? "").trim().slice(0, 2)),
-    );
-    expect(ordinals).toEqual(["01", "02", "03", "04"]);
-
-    /* A bento is cells that differ in KIND as well as in size. Four cells on one ground, with
-       one shape of content each, is the grid this section replaced. */
-    const tones = await cells.evaluateAll((ns) => ns.map((n) => n.getAttribute("data-tone")));
-    expect(new Set(tones).size, "every cell is on the same ground").toBeGreaterThanOrEqual(3);
-  });
-
-  /**
-   * ⚠ Rule 1 of `mk-motion.tsx`: the final state is the default.
-   *
-   * `gotoReady` injects a stylesheet that zeroes every duration, which is the condition a
-   * crawler, a reader whose script failed and every screenshot in this suite are all in. A cell
-   * that is invisible until something animates fails all three, and the failure is silent in a
-   * browser with working JavaScript — which is the only browser anybody reviews in.
-   */
-  test("every cell is painted, in position, at rest with durations zeroed", async ({ page }) => {
-    await gotoMarketing(page);
-    for (const id of CELLS) {
-      const cell = page.locator(`[data-bento-cell="${id}"]`);
-      await expect(cell).toBeVisible();
-      const state = await cell.evaluate((n) => {
-        const c = getComputedStyle(n);
-        const r = n.getBoundingClientRect();
-        return { opacity: Number.parseFloat(c.opacity), w: r.width, h: r.height, shadow: c.boxShadow };
-      });
-      expect(state.opacity, `${id} is not fully painted`).toBe(1);
-      expect(state.w, `${id} has no width`).toBeGreaterThan(100);
-      expect(state.h, `${id} has no height`).toBeGreaterThan(100);
-      /* DESIGN.md: the pass is the only object in the deck with depth. A cell is a mount — a
-         ground, a radius and a hairline — and a shadow inside a shadow is what makes a nested
-         card read as a mistake. */
-      expect(state.shadow, `${id} draws its own shadow inside the pass`).toBe("none");
-    }
-  });
-
-  /**
-   * The reflow. A bento that only works at 1440 is a desktop mockup, not a layout.
-   */
-  test("stacks to one column on a phone and pinwheels at the desktop step", async ({
-    page,
-  }, testInfo) => {
-    await gotoMarketing(page);
-    const viewport = PROJECT_VIEWPORT[testInfo.project.name];
-    const boxes: Record<string, { x: number; y: number; w: number }> = {};
-    for (const id of CELLS) {
-      const b = await boxOf(page.locator(`[data-bento-cell="${id}"]`));
-      boxes[id] = { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width) };
-    }
-
-    if (viewport === 1440) {
-      /* Row one: the narrow cell left, the wide one right. Row two mirrors it — see the ⚠ in
-         `step-list.tsx` for why the mirror must not invert the reading order. */
-      expect(boxes.profile.y).toBe(boxes.studio.y);
-      expect(boxes.scan.y).toBe(boxes.reach.y);
-      expect(boxes.scan.y).toBeGreaterThan(boxes.profile.y);
-      expect(boxes.studio.w, "the studio must be the wide cell of row one").toBeGreaterThan(
-        boxes.profile.w,
-      );
-      expect(boxes.scan.w, "the scan cell must be the wide cell of row two").toBeGreaterThan(
-        boxes.reach.w,
-      );
-      expect(boxes.profile.x, "the narrow cell must change sides between rows").toBeLessThan(
-        boxes.reach.x,
-      );
-    } else {
-      /* One column below `lg`, all four the same width and strictly in reading order. A cell
-         that keeps a desktop span on a phone is the "bento that only works at 1440". */
-      const widths = new Set(CELLS.map((id) => boxes[id].w));
-      expect(widths.size, "cells are not all full width below lg").toBe(1);
-      for (let i = 1; i < CELLS.length; i += 1) {
-        expect(boxes[CELLS[i]].y).toBeGreaterThan(boxes[CELLS[i - 1]].y);
-      }
-    }
-  });
-
-  /**
-   * The studio, and the reason it is worth the client bundle it costs.
-   */
-  test("recolours two live product objects when a ground is pressed", async ({ page }) => {
-    await gotoMarketing(page);
-    const studio = page.locator('[data-bento-cell="studio"]');
-
-    // The nine card grounds, as controls rather than as a strip of rectangles.
-    const swatches = studio.locator("[data-palette-swatch]");
-    await expect(swatches).toHaveCount(9);
-
-    const paletteOf = () =>
-      studio.locator("[data-card-root]").evaluateAll((ns) =>
-        ns.map((n) => n.getAttribute("data-palette-id")),
-      );
-
-    // Both objects start on one palette — one `ResolvedCard`, two renderers.
-    const before = await paletteOf();
-    expect(before).toHaveLength(2);
-    expect(new Set(before).size, "the pass and the page disagree about the card's colour").toBe(1);
-
-    const pressed = studio.locator('[data-palette-swatch="oxblood"]');
-    await expect(pressed).toHaveAttribute("aria-pressed", "false");
-    await pressed.click();
-    await expect(pressed).toHaveAttribute("aria-pressed", "true");
-
-    const after = await paletteOf();
-    expect(after, "pressing a ground did not repaint both objects").toEqual([
-      "oxblood",
-      "oxblood",
-    ]);
-
-    /* The ground each swatch paints is the card system's own gradient, not a hex typed into a
-       marketing component — the mechanism by which the two colour systems drifted apart the
-       last time this layer invented a colour. */
-    const painted = await swatches.first().evaluate((n) => getComputedStyle(n).backgroundImage);
-    expect(painted).toContain("gradient");
-  });
-
-  /**
-   * ⚠ THE TWO QR MODES ARE DOING TWO DIFFERENT JOBS AND THE DIVISION IS A SAFETY RULE.
-   *
-   * The scan cell's symbol is `mode="full"` at the card's own 336px width, so `qrSizePx`
-   * resolves above `MIN_QR_SIZE_PX` and it genuinely decodes. The wallet pass in the studio is
-   * `mode="thumb"`: it is scaled to 216px, which puts its symbol under the decode floor, so it
-   * encodes a fixed dummy instead. A scaled symbol carrying a real card URL is a QR that looks
-   * scannable and is not — printed on the page whose entire argument is that it tells the truth
-   * about what software can do.
-   */
-  test("the scannable symbol is real and the scaled one is not", async ({ page }) => {
-    await gotoMarketing(page);
-
-    const real = page.locator('[data-bento-cell="scan"] [data-qr-zone]');
-    await expect(real).toHaveCount(1);
-    await expect(real).toHaveAttribute("data-qr-mode", "full");
-    expect(await real.getAttribute("data-qr-preview"), "the page's one real QR is a preview").toBeNull();
-
-    /**
-     * ⚠ **MEASURE THE SYMBOL AT REST. THE 140px FLOOR IS A PROPERTY OF A RESTING SYMBOL.**
-     *
-     * This measured on load and started failing at all three viewports when the deck gained its
-     * `deal` move: the exhibit renders 141px — one pixel of headroom over `MIN_QR_SIZE_PX` — and
-     * an armed pass is scaled to 0.972, so `getBoundingClientRect` returned 137.1 for a symbol
-     * that is 141 the moment it stops.
-     *
-     * The right resolution is the measurement, not the product. A symbol that is sliding up the
-     * screen cannot be scanned at any size, so a floor enforced against a mid-animation frame is
-     * measuring a state in which the number means nothing. What the floor protects is the symbol
-     * somebody actually points a phone at, which is the settled one.
-     *
-     * ⚠ It is still worth knowing that the headroom is ONE PIXEL. Any future transform on an
-     * ancestor — a scale, a zoom, a `deal` tuned deeper than 0.972 — spends more than exists.
-     * `qr-geometry.ts` names raising `MIN_QR_SIZE_PX` as the sanctioned fix if a decode ever goes
-     * marginal; raising the exhibit's own `cardWidth` is the other end of the same lever.
-     */
-    await real.scrollIntoViewIfNeeded();
-    await expect
-      .poll(
-        async () =>
-          real.evaluate((n) => n.closest("[data-pass]")?.getAttribute("data-mk-reveal") ?? "none"),
-        { timeout: 4000 },
-      )
-      .not.toBe("armed");
-
-    const side = await real.locator("[data-qr-symbol]").evaluate((n) => n.getBoundingClientRect().width);
-    expect(side, "below the 140px scannable floor at this viewport").toBeGreaterThanOrEqual(140);
-
-    const scaled = page.locator('[data-bento-cell="studio"] [data-qr-zone]');
-    await expect(scaled).toHaveCount(1);
-    await expect(scaled).toHaveAttribute("data-qr-preview", "true");
-    expect(
-      await scaled.evaluate((n) => n.outerHTML),
-      "a scaled, undecodable symbol must not carry a real card URL",
-    ).not.toContain("/c/");
-  });
-
-  /**
-   * ⚠ THE MASKED VALUE MUST NOT REACH THE DOM — not as text, not in an attribute.
-   *
-   * `PRODUCT.md` states it as an absolute, and the profile cell is the only place on a public
-   * marketing page where a masked field is rendered at all. The rule is enforced by the product's
-   * own field registry, which replaces `display`, `title` and `href` together; this asserts the
-   * outcome against the raw fixture strings so a future hand cannot "improve" the cell by
-   * rendering `field.value` and masking it in CSS.
-   */
-  test("renders real profile rows, and no masked value survives into the markup", async ({
-    page,
-  }) => {
-    await gotoMarketing(page);
-    const rows = page.locator("[data-profile-row]");
-    await expect(rows).toHaveCount(7);
-
-    const masked = page.locator("[data-profile-row][data-masked]");
-    await expect(masked).toHaveCount(2);
-
-    const html = await page.content();
-    for (const secret of ["+912261234567", "50100412345678", "HDFC0000123"]) {
-      expect(html, `a masked value reached the DOM: ${secret}`).not.toContain(secret);
-    }
-
-    /* And the marker is a drawn padlock AND the word, never one of the two: status is never
-       carried by an icon or a colour alone.
-
-       ⚠ Scoped to `[data-private-mark]` rather than to `svg`. Every row already carries the
-       field registry's own type icon, so a bare `svg` locator matches two elements on a masked
-       row and one on an unmasked one — which would pass for the wrong reason the day the
-       padlock was deleted and the type icon was all that was left. */
-    for (let i = 0; i < 2; i += 1) {
-      await expect(masked.nth(i).locator("[data-private-mark]")).toHaveCount(1);
-      expect((await masked.nth(i).innerText()).toLowerCase()).toContain("private");
-    }
-    // The mark belongs to masked rows only — a padlock on a shareable field is a lie.
-    await expect(page.locator("[data-profile-row]:not([data-masked]) [data-private-mark]")).toHaveCount(0);
-  });
-
-});
+   ⚠ ONE OF THOSE SIX WAS ALREADY FAILING BEFORE THIS REBUILD, AND ITS PROPERTY STILL MATTERS.
+   "the scannable symbol is real and the scaled one is not" asserted `data-qr-preview="true"`,
+   an attribute that exists nowhere in `src/` — `git grep data-qr-preview HEAD` finds it only in
+   test files — so it cannot ever have passed. The property it was reaching for is real: a QR
+   rendered too small to decode must carry the fixed dummy `PREVIEW_PAYLOAD` rather than a live
+   `/c/{slug}`, or an unscannable image has leaked a real link. `cards-list.spec.ts` and
+   `gallery.spec.ts` assert the same missing attribute and are the right place to fix it, since
+   they own surfaces that still render a thumb QR. Tracked separately; not resolved by this
+   deletion. */

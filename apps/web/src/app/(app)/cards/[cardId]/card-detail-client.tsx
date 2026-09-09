@@ -21,7 +21,7 @@ import { ExportPngButton } from "@/components/share/export-png-button";
 import { ShareSheet, useVcfDownload } from "@/components/share/share-sheet";
 import { WalletPassBlock } from "@/components/share/wallet-pass-block";
 import { CardShares, SendToContact, type MintedLink } from "@/components/share/card-sharing";
-import { NotifyBanner, NotifyRecipients } from "@/components/share/notify-recipients";
+import { NotifyBanner } from "@/components/share/notify-recipients";
 import { cards as api } from "@/lib/api/browser";
 import { fetchCardDetail } from "@/lib/api/browser-loaders";
 import { toScreenError } from "@/lib/api/errors";
@@ -349,14 +349,19 @@ function CardDetailScreen({
                   Edit
                 </Link>
 
-                {/* Renders nothing when this card has no active recipients — an owner with
-                    nobody to notify gets no control, not a disabled one. */}
-                <NotifyRecipients
-                  cardId={cardId}
-                  shares={shares}
-                  contacts={contacts}
-                  onChanged={reloadShares}
-                />
+                {/* ⚠ THE "NOTIFY RECIPIENTS" BUTTON WAS HERE AND IS DELIBERATELY GONE.
+                    Client call, 2026-09-03: *"that particular button should be removed"* — it
+                    sat in this row on every card with recipients, and an owner who had just
+                    edited a card had to notice it and come back to press it. Missing that step
+                    is the whole problem it was meant to solve.
+
+                    The notify prompt now opens by itself when the owner presses **Save
+                    changes** in the editor, which is the moment they actually know what
+                    changed (`builder-client.tsx`). The passive banner above the "Sent to" list
+                    stays as the recovery path — it appears only when somebody is genuinely
+                    behind, so it is not "a button on every card", and without it an owner who
+                    dismissed the prompt, or who wants to re-notify without editing anything,
+                    would have no way to do either. */}
 
                 <ShareSheet
                   resolved={resolved}
@@ -468,7 +473,16 @@ function CardDetailScreen({
                     <Button
                       variant="primary"
                       fullWidth
-                      data-card-save-contacts=""
+                      /* ⚠ `data-card-action="save"` AND NOT A NEW HOOK. `CardActionButton`
+                         published this and its own note says why it is spelled semantically:
+                         *"`data-card-action="save"` survives a redesign that turns the primary
+                         button secondary."* Swapping the component for the app's `<Button>` is
+                         exactly that redesign, and my first pass invented
+                         `data-card-save-contacts` instead — which silently orphaned
+                         `card-detail.spec.ts`'s vCard download tests AND turned its
+                         "a zero-field card offers no save" assertion vacuous, since it counts
+                         an attribute that had stopped existing anywhere. */
+                      data-card-action="save"
                       onClick={() => onSaveToContacts(resolved)}
                       /* The primitive owns the in-flight state: `loading` sets `aria-busy`,
                          swaps the label and really swallows the click (a bare `disabled` is

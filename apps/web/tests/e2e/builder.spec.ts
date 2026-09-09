@@ -3,10 +3,26 @@ import { expect, test, type Page } from "@playwright/test";
 import { derivePalette } from "@/card/derive-palette";
 import { TEMPLATE_PALETTES } from "@/card/template-palettes";
 import { FIXTURE_DB } from "@/fixtures";
-import type { FieldCategory } from "@/types/domain";
 
 import { PROJECT_VIEWPORT, gotoReady } from "../helpers/e2e";
+import { signIn } from "../helpers/session";
 import { STATE_QUERIES, withState } from "../helpers/routes";
+
+/**
+ * ⚠ EVERY TEST BELOW IS ON A GATED ROUTE, SO THE CONTEXT NEEDS A SESSION FIRST.
+ *
+ * `proxy.ts` redirects `/cards/**` to `/signin/phone` without a `cb_at` cookie. Before this
+ * hook existed, that redirect is what the whole suite was asserting against — every test found
+ * a phone-number form and reported it as a missing element, which reads as a product bug. See
+ * `tests/helpers/session.ts` for why a forged-`exp` cookie is the right seam and why it is
+ * opt-in rather than global.
+ *
+ * On the CONTEXT and before `goto`: a cookie set afterwards arrives too late for a redirect
+ * that has already happened.
+ */
+test.beforeEach(async ({ context, baseURL }) => {
+  await signIn(context, baseURL!);
+});
 
 /** `#5B1626` → `rgb(91, 22, 38)`, which is the form `getComputedStyle` reports. */
 function rgbOf(hex: string): string {
@@ -60,14 +76,15 @@ function rgbOf(hex: string): string {
  * Two shape changes since the version this replaces, both of which delete locators rather than
  * assertions:
  *
- * · **The checkbox list is gone.** The right-hand Fields section shows *the fields already on
- *   this card*, in the card's own order, one row each with a remove control; adding happens in a
- *   Radix dialog behind a **+ Add** button. So `getByRole("checkbox").click()` is replaced by
- *   {@link addField} / {@link removeField}, and the per-group `n/m` counters are gone with the
- *   groups — the categories they named are the dialog's left rail now, and
- *   {@link categoryOf} drives it. Every claim those tests made about *masking* and about *no
- *   embedded editor* is re-made below, on both surfaces, because the modal is a second place
- *   either could break.
+ * · **⚠ The checkbox list came BACK, and the two things that replaced it are both deleted.**
+ *   The Fields section went: a checkbox list over the profile → a list of the card's own fields
+ *   with a `+ Add` **modal** → the same list with two columns of offers under it → **one ticked
+ *   list over the whole profile**, which is where it is now. So `getByRole("checkbox").click()`
+ *   is right again, and {@link addField} / {@link removeField} are both a click on one row's
+ *   tick. What did not come back is the per-group `n/m` counter: the header meter is the one
+ *   count, and the categories are quiet group bands inside the single list rather than a rail
+ *   or a filter. The section note above `the Fields panel lists the whole profile` tables every
+ *   test the last two shapes took with them and names where each claim lives now.
  * · **The pane previews the card PAGE, in a phone frame — not the share face.** The two objects
  *   did not change; which of them is the product did. The face is the *wallet pass*: rigid
  *   336×500, a name, two details and the QR, rendered unscaled on `/cards/[cardId]`, where the
@@ -184,23 +201,42 @@ async function screenStateRoot(page: Page) {
 }
 
 /**
- * The field ids this card maps, in the order the card renders them.
+ * The field ids this card maps — **the ticked rows**, in the list's order.
  *
- * Read off the Fields section's own list, which is the screen's statement of what the card
- * carries. It replaces `previewPageFieldIds()`, which drove the deleted Scan-page toggle and
- * read the ids off that preview's rows.
+ * ⚠ **`[data-field-on]` is the whole helper, and leaving it off is how this went wrong.** The
+ * Fields panel used to be a list of the card's own fields, so every `[data-field-row]` in it was
+ * a mapping; it lists the **whole profile** now, ticked, so the same selector answers "what
+ * could this card share" — 35 rows on the fixture profile — and every `toEqual([...])` below
+ * would have been comparing a card against a profile.
  *
- * The replacement is not a downgrade for the four tests that used it — "a new card arrives
- * seeded", "ticking a field updates the preview", the E-01 zero-field card and E-40's dangling
- * mappings are all claims about *which fields the card maps*, and this list is sorted by §6.4's
- * own comparator, so it is the same sequence the page preview used to print. It is also a
- * superset: a mapped `PHOTO` is consumed by the avatar slot and never rendered as a field row,
- * so the old helper could not have seen one.
+ * ⚠ **SORTED, so no caller can read an order into it.** The panel lists the profile in the
+ * profile's display order, which is *not* the card's §6.4 render order — the Ledger card's ticks
+ * come back `job_title, company, work_phone, site_url` where the card renders
+ * `work_phone, work_email, site_url, job_title, company`. Returning DOM order here invited every
+ * caller to assert the wrong sequence and call it a regression. This helper answers **which
+ * fields are mapped**; {@link previewFieldIds} answers **in what order the card renders them**,
+ * off the card itself, resolved through the same `resolveCard` the public page uses (I-5).
  */
 async function cardFieldIds(page: Page): Promise<string[]> {
-  return page
-    .locator("[data-field-picker] [data-field-row]")
+  const ids = await page
+    .locator("[data-field-picker] [data-field-row][data-field-on]")
     .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-field-row") ?? ""));
+  return ids.sort();
+}
+
+/**
+ * The field ids the previewed card **renders**, in §6.4's canonical order.
+ *
+ * ⚠ Not a duplicate of {@link cardFieldIds}: that one reads the panel's ticks (what is mapped),
+ * this one reads the card (what is rendered, in what order). They differ by design in two ways
+ * — a mapped field whose value is blank is dropped by the resolver (§11 E-07), and a mapped
+ * `PHOTO` is consumed by the avatar slot and never rendered as a row — so a test asserting
+ * *order* must read this and a test asserting *mapping* must read the other.
+ */
+async function previewFieldIds(page: Page): Promise<string[]> {
+  return page
+    .locator("[data-builder-preview] [data-card-field]")
+    .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-card-field") ?? ""));
 }
 
 /**
@@ -237,56 +273,71 @@ async function previewGround(page: Page): Promise<string | null> {
   });
 }
 
-/** One profile field, from the fixtures, so the helpers below can find it in the dialog. */
+/** One profile field, from the fixtures, so a test can name a row by its own label. */
 function fixtureField(fieldId: string) {
   const field = FIXTURE_DB.fields.find((candidate) => candidate.id === fieldId);
   if (field === undefined) throw new Error(`no fixture field "${fieldId}"`);
   return field;
 }
 
-/** The category a field is filed under — which rail entry the dialog lists it beneath. */
-function categoryOf(fieldId: string): FieldCategory {
-  const group = FIXTURE_DB.groups.find((g) => g.id === fixtureField(fieldId).groupId);
-  if (group === undefined) throw new Error(`no fixture group for field "${fieldId}"`);
-  return group.category;
-}
+/* ⚠ `categoryOf()` is gone with the modal's category rail. It answered "which rail entry lists
+   this field", and the categories are group bands *inside* the one list now — a row is reached
+   by its id, never by navigating to its category first. */
 
-/** Open the "Add a field" dialog. `.first()` — the empty state renders a second **+ Add**. */
+/**
+ * Bring the Fields panel into view.
+ *
+ * ⚠ THIS USED TO OPEN A MODAL, AND THERE IS NO MODAL ANY MORE. `add-field-dialog.tsx` was
+ * replaced by two permanent columns on the panel itself (`field-sources.tsx`) after the client
+ * asked *"why it opens a pop-up? There is a lot of white space below that"*. So the whole
+ * open/close dance is gone: the profile's other fields and the create form are simply present.
+ *
+ * The helper survives, narrowed to "make sure we are on the Fields panel", because a dozen
+ * tests were calling it to get there and the panel is one of several tabs.
+ */
 async function openAddField(page: Page) {
-  await page.locator("[data-add-field-open]").first().click();
-  await expect(page.locator("[data-add-field-dialog]")).toBeVisible();
-}
-
-async function closeAddField(page: Page) {
-  await page.keyboard.press("Escape");
-  await expect(page.locator("[data-add-field-dialog]")).toHaveCount(0);
+  const picker = page.locator("[data-field-picker]");
+  if ((await picker.count()) === 0) {
+    await page.locator('[data-builder-nav-item="fields"]').click();
+  }
+  await expect(picker).toBeVisible();
 }
 
 /**
- * Add one field to the card, the way an owner does: open the modal, go to the field's category,
- * press its Add.
+ * Add one field to the card, the way an owner now does: press the `+` on its row.
  *
- * Via the **rail** rather than the search box, and rather than trusting *Suggested*: the
- * shortlist is capped at six, so half the fixture profile is not on it, and a helper that
- * silently depended on a ranking would fail confusingly the day the ranking changed. The rail
- * lists every field in a category unconditionally.
+ * ⚠ The old helper went through the modal's **category rail** — open, click the category, click
+ * the row's Add, wait for it to read "Added", press Escape. Three of those five steps described
+ * mechanisms that no longer exist, and the fourth is now false by design: a field that has been
+ * added **leaves this list** rather than reading "Added", because on a panel the row moving up
+ * into the card's own list is the confirmation. See `field-sources.tsx`.
  *
- * It waits for the row to read "Added" before closing, so a test that adds two fields in a row
- * cannot race the second click against the first re-render.
+ * So the wait inverts. It waits for the offer row to *disappear*, which is the same guarantee
+ * the old wait gave — a test adding two fields in a row cannot race the second click against
+ * the first re-render — expressed against the behaviour that replaced it.
  */
 async function addField(page: Page, fieldId: string) {
   await openAddField(page);
-  await page.locator(`[data-add-field-category="${categoryOf(fieldId)}"]`).click();
-  await page.locator(`[data-add-field-result-add="${fieldId}"]`).click();
-  await expect(
-    page.locator(`[data-add-field-result="${fieldId}"][data-add-field-added]`),
-  ).toHaveCount(1);
-  await closeAddField(page);
+  /* ⚠ THE ROW DOES NOT MOVE AND MUST NOT BE WAITED ON TO MOVE. Two earlier versions of this
+     helper waited for the row to read "Added" (the modal) and then for it to *leave* an offer
+     list (the two-column layout). Both encoded a layout that was rejected. The list is one
+     ticked list now: the row stays exactly where it is and its tick changes, so that is what
+     the wait watches. */
+  await page.locator(`[data-field-tick="${fieldId}"]`).click();
+  await expect(page.locator(`[data-field-row="${fieldId}"][data-field-on]`)).toHaveCount(1);
 }
 
-/** Take one field off the card, from the section's own list. No modal involved. */
+/**
+ * Take one field off the card — by unticking its row.
+ *
+ * ⚠ **There is no per-row remove button anywhere on this screen, and its absence is the
+ * design.** The tick is the only control, so "is this on the card?" has exactly one place it can
+ * be changed and the row cannot move while it is changed. `[data-field-remove]` belonged to the
+ * card's own field list, which was deleted for restating the preview beside it.
+ */
 async function removeField(page: Page, fieldId: string) {
-  await page.locator(`[data-field-remove="${fieldId}"]`).click();
+  await page.locator(`[data-field-tick="${fieldId}"]`).click();
+  await expect(page.locator(`[data-field-row="${fieldId}"][data-field-on]`)).toHaveCount(0);
 }
 
 /* ── AC-05 / E-38: the static segment wins ───────────────────────────────────────── */
@@ -339,8 +390,10 @@ test("a new card still opens on the first template's preset, seeded from the pro
     "data-field-count",
     String(MERIDIAN_SEED.length),
   );
-  // Not just the count: the *right* two fields, in order, on the card the preview is showing.
-  expect(await cardFieldIds(page)).toEqual(MERIDIAN_SEED);
+  // Not just the count: the *right* two fields are ticked…
+  expect(await cardFieldIds(page)).toEqual([...MERIDIAN_SEED].sort());
+  // …and the card the preview is showing renders exactly those, in §6.4's order.
+  expect(await previewFieldIds(page)).toEqual(MERIDIAN_SEED);
 });
 
 /* ── AC-29: the split view, at all three viewports ───────────────────────────────── */
@@ -434,11 +487,16 @@ test("the controls are reachable without scrolling too", async ({ page }) => {
   // A builder whose every control is below the fold is a builder nobody can use. The mobile
   // preview cap is chosen to keep both true at 360×800 — see the note in `builder-client.tsx`.
   //
-  // Asserted on the *heading*, not on `[data-builder-section="fields"]`: the section is a
-  // thousand pixels tall, so `toBeInViewport()` on it passes on any sliver of intersection and
-  // would keep passing with every actual control pushed off the bottom of the screen. This used
-  // to be `[data-builder-tabs]`, which was small for the same reason.
-  await expect(page.getByRole("heading", { level: 2, name: "Fields" })).toBeInViewport();
+  /* Asserted on the panel's **head**, not on `[data-builder-section="fields"]`: the section is a
+     thousand pixels tall, so `toBeInViewport()` on it passes on any sliver of intersection and
+     would keep passing with every actual control pushed off the bottom of the screen. This used
+     to be `[data-builder-tabs]`, which was small for the same reason.
+
+     ⚠ And it is the *card-name* input rather than the `<h2>`, because the `<h2>` is `sr-only`
+     now — a 1px clipped box is never "in viewport", and the visible title of the panel is the
+     card's name (`panel-head.tsx`). This is strictly the better proxy anyway: it is the first
+     thing an owner sees inside the controls, and it is a control rather than a label. */
+  await expect(page.locator("[data-panel-head] [data-builder-name]")).toBeInViewport();
 });
 
 test("the pinned pane stays put while the controls scroll (§8D.4)", async ({ page }) => {
@@ -670,19 +728,17 @@ test("adding a field updates the preview with no intermediate commit action (AC-
     "0",
   );
 
-  /* Deliberately NOT `addField()` here: this test is about the moment of the add, so the modal
-     is driven by hand and left open. The whole AC-29 claim is that the screen behind the scrim
-     has already moved — the owner does not "apply" a selection, and the dialog is not a form
-     that gets submitted on close. */
+  /* Deliberately NOT `addField()` here: that helper waits for the tick to land, and this test
+     is about the *moment* of the add — so the checkbox is clicked by hand and everything below
+     is a claim about what had already changed by the time it was released. */
   await openAddField(page);
-  await page.locator(`[data-add-field-category="${categoryOf("field_mobile")}"]`).click();
-  await page.locator('[data-add-field-result-add="field_mobile"]').click();
+  await page.locator('[data-field-tick="field_mobile"]').click();
 
-  // The row flips in place, the modal stays open, and the card behind it has already changed.
-  await expect(
-    page.locator('[data-add-field-result="field_mobile"][data-add-field-added]'),
-  ).toHaveCount(1);
-  await expect(page.locator("[data-add-field-dialog]")).toBeVisible();
+  /* ⚠ The row flips **in place**, and there is nothing to dismiss or apply. This used to drive
+     a modal and assert it stayed open behind its own scrim; the scrim, the modal and the
+     "Added" state are all gone — one list, one tick. */
+  await expect(page.locator('[data-field-row="field_mobile"][data-field-on]')).toHaveCount(1);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.locator('[data-field-count-meter="meter"]')).toHaveAttribute(
     "data-field-count",
     "1",
@@ -702,7 +758,6 @@ test("adding a field updates the preview with no intermediate commit action (AC-
     "1",
   );
 
-  await closeAddField(page);
 
   // Nothing was applied, submitted or advanced — closing the modal committed nothing, because
   // there was nothing left to commit.
@@ -1337,12 +1392,18 @@ test("a zero-field card shows the warning bar, a zero meter and a blocked Save (
   ).toHaveAttribute("data-card-action-count", "0");
   expect(await cardFieldIds(page)).toEqual([]);
 
-  // 5. …and the Fields section says the same thing in its own words, with the way out.
-  //    The empty state and the warning bar are two different sentences on purpose: the bar
-  //    owns the *consequence*, this owns the *action*, and neither repeats the other.
-  await expect(page.locator("[data-fields-empty]")).toBeVisible();
-  await expect(page.locator("[data-field-rows]")).toHaveCount(0);
-  await expect(page.locator("[data-add-field-open]").first()).toBeVisible();
+  /* 5. …and the Fields section says the same thing in its own words: every profile field is
+        listed and **not one of them is ticked**.
+
+        ⚠ `[data-fields-empty]` and `[data-field-rows]` went with the card's own field list.
+        The panel lists the *profile* now, which is not empty just because the card is — so
+        "this card shares nothing" is a statement about the ticks, and that is what is read. */
+  await expect(page.locator("[data-field-picker] [data-field-row]").first()).toBeVisible();
+  await expect(
+    page.locator("[data-field-picker] [data-field-row][data-field-on]"),
+  ).toHaveCount(0);
+  // And the way out is on the panel: the composer that authors a field the profile lacks.
+  await expect(page.locator("[data-field-new-open]")).toHaveCount(1);
 });
 
 test("pressing the blocked Save does nothing at all (E-01)", async ({ page }) => {
@@ -1378,13 +1439,15 @@ test("the guard lifts the moment a field is added, and returns when it is remove
   await addField(page, "field_work_email");
 
   await expect(page.locator("[data-empty-card-warning]")).toHaveCount(0);
-  await expect(page.locator("[data-fields-empty]")).toHaveCount(0);
+  await expect(page.locator('[data-field-row="field_work_email"][data-field-on]')).toHaveCount(1);
   await expect(save).not.toHaveAttribute("aria-disabled", "true");
   await expect(save).not.toHaveAttribute("aria-describedby", /./);
 
   await removeField(page, "field_work_email");
   await expect(page.locator("[data-empty-card-warning]")).toBeVisible();
-  await expect(page.locator("[data-fields-empty]")).toBeVisible();
+  await expect(
+    page.locator("[data-field-picker] [data-field-row][data-field-on]"),
+  ).toHaveCount(0);
   await expect(save).toHaveAttribute("aria-disabled", "true");
 });
 
@@ -1430,7 +1493,7 @@ test("a new card's Save says it is creating, not updating", async ({ page }) => 
 
 /* ── E-01's action, and the wall against an embedded editor ──────────────────────── */
 
-test("E-01's Add fields opens the field dialog instead of leaving the builder (§8D.4)", async ({
+test("E-01's Add fields opens the Fields panel instead of leaving the builder (§8D.4)", async ({
   page,
 }) => {
   await gotoReady(page, EDIT_EMPTY);
@@ -1442,7 +1505,11 @@ test("E-01's Add fields opens the field dialog instead of leaving the builder (�
   await expect(addFields).not.toHaveAttribute("href", /./);
 
   await addFields.click();
-  await expect(page.locator("[data-add-field-dialog]")).toBeVisible();
+  /* ⚠ It selects the Fields panel and stops. There is nothing to open: the profile's fields and
+     the composer that authors a missing one are both permanently on that panel, so arriving
+     there IS the whole action. */
+  await expect(page.locator("[data-field-picker]")).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page).not.toHaveURL(/\/profile$/);
 });
 
@@ -1460,8 +1527,12 @@ test("the Fields section offers no route out to /profile for a new field (§8D.4
     page.locator('[data-field-picker] a[href="/profile"]:not([data-field-edit-elsewhere])'),
   ).toHaveCount(0);
 
-  await page.locator("[data-field-picker] [data-add-field-open]").first().click();
-  await expect(page.locator("[data-add-field-dialog]")).toBeVisible();
+  /* The route to a new field is the panel's own composer — one row, opening in place, with no
+     dialog and no navigation. */
+  await page.locator("[data-field-new-open]").click();
+  await expect(page.locator("[data-create-field-form]")).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page).not.toHaveURL(/\/profile$/);
 });
 
 /**
@@ -1502,10 +1573,20 @@ test("the builder has one commit affordance and creates no fields (§8D.4)", asy
   );
   await expect(page.locator("[data-field-picker] textarea")).toHaveCount(0);
 
-  // Authoring is not in this panel at all — it is behind the dialog, which is closed here.
+  /* Authoring lives on this panel now, and the resting state is what keeps that honest: the
+     composer is one closed row, so it contributes no form, no submit and no input until it is
+     asked for. Its own test drives it open. */
   await expect(page.locator("[data-field-picker] [data-add-field]")).toHaveCount(0);
   await expect(page.locator("[data-create-field-form]")).toHaveCount(0);
+  await expect(page.locator("[data-field-new-open]")).toHaveAttribute("aria-expanded", "false");
+
+  /* ⚠ **Exactly one card-name input on the screen**, and it is NOT in this panel — it is the
+     head above the tab panels, because the name is the same on both tabs and a copy inside each
+     one would remount on every tab switch. Asserted as a count *and* as an absence from the
+     panel, so a head that crept back into `FieldPicker` fails here rather than by dropping a
+     caret in somebody's rename. See `panel-head.tsx`. */
   await expect(page.locator("[data-builder-name]")).toHaveCount(1);
+  await expect(page.locator("[data-field-picker] [data-builder-name]")).toHaveCount(0);
 });
 
 /**
@@ -1572,42 +1653,69 @@ test("clearing a value drops the field from the card and keeps the row", async (
 });
 
 /**
- * **The same wall, on the new surface behind it.**
+ * **The same wall, on the surface that authors.**
  *
- * §8D.4's ruling is about the *screen*, and the screen grew a modal. A dialog is exactly where an
- * "and while you're here, make a new one" form would end up, so the absence is asserted with the
- * dialog **open** rather than only with it closed — the closed-dialog check above cannot see
- * inside a subtree Radix has not mounted yet.
+ * §8D.4's ruling is about the *screen*, and this screen can now author a profile field without
+ * leaving it. That is the shape most likely to grow a second commit affordance, so it is
+ * asserted with the composer **open** rather than only with it closed.
  *
- * The one input in there is the search box, and it is required to be a `type="search"` filter:
- * no `form`, no submit control, no textarea, and no button whose name reads like authoring. The
- * only route to a new field is the deep link, which is a real navigation.
+ * Three claims:
+ *
+ * 1. **Closed is the resting state.** The client's whole note about this panel was noise
+ *    (*"still quite noisy. I would remove the kind and the value"*), and the structural answer
+ *    is that the composer costs one row until it is asked for.
+ * 2. **No dialog, at any point.** It expands in place, under the button that opened it, rather
+ *    than over the preview it changes.
+ * 3. **⚠ Its submit writes the PROFILE, and the card still has exactly one commit affordance.**
+ *    `POST /profile/fields` is not a card commit: the field's *tick* is live like every other
+ *    control here, and Save remains the only thing that writes the card.
  */
-test("the Add-a-field modal selects fields and never authors one (§8D.4)", async ({ page }) => {
+test("the field composer authors in place, and never becomes a second commit (§8D.4)", async ({
+  page,
+}) => {
   await gotoReady(page, NEW);
-  await openAddField(page);
 
-  const dialog = page.locator("[data-add-field-dialog]");
+  // 1. Closed. No form, no select, no submit — the panel is a list of fields.
+  await expect(page.locator("[data-create-field-form]")).toHaveCount(0);
+  await expect(page.locator("[data-field-picker] form")).toHaveCount(0);
+  const toggle = page.locator("[data-field-new-open]");
+  await expect(toggle).toHaveCount(1);
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
 
-  // It opens on the picking state: one input, and it filters.
-  await expect(dialog.locator("input")).toHaveCount(1);
-  await expect(dialog.locator("[data-add-field-search]")).toHaveAttribute("type", "search");
-  await expect(dialog.locator("textarea, form")).toHaveCount(0);
+  // 2. It opens in place. No dialog is mounted, before or after.
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await toggle.click();
+  await expect(page.locator("[data-create-field-form]")).toBeVisible();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
 
-  // The deep link out to /profile is gone — a missing field is authored here now.
-  await expect(dialog.locator('a[href="/profile"]')).toHaveCount(0);
+  /* ⚠ And the labels are gone from the screen without leaving the accessibility tree — the
+     literal reading of "remove the kind and the value". A printed `<label>` in here fails. */
+  await expect(page.getByRole("combobox", { name: /kind/i })).toBeVisible();
+  await expect(page.locator("[data-create-field-value]")).toHaveAttribute(
+    "placeholder",
+    /.+/,
+  );
+  const printedLabels = await page
+    .locator("[data-create-field-form] label")
+    .evaluateAll((nodes) =>
+      nodes
+        .filter((node) => {
+          const box = node.getBoundingClientRect();
+          return box.width > 1 && box.height > 1;
+        })
+        .map((node) => node.textContent),
+    );
+  expect(printedLabels, "a printed form label came back onto the panel").toEqual([]);
 
-  // …behind one button, collapsed until it is asked for, so the default state is unchanged.
-  const newField = dialog.locator("[data-add-field-new]");
-  await expect(newField).toHaveAttribute("aria-expanded", "false");
-  await newField.click();
-  await expect(dialog.locator("[data-create-field-form]")).toBeVisible();
-  await expect(newField).toHaveAttribute("aria-expanded", "true");
-
-  /* ⚠ The §8D.4 invariant, restated for the surface that now authors: this form commits a
-     PROFILE field. The card still has exactly one commit affordance, and it is not in here. */
+  // 3. One card commit on the screen, and it is Save. The composer's submit is not one.
   await expect(page.locator("[data-builder-save]")).toHaveCount(1);
+  await expect(page.locator("[data-create-field-submit]")).toHaveCount(1);
   await expect(page).not.toHaveURL(/\/profile$/);
+
+  // Closing it puts the panel back to a list and nothing else.
+  await page.locator("[data-field-new-open]").click();
+  await expect(page.locator("[data-create-field-form]")).toHaveCount(0);
 });
 
 /* ── the control panel: three tabs, one mounted, all three addressable ───────────── */
@@ -1754,30 +1862,67 @@ test("an unrecognised ?panel= falls back to Fields (E-34)", async ({ page }) => 
   await expect(page.locator("[data-builder-save]")).toBeVisible();
 });
 
-/* ── the Fields section: the card's own list ─────────────────────────────────────── */
+/* ── the Fields section: one ticked list over the whole profile ──────────────────── */
 
 /**
- * ⚠ **This replaces "the field picker groups by FieldCategory and counts each group live".**
+ * ⚠ **THIS IS THE THIRD VERSION OF THIS SECTION, AND THE PREVIOUS TWO ARE DELETED RATHER THAN
+ * ADAPTED. Eight tests went; here is what each of them claimed and where the claim lives now.**
  *
- * That test read the seven `<h3>` group headers and their `n/m` counters off the checkbox list.
- * The list is gone; the categories it grouped by are the modal's left rail, asserted in the rail
- * test below, and the "how many are on this card" number it counted is the header meter, which
- * every AC-36 test here already reads.
+ * The panel has been: a list of the card's own fields with a `+ Add` modal beside it → the same
+ * list with two columns of offers under it → **one list of the whole profile, ticked**. The
+ * tests below are written against the third, and these are the ones that could not survive it:
  *
- * What takes its place is the claim the section now makes: **the list is the card**, in the
- * card's own order.
+ * | Deleted test | Why it cannot be adapted | Where the claim lives |
+ * |---|---|---|
+ * | "the + Add button opens a modal that offers a shortlist first" | there is no modal and no shortlist — every field is listed, always, so nothing has to be *ranked* into view | the list itself; `suggestedRows` is unused by this screen |
+ * | "every row wears its type's glyph, decoratively" | rows carry no icon: at 35 rows a glyph column was 35 objects earning nothing, and `[data-field-row-icon]` is gone from the source | `FIELD_RENDERERS` is still asserted on the card, in `card-variants.test.tsx` |
+ * | "the modal's search finds a field outside the shortlist" | ⚠ **the search box is deleted** — client, 2026-09-07: *"remove the search bar (won't be too many fields)"* | `rowMatches` is unit-tested in `field-rows`; nothing on this screen calls it |
+ * | "the modal's category rail filters to one category" | there is no rail; the categories are group bands **in** the one list, so there is nothing to filter *to* | "groups the list under the profile's own category names", in `field-picker.test.tsx` |
+ * | "a field already on the card reads Added and cannot be added twice" | structurally impossible now: one row per field, and its tick *is* its state | `shows every profile field once`, in `field-picker.test.tsx` |
+ * | "Suggested does not shuffle under the cursor while several fields are added" | the list cannot reorder at all — `ordered` does not depend on `selected` | `does not move a row when it is ticked` (unit) and the tick test below |
+ * | "the Fields section lists what the card carries, in the card's order" | the panel lists the **profile**; the card's order is the preview's | rewritten below, reading `previewFieldIds()` |
+ * | "removing a field from the list is live" | `[data-field-remove]` is gone with the card's own list | rewritten below, unticking |
+ *
+ * ⚠ Deleting a test is the move that hides a regression, so the rule applied here was: every
+ * deleted test's *claim* is either restated below, or named above with the file that now owns
+ * it. A claim that could not be placed would have meant the UI change was wrong, not the test.
  */
-test("the Fields section lists what the card carries, in the card's order", async ({ page }) => {
+test("the Fields panel lists the whole profile, ticked — and the card keeps its own order", async ({
+  page,
+}) => {
   await gotoReady(page, EDIT_LEDGER);
 
-  await expect(page.locator("[data-fields-empty]")).toHaveCount(0);
-  await expect(page.locator("[data-field-rows]")).toHaveAttribute("data-field-count", "5");
+  /* Every profile field is offered, not just the card's five. This is the number that made the
+     two rejected layouts unusable, and it is asserted so the list is known to be the long one.
 
-  /* §6.4: category, then type, then label, then id. The Work card maps five fields, all in
-     WORK, so type rank orders them: PHONE(0), EMAIL(3), URL(5), JOB_TITLE(10), COMPANY(11).
-     That is exactly the sequence the card and the `.vcf` use — which is the whole reason the
-     list is sorted by `resolveCard`'s own comparator rather than by insertion order. */
-  expect(await cardFieldIds(page)).toEqual([
+     ⚠ `expect(...).toBeVisible()` first, and `count()` only after it: **this panel's fields are
+     a client fetch** (`useApiResource`, not the server pass), so the list is empty for a tick
+     after `gotoReady` returns. `count()` does not retry, and a bare `count()` here read 0. */
+  const rows = page.locator("[data-field-picker] [data-field-row]");
+  await expect(rows.first()).toBeVisible();
+  expect(await rows.count()).toBeGreaterThan(9);
+
+  // The five the Work card maps are the ticked ones, and the meter agrees.
+  expect(await cardFieldIds(page)).toEqual(
+    [
+      "field_work_phone",
+      "field_work_email",
+      "field_site_url",
+      "field_job_title",
+      "field_company",
+    ].sort(),
+  );
+  await expect(page.locator('[data-field-count-meter="meter"]')).toHaveAttribute(
+    "data-field-count",
+    "5",
+  );
+
+  /* ⚠ §6.4 — category, then type, then label, then id — is the **card's** order, so it is read
+     off the card. The Work card maps five WORK fields, so type rank orders them: PHONE(0),
+     EMAIL(3), URL(5), JOB_TITLE(10), COMPANY(11). That the panel lists them in the profile's
+     order instead is the point of the split: the list is stable under a tick, and the card is
+     sorted by `resolveCard`'s own comparator. */
+  expect(await previewFieldIds(page)).toEqual([
     "field_work_phone",
     "field_work_email",
     "field_site_url",
@@ -1785,17 +1930,26 @@ test("the Fields section lists what the card carries, in the card's order", asyn
     "field_company",
   ]);
 
-  // Each row names its field and offers a remove control named for it (§8.8, AC-25) — never a
-  // bare "Remove" repeated five times.
+  // Each row names its field, and the tick is named for it too (§8.8, AC-25) — never a bare
+  // "Share" repeated thirty-five times.
   await expect(page.locator('[data-field-row="field_work_email"]')).toContainText("Work email");
-  await expect(
-    page.getByRole("button", { name: "Remove Work email" }),
-  ).toHaveCount(1);
+  await expect(page.getByRole("checkbox", { name: /Share Work email on this card/i })).toHaveCount(
+    1,
+  );
 
-  // A newly added field appears in its canonical position, not at the end.
+  /* A newly ticked field reaches the card in its canonical position, not at the end — while its
+     row does not move at all. Both halves in one assertion pair. */
+  const before = await rows.evaluateAll((nodes) =>
+    nodes.map((node) => node.getAttribute("data-field-row")),
+  );
   await addField(page, "field_mobile");
-  expect(await cardFieldIds(page)).toEqual([
-    // PERSONAL(1) sorts before every WORK(2) row, wherever it was added from.
+
+  expect(
+    await rows.evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-field-row"))),
+    "ticking a field re-sorted the panel",
+  ).toEqual(before);
+  expect(await previewFieldIds(page)).toEqual([
+    // PERSONAL(1) sorts before every WORK(2) row, wherever it was ticked from.
     "field_mobile",
     "field_work_phone",
     "field_work_email",
@@ -1803,12 +1957,13 @@ test("the Fields section lists what the card carries, in the card's order", asyn
     "field_job_title",
     "field_company",
   ]);
-  await expect(page.locator("[data-field-rows]")).toHaveAttribute("data-field-count", "6");
+  await expect(page.locator('[data-field-count-meter="meter"]')).toHaveAttribute(
+    "data-field-count",
+    "6",
+  );
 });
 
-test("removing a field from the list is live, and takes it off the card (AC-29)", async ({
-  page,
-}) => {
+test("unticking a field is live, and takes it off the card (AC-29)", async ({ page }) => {
   await gotoReady(page, EDIT_LEDGER);
 
   await expect(page.locator('[data-field-count-meter="meter"]')).toHaveAttribute(
@@ -1818,317 +1973,58 @@ test("removing a field from the list is live, and takes it off the card (AC-29)"
 
   await removeField(page, "field_work_email");
 
-  await expect(page.locator('[data-field-row="field_work_email"]')).toHaveCount(0);
+  /* ⚠ **The row stays. Only the tick changed.** This is where the old test and this one differ
+     most: it asserted `[data-field-row="field_work_email"]` had *gone*, because the panel was a
+     list of the card's fields. A row leaving the list under the finger is the defect three
+     layouts were rejected for. */
+  await expect(page.locator('[data-field-row="field_work_email"]')).toHaveCount(1);
+  await expect(page.locator('[data-field-row="field_work_email"][data-field-on]')).toHaveCount(0);
+
   await expect(page.locator('[data-field-count-meter="meter"]')).toHaveAttribute(
     "data-field-count",
     "4",
   );
-  expect(await cardFieldIds(page)).toEqual([
-    "field_work_phone",
-    "field_site_url",
-    "field_job_title",
-    "field_company",
-  ]);
-
-  /* And the modal agrees: the field it just lost is addable again. The two surfaces read one
-     row model, so a disagreement here would mean they had grown two. */
-  await openAddField(page);
-  await page.locator(`[data-add-field-category="${categoryOf("field_work_email")}"]`).click();
-  await expect(
-    page.locator('[data-add-field-result="field_work_email"][data-add-field-added]'),
-  ).toHaveCount(0);
-  await expect(page.locator('[data-add-field-result-add="field_work_email"]')).toHaveCount(1);
-});
-
-/* ── the Add-a-field modal ───────────────────────────────────────────────────────── */
-
-test("the + Add button opens a modal that offers a shortlist first", async ({ page }) => {
-  await gotoReady(page, EDIT_LEDGER);
-
-  // Closed until asked for. The section itself holds no list of the profile.
-  await expect(page.locator("[data-add-field-dialog]")).toHaveCount(0);
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-
-  await openAddField(page);
-
-  await expect(page.getByRole("dialog")).toHaveCount(1);
-  await expect(page.getByRole("dialog")).toHaveAccessibleName("Add a field");
-  await expect(page.locator("[data-add-field-search]")).toBeVisible();
-
-  /* **Suggested** opens selected, and is capped at six. It is *fields not yet on the card*
-     ranked by the face's own preference — `FACE_FIELD_PREFERENCE`, PHONE then EMAIL then URL —
-     so the shortlist is the fields that can actually reach the artefact the owner is looking
-     at, rather than the first six in the profile. */
-  await expect(page.locator('[data-add-field-category="SUGGESTED"]')).toHaveAttribute(
-    "aria-current",
-    "true",
+  expect(await cardFieldIds(page)).toEqual(
+    ["field_work_phone", "field_site_url", "field_job_title", "field_company"].sort(),
   );
-  const suggested = page.locator("[data-add-field-result]");
-  await expect(suggested).toHaveCount(6);
-
-  const ids = await suggested.evaluateAll((nodes) =>
-    nodes.map((node) => node.getAttribute("data-add-field-result")),
-  );
-  // Nothing already on the Work card is suggested…
-  expect(ids).not.toContain("field_work_phone");
-  expect(ids).not.toContain("field_work_email");
-  // …and the phone, then the email, then the URLs lead.
-  expect(ids.slice(0, 3)).toEqual([
-    "field_mobile",
-    "field_personal_email",
-    "field_press_url",
-  ]);
-
-  // The rail is Suggested plus one entry per non-empty §5.1 category. All seven have fields in
-  // the fixture profile, so eight entries.
-  await expect(page.locator("[data-add-field-category]")).toHaveCount(8);
+  // And it is off the card itself, not merely out of the panel's own bookkeeping.
+  expect(await previewFieldIds(page)).not.toContain("field_work_email");
 });
 
 /**
- * **Every offered row wears its type's glyph, and the glyph is `FIELD_RENDERERS`'.**
+ * §4.5 and §7.3, on the one surface that can leak them now.
  *
- * The reference this sheet is modelled on colours a glyph per item type, and that is what makes
- * a list of twenty rows scannable by shape before it is read. Two things are being guarded:
- *
- * 1. **Every row has one.** A column of tiles with a hole in it is worse than no column, because
- *    the hole shifts the label beside it and reads as a broken row.
- * 2. **It is decorative.** The glyph names the field's *type*, which the label already says in
- *    words; §8.8 and AC-25 both forbid meaning resting on an icon alone, so the tile is
- *    `aria-hidden` and contributes nothing to the row's accessible name.
- *
- * What is deliberately **not** asserted is *which* glyph: that is §6.6's mapping, it lives in
- * `FIELD_RENDERERS`, and both this modal and the card itself read it from there. Restating the
- * table here would create the second opinion the row model exists to prevent.
+ * The two-surface version of this test checked the modal's offer rows *and* the card's own list.
+ * There is one list, so there is one place to check — and the document sweep at the end is what
+ * covers whatever else might have printed the value.
  */
-test("every row in the Add-a-field modal wears its type's glyph, decoratively", async ({
-  page,
-}) => {
-  await gotoReady(page, EDIT_LEDGER);
-  await openAddField(page);
-
-  const rows = page.locator("[data-add-field-result]");
-  const count = await rows.count();
-  expect(count).toBe(6);
-
-  const tiles = await rows.evaluateAll((nodes) =>
-    nodes.map((node) => {
-      const tile = node.querySelector("[data-add-field-result-icon]");
-      return {
-        present: tile !== null,
-        hidden: tile?.getAttribute("aria-hidden") === "true",
-        // Lucide renders an `<svg>`; an empty tile would still match the hook above.
-        drawn: (tile?.querySelector("svg") ?? null) !== null,
-      };
-    }),
-  );
-  expect(tiles).toEqual(
-    Array.from({ length: count }, () => ({ present: true, hidden: true, drawn: true })),
-  );
-
-  // A category with a masked field in it: the glyph survives masking. It says "bank account",
-  // which the label and the Sensitive marker already say — see `field-rows.ts`.
-  await page.locator('[data-add-field-category="FINANCIAL"]').click();
-  const bank = page.locator('[data-add-field-result="field_bank"]');
-  await expect(bank.locator("[data-add-field-result-icon] svg")).toHaveCount(1);
-  await expect(bank.locator("[data-field-option-value]")).toHaveCount(0);
-
-  /* ⚠ **`field_photo` is the one row `FIELD_RENDERERS` hands back no glyph for**, because §6.6
-     sends a `PHOTO` to the avatar slot rather than rendering it as a card row. It is still an
-     offerable profile field and it is still listed here, so it still needs a tile — a hole in
-     the column shifts the label beside it and reads as a broken row. `NO_ROW_ICON` in
-     `field-rows.ts` is the single fallback, decided in the row model so both surfaces agree.
-     This assertion is the reason that fallback exists: without it, exactly this row was bare. */
-  await page.locator('[data-add-field-category="IDENTITY"]').click();
-  await expect(
-    page.locator('[data-add-field-result="field_photo"] [data-add-field-result-icon] svg'),
-  ).toHaveCount(1);
-
-  await closeAddField(page);
-
-  // And the card's own list marks types the same way, from the same row model. Two lists of the
-  // same fields forty pixels apart that glyphed them differently would make the owner check
-  // whether they were looking at the same thing.
-  const listed = page.locator("[data-field-picker] [data-field-row]");
-  await expect(listed).toHaveCount(5);
-  await expect(page.locator("[data-field-picker] [data-field-row-icon] svg")).toHaveCount(5);
-});
-
-test("the modal's search finds a field outside the shortlist, across every category", async ({
-  page,
-}) => {
-  await gotoReady(page, EDIT_LEDGER);
-  await openAddField(page);
-
-  /* `field_gstin` is BUSINESS and nowhere near the Suggested six. Typing must find it anyway:
-     a search box that only filters the visible list is the one that makes people give up. */
-  await expect(page.locator('[data-add-field-result="field_gstin"]')).toHaveCount(0);
-
-  await page.locator("[data-add-field-search]").fill("gst");
-
-  await expect(page.locator("[data-add-field-results]")).toHaveAttribute(
-    "data-add-field-searching",
-    "",
-  );
-  await expect(page.locator("[data-add-field-result]")).toHaveCount(1);
-  await expect(page.locator('[data-add-field-result="field_gstin"]')).toHaveCount(1);
-  // A query overrides the rail, so nothing in it claims to be the current scope.
-  await expect(page.locator("[data-add-field-category][aria-current]")).toHaveCount(0);
-
-  // A query that matches nothing says so, rather than showing an empty box.
-  await page.locator("[data-add-field-search]").fill("zzzz");
-  await expect(page.locator("[data-add-field-result]")).toHaveCount(0);
-  await expect(page.locator("[data-add-field-no-results]")).toContainText("No fields match");
-
-  // Clearing it returns to the shortlist.
-  await page.locator("[data-add-field-search]").fill("");
-  await expect(page.locator("[data-add-field-result]")).toHaveCount(6);
-  await expect(page.locator('[data-add-field-category="SUGGESTED"]')).toHaveAttribute(
-    "aria-current",
-    "true",
-  );
-});
-
-test("the modal's category rail filters to one category and clears the search", async ({
-  page,
-}) => {
-  await gotoReady(page, EDIT_LEDGER);
-  await openAddField(page);
-
-  await page.locator("[data-add-field-search]").fill("gst");
-  await expect(page.locator("[data-add-field-result]")).toHaveCount(1);
-
-  await page.locator('[data-add-field-category="SOCIAL"]').click();
-
-  // Picking a category clears the query — the query was the thing overriding the rail, so
-  // leaving it in place would show a filtered list under a category that says otherwise.
-  await expect(page.locator("[data-add-field-search]")).toHaveValue("");
-  await expect(page.locator('[data-add-field-category="SOCIAL"]')).toHaveAttribute(
-    "aria-current",
-    "true",
-  );
-  await expect(page.locator("[data-add-field-results]")).not.toHaveAttribute(
-    "data-add-field-searching",
-    /.*/,
-  );
-
-  /* Every SOCIAL field, and only those. Unlike Suggested, a category lists fields that are
-     already on the card too — the owner is entitled to see what is spoken for. */
-  const ids = await page
-    .locator("[data-add-field-result]")
-    .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-add-field-result")));
-  const expected = FIXTURE_DB.fields
-    .filter((field) => categoryOf(field.id) === "SOCIAL" && field.value.trim().length > 0)
-    .map((field) => field.id);
-  expect([...ids].sort()).toEqual([...expected].sort());
-});
-
-test("a field already on the card reads Added and cannot be added twice", async ({ page }) => {
-  await gotoReady(page, EDIT_LEDGER);
-  await openAddField(page);
-  await page.locator('[data-add-field-category="WORK"]').click();
-
-  // On the card already — a static marker, not a disabled button that leads nowhere.
-  const onCard = page.locator('[data-add-field-result="field_work_email"]');
-  await expect(onCard).toHaveAttribute("data-add-field-added", "");
-  await expect(onCard.locator("[data-add-field-result-added]")).toContainText("Added");
-  await expect(page.locator('[data-add-field-result-add="field_work_email"]')).toHaveCount(0);
-
-  // Adding one flips it in place — the modal stays open and the row does not move, so a second
-  // click cannot land on whatever slid underneath the cursor.
-  const target = page.locator('[data-add-field-result="field_department"]');
-  await expect(target).not.toHaveAttribute("data-add-field-added", /.*/);
-  const before = await page
-    .locator("[data-add-field-result]")
-    .evaluateAll((nodes) => nodes.map((n) => n.getAttribute("data-add-field-result")));
-
-  await page.locator('[data-add-field-result-add="field_department"]').click();
-
-  await expect(target).toHaveAttribute("data-add-field-added", "");
-  await expect(page.locator('[data-add-field-result-add="field_department"]')).toHaveCount(0);
-  await expect(page.locator("[data-add-field-dialog]")).toBeVisible();
-  const after = await page
-    .locator("[data-add-field-result]")
-    .evaluateAll((nodes) => nodes.map((n) => n.getAttribute("data-add-field-result")));
-  expect(after).toEqual(before);
-
-  // …and the card behind the scrim has already taken it, with no commit in between.
-  await expect(page.locator('[data-field-count-meter="meter"]')).toHaveAttribute(
-    "data-field-count",
-    "6",
-  );
-  await closeAddField(page);
-  expect(await cardFieldIds(page)).toContain("field_department");
-});
-
-test("Suggested does not shuffle under the cursor while several fields are added", async ({
-  page,
-}) => {
-  await gotoReady(page, EDIT_EMPTY);
-  await openAddField(page);
-
-  const before = await page
-    .locator("[data-add-field-result]")
-    .evaluateAll((nodes) => nodes.map((n) => n.getAttribute("data-add-field-result")));
-  expect(before.length).toBe(6);
-
-  /* Suggested is *by definition* "not yet on the card", so a live recomputation would delete
-     each row the instant it was clicked and slide the next one under the pointer. The shortlist
-     is snapshotted when the dialog opens; rows flip to Added and stay put. Three adds in one
-     pass is the whole reason the modal does not close on an add. */
-  for (const id of before.slice(0, 3)) {
-    await page.locator(`[data-add-field-result-add="${id}"]`).click();
-    await expect(
-      page.locator(`[data-add-field-result="${id}"][data-add-field-added]`),
-    ).toHaveCount(1);
-  }
-
-  const after = await page
-    .locator("[data-add-field-result]")
-    .evaluateAll((nodes) => nodes.map((n) => n.getAttribute("data-add-field-result")));
-  expect(after).toEqual(before);
-  await expect(page.locator('[data-field-count-meter="meter"]')).toHaveAttribute(
-    "data-field-count",
-    "3",
-  );
-});
-
 test("a masked field is marked, and its value is never printed here (§4.5, §7.3)", async ({
   page,
 }) => {
   await gotoReady(page, NEW);
 
-  /* Two surfaces can leak now — the modal's offer rows and the card's own list — so both are
-     checked, and the document sweep at the end covers whatever else might have printed it. */
-  await openAddField(page);
-  await page.locator('[data-add-field-category="FINANCIAL"]').click();
-
   // `field_bank` is sensitive *and* a financial type, so it is masked twice over.
-  const offered = page.locator('[data-add-field-dialog] [data-field-option="field_bank"]');
-  await expect(offered.locator("[data-field-sensitive]")).toHaveCount(1);
-  await expect(offered.locator("[data-field-option-value]")).toHaveCount(0);
+  const bank = page.locator('[data-field-picker] [data-field-row="field_bank"]');
+  await expect(bank.locator("[data-field-sensitive]")).toHaveCount(1);
+  await expect(bank.locator("[data-field-row-value]")).toHaveCount(0);
 
   // A non-sensitive value *is* shown — it is already public on the card, and it is the only way
   // to tell two work numbers apart while choosing one.
-  await page.locator('[data-add-field-category="PERSONAL"]').click();
   await expect(
-    page.locator('[data-add-field-dialog] [data-field-option="field_mobile"] [data-field-option-value]'),
+    page.locator('[data-field-picker] [data-field-row="field_mobile"] [data-field-row-value]'),
   ).toHaveCount(1);
 
-  // Adding the masked field puts it on the card's list — still marked, still valueless.
-  await page.locator('[data-add-field-category="FINANCIAL"]').click();
-  await page.locator('[data-add-field-result-add="field_bank"]').click();
-  await closeAddField(page);
-
-  const listed = page.locator('[data-field-picker] [data-field-row="field_bank"]');
-  await expect(listed.locator("[data-field-sensitive]")).toHaveCount(1);
-  await expect(listed.locator("[data-field-row-value]")).toHaveCount(0);
+  // Ticking the masked field puts it on the card — still marked, still valueless.
+  await addField(page, "field_bank");
+  await expect(bank.locator("[data-field-sensitive]")).toHaveCount(1);
+  await expect(bank.locator("[data-field-row-value]")).toHaveCount(0);
 
   /* ⚠ **And no input, which is the claim the editable rows made newly necessary.** Every other
-     row in this list now holds `<input value={…}>`; §7.3 says a masked value must not reach the
-     DOM *as an attribute*, and `value` is exactly that attribute. `isInlineEditable` is what
-     keeps this row out of it, and this is where that is checked rather than assumed. */
-  await expect(listed.locator("[data-field-row-input]")).toHaveCount(0);
-  await expect(listed.locator('[data-field-edit-elsewhere="field_bank"]')).toHaveCount(1);
+     ticked row now holds `<input value={…}>`; §7.3 says a masked value must not reach the DOM
+     *as an attribute*, and `value` is exactly that attribute. `isInlineEditable` is what keeps
+     this row out of it, and this is where that is checked rather than assumed. */
+  await expect(bank.locator("[data-field-row-input]")).toHaveCount(0);
+  await expect(bank.locator('[data-field-edit-elsewhere="field_bank"]')).toHaveCount(1);
 
   // §7.3 puts reveal in `/profile` and nowhere else, so the raw value is absent from this
   // document entirely — not as text, not in a `title`, and not in an input's value.
@@ -2175,9 +2071,9 @@ test("a card whose fields have left the profile says so, and renders no ghost ro
   // something the owner meets on arrival rather than after a click.
   await expect(page.locator("[data-field-picker-empty]")).toBeVisible();
   /* On an empty profile the way forward is to *make* a field, not to go elsewhere to find one —
-     which is why the Add control is offered here at all now. It used to be withheld, because the
-     dialog behind it could only select and had nothing to show. */
-  await expect(page.locator("[data-field-picker-empty] [data-add-field-open]")).toHaveCount(1);
+     which is why the composer is on this panel at all. It is the panel's first row, so on the
+     one profile with nothing to list it is the only thing to reach. */
+  await expect(page.locator("[data-field-new-open]")).toHaveCount(1);
   await expect(page.locator("[data-field-picker] [data-add-field]")).toHaveCount(0);
 });
 
@@ -2245,4 +2141,281 @@ test("an unknown cardId renders a panel rather than a stack trace (E-36)", async
   await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible();
   // §6.10: no error code as a headline, and never a raw framework 404.
   await expect(page.locator("body")).not.toContainText("This page could not be found");
+});
+
+/* ── the tick renders on the card, in the same frame ──────────────────────────────── */
+
+/**
+ * ⚠ **THE CLIENT'S EXPLICIT REQUIREMENT, ASSERTED RATHER THAN TRUSTED.**
+ *
+ * *"as we will be clicking over the tick then that ticked fields should be visible to us over
+ * the card it should be automatically been rendered."*
+ *
+ * The chain is `onToggle` → `toggleField` → `dispatch` → `state.fieldIds` → `builderCard` →
+ * `resolveCard` → `<BuilderPreview>`, all synchronous. The API write that follows is
+ * fire-and-forget and the UI never awaits it.
+ *
+ * ⚠ That last property is the one worth a test: if anybody ever makes the preview wait on
+ * `PUT /cards/:id/fields`, the tick starts lagging the network and this fails. It is asserted
+ * with **no network wait at all** — tick, then read the preview — so a regression to
+ * await-then-render cannot pass.
+ */
+test("ticking a field renders it on the card immediately, and unticking removes it", async ({
+  page,
+}) => {
+  await gotoReady(page, EDIT_EMPTY);
+  await openAddField(page);
+
+  /* ⚠ A field that renders as a card ROW, named rather than taken off the top of the list.
+     `.first()` picked `field_photo`, which the card renders as its portrait — there is no
+     `[data-card-field]` for it, so the assertion failed on a card that was behaving correctly.
+     A test that has to pick "any field" has to know which kinds produce a row. */
+  const fieldId = "field_mobile";
+  const label = fixtureField(fieldId).label;
+
+  const onCard = page.locator(`[data-builder-preview] [data-card-field="${fieldId}"]`);
+  const startCount = await onCard.count();
+
+  await page.locator(`[data-field-tick="${fieldId}"]`).click();
+
+  /* No `waitForResponse`, deliberately — see the ⚠ above. */
+  await expect(onCard, `"${label}" did not reach the card on tick`).toHaveCount(startCount + 1);
+  await expect(page.locator(`[data-field-row="${fieldId}"][data-field-on]`)).toHaveCount(1);
+
+  await page.locator(`[data-field-tick="${fieldId}"]`).click();
+  await expect(onCard, `"${label}" stayed on the card after unticking`).toHaveCount(startCount);
+});
+
+/**
+ * **The two properties the panel's shape has to keep, measured in a real browser.**
+ *
+ * ⚠ Both are scars. The rejected two-column build put a `max-h-[22rem] overflow-y-auto` list
+ * *inside* a panel that is itself `overflow-y-auto` — a scrollbar in a scrollbar, which is what
+ * made 27 profile fields unreachable — and it put the add controls ~970px down the column, so
+ * pressing `+` moved the row ~900px above the finger. Client, twice: *"the user will be
+ * scrolling up and up… he has to scroll down and go on to the new field."*
+ */
+test("the panel has one scroller, and the composer stays in view while ticking", async ({
+  page,
+}) => {
+  await gotoReady(page, EDIT_EMPTY);
+  await openAddField(page);
+
+  const nested = await page.locator("[data-field-picker] *").evaluateAll((nodes) =>
+    nodes.filter((node) => {
+      const overflow = getComputedStyle(node).overflowY;
+      return overflow === "auto" || overflow === "scroll";
+    }).length,
+  );
+  expect(nested, "the fields panel added its own scroll container").toBe(0);
+
+  /**
+   * ⚠ ASSERTED AS "STILL REACHABLE", NOT AS "SAME y".
+   *
+   * A first version compared the composer's viewport `y` before and after and failed at 273 vs
+   * 205 — because clicking a checkbox scrolls it into view, which moves the page, and the panel
+   * is itself sticky. That is the browser doing its job. The property the client asked for is
+   * that the add control never becomes something you have to go and find.
+   */
+  await expect(page.locator("[data-field-new]")).toBeInViewport();
+
+  const rows = page.locator("[data-field-row]");
+  for (const i of [0, 1, 2]) {
+    const id = await rows.nth(i).getAttribute("data-field-row");
+    await page.locator(`[data-field-tick="${id}"]`).click();
+  }
+
+  await expect(
+    page.locator("[data-field-new]"),
+    "the composer row left the viewport once fields were ticked",
+  ).toBeInViewport();
+});
+
+/**
+ * ⚠ **THE COMPOSER IS THE LIST'S FIRST ROW AT EVERY WIDTH — 360, 768 AND 1440.**
+ *
+ * This replaces two tests that measured the deleted two-column grid: one counted
+ * `gridTemplateColumns` tracks at three viewports to prove the split was a *container* query,
+ * and one checked that the add column stacked above the list on a phone. The grid is gone —
+ * there is one column now, which is most of what "less noise" bought — so the property that
+ * survives is the one both of them existed to protect: **the add control's distance from the
+ * top of the panel does not depend on the width, or on the field count.**
+ */
+test("the composer sits above the fields at every width", async ({ page }) => {
+  for (const width of [360, 768, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await gotoReady(page, EDIT_LEDGER);
+    await openAddField(page);
+
+    const tops = await page.evaluate(() => {
+      const composer = document.querySelector("[data-field-new]");
+      const list = document.querySelector("[data-field-list]");
+      if (composer === null || list === null) return null;
+      return {
+        composer: Math.round(composer.getBoundingClientRect().top),
+        list: Math.round(list.getBoundingClientRect().top),
+      };
+    });
+
+    expect(tops, `no composer or no list at ${width}px`).not.toBeNull();
+    expect(
+      tops!.composer,
+      `the composer is below the list at ${width}px — a scroll away on a long profile`,
+    ).toBeLessThan(tops!.list);
+  }
+});
+
+/**
+ * ⚠ **THE ROW'S SHAPE IS A CONTAINER QUERY, AND 1024 IS WHY IT HAS TO BE.**
+ *
+ * Measured widths of `[data-field-picker]`:
+ *
+ *     viewport   390   768  1024  1280  1440  1920
+ *     panel      324   654   374   630   790  1014
+ *
+ * **1024 is narrower than 768** — that is where `SplitView` turns on and hands 400px to the
+ * pinned preview. No `lg:` / `xl:` rule can express "wide at 768, narrow at 1024, wide at 1280",
+ * so a viewport breakpoint would put the change at the single narrowest width in the range.
+ *
+ * The old test proved that on the deleted two-column grid's track count. Two claims replace it,
+ * and the first is the one that makes the second necessary:
+ *
+ * 1. **The panel is narrower at 1024 than at 768** — the inversion itself, measured.
+ * 2. **The row's label/value pairing follows the panel's width**, not the viewport's: paired at
+ *    1440 (a 790px panel), stacked at 360 (a 324px one, under the 22rem the row asks for).
+ *
+ * ⚠ A first version of claim 2 expected 1024 to stack, and that was wrong on the arithmetic
+ * rather than on the principle: 374px is still over the row's 352px threshold, so it pairs. The
+ * inversion is real and is asserted directly in claim 1; the threshold simply does not fall
+ * between 374 and 654.
+ */
+test("the field row's shape follows the panel's own width, not the viewport's", async ({
+  page,
+}) => {
+  const panelWidth = async () => {
+    await openAddField(page);
+    await expect(page.locator("[data-field-row]").first()).toBeVisible();
+    return page
+      .locator("[data-field-picker]")
+      .evaluate((node) => Math.round(node.getBoundingClientRect().width));
+  };
+
+  /** Do the label and the value share a line, in the first row that prints a value? */
+  const sameLine = async () =>
+    page.evaluate(() => {
+      const value = document.querySelector("[data-field-row] [data-field-row-value]");
+      const row = value?.closest("li") ?? null;
+      const label = row?.querySelector("span > span") ?? null;
+      if (value === null || label === null) return null;
+      const a = label.getBoundingClientRect();
+      const b = value.getBoundingClientRect();
+      /* Overlapping vertically, rather than an exact `top` match: a 13px label and a 12px value
+         on the same line differ by a pixel of baseline alignment. */
+      return a.top < b.bottom && b.top < a.bottom;
+    });
+
+  await page.setViewportSize({ width: 768, height: 1024 });
+  await gotoReady(page, EDIT_LEDGER);
+  const at768 = await panelWidth();
+
+  await page.setViewportSize({ width: 1024, height: 900 });
+  await gotoReady(page, EDIT_LEDGER);
+  const at1024 = await panelWidth();
+
+  expect(
+    at1024,
+    `1024 gave a ${at1024}px panel and 768 gave ${at768}px — the inversion this query exists for is gone`,
+  ).toBeLessThan(at768);
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await gotoReady(page, EDIT_LEDGER);
+  await panelWidth();
+  expect(await sameLine(), "a 790px panel should pair label and value on one line").toBe(true);
+
+  await page.setViewportSize({ width: 360, height: 800 });
+  await gotoReady(page, EDIT_LEDGER);
+  await panelWidth();
+  expect(
+    await sameLine(),
+    "a 324px panel kept the value on the label's line — it has no room for the pair",
+  ).toBe(false);
+});
+
+/* ── the card's name ──────────────────────────────────────────────────────────────── */
+
+/**
+ * ⚠ **WHY EVERY CARD WAS CALLED "Untitled card", AND WHY THAT IS A UI BUG NOT AN API ONE.**
+ *
+ * `POST /cards` and `PATCH /cards/:id` both carry `name` and always have — `builder-client.tsx`
+ * sends `state.name.trim()` on create and on update. The name is displayed in the card-detail
+ * header, the cards list, the dashboard tiles and the public page's `<title>`. Nothing was
+ * missing from the integration.
+ *
+ * What was missing was any way to *notice* you could set it. The title is an `<input>` styled as
+ * a heading, its fill appeared on `hover:` and `focus:` only — and **there is no hover on a
+ * touch screen** — and because `CreateCardDto.name` is required, the field is pre-filled with
+ * `BUILDER_NEW_CARD_NAME`, so its helpful `placeholder="Name this card"` is never once seen.
+ * Undiscoverable, and then thirteen characters to delete if you did find it.
+ *
+ * Both halves are asserted here: the control looks like a control at rest, and the default
+ * gets out of the way when you use it.
+ */
+test("the card name reads as editable at rest, not only on hover", async ({ page }) => {
+  await gotoReady(page, NEW);
+
+  const name = page.locator("[data-builder-name]");
+  await expect(name).toHaveValue("Untitled card");
+
+  /* ⚠ Measured without hovering or focusing. A transparent border here is the defect: on a
+     phone that is the entire resting state. */
+  const border = await name.evaluate((n) => {
+    const cs = getComputedStyle(n);
+    return { width: cs.borderTopWidth, colour: cs.borderTopColor };
+  });
+  expect(border.width, "the name field has no resting boundary").not.toBe("0px");
+  expect(
+    border.colour,
+    "the name field's resting boundary is transparent — invisible on touch",
+  ).not.toMatch(/rgba\(0, 0, 0, 0\)|transparent/);
+});
+
+test("focusing the untouched default selects it, so typing replaces rather than appends", async ({
+  page,
+}) => {
+  await gotoReady(page, NEW);
+  const name = page.locator("[data-builder-name]");
+
+  await name.click();
+  const selected = await name.evaluate((n) => {
+    const input = n as HTMLInputElement;
+    return input.value.slice(input.selectionStart ?? 0, input.selectionEnd ?? 0);
+  });
+  expect(selected, "the default was not selected on focus").toBe("Untitled card");
+
+  await page.keyboard.type("Conference");
+  await expect(name, "typing appended to the default instead of replacing it").toHaveValue(
+    "Conference",
+  );
+});
+
+/**
+ * ⚠ And a real name is NOT auto-selected. The select-on-focus is scoped to the exact default
+ * precisely so a one-character correction to a name somebody chose is never one keystroke away
+ * from being wiped.
+ */
+test("a name the owner chose is not auto-selected on focus", async ({ page }) => {
+  await gotoReady(page, EDIT_LEDGER);
+  const name = page.locator("[data-builder-name]");
+
+  const original = await name.inputValue();
+  expect(original, "this fixture card has no name to protect").not.toBe("Untitled card");
+
+  await name.click();
+  const selectionLength = await name.evaluate((n) => {
+    const input = n as HTMLInputElement;
+    return (input.selectionEnd ?? 0) - (input.selectionStart ?? 0);
+  });
+  expect(selectionLength, "a chosen name was selected on focus and is one keystroke from gone").toBe(
+    0,
+  );
 });

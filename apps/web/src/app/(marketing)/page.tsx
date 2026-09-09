@@ -1,80 +1,91 @@
 import type { Metadata } from "next";
 
-import { Broadcast } from "@/components/marketing/broadcast";
-import { FaqAccordion } from "@/components/marketing/faq-accordion";
-import { FinalCta } from "@/components/marketing/final-cta";
+import { Belief } from "@/components/marketing/belief";
+import { Close } from "@/components/marketing/close";
+import { Corporate } from "@/components/marketing/corporate";
+import { ExampleCards } from "@/components/marketing/example-cards";
 import { Hero } from "@/components/marketing/hero";
+import { HowItWorks } from "@/components/marketing/how-it-works";
 import { Problem } from "@/components/marketing/problem";
-import { StepList } from "@/components/marketing/step-list";
-import { Trust } from "@/components/marketing/trust";
+import { Solution } from "@/components/marketing/solution";
 import { pageMeta } from "@/fixtures/marketing";
 
 import "@/styles/marketing-motion.css";
 
 /**
- * `/` — the marketing one-pager. THE WALLET DECK.
+ * `/` — the one-scroll homepage.
  *
- * Direction and rationale: `.impeccable/surfaces/src-app-marketing-page-tsx.md`.
- * Why the previous rendition failed and which rules it was following:
- * `docs/decisions/2026-08-24-marketing-micro-direction.md`.
+ * Rebuilt 2026-09-08 against the client's written website brief and the voice note with it.
+ * The plan, the section order, and the four places the brief, the 2018 investor deck and the
+ * previous build disagreed with each other are in `plan.md` at the repo root. Read that first.
  *
- * ## The structure
- * The page is a wallet. The hero is the ruled sheet the deck lies on; every section after it is
- * a pass, inset, with its own ground and its own shadow, riding over the lip of the one above.
- * The reader scrolls down a stack of the product's own object.
+ * ## ⚠ WHAT WAS HERE BEFORE, AND WHY NONE OF IT SURVIVED AS A SECTION
  *
- * ## The ground sequence is composed, not alternated
- * Nine passes, and the colour order is a decision: white and paper carry the argument, the two
- * emotional peaks take a wash (`broadcast` on Pistachio, `trust` on Clay), the roadmap sits on
- * Periwinkle so it reads as a different kind of claim, and the close inverts to Onyx so the last
- * thing on the page is the only dark surface on it. Alternating two greys would have been the
- * safe version and is what made the previous build read as a document.
+ * Seven sections: `hero`, `problem`, `step-list`, `broadcast`, `trust`, `faq`, `final-cta`, on
+ * a page built as a wallet — the hero a sheet of ruled contact-book paper, every section after
+ * it an inset pass with its own coloured ground and its own shadow, riding 44px over the lip of
+ * the one above.
  *
- * ## The cards live in the bento, and the hero holds none
- * The hero was a card, then a card around a film, then a film; all three are gone at the
- * client's word and it is now type on paper with no object in it at all. The page's live card
- * renders are the two in the bento's studio cell. Every other section was previously
- * illustrated with one — nine in the template strip alone — which is what the brief stopped.
+ * The client's note was that the structure was never designed: *"we just randomly added text
+ * and designed it anyway, right? That's not how things work."* He was right, and the specific
+ * fault was not the writing — most of it was good — it was that **no argument ran through the
+ * page**. A visitor was told what the product was careful about (`broadcast`, `trust`) before
+ * being told what it was (`trust` was, unnamed, the brief's Solution section, sitting three
+ * screens too low).
  *
- * ## ⚠ SEVEN SECTIONS, DOWN FROM NINE — and no pricing
- * The client's note was that the page is *"so text-heavy… just to the point, crisp, and just
- * relevant information."* Two passes were cut outright rather than trimmed:
+ * So each section now answers the question the previous one raises:
  *
- *   · **`assistant`** — 154 words plus a disclosure paragraph explaining that the feature does
- *     not exist. A section whose most important sentence is "not built yet" is the slowest
- *     thing on a landing page to read, and removing it removes the disclosure obligation with
- *     it. Nothing on the page now describes an unshipped capability.
- *   · **`fields`** — a 21-item inventory grid. The bento's first cell already shows real
- *     profile rows with real private masking, so the catalogue was proving a point the page
- *     had already demonstrated, in list form.
+ *     hero      what is this?              ← type left, the animated card right
+ *     problem   why do I care?             ← the deck's before/after, rebuilt
+ *     solution  what is the fix?           ← an exhibit a reader can press
+ *     cards     what will mine look like?  ← six of the product's own grounds
+ *     how       what do I actually do?     ← five steps, and the page's quiet stretch
+ *     corporate is this for my company?    ← four sentences on the deep green, then out
+ *     belief    why should I trust you?    ← type, no object
+ *     start     right, what now?           ← the only dark surface, wearing the brand green
  *
- * The remaining copy was compressed by roughly half against the same standard: every claim
- * kept, every sentence that restated one dropped. `trust` and `faq` overlapped on three of
- * seven answers — the QR's contents, private fields, and deleting a card — so the FAQ now
- * answers only what `trust` does not.
+ * Ten components were deleted, not refactored: `broadcast`, `trust`, `faq-accordion`,
+ * `handover-flow`, `bento`, `demo-cells`, `card-studio`, `problem`, `step-list`, `final-cta`.
+ * Where each argument went is recorded in `fixtures/marketing.ts`'s header and in the new
+ * section that absorbed it.
  *
- * Pricing stays out: every figure that was here was invented.
+ * ## The grounds alternate, and that is the only separator
+ * White, wash, white, wash, white, deep, wash, deep — strict, all the way down. Flat and
+ * full-bleed — no inset, no radius, no
+ * shadow, no overlap, because the brief asks for a page that "just scrolls down" and eight
+ * overlapping passes make every boundary a visual event. `marketing.spec.ts` asserts that no
+ * two ADJACENT sections share a ground: on a flat page an alternation bug does not look like a
+ * bug, it looks like one very long section.
+ *
+ * The last two are the one place the alternation does more than separate: the near-white green
+ * wash under `belief` ramps into the deep green of `start`, so the closing statement and the
+ * call to action read as one ending rather than two sections.
+ *
+ * ## Every page in the brief now exists
+ * `/corporate`, `/waitlist` and `/contact` are built, so the hero, the close and the nav carry
+ * the brief's own controls. Where a form submission goes is `LEAD_WEBHOOK_URL` — configuration
+ * rather than code, documented in `src/lib/leads.ts`. With none set, both forms say so and
+ * offer an email address instead of a tick they have not earned.
  */
 
 export const metadata: Metadata = {
-  title: { absolute: "Contact Book — hand over one card, keep it true for years" },
+  title: { absolute: "Contact Book — never lose contact" },
   description: pageMeta.description,
   /**
    * The direction contract, emitted into the built HTML.
    *
-   * It also exists as a comment in `(marketing)/layout.tsx` for whoever opens that file, but
-   * React strips JSX comments from its output — the first attempt survived only in a
-   * sourcemap, which is not somewhere anyone audits. A contract the build erases is a contract
-   * nobody can check, so it ships as a meta tag and `grep 142f0967 .next` finds it.
+   * It also exists as a comment in `(marketing)/layout.tsx`, but React strips JSX comments from
+   * its output — the first attempt survived only in a sourcemap, which is not somewhere anyone
+   * audits. A contract the build erases is a contract nobody can check, so it ships as a meta
+   * tag and `grep design-contract .next` finds it.
    */
   other: {
     "design-contract":
-      "THESIS: a contact book is maintenance, not storage; this page is a stack of the product's own passes, and it refuses the flat hairline document the category ships. " +
-      "OWN-WORLD: the product's own card grounds, not a second palette — paper #f5f5f5 ruled with 1px Onyx at 7% on a rhythm derived from the display line box, an Oxblood #5b1626 margin rule, ink Onyx #181a1f, Space Grotesk over Geist at negative display tracking, four card-ground washes (Clay #e3a28a, Pistachio #bfd48c, Periwinkle #b4c1ec, Amber #e1aa40), Amber #e1aa40 legal only on a dark ground and now used once (the close), Onyx as the primary action on light, radii 8/14/18, passes riding 44px over each other's lip on a two-layer Sapphire-tinted shadow. " +
-      "STORY: their details rot in other people's phones; no app can fix that silently; this one sends an update they accept; so make the card. " +
-      "FIRST VIEWPORT: a full-bleed sheet of ruled contact-book paper, no object on it — an 88px display headline in Onyx ranged left against an Oxblood margin rule, set as its two clauses on two ruled rows, clearing 13.95:1 where it crosses a rule; an Onyx primary and a hairline-ringed secondary; the margin rule drawing down on load as the page's one authored moment. " +
-      "FORM: The Wallet Deck, candidate 6 of 7, seed 142f0967 (surface scope, persuade). " +
-      "FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance.",
+      "THESIS: contact details expire, and a card that reads live data is the only kind that does not; this page is the client's own eight-section argument, in the brand's own white and green, with one object per section and no furniture between them. " +
+      "OWN-WORLD: white #ffffff and a brand-green wash #f2faf8 alternating, ink Onyx #181a1f, the brand green as a five-level ladder derived against the WASH rather than white (#5ABCA9 decorative, #419F8D display 3.01:1, #337F70 ink 4.51:1, #286257 as the one dark ground), the product's own nine card grounds worn by the example tiles and nothing else, Space Grotesk over Geist at negative display tracking, radii 8/14/18, flat full-bleed sections whose only separator is a change of ground. " +
+      "STORY: their details rot in other people's phones; no app can fix that silently; a card that resolves live can; so make the card. " +
+      "FIRST VIEWPORT: white, an 88px display headline ranged left with its second clause in the brand green, and a contact card beside it that goes out of date and repairs itself in four beats — one fixed size for the whole lap, transform and opacity only, complete on the server before any script runs. " +
+      "FINISH: unreviewed and undocumented is unfinished; DESIGN.md carries what this build superseded and why.",
   },
 };
 
@@ -83,11 +94,12 @@ export default function MarketingPage() {
     <>
       <Hero />
       <Problem />
-      <StepList />
-      <Broadcast />
-      <Trust />
-      <FaqAccordion />
-      <FinalCta />
+      <Solution />
+      <ExampleCards />
+      <HowItWorks />
+      <Corporate />
+      <Belief />
+      <Close />
     </>
   );
 }

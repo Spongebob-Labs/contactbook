@@ -60,11 +60,20 @@ import { MkButtonLink } from "./type";
  */
 
 const SECTION_LINKS = [
-  { href: "/templates", label: "Templates" },
   // `/#…` targets are sections of `/`. The ids are part of the chrome contract:
   // `(marketing)/page.tsx` must keep exposing `how-it-works` and `pricing`.
+  /* NOTE - REPOINTED 2026-09-08. It was `/#how-it-works` and `/#faq`; the FAQ section is
+     deleted, so `#faq` was a nav link to nothing. The spec's anchor test reads its targets off
+     the rendered nav for exactly this reason, and caught it.
+
+     This file is under an emoji lock (`marketing-chrome.test.tsx`), which is why these notes
+     carry the word NOTE rather than the warning glyph the rest of the layer uses. The brief's suggested nav is "How it works / For individuals / For companies / About /
+     Join waitlist"; `For individuals` is dropped because the whole homepage is for individuals
+     and it would link to the page you are already on, and `For companies` plus the waitlist
+     arrive with their routes. */
   { href: "/#how-it-works", label: "How it works" },
-  { href: "/#faq", label: "Questions" },
+  { href: "/#cards", label: "Example cards" },
+  { href: "/corporate", label: "For companies" },
 ] as const;
 
 /**
@@ -132,8 +141,13 @@ export function PillNav() {
         <MkButtonLink href="/signin/phone" variant="ghost" className="px-2.5 md:px-4">
           Log in
         </MkButtonLink>
-        <MkButtonLink href="/signup/first-name" variant="dark" className="px-3 md:px-5">
-          Get started
+        {/* The brief's own nav control. It was "Get started" → `/signup/first-name`, which is
+            the right control for a launched product and the wrong one for a pre-launch site:
+            the page's whole ask is the waitlist, and a nav that sends people somewhere else is
+            a nav competing with its own page. Sign-in stays, quietly, because there is a real
+            app behind this and existing users need a door. */}
+        <MkButtonLink href="/waitlist" variant="dark" className="px-3 md:px-5">
+          Join the waitlist
         </MkButtonLink>
       </div>
     </nav>

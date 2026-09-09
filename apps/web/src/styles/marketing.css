@@ -78,9 +78,79 @@
    ============================================================================ */
 
 :root {
-  /* ── Surfaces (design.md, unchanged) ──────────────────────────────────── */
-  --mk-paper: #f5f5f5;        /* canvas — the warm off-white base */
-  --mk-white: #ffffff;        /* elevated card surfaces, one level above paper */
+  /* ── Surfaces ──────────────────────────────────────────────────────────
+     ⚠ THE CANVAS WENT FROM WARM OFF-WHITE TO WHITE, 2026-09-08, AND THE RULED
+     SHEET WENT WITH IT.
+
+     The client's website brief asks for white space, calm and minimal in three
+     separate places, and the brand — logo, deck, every headline in it — is
+     black and one green on white. A ruled ledger is a TEXTURE, and the hero
+     now carries an animated card on top of it; a texture under a moving object
+     is two things competing for the same attention.
+
+     This is a real loss and it is recorded as one: the ruling was the product's
+     own metaphor, it was in register with the headline's line box, and it took
+     four rejected heroes to arrive at. `--mk-ledger-*` below is retained and
+     still correct — nothing renders it (see the note on that block).
+
+     Every ink ratio in this file was measured against #f5f5f5 and therefore
+     IMPROVES against #ffffff (a lighter ground lifts dark ink): --mk-stone goes
+     4.55 → 4.83, --mk-pebble 4.52 → 4.80. No comment below understates a ratio,
+     so none of them became a lie. They are now conservative. */
+  --mk-paper: #ffffff;        /* canvas */
+  --mk-white: #ffffff;        /* the same value — on a white page an elevated
+                                 surface is made by a hairline and a shadow, not
+                                 by a lighter fill. Both names are kept because
+                                 they mean different things to a reader. */
+
+  /* ── The brand green, and why it is a ladder rather than a value ────────
+     The brand green is #5ABCA9, taken from the client's own deck, where it is
+     ink and accent ON WHITE — one word of a headline, a small caps label, the
+     CB monogram, an arrow. It is never a large ground there.
+
+     ⚠ IT MEASURES 2.28:1 ON WHITE. Body text needs 4.5:1; large text and a
+     control boundary need 3:1. So the brand value itself is legal ONLY as a
+     decorative fill and MAY NOT BE A WORD.
+
+     ⚠ AND WE HAVE SHIPPED THIS EXACT MISTAKE ONCE. `--mk-teal #36bab8`
+     (2.37:1 — the same colour to the eye) was in this file from an earlier
+     pinned brief, used as a GROUND, and the homepage came back "looking very
+     childish". The failure was the role, not the hue. See the HUES block above.
+
+     So: hue 168.4deg and saturation 42.2% held exactly, lightness alone moved,
+     each level the smallest shift that clears its own bar — the same method
+     the rest of this file uses. Because the hue never moves, the five levels
+     read as one colour. Ratios are `scratchpad/green-ladder.py` output. */
+  --mk-green: #5abca9;         /* 2.28:1 — DECORATIVE ONLY. The monogram, a
+                                  large shape, the live-card update marker.
+                                  Forbidden as a text colour, exactly as
+                                  --mk-pebble-mute is. */
+  /* ⚠ BOTH OF THESE ARE DERIVED AGAINST THE WASH, NOT AGAINST WHITE, AND A TEST
+     CAUGHT THE DIFFERENCE.
+
+     The first cut solved them on #ffffff — 3.01:1 and 4.52:1, both legal. But
+     the page alternates white and `--mk-wash`, and the wash is *darker*, so a
+     green that just clears its bar on white drops below it one section down:
+     the display level measured 2.85:1 on the wash (against a 3:1 requirement)
+     and the ink level 4.26:1 (against 4.5:1). Nothing looked wrong; the
+     homepage's contrast sweep in `marketing.spec.ts` reported it by name.
+
+     So the search runs against the WORST ground either level can land on,
+     which is the wash. Both are now legal on both grounds, and the cost is
+     about one percent of lightness. */
+  --mk-green-display: #419f8d; /* 3.01:1 on wash, 3.19:1 on white — the accent
+                                  word in a headline, an icon stroke, a control
+                                  boundary. LARGE TEXT ONLY: 3:1 is the
+                                  large-text bar, so this is illegal below
+                                  24px (or 18.66px bold). */
+  --mk-green-ink: #337f70;     /* 4.51:1 on wash, 4.78:1 on white — small caps
+                                  labels, links, body copy at any size. */
+  --mk-green-deep: #286257;    /* 7.03:1 — a GROUND, carrying white text
+                                  (12.4:1 on it). The corporate band and the
+                                  close, and nothing else. */
+  --mk-wash: #f2faf8;          /* the near-white green tint. Alternating
+                                  section ground, so a boundary needs no
+                                  border. --mk-ink holds 16.41:1 on it. */
 
   /* ── Ink ───────────────────────────────────────────────────────────────
      Ratios against --mk-paper. */
@@ -172,6 +242,13 @@
      ⚠ The rules fade at BOTH ends via a mask, and the bottom fade is not
      taste: the deck's first pass rides `--mk-pass-overlap` (44px) up over the
      hero, and a rule running under that lip would be sliced by it. */
+  /* ⚠ NOTHING RENDERS THIS BLOCK AS OF 2026-09-08. The hero is white and carries
+     an animated card instead of a ruling; see the Surfaces note at the top. The
+     tokens are retained rather than deleted because they are *correct* — the
+     rhythm is still derived from the display line box and would have to be
+     re-derived from scratch to come back — and because deleting them would take
+     `--mk-ledger-lead`, which the hero still uses as its top padding. If you are
+     reinstating the ruling, read the rejection history in DESIGN.md first. */
   --mk-ledger-ink: rgb(24 26 31 / 0.07);   /* 7% Onyx — see the table above  */
   --mk-ledger-rhythm: calc(var(--mk-text-display) * var(--mk-text-display-lh));
   --mk-ledger-margin: var(--mk-oxblood);   /* 12.13:1 on paper. The margin rule. */
@@ -599,6 +676,11 @@
   --color-mk-stone: var(--mk-stone);
   --color-mk-pebble: var(--mk-pebble);
   --color-mk-pebble-mute: var(--mk-pebble-mute);
+  --color-mk-wash: var(--mk-wash);
+  --color-mk-green: var(--mk-green);
+  --color-mk-green-display: var(--mk-green-display);
+  --color-mk-green-ink: var(--mk-green-ink);
+  --color-mk-green-deep: var(--mk-green-deep);
   --color-mk-hairline: var(--mk-hairline);
   --color-mk-hairline-strong: var(--mk-hairline-strong);
   --color-mk-control: var(--mk-control);
@@ -1178,8 +1260,25 @@
      large object and a large object travelling 18px reads as a jitter rather
      than as an arrival. `scale` is what makes it a card being placed rather
      than a div sliding. */
+  /* ⚠ THE SCALE IS GONE FROM `deal`, 2026-09-08, AND IT IS A PERFORMANCE FIX AS
+     MUCH AS A DESIGN ONE.
+
+     The sections are no longer inset passes riding over each other's lip, so
+     "a card dealt onto a stack" no longer describes what the move does — a
+     full-width band does not scale onto anything. But the stronger reason is
+     that scaling a band SCALES ITS TEXT: the browser rasterises the glyphs at
+     the wrong size and either re-rasterises mid-flight or shows a blurred
+     interpolation of them, on the largest elements on the page. The client's
+     standing requirement for this build is that the page has no visible lag,
+     and a 900ms scale across a viewport-wide block of type is the most
+     expensive thing the old page did.
+
+     Translate alone is a pure compositor transform: no raster, no layout, no
+     text reflow. The name `deal` is KEPT because `marketing.spec.ts` asserts
+     the move vocabulary is exactly {deal, rise} — the set is the contract, and
+     retuning a move inside it is allowed where inventing a third is not. */
   [data-mk-reveal="armed"][data-mk-reveal-move="deal"] {
-    transform: translateY(40px) scale(0.972);
+    transform: translateY(32px);
   }
 
   [data-mk-reveal="in"][data-mk-reveal-move="deal"] {
@@ -1196,7 +1295,7 @@
 
 @keyframes mk-deal {
   from {
-    transform: translateY(40px) scale(0.972);
+    transform: translateY(32px);
   }
 }
 
@@ -1230,4 +1329,385 @@
   from {
     stroke-dashoffset: 102;
   }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════════════════
+   THE HERO'S LIVE CARD
+
+   Component: `components/marketing/live-card.tsx`. Beats and values: `fixtures/marketing.ts`,
+   `liveCard`. Read the component's header for why this is not a real `<ShareFace>`.
+
+   ⚠ IT LIVES HERE FOR THE SAME REASON `.mk-ledger`'s RULING DID: one grep site for values
+   that must not be retyped. The row height and the value's line box are set as custom
+   properties BY THE COMPONENT (`--lc-row`, `--lc-val`, `--lc-slots`), because the stack's
+   height is `slots × row` and the roll's travel is exactly one `--lc-val`. Retype either as a
+   literal here and the stack stops being a whole number of rows, or the roll leaves a sliver
+   of the old value showing above the new one.
+
+   ⚠ EVERY ANIMATED PROPERTY IS `transform` OR `opacity`, AND THAT IS THE PERFORMANCE
+   CONTRACT, not a stylistic preference. The client's requirement for this build is a page with
+   no visible lag. `height`, `top` and `margin` cause layout; `filter` and `box-shadow` cause
+   paint; `scale` re-rasterises text. None of them appear in a transition or a keyframe below.
+   The row stack is a fixed `--lc-slots × --lc-row` whether four rows are filled or five, so
+   the row that arrives mid-loop moves nothing outside this card — and `contain` means the
+   browser never looks outside it to find out.
+   ══════════════════════════════════════════════════════════════════════════════════════════ */
+
+.mk-live {
+  margin: 0;
+  display: flex;
+  justify-content: center;
+}
+
+.mk-live-frame {
+  /* Emerald, from `src/card/template-palettes.ts`, reproduced to the digit. The gradient stops
+     are the shared `--mk-field-*` tokens; these four have no consumer outside this card, so
+     they are local rather than global. `--lc-ink-soft` and `--lc-line` are proven against
+     every stop of this gradient by `tests/contract/template-palettes.test.ts` — that is the
+     whole reason to wear a real card ground rather than a green mixed for the homepage. */
+  --lc-ink: #ffffff;
+  --lc-ink-soft: #aabbb6;
+  --lc-line: #3c6257;
+  --lc-mark-bg: #bfe6d2;
+  --lc-mark-ink: #0a3325;
+
+  position: relative;
+  width: 100%;
+  max-width: 360px;
+  padding: 1.5rem;
+  border-radius: 22px;
+  background: linear-gradient(162deg, var(--mk-field-near) 0%, var(--mk-field-far) 100%);
+  color: var(--lc-ink);
+  box-shadow: var(--mk-shadow-float);
+  /* One containing block for layout, paint and style. A row moving inside the card can never
+     make the browser reconsider the rest of the document. */
+  contain: layout paint style;
+}
+
+/* ── identity ─────────────────────────────────────────────────────────────────────────── */
+
+.mk-live-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.mk-live-mark {
+  display: inline-block;
+  padding: 0.3125rem 0.5rem;
+  border-radius: var(--mk-radius-chrome);
+  background: var(--lc-mark-bg);
+  color: var(--lc-mark-ink);
+  font-family: var(--mk-font-display);
+  font-size: 0.8125rem;
+  font-weight: var(--mk-weight-display);
+  letter-spacing: 0.06em;
+  line-height: 1;
+}
+
+/* The monogram. Same 48px circle the portrait occupied, wearing the palette's own mark
+   colours — `markBg` / `markInk`, the pair `<ShareFace>` uses for its brand chip — so the two
+   objects at the top of the card are visibly one system. */
+.mk-live-portrait {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: var(--mk-radius-pill);
+  background: var(--lc-mark-bg);
+  color: var(--lc-mark-ink);
+  font-family: var(--mk-font-display);
+  font-size: 0.9375rem;
+  font-weight: var(--mk-weight-display);
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+
+.mk-live-role {
+  margin: 1.25rem 0 0;
+  color: var(--lc-ink-soft);
+  font-size: var(--mk-text-eyebrow);
+  font-weight: var(--mk-weight-medium);
+  letter-spacing: var(--mk-text-eyebrow-tracking);
+  line-height: var(--mk-text-eyebrow-lh);
+  text-transform: uppercase;
+}
+
+.mk-live-name {
+  margin: 0.25rem 0 0;
+  font-family: var(--mk-font-display);
+  font-size: 1.625rem;
+  font-weight: var(--mk-weight-display);
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+/* ── the rows ─────────────────────────────────────────────────────────────────────────── */
+
+.mk-live-rows {
+  position: relative;
+  /* ⚠ THE FIFTH SLOT IS PAID FOR ON THE FIRST FRAME. This is what makes the arriving row at
+     beat 3 grow nothing and the revoked row at beat 4 collapse nothing. */
+  height: calc(var(--lc-slots) * var(--lc-row));
+  margin-top: 1.25rem;
+}
+
+.mk-live-row {
+  position: absolute;
+  top: 0;
+  inset-inline: 0;
+  height: var(--lc-row);
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto;
+  align-content: center;
+  gap: 0.125rem 0.75rem;
+  border-top: 1px solid var(--lc-line);
+  /* The slot IS the position. Nothing else moves a row. */
+  transform: translateY(calc(var(--lc-slot) * var(--lc-row)));
+  will-change: transform;
+}
+
+.mk-live-label {
+  grid-area: 1 / 1;
+  color: var(--lc-ink-soft);
+  font-size: var(--mk-text-caption);
+  line-height: var(--mk-text-caption-lh);
+}
+
+.mk-live-flag {
+  grid-area: 1 / 2 / span 2 / auto;
+  align-self: center;
+  display: inline-flex;
+  /* Reserved whether or not a flag is drawn, so a row does not re-lay-out when one appears. */
+  width: 0.875rem;
+  height: 0.875rem;
+  color: transparent;
+}
+
+/* ── the value, and the roll that replaces it ─────────────────────────────────────────── */
+
+.mk-live-value {
+  grid-area: 2 / 1;
+  display: block;
+  height: var(--lc-val);
+  overflow: hidden;
+}
+
+.mk-live-line {
+  display: block;
+  height: var(--lc-val);
+  font-size: 0.9375rem;
+  font-weight: var(--mk-weight-medium);
+  line-height: var(--lc-val);
+  /* A value is one line and may not wrap: the clip is exactly one line tall, so a wrapped
+     value would be sliced in half rather than reflowed. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Two lines stacked inside a one-line clip. At rest the SECOND is showing, so the still card
+   is always the new value; the animation starts from the first and travels one line. */
+.mk-live-roll {
+  display: block;
+  transform: translateY(calc(-1 * var(--lc-val)));
+}
+
+.mk-live-line[data-was] {
+  color: var(--lc-ink-soft);
+  text-decoration: line-through;
+}
+
+/* ── the five states ──────────────────────────────────────────────────────────────────── */
+
+/* Struck and dimmed, never hidden — a stale value has to stay readable, because recognising
+   your own out-of-date entry is the whole point of the beat. */
+.mk-live-row[data-state="stale"] .mk-live-line {
+  color: var(--lc-ink-soft);
+  text-decoration: line-through;
+}
+
+.mk-live-row[data-state="stale"] .mk-live-flag {
+  color: var(--lc-ink-soft);
+}
+
+/* The brand green at full strength. This is the one legal use of #5ABCA9 as itself: a 14px
+   drawn mark is decoration, not a word, so the 2.28:1 ban does not reach it. */
+.mk-live-row[data-state="updated"] .mk-live-flag {
+  color: var(--mk-green);
+}
+
+.mk-live-row[data-state="leaving"] {
+  opacity: 0;
+  transform: translateY(calc(var(--lc-slot) * var(--lc-row))) translateX(1rem);
+}
+
+/* ── motion ───────────────────────────────────────────────────────────────────────────────
+   All of it behind `no-preference`. Under reduced motion the card holds beat 0 forever — the
+   component never starts its timer — so every rule here is unreachable and the still card is
+   complete rather than mid-gesture. */
+@media (prefers-reduced-motion: no-preference) {
+  .mk-live-row {
+    transition:
+      transform 560ms var(--mk-ease),
+      opacity 340ms var(--mk-ease);
+  }
+
+  .mk-live-roll {
+    animation: mk-live-roll 620ms var(--mk-ease);
+  }
+
+  /* Mount-only: the row is absent from the beats before it arrives, so this plays exactly once
+     per lap. `from` alone, so the resting state stays the slot transform computed above — spell
+     out a `to` here and it would have to repeat the slot arithmetic. */
+  .mk-live-row[data-state="arriving"] {
+    animation: mk-live-arrive 620ms var(--mk-ease);
+  }
+
+  /* ⚠ THE LOOP'S RETURN IS NOT ANIMATED, AND IT IS NOT AN OVERSIGHT.
+     Beat 0 holds the pre-update values, so without this the corrected email and company
+     visibly slide *backwards* into their old selves on every repeat — which reads as the
+     animation malfunctioning rather than starting again. React sets this attribute in the same
+     commit as the values, so the browser computes one style with transitions off and the
+     restart is instant. */
+  .mk-live-frame[data-reset] .mk-live-row {
+    transition: none;
+  }
+}
+
+@keyframes mk-live-roll {
+  from {
+    transform: translateY(0);
+  }
+}
+
+@keyframes mk-live-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(calc(var(--lc-slot) * var(--lc-row))) translateX(1.125rem);
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════════════════
+   THE HERO'S FLIP — the wallet pass on the front, the live card on the back.
+
+   Component: `components/marketing/flip-card.tsx`. Read its header first; the QR's
+   scannability is the constraint that shapes every rule here.
+
+   ⚠ `rotateY` AND NOTHING ELSE. No scale, no perspective change mid-flight, no filter, no
+   shadow transition. Two reasons and both are load-bearing:
+
+     1. The front face carries a real QR with ONE pixel of clearance over the 140px scannable
+        floor. A scale — even 0.98 — puts the resting symbol under it, and DESIGN.md is explicit
+        that a transform on an ancestor spends headroom that does not exist.
+     2. Scaling a card scales its type, so the browser rasterises the glyphs at the wrong size
+        and either re-rasterises mid-flight or shows a blurred interpolation of them. The
+        client's standing requirement for this build is a page with no visible lag.
+
+   ⚠ AND `will-change` IS NOT SET. It is the obvious thing to reach for on a 3D transform and it
+   is wrong here: it promotes the faces to layers that stay promoted, and a cached raster of a
+   mid-flight frame is exactly how a resting QR ends up soft. A `transform` transition is
+   composited without it.
+   ══════════════════════════════════════════════════════════════════════════════════════════ */
+
+.mk-flip {
+  margin: 0;
+  display: flex;
+  justify-content: center;
+  /* The perspective lives on the OUTER element, not on the rotating one: on the rotating
+     element it is re-resolved every frame against a box that is turning, which reads as the
+     card swimming rather than turning. */
+  perspective: 1600px;
+}
+
+.mk-flip-button {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: none;
+  /* ⚠ A `<button>` SETS `text-align: center` BY DEFAULT AND IT CASCADES INTO THE CARD.
+     Every label and value on the back face came out centred — the rows are a grid whose first
+     column is `1fr`, so the text had room to centre inside it and did. Nothing in the card's own
+     stylesheet was wrong, which is what made it puzzling. The control is a real button because
+     it is pressable; this is the one property it brings that has to be undone. */
+  text-align: left;
+  /* The face's own derived size, handed in as inline width/height by the component so the two
+     numbers have exactly one source (`share-face.tsx`). */
+  position: relative;
+  cursor: pointer;
+  border-radius: 22px;
+  /* A flat 3D context. `contain` is deliberately NOT set: a 3D transform needs to escape its
+     own box while turning, and `paint` containment clips it into a folding rectangle. */
+  transform-style: preserve-3d;
+}
+
+.mk-flip-button:focus-visible {
+  outline: 2px solid var(--mk-ink);
+  outline-offset: 6px;
+}
+
+.mk-flip-inner {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+}
+
+.mk-flip-face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Each face hides its own reverse, which is what stops the back's mirrored type showing
+     through the front. */
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.mk-flip-face[data-side="back"] {
+  transform: rotateY(180deg);
+}
+
+/* The front is showing at rest, which is what the server renders and what reduced motion keeps.
+   The rotation is on the INNER wrapper so both faces turn together as one object. */
+.mk-flip-button[data-face="back"] .mk-flip-inner {
+  transform: rotateY(180deg);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .mk-flip-inner {
+    /* 760ms is measured, not picked: below ~600 the turn reads as a glitch rather than an
+       object rotating, and above ~900 the reader is waiting for a card they have already
+       understood. The easing is the layer's own exponential-out — the `ease-out` keyword keeps
+       accelerating into the middle and reads as hesitation against a spring. */
+    transition: transform 760ms var(--mk-ease);
+  }
+}
+
+/* A reader who has taken control gets a pointer affordance; before that the card is turning on
+   its own and a hover state would suggest it is waiting for them. */
+.mk-flip-button[data-manual] .mk-flip-face {
+  transition: none;
+}
+
+/* ── the back face fills the front's box ───────────────────────────────────────────────────
+   `<ContactCard>` is `width: 100%; max-width: 360px` with a height derived from its row count,
+   because it is also used standalone in `problem`. On the flip it has to be exactly the front
+   face's 336×500 or the two faces disagree and the turn shows a seam. */
+/* ⚠ A DESCENDANT SELECTOR, NOT A CHILD ONE, AND THE `>` COST AN HOUR.
+   `<LiveCard>` renders `<figure class="mk-live">` around the card, so `.mk-live-frame` is the
+   face's GRANDCHILD and `> .mk-live-frame` matched nothing. The card kept its standalone
+   `max-width: 360px` and `width: 100%`, which resolved against a `figure` that was itself a
+   shrink-to-fit flex item — so the back face rendered 205px wide inside a 336px box, and every
+   value on it ellipsised at about sixteen characters. Nothing looked broken; it looked like a
+   card with long values. Measuring the box is what found it, not looking at it.
+
+   Both elements need the size: the figure to stop shrinking, the frame to fill it. */
+.mk-flip-face[data-side="back"] .mk-live,
+.mk-flip-face[data-side="back"] .mk-live-frame {
+  width: 100%;
+  max-width: none;
+  height: 100%;
 }
