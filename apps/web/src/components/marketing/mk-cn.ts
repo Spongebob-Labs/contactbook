@@ -36,6 +36,22 @@ const twMergeMk = extendTailwindMerge({
         {
           text: [
             "mk-display",
+            /* ⚠ `mk-heading-xl` WAS MISSING FROM THIS LIST WHILE BEING BRIDGED IN
+               `marketing.css`, AND IT COST A SECTION.
+
+               That is precisely the defect this file exists to prevent, arriving by omission
+               rather than by design: `--text-mk-heading-xl` is declared in the `@theme inline`
+               block, so `text-mk-heading-xl` is a real utility and the CSS rule ships — but
+               unlisted here, twMerge cannot tell it is a SIZE, files it as a text colour, and
+               drops it the moment it sits beside a real one. The close was
+               `<Heading size="xl" className="text-mk-white">` and rendered its headline at the
+               inherited 18px, smaller than the paragraph beneath it, with both classes present
+               in the markup.
+
+               `final-cta.tsx` had carried a long comment about routing around this — set the
+               colour on the section and let the heading inherit it — which kept the workaround
+               alive and the cause in place. The cause is fixed here instead. */
+            "mk-heading-xl",
             "mk-heading-lg",
             "mk-heading",
             "mk-heading-sm",
@@ -56,6 +72,14 @@ const twMergeMk = extendTailwindMerge({
             "mk-pebble-mute",
             "mk-white",
             "mk-paper",
+            "mk-wash",
+            // The brand green ladder. `mk-green` is decorative-only and is listed here
+            // because twMerge must still resolve it against the other text colours if a
+            // future hand reaches for it — the ban is a review rule, not a build error.
+            "mk-green",
+            "mk-green-display",
+            "mk-green-ink",
+            "mk-green-deep",
             // The sky and the meadow, then the card grounds this layer draws from. A token
             // bridged in `marketing.css` but missing here does not error — it degrades to the
             // same silent class-drop this file exists to prevent, so the two lists are kept in

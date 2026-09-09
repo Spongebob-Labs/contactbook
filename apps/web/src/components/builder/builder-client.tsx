@@ -11,6 +11,11 @@ import { TEMPLATE_LIST } from "@/card/templates";
 import { ErrorPanel, ScreenStateRoot, resolveDataScreenState } from "@/components/data";
 import { SplitView } from "@/components/layout";
 import { useToast } from "@/components/overlay";
+import {
+  NotifyRecipients,
+  toNotifyTargets,
+  type NotifyTarget,
+} from "@/components/share/notify-recipients";
 import { cn } from "@/lib/cn";
 import { cards as cardsApi, profile as profileApi } from "@/lib/api/browser";
 import { fetchCardDetail, fetchProfileData } from "@/lib/api/browser-loaders";
@@ -23,7 +28,6 @@ import type {
   ContactCard,
   FieldGroup,
   FieldType,
-  FixtureError,
   ProfileField,
   ResolvedCard,
   User,
@@ -41,7 +45,7 @@ import { BuilderSkeleton } from "./builder-skeleton";
 import { DesignPanel } from "./design-panel";
 import { DroppedFieldsNotice } from "./dropped-fields-notice";
 import { EmptyCardWarning } from "./empty-card-warning";
-import type { CreatedField } from "./add-field-dialog";
+import type { CreatedField } from "./field-sources";
 import { FieldPicker } from "./field-picker";
 import { PanelHead } from "./panel-head";
 import {
@@ -308,13 +312,37 @@ function Builder({
   const router = useRouter();
   const [saving, startSaving] = useTransition();
   const [creatingField, setCreatingField] = useState(false);
+
   /**
-   * The Add-field dialog, owned here because **two** surfaces open it: the Fields panel's own
-   * `+ Add`, and the E-01 warning bar above the split view. See `FieldPicker`'s note.
+   * ⚠ THE POST-SAVE NOTIFY PROMPT — the client's change of 2026-09-03.
+   *
+   * The old flow put a "Notify recipients" button in the card-detail header. An owner edited a
+   * card here, saved, went back, and had to *notice* that button and press it; missing that
+   * step is the entire problem it was supposed to solve. So the prompt is now the consequence
+   * of pressing Save, at the one moment the owner knows what they changed.
+   *
+   * ⚠ It is a PROMPT, not an automatic send, and that distinction is load-bearing. The
+   * `contactbook-card-notifications` guide is explicit that nothing in this system ever
+   * notifies on its own — *"an owner can make ten edits in a row and nothing goes out until
+   * they deliberately choose to notify someone."* Opening a picker the owner can cancel keeps
+   * that promise; wiring the save's own response to a send would break it, and would break the
+   * marketing page's central claim ("You press send. Nothing here runs on its own.") with it.
+   *
+   * `null` means "no prompt pending". A non-empty array means the dialog is open with those
+   * recipients in it.
    */
-  const [addOpen, setAddOpen] = useState(false);
+  const [notifyTargets, setNotifyTargets] = useState<readonly NotifyTarget[] | null>(null);
   /** Which panel the rail is showing, and the `?panel=` record of it. See `builder-nav.tsx`. */
   const { section, setSection } = useBuilderSection();
+  /**
+   * That section's own entry, for the head above the panels.
+   *
+   * ⚠ The fallback is not defensive noise: `useBuilderSection` parses `?panel=` and already
+   * falls back to Fields on nonsense, but `find` is typed as possibly-undefined and a `!` here
+   * would be a claim about a *different* module's behaviour asserted in this one.
+   */
+  const activeSection =
+    BUILDER_SECTIONS.find((def) => def.id === section) ?? BUILDER_SECTIONS[0];
 
   const [state, dispatch] = useReducer(
     builderReducer,
@@ -555,6 +583,30 @@ function Builder({
               : `"${state.name}" shares ${shares}. ${edited === 1 ? "1 value was" : `${edited} values were`} updated in your profile, on every card using ${edited === 1 ? "it" : "them"}.`,
         });
         router.refresh();
+
+        /*
+          ⚠ AND THEN OFFER TO TELL THE RECIPIENTS. Read the ⚠ on `notifyTargets` first.
+
+          Ordered after the save, never in parallel: the audience's `versionsBehind` is computed
+          against the card's CURRENT version, so asking before the write lands reports everyone
+          as caught up and the prompt never appears.
+
+          `audience` alone is enough to build the picker's rows — that is what `toNotifyTargets`
+          is for, and why this costs one request rather than the three `fetchCardDetail` makes.
+
+          A failure here is swallowed on purpose. The card is already saved and the owner has
+          been told so; turning a missing follow-up read into an error toast would report a
+          successful save as a failure. The banner on the card screen is the recovery path.
+        */
+        try {
+          const audience = await cardsApi.audience(state.cardId);
+          const targets = toNotifyTargets(audience.recipients);
+          /* No recipients, or everyone already caught up, means nothing to ask about — the same
+             rule the banner follows. An empty prompt is worse than no prompt. */
+          if (targets.some((t) => (t.versionsBehind ?? 0) > 0)) setNotifyTargets(targets);
+        } catch {
+          /* Deliberately silent — see above. */
+        }
       } catch (thrown) {
         const shown = toScreenError(thrown);
         toast({ title: shown.title, description: shown.detail, tone: "danger" });
@@ -576,9 +628,28 @@ function Builder({
         cardId={state.cardId}
         dirty={state.dirty}
         saving={saving}
-        onRename={(name) => dispatch({ kind: "rename", name })}
         onSave={onSave}
       />
+
+      {/* ⚠ `trigger={null}` — there is no button. This dialog is opened by Save and by nothing
+          else; a visible trigger here would be the very control the client asked us to remove,
+          moved one screen over. It is mounted only while a prompt is pending, so the picker
+          starts from a fresh "everyone selected" state each time. */}
+      {notifyTargets === null || state.cardId === null ? null : (
+        <NotifyRecipients
+          cardId={state.cardId}
+          shares={notifyTargets}
+          trigger={null}
+          open
+          onOpenChange={(next) => {
+            if (!next) setNotifyTargets(null);
+          }}
+          onChanged={() => {
+            setNotifyTargets(null);
+            reload();
+          }}
+        />
+      )}
 
       {/* Both notices sit directly under the header — the part of this screen that always
           exists — rather than in the bottom status bar §8D.4 sketches. A bar pinned to the
@@ -587,10 +658,10 @@ function Builder({
       <EmptyCardOrDropped
         resolved={resolved}
         onAddFields={() => {
-          // The dialog is rendered by the Fields panel, and only the selected panel is mounted —
-          // so the section has to move first or there would be nothing to open.
+          /* ⚠ Switches panels and stops. It used to also open the Add-field dialog, which no
+             longer exists — the profile's fields and the create form are permanently on the
+             Fields panel now, so arriving there IS the whole action. */
           setSection("fields");
-          setAddOpen(true);
         }}
       />
 
@@ -675,10 +746,41 @@ function Builder({
             className={cn(
               "min-w-0 flex-1 rounded-xl border border-line bg-canvas",
               "shadow-[var(--elevation-1)]",
+              /* A flex column so the head above the panels owns a gap rather than every
+                 panel's first child needing a margin. */
+              "flex flex-col gap-5",
               "p-5 sm:p-6",
               "lg:sticky lg:top-6 lg:max-h-[calc(100svh-9.5rem)] lg:overflow-y-auto lg:p-7",
             )}
           >
+            {/**
+             * ⚠ **THE HEAD IS ABOVE THE PANELS, NOT INSIDE EACH ONE — AND IT IS THE CARD'S NAME.**
+             *
+             * Two decisions in one element, and both were forced by something that went wrong.
+             *
+             * · **The title is the card's name** (client, 2026-09-07: *"make the title of the
+             *   card more prominent — perhaps where 'Fields' is, we can put the title of the
+             *   card"*). It used to print the section — a heading repeating the word already
+             *   highlighted in the rail beside it — while the name sat in a toolbar input that
+             *   the client's own screenshots show nobody used.
+             * · **⚠ Rendered ONCE, and the reason is focus rather than tidiness.** The name is
+             *   the same on both tabs, so it is not a tab's content. A head inside each
+             *   `Tabs.Content` is a different element per tab, and Radix renders an inactive
+             *   panel's children as `present && children` — so switching tab would unmount this
+             *   input and mount another: caret, selection and focus gone, mid-rename, for a
+             *   value that did not change. Hoisting it also makes "exactly one
+             *   `[data-builder-name]` on the screen" a property of this layout rather than of
+             *   Radix's mounting rules, which a later `forceMount` would quietly break.
+             *
+             * The intro still belongs to the section, so it is read off the *active* one.
+             */}
+            <PanelHead
+              section={activeSection.label}
+              name={state.name}
+              onRename={(name) => dispatch({ kind: "rename", name })}
+              intro={activeSection.intro}
+            />
+
             {BUILDER_SECTIONS.map((def) => (
               <TabsPrimitive.Content
                 key={def.id}
@@ -689,11 +791,9 @@ function Builder({
                 data-builder-section={def.id}
                 className="flex flex-col gap-6 outline-none"
               >
-                {def.id === "fields" ? (
-                  /* ⚠ Fields renders its own `PanelHead`, and the asymmetry is deliberate: the
-                     **+ Add** button sits on the title's baseline. Its `open` state now lives
-                     here rather than in the picker, because the E-01 warning bar above the split
-                     view opens the same dialog — two openers, so neither can own it. */
+                {def.id !== "fields" ? null : (
+                  /* ⚠ No `title`/`intro` any more: the panel's head is rendered once above
+                     this map, so the picker is the list and nothing else. */
                   <FieldPicker
                     groups={db.groups}
                     fields={fields}
@@ -701,14 +801,8 @@ function Builder({
                     onToggle={(fieldId, on) => toggleField(fieldId, on)}
                     onCreateField={createAndAddField}
                     creatingField={creatingField}
-                    addOpen={addOpen}
-                    onAddOpenChange={setAddOpen}
                     onEditValue={(fieldId, value) => dispatch({ kind: "value", fieldId, value })}
-                    title={def.label}
-                    intro={def.intro}
                   />
-                ) : (
-                  <PanelHead title={def.label} intro={def.intro} />
                 )}
 
                 {def.id !== "design" ? null : (

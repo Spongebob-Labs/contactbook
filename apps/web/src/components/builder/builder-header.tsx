@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { useId, type ReactElement } from "react";
+import type { ReactElement } from "react";
 
 import { canBuildVcf } from "@/card/build-vcf";
 import { FieldCountMeter } from "@/components/app";
+
 import { NavDrawer } from "@/components/layout";
 import { Button } from "@/components/primitives";
 import { cn } from "@/lib/cn";
@@ -14,7 +15,8 @@ import type { ResolvedCard } from "@/types/domain";
 import { EMPTY_CARD_SAVE_REASON } from "./empty-card-warning";
 
 /**
- * The builder's header — back link, the card's name, the field-count meter, and Save.
+ * The builder's header — back link, the card's name as context, the field-count meter, and
+ * Save. The name is *edited* one level down, in the control panel's head.
  *
  * ## Why everything that matters lives here
  *
@@ -43,11 +45,14 @@ import { EMPTY_CARD_SAVE_REASON } from "./empty-card-warning";
  * whose explanation nobody ever hears. The click guard is real (the component preventDefaults
  * it), so the button is inert without being invisible to a screen reader.
  *
- * ## The name is edited in place
+ * ## ⚠ The name is NOT edited here any more
  *
- * There is no rename screen and no rename dialog. The input **is** the name, it updates the
- * preview summary as it is typed, and it is the only text input on the whole builder — which is
- * what makes "no field editor is embedded here" a checkable claim.
+ * There is still no rename screen and no rename dialog — the input **is** the name and it
+ * updates the preview summary as it is typed. What moved is *where* it is: it heads the control
+ * panel (`panel-head.tsx`), where the owner is already working, because as a toolbar input it
+ * went unnoticed and cards shipped called "Untitled card". This bar shows the name as context
+ * and carries no text input at all, which keeps "no field editor is embedded in the header" a
+ * checkable claim about the part of the screen that always exists.
  */
 
 export interface BuilderHeaderProps {
@@ -58,7 +63,6 @@ export interface BuilderHeaderProps {
   cardId: string | null;
   /** Unsaved changes. Shown as a status beside the meter, never as the Save label. */
   dirty: boolean;
-  onRename: (name: string) => void;
   onSave: () => void;
   /**
    * True while the save is in flight.
@@ -75,11 +79,9 @@ export function BuilderHeader({
   name,
   cardId,
   dirty,
-  onRename,
   onSave,
   saving = false,
 }: BuilderHeaderProps): ReactElement {
-  const nameId = useId();
   /** The one gate. Never a local field count — see the module note. */
   const canSave = canBuildVcf(resolved);
 
@@ -89,9 +91,9 @@ export function BuilderHeader({
       /* ⚠ **One toolbar. It was three stacked rows over a rule.**
          Back link, an "EDITING" overline, a "CARD NAME" label, the name, the meter, the
          saved-state and Save were laid out as a stack — seven pieces of chrome above a screen
-         whose subject is a card. They are the same seven pieces, minus the two labels that
-         named things already on screen; what changed is that they sit on one line, on one
-         surface, so the eye lands on the name.
+         whose subject is a card. They are the same pieces, minus the two labels that named
+         things already on screen and minus the name input itself (it heads the control panel
+         now); what changed is that they sit on one line, on one surface.
 
          A rounded panel rather than a bottom rule, because the controls below are a rounded
          panel and the preview is a rounded device — a full-width hairline across the top of
@@ -121,50 +123,30 @@ export function BuilderHeader({
       <span aria-hidden="true" className="h-6 w-px shrink-0 bg-line" />
 
       <div className="flex min-w-0 flex-1 items-center gap-2">
-        {/* Visually hidden at every width. It stays in the accessibility tree, wired by
-            `htmlFor`, so the input is still named — while the words "CARD NAME" printed over a
-            field that already reads as a title were one of the seven pieces of chrome this bar
-            was carrying. */}
-        <label htmlFor={nameId} className="sr-only">
-          Card name
-        </label>
-        {/* Deliberately not `<Input>`: this is the page's title, so it is typographically a
-            heading that happens to be editable, rather than a form control in a form. The fill
-            appears on hover and focus so it still reads as editable. */}
-        <input
-          id={nameId}
-          data-builder-name=""
-          value={name}
-          onChange={(event) => onRename(event.target.value)}
-          /* A card name is a label on a wallet pass; anything longer is not a name. */
-          maxLength={48}
-          autoComplete="off"
-          spellCheck={false}
-          placeholder="Name this card"
-          className={cn(
-            "w-full min-w-0 rounded-lg bg-transparent px-2 py-1",
-            /* ⚠ `text-ellipsis` on an `<input>`, and it does real work here.
-               A 48-character card name in a 264px field on a phone simply ran off the right
-               edge of the toolbar and stopped — a hard cut mid-glyph with no signal that
-               there was more, which reads as a broken panel rather than as a long name.
-               `text-overflow: ellipsis` applies to a text input while it is NOT focused in
-               every engine that matters, so the name reads as "Work — Kestrel Telecom, ne…"
-               at rest and reverts to normal scrolling the moment it is tapped, which is
-               exactly the behaviour you want from a field you are about to edit. */
-            "text-ellipsis",
-            // The display face, at the section-title step — this is the title of the screen and
-            // the only thing on the toolbar that should read as one.
-            //
-            // ⚠ The weight is stated. `globals.css` gives `--weight-semibold` to `h1…h4`
-            // *elements*, and this title is an `<input>` — so it takes the size and the family
-            // from `.text-h3` and would have taken 400 from the form control, landing a 20px
-            // display face at book weight next to a 20px panel title at 560. `font-semibold` is
-            // the token (`--font-weight-semibold` → 560), not Tailwind's stock 600.
-            "text-h3 font-semibold text-ink placeholder:text-ink-4",
-            "transition-colors duration-[var(--dur-fast)]",
-            "hover:bg-surface-sunk focus:bg-surface-sunk",
-          )}
-        />
+        {/**
+         * ⚠ **THE NAME IS READ-ONLY HERE NOW, AND IT IS EDITED IN THE PANEL'S HEAD.**
+         *
+         * This was the editable title: a `.text-h3` `<input>` on the toolbar. It worked and
+         * almost nobody used it — the client's screenshots show card after card still called
+         * "Untitled card" — because a control that reads as a title is a control people read
+         * rather than use, and on the toolbar it sits *outside* the column they are working in.
+         *
+         * So `panel-head.tsx` owns the input, at `.text-h2`, as the head of the control panel;
+         * this is the same string as quiet context, the way a document's top bar shows the title
+         * you edit in the page. **One input for one value** — a second one bound to the same
+         * reducer field would be two places to look and two places to fix.
+         *
+         * ⚠ `onRename` came off `BuilderHeaderProps` with the input rather than being left on
+         * it unused. A prop nobody calls is a prop the next reader has to prove is dead; the
+         * rename handler now goes to `<PanelHead>`, from the same one line in
+         * `builder-client.tsx`.
+         */}
+        <p
+          data-builder-name-label=""
+          className="min-w-0 flex-1 truncate px-1 text-sm font-medium text-ink-2"
+        >
+          {name.trim().length > 0 ? name : "Name this card"}
+        </p>
 
         {/* The mode, as a chip. Same words the hidden `<h1>` gives a screen reader, so it is
             `aria-hidden` and nobody hears it twice. */}

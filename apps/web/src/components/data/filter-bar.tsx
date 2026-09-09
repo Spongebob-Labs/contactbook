@@ -78,7 +78,16 @@ export function FilterBar({
             {typeof filter.count === "number" ? (
               // No opacity dimming here: axe scores colour-contrast as *serious*, and a
               // faded count inside a chip is the cheapest way to lose AC-25.
-              <span className="tabular-nums">{filter.count}</span>
+              /* ⚠ A REAL SPACE CHARACTER, NOT A MARGIN — and the difference is the accessible
+                 name. The chip shipped reading "Added by you4", because `Chip` puts every child
+                 inside ONE `<span>` (see its `body`) so the `gap-2` on its flex shell never
+                 falls between this count and the label. A margin would have fixed the pixels
+                 and left the name jammed: `innerText` stays "Added by you4", and that string is
+                 what a screen reader announces and what a test can see. */
+              <>
+                {" "}
+                <span className="tabular-nums">{filter.count}</span>
+              </>
             ) : null}
           </Chip>
         ))}

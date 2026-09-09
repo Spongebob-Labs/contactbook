@@ -332,6 +332,55 @@ export interface PhotoResponseDto {
   url: string;
 }
 
+/* ── inbound messages ────────────────────────────────────────────────────────────────── */
+
+/**
+ * One WhatsApp message that arrived on the product's own number.
+ *
+ * ## ⚠ THIS ENDPOINT IS NOT OWNERSHIP-SCOPED. READ BEFORE CALLING IT FROM ANYWHERE.
+ *
+ * The API's own description, verbatim: *"Every message that has hit our WhatsApp number, **from
+ * anyone**, whether or not it resolves to a known Contact or User — **no ownership scoping,
+ * this is a raw capture**."* It is tagged `webhooks`, not `contacts`, which is the other tell:
+ * it exists to inspect the inbound pipeline, not to answer a product question.
+ *
+ * So a signed-in user calling `GET /inbound-messages` receives **other users'** phone numbers,
+ * WhatsApp display names and message bodies. That is why nothing in the browser may call it:
+ * every consumer in this app goes through `app/api/inbound/connects/route.ts`, which joins the
+ * rows against the caller's own contacts **on the server** and returns only the matches.
+ *
+ * ⚠ There is also no `userId`, `cardId` or `shareLinkId` on a row. A row cannot say *which*
+ * card was scanned or whose it was — only that some number messaged us at some time. Any
+ * feature that needs the card has to wait for a scoped endpoint; see the route handler's note.
+ */
+export interface InboundMessageResponseDto {
+  id: string;
+  /** `"twilio"` today. */
+  provider: string;
+  providerMessageId: string;
+  /** Whoever messaged us — the "connect" this row represents. */
+  fromPhoneE164: string;
+  toPhoneE164: string;
+  /** The message text. ⚠ Somebody else's words unless you have matched the number first. */
+  body: string | null;
+  /** WhatsApp's own display name for the sender, if it provided one. */
+  profileName: string | null;
+  receivedAt: string;
+}
+
+export interface ListInboundMessagesQuery {
+  /**
+   * Narrow to one sender.
+   *
+   * ⚠ **This is the only form that is inherently safe**, and only when the number is already
+   * one of the caller's own contacts: asking "has THIS number written to us" reveals nothing
+   * the caller did not already know. The unfiltered form returns everyone's.
+   */
+  fromPhoneE164?: string;
+  /** Server default 100, hard cap 500. */
+  limit?: number;
+}
+
 /* ── contacts ────────────────────────────────────────────────────────────────────────── */
 
 /**

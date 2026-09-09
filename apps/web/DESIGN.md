@@ -13,6 +13,160 @@ not any more: every colour on `/` is one of the nine card grounds in
 namespace, its own type scale and tracking, its own measures, the deck, the motion grammar.
 A shared palette is not a merged system, and the `--mk-` boundary below is unchanged.
 
+## ⚠ SUPERSEDED IN PART — 2026-09-08, THE CLIENT'S WEBSITE BRIEF
+
+The client sent a written website brief and a voice note, plus the original 2018 investor deck.
+The homepage is being rebuilt against them. **Four things this document states as settled are
+no longer true**, and each is marked at its own section below. Read this list first, because
+three of the four reverse a decision that has its own long rationale further down.
+
+| what changed | was | now |
+|---|---|---|
+| **The canvas** | `--mk-paper #F5F5F5`, ruled | `#FFFFFF`, plain. Nothing renders `.mk-ledger`. |
+| **The hero** | type-only on a ruled sheet, no object | type left, an **animated card** right |
+| **The structure** | eight inset passes overlapping by 44px | flat, full-bleed sections; white and a green wash alternating |
+| **The palette** | two systems: app chrome + nine card grounds | **three** — the brand green joins them, as a five-level ladder |
+
+### The page is seven sections now, and ten components were deleted
+
+Stages 3 and 4 of `plan.md`, 2026-09-08. The homepage is the client's own argument, in order,
+and **nothing from the previous structure survived as a section**:
+
+| section | ground | what it is |
+|---|---|---|
+| `hero` | white | type left, the animated card right |
+| `problem` | wash | the deck's before/after, rebuilt — a native contact with three fields struck out beside the same person's live card |
+| `solution` | white | an exhibit: press a card, the profile dims to the fields it carries |
+| `cards` | wash | six of the product's own nine grounds |
+| `how-it-works` | white | five numbered rows, and the page's one deliberately quiet stretch |
+| `belief` | wash | type, no object |
+| `start` | deep green | the only dark surface, and the only centred one |
+
+Deleted, not refactored: `broadcast`, `trust`, `faq-accordion`, `handover-flow`, `bento`,
+`demo-cells`, `card-studio`, `problem`, `step-list`, `final-cta`. Where each argument went is
+recorded in `fixtures/marketing.ts`'s header — the two that matter are that **`trust` was the
+brief's Solution section under a different name, three screens too low**, and that
+**`broadcast` was a rebuttal delivered before the claim**, so a visitor met the caveat before
+they knew what the product did.
+
+⚠ **`<Section>`'s tone union is three grounds and the migration shims are gone.** `paper`,
+`clay`, `pistachio`, `periwinkle`, `amber` and `ink` survived one build as aliases so that
+un-rewritten sections kept compiling; every one of those sections has now been rewritten or
+deleted, so the aliases went with them.
+
+⚠ **`mk-heading-xl` WAS MISSING FROM `mk-cn.ts` AND IT COST A SECTION.** `--text-mk-heading-xl`
+was bridged in `marketing.css`, so the utility shipped — but unlisted in the font-size group,
+twMerge filed it as a colour, and beside `text-mk-white` it dropped the SIZE: the close's
+headline rendered at the inherited 18px, smaller than its own paragraph, with both classes
+present in the markup. `final-cta.tsx` had carried a comment about routing *around* this, which
+kept the workaround alive and the cause in place. The cause is fixed, and
+`marketing.spec.ts` now measures every `text-mk-*` utility against the token it names, so the
+whole class of bug is guarded rather than that one instance.
+
+### The hero's card is the product's own QR pass, and it flips — 2026-09-09
+
+The client's note, on seeing the first build: the card in the hero should be **the QR version the
+dashboard already ships**, and it should **turn over** to show the card that QR opens. The
+example-cards section should show the same QR design, and nothing else.
+
+So both surfaces now render the product's own components:
+
+| surface | what it renders | mode | symbol |
+|---|---|---|---|
+| hero, front face | real `<ShareFace>`, 336×500 | `full` | 173px — a real, decodable code |
+| hero, back face | `<ContactCard>` filling the same box | — | none |
+| `cards` section | six real `<ShareFace>`, one per palette | `thumb` @ 300 | real, under the 140px floor by design |
+
+⚠ **"NO QR IN THE HERO" WAS A STANDING RULE AND IT IS GONE.** The argument for it was sound: the
+pass's symbol has ONE pixel of clearance over `MIN_QR_SIZE_PX`, and a transform on an ancestor
+spends headroom that does not exist — which is why the hero's card used to be a bespoke
+rendition. A flip is exactly such a transform. The constraint did not disappear, it moved into
+the flip's design:
+
+  · **`rotateY` alone.** No scale, no perspective change mid-flight, no filter. Both faces rest
+    at an identity-equivalent transform, so the resting symbol is the size it was authored.
+  · **No `will-change`.** It is the obvious thing to reach for on a 3D transform and it is wrong
+    here — it pins a cached raster of a mid-flight frame and leaves a soft QR on a card nobody
+    is touching.
+  · **Measured, not asserted in prose.** `qr-scannability.spec.ts` now DECODES the hero's symbol
+    through `transform-style: preserve-3d` at all three viewports. That is a stronger guard than
+    banning the component was.
+
+⚠ **A press stops the automatic cycle for good.** A QR is a scanning target, and a code that
+turns away after four seconds cannot be scanned by somebody reaching for their phone. The flip
+demonstrates that there are two faces; the first interaction hands control over permanently.
+
+⚠ **One person, and it is `FIXTURE_DB.user`.** A real `<ShareFace>` takes its identity from the
+resolved card, so the hero's front face shows whoever the fixture user is — which forced the
+animated back face and the problem section's before/after onto the same person. `marketingUser`
+in the marketing fixture is that user with a **shorter surname** (the face clamps the name to one
+line by design, and "Raghunathan" ellipsised) and **no avatar** (the portrait PNGs are silhouette
+placeholders; `null` falls back to the monogram, which is shipped behaviour).
+
+⚠ **Two bugs worth remembering, both found by measuring rather than looking.**
+  · A `<button>` sets `text-align: center`, and it cascaded into the card — every label and value
+    on the back face came out centred, with nothing wrong in the card's own stylesheet.
+  · `.mk-flip-face[data-side="back"] > .mk-live-frame` used a CHILD selector, but `<LiveCard>`
+    wraps the card in a `<figure>`, so it matched nothing. The card kept its standalone
+    `max-width: 360px` against a shrink-to-fit flex parent and rendered **205px wide inside a
+    336px box** — every value ellipsised at about sixteen characters. It looked like a card with
+    long values.
+
+### The brief's three extra pages exist, 2026-09-09
+
+`/corporate`, `/waitlist` and `/contact`. The homepage gained `corporate` as an eighth section
+— **the second dark surface**, which the close used to be alone in being. That is deliberate: it
+addresses a different reader than everything around it, and on a page whose only separator is a
+change of ground that is the one way to say so. `belief` sits between the two on the wash, so
+the alternation still holds and the two dark bands never touch.
+
+Grounds, in order: white · wash · white · wash · white · **deep** · wash · **deep**.
+
+⚠ **The accent has no level on a dark ground.** `--mk-green-display` is derived against white
+and the wash and is not legible on `--mk-green-deep`, so `corporate` and the close carry white
+headings and no `data-accent`. Do not reach for `accented()` on a dark section.
+
+⚠ **Where a form submission goes is `LEAD_WEBHOOK_URL`, not code.** Both forms post to
+`/api/leads`, which forwards there. It is unset by default and the pages say so — 503, and an
+email address — rather than showing a tick over a submission nobody received. `src/lib/leads.ts`
+carries the reasoning; `.env.example` carries the payload shape.
+
+⚠ **The client's own contact details are NOT in `fixtures/marketing.ts`.** They are in
+`src/lib/site.ts`. `fixture-hygiene.test.ts` sweeps everything the fixture module exports and
+rejects any registrable domain — that rule is right, and it exists so invented demo data can
+never point at somebody's real business. The company's own address is neither invented nor demo,
+so the fix was the distinction rather than an exemption.
+
+### The brand green, which is new and is the client's own
+
+`#5ABCA9`, taken from the deck, where it is ink and accent **on white** — one word of a
+headline, a small-caps label, the CB monogram, an arrow — and never a large ground.
+
+⚠ **It measures 2.28:1 on white, so the brand value itself may never be a word.** The ladder
+holds hue 168.4° and saturation 42.2% exactly and moves lightness alone, which is the same
+method this file already uses everywhere else:
+
+| level | value | on white | on the wash | may be |
+|---|---|---|---|---|
+| brand | `#5ABCA9` | 2.28 | — | the monogram, a large shape, a drawn marker. **Never type.** |
+| display | `#419F8D` | 3.19 | 3.01 | an accent phrase in a heading, an icon stroke, a control edge. **Large text only.** |
+| ink | `#337F70` | 4.78 | 4.51 | labels, links, body copy at any size |
+| deep | `#286257` | 7.03 | — | a ground carrying white text |
+| wash | `#F2FAF8` | — | — | the alternating section ground |
+
+⚠ **The two inks are derived against the WASH, not white, and a test is why.** Solved on white
+they measured 3.01 and 4.52 — legal there, and *below the bar one section down*, because the
+wash is the darker of the two grounds (2.85 and 4.26). Nothing looked wrong. The homepage's
+contrast sweep in `marketing.spec.ts` named both. The lesson generalises: on a page with two
+grounds, derive against the worse one.
+
+⚠ **A near-identical teal already died here.** `--mk-teal #36BAB8` (2.37:1 — the same colour to
+the eye) was in `marketing.css` from an earlier pinned brief, used as a **ground and a fill**,
+and the homepage came back *"looking very childish"*. That rejection was about the ROLE, not
+the hue, which is why the same family of green is now correct: it is ink on white, the way the
+brand has always used it. The "marketing stops inventing colour" rule below still holds — this
+green is not invented, it is the client's.
+
 ## The boundary, and how it is enforced
 
 Every marketing token is `--mk-*` and every utility it generates is `mk-*`. That prefix is the
@@ -63,7 +217,18 @@ other way and finds the *lightest* instance of the hue that still clears the bar
 `derive-palette.ts` uses for `inkSoft`. Hue and saturation held; lightness alone moved.
 Generator, and every ratio quoted here: `.scratch-debug/mk-palette-gen.mjs`.
 
-### ⚠ THE HERO IS A RULED SHEET. THE SKY AND THE MEADOW ARE DELETED.
+### ⚠⚠ SUPERSEDED 2026-09-08 — THE SHEET IS WHITE AND THE HERO CARRIES A CARD
+
+**Everything in this section is history as of the brief.** It is kept in full, unedited, because
+it is the record of four rejected heroes and the reasoning is still the best guide to what
+fails on that surface. What replaced it, and why it is not a fifth attempt at the same mistake,
+is in `components/marketing/hero.tsx` and in the test
+*"the hero carries exactly one object — the live card, and no QR"*. The short version: the four
+rejected objects were **pictures of a card** placed in the empty half of the screen; the live
+card **performs the product's only claim**. If it is rejected too, the lesson is not "try a
+sixth object".
+
+### THE HERO IS A RULED SHEET. THE SKY AND THE MEADOW ARE DELETED.
 
 Three heroes stood here and the client rejected each ground in turn — azure→cyan gradient with
 centred type (*"looking very childish"*), Sapphire→Onyx with a tilted card (*"looking very
@@ -168,7 +333,16 @@ backdrop to be a surface at all and went with the sky; `white` on paper is a 1.0
 `ghost` draws none by design. The old lime never had any of these constraints, because a colour
 bright enough to sit on anything is also bright enough to shout on everything.
 
-### The washes are card grounds, and the substitution rule got harder
+### ⚠ SUPERSEDED 2026-09-08 — four washes became one
+
+Clay, Pistachio, Periwinkle and Amber are no longer section grounds. The page alternates white
+and `--mk-wash #F2FAF8` and nothing else; the four names survive in `<Section>`'s `tone` union
+as **migration shims** pointing at white or the wash, to be deleted as each section that still
+names one is rewritten. The nine card grounds are untouched and are what the example-cards
+tiles wear — the washes were the marketing layer's *dilution* of them, and diluting a measured
+palette is what produced the substitution rule below.
+
+### The washes were card grounds, and the substitution rule got harder
 
 | wash | was | ink | stone | pebble |
 |---|---|---|---|---|
@@ -261,7 +435,26 @@ build before these existed.
 label above a *list* (the field index's group labels, the footer's nav columns) is a different
 thing and is fine.
 
-## Structure — the Wallet Deck
+## ⚠ SUPERSEDED 2026-09-08 — the deck is flat
+
+The wallet is gone: no inset, no radius, no shadow, no overlap. A ground change is the only
+separator between two sections, which is why `--mk-wash` exists and why `marketing.spec.ts`
+asserts that **no two adjacent sections share a ground** — on a flat page an alternation bug
+does not look like a bug, it looks like one very long section.
+
+The brief asks for a page that "just scrolls down". Eight overlapping passes make every
+boundary a visual event, and the reader is made to notice the furniture instead of the
+argument. `--mk-pass-overlap` and `--mk-pass-shadow` are unreferenced.
+
+⚠ `deal` also lost its `scale(0.972)`, and that is a **performance** fix as much as a design
+one: scaling a band scales its type, so the browser rasterises the glyphs at the wrong size and
+either re-rasterises mid-flight or shows a blurred interpolation of them — on the largest
+elements on the page, for 900ms, on a build whose stated requirement is no visible lag. The
+move is `translateY(32px)` and nothing else. The NAME is kept because the vocabulary
+`{deal, rise}` is the contract; retuning a move inside the set is allowed, inventing a third is
+not.
+
+## Structure — the Wallet Deck (history)
 
 The page is a wallet. The hero is the ruled sheet the deck lies on; every section after it is a
 — inset, its own ground, `rounded-[28px] md:rounded-[36px]`, `--mk-pass-shadow`, riding

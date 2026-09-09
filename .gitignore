@@ -32,3 +32,6 @@ yarn-error.log*
 *.pem
 /docs
 .env*
+
+# e2e fixture snapshot, written by tests/global-setup.ts
+apps/web/tests/.tmp/

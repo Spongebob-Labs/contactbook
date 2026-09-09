@@ -451,6 +451,28 @@ export const TEMPLATE_PALETTES: Record<PaletteId, TemplatePalette> = {
 };
 
 /** Declaration order — the order the builder's palette picker shows them in. */
+/**
+ * The palette's plain two-stop ground, as a CSS `background-image`.
+ *
+ * Three of a palette's fields only ever appear together — `gradientAngle`, `gradientFrom` and
+ * `gradientTo` — and recombining them at a call site is how a card ends up with the right
+ * colours at the wrong angle, or with a third stop nobody measured. So the composition lives
+ * here, next to the data.
+ *
+ * `<CardGround>` is the richer path (finish × texture, mesh blooms, grain) and remains the one
+ * a real card uses. This is for surfaces that want the ground and none of the machinery — the
+ * marketing tiles, a swatch, a thumbnail — where paying for a mesh and an inline SVG grain per
+ * instance buys nothing a reader can see.
+ *
+ * ⚠ It also keeps `linear-gradient(` out of `components/marketing/*`, which
+ * `marketing.spec.ts` forbids there. That rule is not bureaucracy: a component that writes its
+ * own gradient is a component that can quietly disagree with the palette it claims to be
+ * wearing, and the whole point of the nine grounds is that every ink pair on them is proven.
+ */
+export function paletteGroundImage(palette: TemplatePalette): string {
+  return `linear-gradient(${palette.gradientAngle}deg, ${palette.gradientFrom} 0%, ${palette.gradientTo} 100%)`;
+}
+
 export const PALETTE_ORDER: readonly PaletteId[] = Object.keys(
   TEMPLATE_PALETTES,
 ) as PaletteId[];

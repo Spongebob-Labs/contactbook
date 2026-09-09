@@ -104,6 +104,25 @@ export function ConnectFlow({ resolved, token }: ConnectFlowProps): ReactElement
   const shape = resolved.template.shape.buttonShape;
   const e164 = toE164(country, phone);
 
+  /* ⚠ `fullName` can legitimately be `""`, so neither sentence below may interpolate it raw.
+     `parsePublicCard` refuses to read `name` off a *card* object — on a card that is the card's
+     own label, not a person's — so a payload shaped `{ card: { name, fields } }` resolves to a
+     real, renderable card with no owner name at all. Interpolating produced "Get 's card as a
+     live link" and " can now keep this card up to date for you", both with a leading gap.
+     `split(" ")[0]` does not help: on `""` it yields `""`, which is a string, so `??` never
+     fires — the guard has to be on emptiness, not on nullishness. */
+  const ownerName = resolved.fullName.trim();
+  const firstName = ownerName.split(" ")[0] ?? "";
+  /* Two spellings rather than one with a pronoun substituted in: "Get their's card" is what a
+     placeholder inside the possessive produces, so the nameless case drops the possessive. */
+  const askTitle =
+    firstName.length > 0
+      ? `Get ${firstName}'s card as a live link`
+      : "Get this card as a live link";
+  const doneHelper =
+    `${ownerName.length > 0 ? ownerName : "The owner"} can now keep this card up to date ` +
+    "for you. Your own copy of the link is on its way over WhatsApp.";
+
   /* The resend countdown. One timer, restarted whenever `remaining` changes, cleared on unmount —
      the same shape the sign-in screen's `ResendRow` uses. */
   useEffect(() => {
@@ -224,11 +243,7 @@ export function ConnectFlow({ resolved, token }: ConnectFlowProps): ReactElement
 
       {stage === "phone" ? (
         <Panel
-          /* First name only, possessive. `fullName` is never empty on a card that rendered
-             (the page refuses a payload with neither a name nor a field), but `split` is
-             typed as possibly-undefined, so the fallback keeps the sentence grammatical
-             rather than printing "Get 's card". */
-          title={`Get ${resolved.fullName.split(" ")[0] ?? "their"}'s card as a live link`}
+          title={askTitle}
           helper="We'll send a 6-digit code to your WhatsApp. No account, no password."
         >
           <div style={{ display: "flex", gap: "var(--space-2)" }}>
@@ -345,7 +360,7 @@ export function ConnectFlow({ resolved, token }: ConnectFlowProps): ReactElement
           title="You're connected"
           /* "Shortly" and not "now": the copy goes out through the Postgres outbox, so a
              delivery promise here would be a claim this page cannot keep. */
-          helper={`${resolved.fullName} can now keep this card up to date for you. Your own copy of the link is on its way over WhatsApp.`}
+          helper={doneHelper}
           icon={<Check size={16} strokeWidth={2} />}
         />
       ) : null}

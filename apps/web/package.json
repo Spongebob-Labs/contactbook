@@ -12,7 +12,7 @@
     "test:e2e": "playwright test",
     "test:qr": "playwright test tests/e2e/qr-",
     "test:a11y": "playwright test tests/e2e/a11y.spec.ts",
-    "preview:stub": "STUB_API_PORT=8788 node tests/stubs/public-card-api.mjs & API_BASE_URL=http://localhost:8788 next start --port 3100"
+    "preview:stub": "STUB_API_PORT=8788 node tests/stubs/api.mjs & API_BASE_URL=http://localhost:8788 next start --port 3100"
   },
   "dependencies": {
     "@radix-ui/react-accordion": "^1.2.20",

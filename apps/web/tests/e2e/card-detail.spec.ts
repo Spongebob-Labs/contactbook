@@ -1,7 +1,24 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { PROJECT_VIEWPORT, gotoReady } from "../helpers/e2e";
+import { signIn } from "../helpers/session";
 import { STATE_QUERIES, withState } from "../helpers/routes";
+
+/**
+ * ⚠ EVERY TEST BELOW IS ON A GATED ROUTE, SO THE CONTEXT NEEDS A SESSION FIRST.
+ *
+ * `proxy.ts` redirects `/cards/**` to `/signin/phone` without a `cb_at` cookie. Before this
+ * hook existed, that redirect is what the whole suite was asserting against — every test found
+ * a phone-number form and reported it as a missing element, which reads as a product bug. See
+ * `tests/helpers/session.ts` for why a forged-`exp` cookie is the right seam and why it is
+ * opt-in rather than global.
+ *
+ * On the CONTEXT and before `goto`: a cookie set afterwards arrives too late for a redirect
+ * that has already happened.
+ */
+test.beforeEach(async ({ context, baseURL }) => {
+  await signIn(context, baseURL!);
+});
 
 /**
  * `/cards/[cardId]` — the owner's view of one card, and the screen where the **preview and

@@ -78,9 +78,17 @@ export function BuilderSkeleton(): ReactElement {
           <Skeleton className="h-13 w-48 shrink-0 rounded-full lg:hidden" />
 
           <div className="flex flex-col gap-4">
-            {/* The `<h2>Fields</h2>` and the picker's prose intro. */}
-            <Skeleton className="h-5 w-20 rounded-xs" />
-            <Skeleton className="h-4 w-full rounded-xs" />
+            {/* ⚠ **The panel's head is the CARD'S NAME now, and it is a title-sized control.**
+                This boned `h-5 w-20` — the old `<h2>Fields</h2>`, 20px of section heading. What
+                arrives is a `.text-h2` input with a hairline border and its own padding, about
+                48px tall and most of the panel wide (`panel-head.tsx`), so the old bone under-
+                reserved it by ~28px and the whole list jumped up on mount. The intro under it
+                is one short line rather than the three-line paragraph it used to be. */}
+            <Skeleton className="h-12 w-full max-w-md rounded-lg" />
+            <Skeleton className="h-4 w-56 rounded-xs" />
+
+            {/* The composer row, closed: one control on a band at the top of the list. */}
+            <Skeleton className="h-9 w-32 rounded-md" />
             {/* A group heading and four field rows — the real row height, `py-3` on a 20px
                 two-line control, so the column below does not jump when the ticks arrive. */}
             <div className="flex flex-col gap-3">
@@ -92,7 +100,7 @@ export function BuilderSkeleton(): ReactElement {
           </div>
 
           <div className="flex flex-col gap-4">
-            {/* The `<h2>Design</h2>` and its intro, then the nine palette cells.
+            {/* The Design intro, then the nine palette cells.
 
                 ⚠ **Nine 44px swatches, not three card-shaped tiles.** This block used to draw
                 three `aspect-[336/500]` cells in a `grid-cols-3` — a shape the Design panel has
@@ -101,8 +109,11 @@ export function BuilderSkeleton(): ReactElement {
                 against the 44px squares that actually arrive: a ~119px jump in this block alone,
                 on a screen whose bones exist precisely so nothing moves (§8D.1). The rail above
                 them was not boned at all, which is another 44px of the same. */}
-            <Skeleton className="h-5 w-20 rounded-xs" />
-            <Skeleton className="h-4 w-full rounded-xs" />
+            {/* ⚠ No second title bone. The head is rendered **once**, above the tab panels
+                (`builder-client.tsx`), so a bone per section would reserve a title that never
+                arrives — and this file's whole rule is that the bones are the box of the real
+                content. Only the Design intro is boned here. */}
+            <Skeleton className="h-4 w-64 rounded-xs" />
             <div className="flex flex-wrap gap-2">
               {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((index) => (
                 <Skeleton key={index} className="size-11 rounded-[9px] md:size-10 md:rounded-[7px]" />

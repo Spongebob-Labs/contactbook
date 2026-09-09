@@ -356,7 +356,17 @@ export function SectionHead({
   className,
   tone = "stone",
 }: {
-  heading: string;
+  /**
+   * A node rather than a string, so a section can set ONE phrase of its heading in
+   * `--mk-green-display` — the brand's own move, and the thing that makes a white page read as
+   * ContactBook rather than as any white page. The deck does it on every slide ("How it
+   * *Works*"), which is where the pattern comes from.
+   *
+   * ⚠ `--mk-green-display` (#43A491, 3.01:1 on white) is the ONLY green legal for a word, and
+   * only at a heading size — 3:1 is the large-text bar. The brand value itself (#5ABCA9) is
+   * 2.28:1 and may never be type. See the green ladder in `marketing.css`.
+   */
+  heading: ReactNode;
   headingId?: string;
   lead?: string;
   size?: "lg" | "xl";
@@ -511,6 +521,40 @@ export function TextLink({
  * The gap between a pass's head and the body beneath it. One value, applied as a top margin on
  * the body. It was solved eleven times at five different values from 32 to 64px.
  */
+/**
+ * A heading with one phrase set in the brand green.
+ *
+ * Every section headline on the client's deck does this — "How it **Works**", "This Week's
+ * Example: **Charlie Moretti**" — and it is the single thing that makes a white page read as
+ * ContactBook rather than as any white page. Five sections use it, so the split lives here
+ * rather than as the same three lines of JSX copied five times.
+ *
+ * ⚠ THE GREEN IS `--mk-green-display` (#419F8D) AND IT IS LEGAL AT HEADING SIZES ONLY.
+ * It measures 3.01:1 on the wash and 3.19:1 on white, which clears the LARGE-text bar of 3:1
+ * and nothing else. Below 24px (or 18.66px bold) the same colour is illegal, so this helper
+ * must never be reached for on a paragraph or a label — `--mk-green-ink` is the level for
+ * those. `marketing.spec.ts` asserts the size gate on every rendered instance.
+ *
+ * ⚠ `accent` MUST BE A SUBSTRING OF `heading`. It is matched from the right, because these
+ * accents are trailing phrases and a short one ("works.") could otherwise match earlier in a
+ * longer sentence. A miss renders the heading plain rather than throwing — a headline is worth
+ * more than a stack trace — so the spec asserts that every section renders exactly one accent,
+ * which is what turns a silent miss into a failing test.
+ */
+export function accented(heading: string, accent: string): ReactNode {
+  const at = heading.lastIndexOf(accent);
+  if (at < 0) return heading;
+  return (
+    <>
+      {heading.slice(0, at)}
+      <span className="text-mk-green-display" data-accent="">
+        {accent}
+      </span>
+      {heading.slice(at + accent.length)}
+    </>
+  );
+}
+
 export const HEAD_TO_BODY = "mt-12 md:mt-16";
 
 /**

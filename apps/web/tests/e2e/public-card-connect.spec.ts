@@ -105,8 +105,12 @@ test("the happy path ends on a confirmation, on the same page, with no re-fetch"
   await expect(page.getByText("You're connected")).toBeVisible();
   // Not a login: nothing navigated.
   await expect(page).toHaveURL(new RegExp(`${CARD}$`));
-  // The card is still there, underneath the confirmation.
-  await expect(page.locator("[data-card-name]")).toHaveText("Priyanka Raghunathan");
+  /* The card is still there, underneath the confirmation — asserted on the rows rather than
+     the name. ⚠ The stub sends `{ card: { name, fields } }`, and `parsePublicCard` refuses to
+     read `name` off a card object on purpose (there it is the card's own label, not a person),
+     so `[data-card-name]` is legitimately empty here. The rows are what prove the card was not
+     replaced by a success screen. */
+  await expect(page.locator("[data-card-fields] > li")).toHaveCount(5);
   expect(resolves).toEqual([]);
 });
 
