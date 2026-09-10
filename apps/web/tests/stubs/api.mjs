@@ -116,6 +116,26 @@ const server = createServer(async (req, res) => {
      `n{count}` renders a card carrying exactly that many fields, so a spec can address "the
      shortest article this route can produce" (`n0`) as directly as a full one. Nothing here is
      a real person: the name is the product's own demo identity and every value is synthetic. */
+  /* ⚠ `pay` is the one named token: a card mapping a `BANK_ACCOUNT`, so AC-33's rule that the
+     PUBLIC card offers no reveal and never carries the raw value has something to be checked
+     against. `n{count}` cannot serve it — those fields are all `CUSTOM` by construction. The
+     value is the same synthetic account number `src/fixtures/profile.ts` uses, so the profile
+     spec can assert the same string is absent here that it revealed there. */
+  if (path === "/public/links/pay") {
+    return json(res, 200, {
+      card: {
+        name: "Priyanka Raghunathan",
+        kind: "PAYMENT",
+        templateId: "ledger",
+        paletteId: "sapphire",
+        fields: [
+          { type: "BANK_ACCOUNT", label: "Business account", value: "50100412345678" },
+          { type: "CUSTOM", label: "Studio handle", value: "@fernwood.studio" },
+        ],
+      },
+    });
+  }
+
   const link = /^\/public\/links\/n(\d+)$/.exec(path);
   if (link !== null) {
     const count = Number(link[1]);
@@ -267,6 +287,13 @@ const server = createServer(async (req, res) => {
   }
   if (/^\/profile\/fields\/[^/]+$/.test(path) && method === "PATCH") {
     return json(res, 200, db.fields[0]);
+  }
+  /* ⚠ Without this, `DELETE` fell through to `STUB_ROUTE_UNHANDLED` and the group editor showed
+     its generic failure toast — so E-41's confirm path was asserting against an error, not a
+     deletion. A 204 is what the API answers. */
+  if (/^\/profile\/fields\/[^/]+$/.test(path) && method === "DELETE") {
+    res.statusCode = 204;
+    return res.end();
   }
   if (path === "/templates") return json(res, 200, []);
 

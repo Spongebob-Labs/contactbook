@@ -1,6 +1,15 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { gotoReady } from "../helpers/e2e";
+import { signIn } from "../helpers/session";
+
+/* ⚠ `/profile` is a gated route — `proxy.ts` bounces it to `/signin/phone` without a session
+   cookie, and this file had no sign-in step at all, so every test in it was asserting against
+   the phone-number screen rather than the profile. `contacts.spec.ts` has carried this exact
+   block since the routes were gated; this file was simply missed. */
+test.beforeEach(async ({ context, baseURL }) => {
+  await signIn(context, baseURL!);
+});
 
 /**
  * `/profile` and `/profile/groups/[groupId]` — spec §6.1 R-16/R-17, §8D.3, §4.5, §7.3,
@@ -48,15 +57,17 @@ const BANK_MASKED = "••••5678";
 const UPI_FIELD = "field_upi";
 const UPI_RAW = "priyanka@okhdfcbank";
 
-/** `DATE`, `isSensitive: true` — a non-financial type masked purely by the owner's policy. */
+/**
+ * `DATE`. ⚠ The fixture still carries `isSensitive: true`, and it no longer reaches the row —
+ * sensitivity is derived from the field's type now, and `DATE` is not one of the three
+ * encrypted kinds. The row renders plainly. `DOB_RAW` is gone with the assertion that used it:
+ * the value is formatted for reading ("8 March 1991"), so the fixture's `1991-03-08` is not in
+ * the markup even when nothing is hidden.
+ */
 const DOB_FIELD = "field_dob";
-const DOB_RAW = "1991-03-08";
 
 /** `PHONE`, not sensitive. The control case: never masked, always editable. */
 const PHONE_FIELD = "field_mobile";
-
-/** `CUSTOM`, not sensitive. Used to prove the policy → masking chain end to end. */
-const PRONOUNS_FIELD = "field_pronouns";
 
 const SEVEN_GROUPS = 7;
 
@@ -66,6 +77,11 @@ async function gotoProfile(page: Page, query = ""): Promise<void> {
   await gotoReady(page, `/profile${query}`);
   // Exactly one: the client root. `loading.tsx` and the Suspense fallback carry none.
   await expect(page.locator("[data-screen-state]")).toHaveCount(1);
+}
+
+/** The add-field dialog's submit control. See the note at its first call site. */
+async function submitAddField(page: Page): Promise<void> {
+  await page.getByRole("dialog").getByRole("button", { name: "Add field" }).click();
 }
 
 async function gotoGroup(page: Page, groupId: string, query = ""): Promise<void> {
@@ -234,28 +250,61 @@ test.describe("AC-33 — masked values, and the reveal that lives only here", ()
     await expect(bank.locator("[title]")).toHaveCount(0);
   });
 
-  test("the three financial types mask regardless of isSensitive", async ({ page }) => {
+  /**
+   * ⚠ **Sensitivity is derived from the field's TYPE, not stored** — see `map.ts`'s
+   * `isSensitiveType`. The API has no `isSensitive` column at all; what it has is a set of
+   * types it encrypts at rest. So a financial field is sensitive *and* masked by construction,
+   * and the guarantee is stronger than a stored boolean: a bank account cannot be un-marked,
+   * because nothing anywhere stores the mark.
+   *
+   * This test used to assert the opposite of its second line — that `field_upi` was masked
+   * while NOT carrying the sensitive flag, because the fixture set `isSensitive: false` on it.
+   * That fixture property no longer reaches the row.
+   */
+  test("the three financial types are sensitive and masked, by type alone", async ({ page }) => {
     await gotoProfile(page);
     await expandGroup(page, "group_financial");
 
-    // `field_upi` carries `isSensitive: false` and is masked anyway, because
-    // `ALWAYS_MASKED_TYPES` can be added to by the owner's policy but never subtracted from.
     const upi = row(page, UPI_FIELD);
     await expect(upi).toHaveAttribute("data-field-masked", "");
-    await expect(upi).not.toHaveAttribute("data-field-sensitive", "");
+    await expect(upi).toHaveAttribute("data-field-sensitive", "");
     expect(await markupOf(upi)).not.toContain(UPI_RAW);
+
+    // The toggle is present but inert, and says why — nothing can subtract the mark.
+    await expect(upi.locator(`[data-sensitive-toggle="${UPI_FIELD}"]`)).toBeDisabled();
+    await expect(upi).toContainText("Set by the field's type");
   });
 
-  test("a non-financial field masks purely because the owner marked it sensitive", async ({
+  /**
+   * ⚠ **A non-financial field can no longer be masked, and this test records the loss.**
+   *
+   * It used to assert the opposite: `field_dob` is a `DATE` the fixture marked
+   * `isSensitive: true`, and it was masked purely by that owner policy. With sensitivity
+   * derived from the type there is nowhere to record such a wish — `map.ts` says so in as many
+   * words, and `docs/INTEGRATION.md` carries it as ask #6 against the API.
+   *
+   * Inverted rather than deleted, deliberately. A home address the owner wants hidden is a real
+   * request the product currently cannot meet, and a suite that simply dropped the test would
+   * leave nothing to fail on the day an `isSensitive` column lands and the UI is not rewired.
+   */
+  test("a non-financial field cannot be masked — the owner's own policy has nowhere to live", async ({
     page,
   }) => {
     await gotoProfile(page);
     await expandGroup(page, "group_identity");
 
     const dob = row(page, DOB_FIELD);
-    await expect(dob).toHaveAttribute("data-field-sensitive", "");
-    await expect(dob).toHaveAttribute("data-field-masked", "");
-    expect(await markupOf(dob)).not.toContain(DOB_RAW);
+    await expect(dob).not.toHaveAttribute("data-field-sensitive", "");
+    await expect(dob).not.toHaveAttribute("data-field-masked", "");
+    /* Visible, and no reveal control — there is nothing to reveal.
+
+       ⚠ The rendered date, not `DOB_RAW`. A `DATE` row is formatted for reading — the fixture
+       holds `1991-03-08` and the row prints "8 March 1991" — so asserting the ISO string finds
+       nothing and would fail on a perfectly unmasked field. */
+    await expect(dob.locator("[data-field-value]")).toHaveText("8 March 1991");
+    await expect(dob.locator("[data-field-reveal]")).toHaveCount(0);
+    // The toggle cannot be used to change that, and says so rather than failing silently.
+    await expect(dob.locator(`[data-sensitive-toggle="${DOB_FIELD}"]`)).toBeDisabled();
   });
 
   test("an ordinary field is not masked and offers no reveal control", async ({ page }) => {
@@ -369,8 +418,13 @@ test.describe("AC-33 — masked values, and the reveal that lives only here", ()
   });
 
   test("the public card offers no reveal control at all (AC-33)", async ({ page }) => {
-    // `prya-pay` is the card that maps the bank account, the UPI handle and the wallet.
-    await gotoReady(page, "/c/prya-pay");
+    /* ⚠ `pay`, not `prya-pay`. The e2e API stub serves the public link route itself — `/c/[slug]`
+       resolves server-side, so `page.route()` cannot reach it — and it answers
+       `SHARE_LINK_NOT_FOUND` to any token outside its own vocabulary. `prya-*` is a
+       `src/fixtures` slug that the stub has never known, so this test was asserting against the
+       not-found panel: `[data-card-root]` was absent and the "no reveal control" check passed
+       vacuously. `pay` is the stub's named token for a card mapping a `BANK_ACCOUNT`. */
+    await gotoReady(page, "/c/pay");
     await expect(page.locator("[data-card-root]")).toHaveCount(1);
 
     // The whole point of the rule: `/c/[slug]` is unauthenticated by design.
@@ -378,35 +432,42 @@ test.describe("AC-33 — masked values, and the reveal that lives only here", ()
     expect(await markupOf(page.locator("[data-card-root]"))).not.toContain(BANK_RAW);
   });
 
-  test("marking a field sensitive masks it, and a short value keeps no tail", async ({
+  /**
+   * ⚠ **What this test owns now, and what it handed back.**
+   *
+   * It used to mark `field_pronouns` sensitive by clicking its toggle, shorten the value to
+   * four characters, and assert the mask was `••••` with no tail. Two of those three steps are
+   * no longer possible, and neither is a regression:
+   *
+   * · The toggle is inert — there is no `isSensitive` column, so sensitivity comes from the
+   *   type (see the two tests above).
+   * · A financial field's **inline edit is disabled**, which is right: the value is encrypted
+   *   at rest and the owner is looking at a mask, so "edit" would mean typing over something
+   *   they cannot read.
+   *
+   * The short-value rule itself is not dropped — it is asserted directly and more precisely by
+   * `tests/unit/format.test.ts` ("masks a short value entirely rather than revealing all of
+   * it": `maskTail("1234")` is a bare run with no tail, as are `"12"` and `""`). Duplicating it
+   * here would need a fixture manufactured solely to be short.
+   *
+   * So this keeps the part only a browser can check: the rendered row shows the mask, never the
+   * secret, and offers no way to edit it blind.
+   */
+  test("a masked financial row shows the mask, never the secret, and cannot be edited blind", async ({
     page,
   }) => {
-    await gotoProfile(page);
-    await expandGroup(page, "group_custom");
+    await gotoGroup(page, "group_financial");
 
-    const pronouns = row(page, PRONOUNS_FIELD);
-    await expect(pronouns).not.toHaveAttribute("data-field-masked", "");
-    await expect(pronouns).toContainText("she/her");
+    const bank = row(page, BANK_FIELD);
+    await expect(bank).toHaveAttribute("data-field-masked", "");
+    await expect(bank.locator("[data-field-value]")).toHaveText(BANK_MASKED);
+    expect(await markupOf(bank)).not.toContain(BANK_RAW);
 
-    // The policy the owner writes down once, and every surface obeys.
-    await pronouns.locator(`[data-sensitive-toggle="${PRONOUNS_FIELD}"]`).click();
-    await expect(pronouns).toHaveAttribute("data-field-masked", "");
-    await expect(pronouns).toHaveAttribute("data-field-sensitive", "");
-    expect(await markupOf(pronouns)).not.toContain("she/her");
-
-    // Reveal, shorten the value to four characters, then hide again: `maskTail` must show
-    // `••••` with NO tail, so a short secret is never fully revealed by its own mask.
-    await pronouns.locator(`[data-field-reveal="${PRONOUNS_FIELD}"]`).click();
-    await pronouns.locator(`[data-field-edit="${PRONOUNS_FIELD}"]`).click();
-
-    const form = page.locator(`[data-field-edit-form="${PRONOUNS_FIELD}"]`);
-    await form.getByLabel("Value").fill("1234");
-    await form.getByRole("button", { name: "Save" }).click();
-
-    await pronouns.locator(`[data-field-reveal="${PRONOUNS_FIELD}"]`).click();
-    await expect(pronouns).toHaveAttribute("data-field-masked", "");
-    await expect(pronouns.locator("[data-field-value]")).toHaveText("••••");
-    expect(await markupOf(pronouns)).not.toContain("1234");
+    /* Disabled, not absent — the control keeps its place in the tab order and carries a reason,
+       which is T05's rule for every disabled control (AC-26). */
+    const edit = bank.locator(`[data-field-edit="${BANK_FIELD}"]`);
+    await expect(edit).toHaveAttribute("aria-disabled", "true");
+    await expect(edit).toHaveAttribute("aria-describedby", /.+/);
   });
 });
 
@@ -427,15 +488,22 @@ test.describe("the editor", () => {
     await expect(form).toHaveCount(0);
     await expect(company).toContainText("Fernwood Studio Pvt Ltd");
     /* §8D.1: every outcome is stated in words, never by an icon alone.
-       Targets the toast's own description rather than the raw text: Radix mirrors toast copy
-       into an off-screen announce region for screen readers, so a bare `getByText` matches two
+       ⚠ The wording moved and the assertion follows it. This screen used to be in-memory and
+       said so — "Changes live in this browser session only." — and it now writes through
+       `PATCH /profile/fields/{id}`, so that sentence would be a lie and was removed. The toast
+       is title-only, hence `[data-toast-title]`; `[data-toast-description]` does not exist on
+       it any more. Scoped to the toast's own node rather than the raw text because Radix
+       mirrors the copy into an off-screen announce region, so a bare `getByText` matches two
        nodes and fails strict mode. */
-    await expect(page.locator("[data-toast-description]")).toContainText(
-      "Changes live in this browser session only.",
-    );
+    await expect(page.locator("[data-toast-title]")).toContainText("Updated Company");
   });
 
-  test("Add field opens a popover, adds a row, and Escape restores focus (E-50)", async ({
+  /**
+   * ⚠ It is a **modal dialog** now, not a popover anchored to the trigger — the old panel
+   * covered the group it was adding to. Dismissal is unchanged and still asserted here:
+   * Escape closes it and focus returns to the trigger (E-50).
+   */
+  test("Add field opens a dialog, adds a row, and Escape restores focus (E-50)", async ({
     page,
   }) => {
     await gotoProfile(page);
@@ -454,13 +522,118 @@ test.describe("the editor", () => {
     const form = page.locator('[data-add-field-form="group_custom"]');
     await form.getByLabel("Field name").fill("Studio motto");
     await form.getByLabel("Value").fill("Make the thing, then make it plain");
-    await form.getByRole("button", { name: "Add field" }).click();
 
+    /* ⚠ The POST is what is asserted, not the row that briefly appears.
+       `profile-client.tsx`'s `mutate` calls `reload()` after every write, and the e2e stub does
+       not persist a created field — so the optimistic `field_local_*` row is removed again the
+       moment the refetch lands. Asserting it is a race that the assertion sometimes wins, which
+       is worse than either outcome. What this test actually owns is the payload the dialog
+       assembles, and that is deterministic. */
+    const posted = page.waitForRequest(
+      (request) =>
+        request.method() === "POST" && request.url().includes("/profile/fields"),
+    );
+
+    /* ⚠ Scoped to the dialog, not the form. The submit control sits in the dialog's footer —
+       the house action row beneath a hairline — and is bound to the form by `form="…"`, so it
+       is a sibling of `[data-add-field-form]` rather than a descendant. Scoping to `page`
+       instead would match the trigger, which carries the same name. */
+    await submitAddField(page);
+
+    expect(JSON.parse((await posted).postData() ?? "{}")).toMatchObject({
+      type: "TEXT",
+      label: "Studio motto",
+      value: "Make the thing, then make it plain",
+    });
     await expect(form).toHaveCount(0);
-    const added = row(page, "field_local_1");
-    await expect(added).toBeVisible();
-    await expect(added).toContainText("Studio motto");
-    await expect(added).toContainText("Make the thing, then make it plain");
+  });
+
+  /**
+   * ⚠ **The name is derived from the kind, and the derived name is what gets saved.**
+   *
+   * This is the change the redesign turns on: for the nineteen kinds that name themselves, the
+   * owner picks **Email** and types an address — they are never asked "field name" and "value"
+   * as two peer questions with no stated difference, which is what made the old popover
+   * confusing. If the derivation ever silently stops feeding `label`, this fails and the old
+   * two-box form is the only way back.
+   */
+  test("choosing a kind names the field, so only the value is typed", async ({ page }) => {
+    await gotoProfile(page);
+    await expandGroup(page, "group_custom");
+
+    await page.locator('[data-add-field="group_custom"]').click();
+    const form = page.locator('[data-add-field-form="group_custom"]');
+
+    await form.locator('[data-field-type="EMAIL"]').click();
+
+    // No "Field name" box at all for a kind that names itself — the whole point.
+    await expect(form.getByLabel("Field name")).toHaveCount(0);
+    await expect(form.locator("[data-derived-name]")).toHaveAttribute(
+      "data-derived-name",
+      "Email",
+    );
+
+    // The value box is labelled by the kind, and carries that kind's own example.
+    const value = form.getByLabel("Email");
+    await expect(value).toHaveAttribute("placeholder", "you@example.com");
+    await value.fill("ada@example.com");
+
+    const posted = page.waitForRequest(
+      (request) => request.method() === "POST" && request.url().includes("/profile/fields"),
+    );
+    await submitAddField(page);
+
+    expect(JSON.parse((await posted).postData() ?? "{}")).toMatchObject({
+      type: "EMAIL",
+      label: "Email",
+      value: "ada@example.com",
+    });
+  });
+
+  /** Rename is the escape hatch for the derived name, and it must reach the wire. */
+  test("Rename overrides the derived name", async ({ page }) => {
+    await gotoProfile(page);
+    await expandGroup(page, "group_custom");
+
+    await page.locator('[data-add-field="group_custom"]').click();
+    const form = page.locator('[data-add-field-form="group_custom"]');
+
+    await form.locator('[data-field-type="EMAIL"]').click();
+    await form.locator("[data-field-rename]").click();
+
+    // Seeded with the derived name, so Rename is an edit rather than a blank box.
+    const name = form.getByLabel("Field name");
+    await expect(name).toHaveValue("Email");
+    await name.fill("Studio inbox");
+    await form.getByLabel("Email").fill("studio@example.com");
+
+    const posted = page.waitForRequest(
+      (request) => request.method() === "POST" && request.url().includes("/profile/fields"),
+    );
+    await submitAddField(page);
+
+    expect(JSON.parse((await posted).postData() ?? "{}")).toMatchObject({
+      type: "EMAIL",
+      label: "Studio inbox",
+      value: "studio@example.com",
+    });
+  });
+
+  /**
+   * ⚠ `PHOTO` must not be offered. `POST /profile/fields` rejects it outright — the old picker
+   * listed it, so choosing it was a guaranteed round trip to a server error.
+   */
+  test("Photo is not offered as a field kind", async ({ page }) => {
+    await gotoProfile(page);
+    await expandGroup(page, "group_custom");
+
+    await page.locator('[data-add-field="group_custom"]').click();
+    const form = page.locator('[data-add-field-form="group_custom"]');
+
+    await form.locator("[data-field-type-more]").click();
+    await expect(form.locator('[data-field-type="PHOTO"]')).toHaveCount(0);
+    // And the reader is told where a picture actually comes from.
+    await expect(form).toContainText("avatar at the top of your profile");
   });
 
   test("a field with no name is refused rather than added", async ({ page }) => {
@@ -470,7 +643,7 @@ test.describe("the editor", () => {
     await page.locator('[data-add-field="group_custom"]').click();
     const form = page.locator('[data-add-field-form="group_custom"]');
     await form.getByLabel("Value").fill("orphaned");
-    await form.getByRole("button", { name: "Add field" }).click();
+    await submitAddField(page);
 
     await expect(form).toBeVisible();
     await expect(form.getByRole("alert")).toContainText("Give the field a name");
@@ -512,7 +685,7 @@ test.describe("the editor", () => {
     const form = page.locator('[data-add-field-form="group_custom"]');
     await form.getByLabel("Field name").fill("Temporary");
     await form.getByLabel("Value").fill("gone on reload");
-    await form.getByRole("button", { name: "Add field" }).click();
+    await submitAddField(page);
     await expect(page.locator('[data-profile-field="field_local_1"]')).toHaveCount(1);
 
     await gotoProfile(page);
