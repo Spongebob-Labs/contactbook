@@ -28,7 +28,7 @@ import { toScreenError } from "@/lib/api/errors";
 import { normaliseE164, parseImportLines } from "@/lib/contacts-parse";
 import { formatLongDate, formatPhoneDisplay } from "@/lib/format";
 import { useApiResource } from "@/lib/use-api";
-import type { InboundConnect } from "@/app/api/inbound/connects/route";
+import type { InboundConnect, UnlinkedScan } from "@/app/api/inbound/connects/route";
 import { fetchInboundConnects } from "@/lib/api/inbound-connects";
 import { contactLabel, type Contact, type ContactSource, type FixtureError } from "@/types/domain";
 
@@ -93,12 +93,29 @@ const OPTED_OUT_FILTER = "OPTED_OUT";
  * the card they scanned"*, and that the columns became *number* and *cards sent* because the
  * API had no source for the inbound side. `GET /inbound-messages` is now that source.
  *
- * ⚠ It answers **"this person has written to you"** and deliberately not *"this person scanned
- * card X"*. An inbound row carries no `cardId`, `shareLinkId` or `userId` — see
- * `app/api/inbound/connects/route.ts`. Labelling this column "Scanned" would be inventing a
- * link the data does not contain.
+ * ⚠ It answers **"this person has written to you"**, and only that — a QR-scan connect is a
+ * separate event under {@link SCANNED_FILTER}, because a scan involves no message at all.
+ * Counting the two together was this screen's first cut, and it invited the owner to go
+ * looking for a conversation that does not exist.
  */
 const MESSAGED_FILTER = "MESSAGED_YOU";
+
+/**
+ * ⚠ **"Scanned your card" — and note what it does and does not claim.**
+ *
+ * This file's header records that `/contacts` was once *"a list of inbound leads, with columns
+ * for the card they scanned"*, and that the column became *cards sent* because the API had no
+ * inbound source. It has one now, and enough of one to say "scanned": an inbound row carries
+ * `source: QR_SCAN_CONNECT` and a `resolvedOwnerId` that is the scanned card's owner, so
+ * `app/api/inbound/connects/route.ts` can attribute a scan to this caller exactly rather than
+ * guess from whether the scanner sits in their registry.
+ *
+ * ⚠ What is still missing is **which** card. There is no `cardId` or `shareLinkId` on the row —
+ * `resolvedOwnerId` names the owner, not the card — so "scanned one of your cards" is true and
+ * "scanned your Work card" would be invented. That distinction is the whole reason the column
+ * is headed *Scanned your card* rather than naming one.
+ */
+const SCANNED_FILTER = "SCANNED_YOU";
 
 function matchesQuery(contact: Contact, needle: string): boolean {
   if (needle.length === 0) return true;
@@ -115,7 +132,10 @@ function matchesFilters(
   if (selected.length === 0) return true;
   return selected.some((id) => {
     if (id === OPTED_OUT_FILTER) return contact.optedOutAt !== null;
-    if (id === MESSAGED_FILTER) return connects[contact.id] !== undefined;
+    /* Both read a count, not the slot's existence: a slot is created for any inbound activity,
+       so `!== undefined` would make "Messaged you" match somebody who only ever scanned. */
+    if (id === MESSAGED_FILTER) return (connects[contact.id]?.messageCount ?? 0) > 0;
+    if (id === SCANNED_FILTER) return (connects[contact.id]?.scanCount ?? 0) > 0;
     return contact.source === id;
   });
 }
@@ -224,18 +244,60 @@ function contactColumns(
     },
     {
       /**
-       * ⚠ **"Messaged you", not "Scanned".** See {@link MESSAGED_FILTER}: an inbound row has no
-       * card on it, so this column can report that somebody reached out and nothing about why.
+       * ⚠ **"Scanned your card" — one of yours, never a named one.** See {@link SCANNED_FILTER}
+       * for why the heading stops there: the row proves the scan and its owner, not the card.
        *
        * The em-dash for "never" is the same device the *Cards sent* column uses, with the same
        * screen-reader sentence beside it — a bare "—" announces as nothing at all.
+       */
+      id: "scanned",
+      header: "Scanned your card",
+      align: "end",
+      cell: (contact) => {
+        const scans = connects[contact.id]?.scanCount ?? 0;
+        const lastScanAt = connects[contact.id]?.lastScanAt ?? null;
+        /* Both conditions, not just the count: a count above zero with no date would render an
+           empty `<time>`, and the types allow that combination even though the route does not
+           produce it. */
+        if (scans === 0 || lastScanAt === null) {
+          return (
+            <span data-contact-scanned={contact.id} className="text-ink-3">
+              <span aria-hidden="true">—</span>
+              <span className="sr-only">Has not scanned your card</span>
+            </span>
+          );
+        }
+        return (
+          <span
+            data-contact-scanned={contact.id}
+            data-contact-scanned-count={scans}
+            className="inline-flex items-baseline gap-2"
+          >
+            <time dateTime={lastScanAt} className="text-ink tabular-nums">
+              {formatLongDate(lastScanAt)}
+            </time>
+            <span className="sr-only">
+              {scans === 1
+                ? "Scanned one of your cards on this date"
+                : `Scanned one of your cards ${scans} times, most recently on this date`}
+            </span>
+          </span>
+        );
+      },
+    },
+    {
+      /**
+       * ⚠ **A real WhatsApp message, and never a scan.** See {@link MESSAGED_FILTER}: the two
+       * are separate columns because a scan sends no message, so a date here means there is a
+       * conversation to open and a date under *Scanned your card* means there is not.
        */
       id: "messaged",
       header: "Messaged you",
       align: "end",
       cell: (contact) => {
-        const connect = connects[contact.id];
-        if (connect === undefined) {
+        const messages = connects[contact.id]?.messageCount ?? 0;
+        const lastMessageAt = connects[contact.id]?.lastMessageAt ?? null;
+        if (messages === 0 || lastMessageAt === null) {
           return (
             <span data-contact-messaged={contact.id} className="text-ink-3">
               <span aria-hidden="true">—</span>
@@ -246,16 +308,16 @@ function contactColumns(
         return (
           <span
             data-contact-messaged={contact.id}
-            data-contact-messaged-count={connect.messageCount}
+            data-contact-messaged-count={messages}
             className="inline-flex items-baseline gap-2"
           >
-            <time dateTime={connect.lastReceivedAt} className="text-ink tabular-nums">
-              {formatLongDate(connect.lastReceivedAt)}
+            <time dateTime={lastMessageAt} className="text-ink tabular-nums">
+              {formatLongDate(lastMessageAt)}
             </time>
             <span className="sr-only">
-              {connect.messageCount === 1
+              {messages === 1
                 ? "1 message received, most recently on this date"
-                : `${connect.messageCount} messages received, most recently on this date`}
+                : `${messages} messages received, most recently on this date`}
             </span>
           </span>
         );
@@ -486,6 +548,16 @@ function ContactsListScreen({
    */
   const [connects, setConnects] = useState<Readonly<Record<string, InboundConnect>>>({});
   const [unknownCount, setUnknownCount] = useState(0);
+  /**
+   * ⚠ Scans of this owner's cards by somebody not (yet) in the registry.
+   *
+   * Kept in its own state and rendered **outside** `{body}`, which matters: `body` is the table
+   * or the empty state, so anything inside it disappears the moment the registry is empty — and
+   * an empty registry is precisely when an unlinked scan is the only thing there is to show.
+   * That combination is what produced a page reporting no activity while a real scan sat in the
+   * log. See `app/api/inbound/connects/route.ts`'s `UnlinkedScan`.
+   */
+  const [unlinkedScans, setUnlinkedScans] = useState<readonly UnlinkedScan[]>([]);
 
   useEffect(() => {
     let live = true;
@@ -495,6 +567,7 @@ function ContactsListScreen({
         Object.fromEntries(result.connects.map((connect) => [connect.contactId, connect])),
       );
       setUnknownCount(result.unknownCount);
+      setUnlinkedScans(result.unlinkedScans);
     });
     return () => {
       live = false;
@@ -527,7 +600,11 @@ function ContactsListScreen({
     }
     /* Same rule as above: offered only when it would match something. A "Messaged you 0" chip
        is a control that can only ever return nothing. */
-    const messaged = contacts.filter((c) => connects[c.id] !== undefined).length;
+    const scanned = contacts.filter((c) => (connects[c.id]?.scanCount ?? 0) > 0).length;
+    if (scanned > 0) {
+      options.push({ id: SCANNED_FILTER, label: "Scanned your card", count: scanned });
+    }
+    const messaged = contacts.filter((c) => (connects[c.id]?.messageCount ?? 0) > 0).length;
     if (messaged > 0) {
       options.push({ id: MESSAGED_FILTER, label: "Messaged you", count: messaged });
     }
@@ -735,6 +812,58 @@ function ContactsListScreen({
         route handler drops the numbers server-side for exactly this reason, so there is nothing
         here to leak even by accident. Do not "improve" this into a list with an Add button.
       */}
+      {/*
+        ⚠ NUMBERS SHOWN HERE, ON PURPOSE — and this is the one place on this screen where that
+        is right. Everything else withholds a sender's number until a contact match proves it
+        was already the caller's. An owned scan needs no such proof: `resolvedOwnerId` says this
+        person scanned THIS caller's card and verified that number over WhatsApp to do it.
+
+        Rendered ahead of the registry, and outside `{body}`, because when the registry is empty
+        this is the only evidence the owner has that anything happened at all.
+      */}
+      {unlinkedScans.length > 0 ? (
+        <section
+          data-inbound-unlinked-scans={unlinkedScans.length}
+          className="w-full rounded-lg border border-line bg-surface px-5 py-4"
+        >
+          <h2 className="text-sm font-medium text-ink">
+            {unlinkedScans.length === 1
+              ? "1 person scanned your card"
+              : `${unlinkedScans.length} people scanned your card`}
+          </h2>
+          <p className="mt-1 text-sm text-ink-3">
+            They verified their number to get your card. They are not in your contacts yet.
+          </p>
+          <ul className="mt-3 flex flex-col divide-y divide-line">
+            {unlinkedScans.map((scan) => (
+              <li
+                key={scan.phoneE164}
+                data-unlinked-scan={scan.phoneE164}
+                className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2"
+              >
+                <span className="text-ink">
+                  {/* WhatsApp's own name when it gave one — a number alone is hard to place. */}
+                  {scan.profileName ?? formatPhoneDisplay(scan.phoneE164)}
+                  {scan.profileName === null ? null : (
+                    <span className="ml-2 text-ink-3">{formatPhoneDisplay(scan.phoneE164)}</span>
+                  )}
+                </span>
+                <span className="inline-flex items-baseline gap-2 text-ink-3">
+                  <time dateTime={scan.lastScanAt} className="tabular-nums">
+                    {formatLongDate(scan.lastScanAt)}
+                  </time>
+                  {scan.scanCount === 1 ? null : (
+                    <span data-unlinked-scan-count={scan.scanCount} className="tabular-nums">
+                      ×{scan.scanCount}
+                    </span>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
       {unknownCount > 0 ? (
         <p data-inbound-unknown={unknownCount} className="text-sm text-ink-3">
           {unknownCount === 1

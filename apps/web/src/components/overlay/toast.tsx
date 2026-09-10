@@ -131,7 +131,11 @@ export function ToastProvider({ duration = 6000, children }: ToastProviderProps)
           )}
         >
           <div className="flex min-w-0 flex-1 flex-col gap-1">
-            <ToastPrimitive.Title className="text-sm text-ink">
+            {/* ⚠ `data-toast-title` exists for the same reason `data-toast-description` below
+                does, and was simply missing: Radix mirrors toast copy into an off-screen
+                announce region, so a bare `getByText` on a title matches two nodes and fails
+                strict mode. A title-only toast — most of them — had no stable hook at all. */}
+            <ToastPrimitive.Title data-toast-title="" className="text-sm text-ink">
               {entry.title}
             </ToastPrimitive.Title>
             {/* `data-toast-description` is the hook tests target. Radix mirrors toast text into

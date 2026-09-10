@@ -145,60 +145,85 @@
      not a full-height column that happens to have side margins. */
   --cb-page-inset: 12px;
 
-  padding-top: max(var(--cb-page-inset), env(safe-area-inset-top));
-  padding-bottom: max(var(--cb-page-inset), env(safe-area-inset-bottom));
+  /* Named, because the card's own height floor below has to subtract exactly
+     these two and a second copy of the expression would drift from this one. */
+  --cb-inset-top: max(var(--cb-page-inset), env(safe-area-inset-top));
+  --cb-inset-bottom: max(var(--cb-page-inset), env(safe-area-inset-bottom));
+
+  padding-top: var(--cb-inset-top);
+  padding-bottom: var(--cb-inset-bottom);
   padding-left: max(var(--cb-page-inset), env(safe-area-inset-left));
   padding-right: max(var(--cb-page-inset), env(safe-area-inset-right));
 
 
-  /* ⚠ **No `min-height` here, and that is checked rather than assumed.** This
-     element already carries Tailwind's `min-h-full`, and `<body>` is
-     `min-h-full flex flex-col` above it. Measured in Chromium on the rendered
-     page, a zero-field card gets `main` at the full 812px and the article at
-     788px (812 less the 12px gutter each way) from that chain alone — so the
-     ground fills the card at zero fields without anything further.
+  /* ⚠ **`100svh`, and NOT the `min-h-full` this element also carries. This is
+     THE iOS BUG — the reason the card looked full-screen on a real phone while
+     measuring correct in every desktop test.**
 
-     A `100svh` floor was added here and then removed: it was redundant, and it
-     was reached for on the strength of a bad measurement (see the note on
-     `flex` below). Do not re-add one without measuring first. */
+     `min-h-full` is `min-height: 100%`, resolved against `<html>`, which is
+     `h-full`. On a desktop browser that is the window and all is well. **On
+     iOS Safari `100%` resolves against the LARGE viewport — the height the
+     page would have with the toolbars hidden — while what the reader can
+     actually see is the SMALL viewport, roughly 100–180px shorter.**
+
+     So the card was laid out up to ~180px taller than the visible area. Its
+     side gutters and top corners were on screen; its bottom gutter and both
+     bottom corners sat below the fold, reachable only by scrolling. The card
+     read as edge-to-edge — exactly the "the whole card is on the full screen,
+     what was the point of the rounded corners" report — and the strip of page
+     that appears and disappears beneath it as Safari's toolbar collapses is
+     the white line in that report.
+
+     ⚠ **This is invisible to Chromium at a fixed viewport**, where `100%`,
+     `100vh` and `100svh` are the same number. It cannot be found by resizing a
+     desktop browser. An earlier pass removed this very declaration as
+     "redundant" on exactly that bad evidence. It is not redundant.
+
+     `svh` not `dvh`: `dvh` re-measures as the toolbar collapses and would
+     resize the card mid-scroll. `svh` is the smaller of the two states, so the
+     card fits on open and simply gains page beneath it once the toolbar
+     retracts. */
+  min-height: 100svh;
+
+  /* ⚠ 24px, down from the 40px `card-page.tsx` defaults to.
+
+     That 40px was correct while the card ran to the bottom of the document and
+     simply stopped — the padding WAS the bottom of the page. The card now ends
+     in a rounded edge 12px from the screen, so the reader sees 40px of empty
+     ground, then an edge, then 12px of page: 52px of nothing under the last
+     row, on the axis a phone has least of.
+
+     It also buys back the 16px that decides whether a short card's bottom
+     corners are on screen when it opens. A three-field card measured 653px
+     against 640px of room at 390×664; at 24px it fits. This does not and
+     cannot make every card fit — a six-field card is taller than any phone and
+     is meant to scroll — it makes the common one land whole. */
+  --cb-card-body-pad-bottom: var(--space-6);
 }
 
 [data-card-page-surface] [data-card-variant="page"] {
-  /* ⚠ **`flex: 1` is what replaces the fixed ground, and it is load-bearing.**
+  /* ⚠ **The card's height floor — this is what keeps the ground independent of
+     the field count, and it is stated rather than grown.**
 
-     The ground used to be `position: fixed` right here, so that it painted the
-     whole screen however few fields the owner had mapped — "the background is
-     not a function of the field count", which the client stated twice and
-     which is not being given up.
+     It used to be `flex: 1`: let the article take whatever room `main` had
+     spare. That reads well and is wrong on a phone, because it inherits
+     `main`'s height — and `main` sits inside `<body class="min-h-full">`,
+     which on iOS Safari is the LARGE viewport (see the note above). So
+     "fill the parent" filled a box up to ~180px taller than the screen and
+     pushed the bottom of the card off it.
 
-     A fixed ground simply cannot be the ground of an inset card: `inset: 0` on
-     it resolves against the initial containing block, so it paints straight
-     through the gutter out to the phone's edges, and a radius on it rounds the
-     *viewport* rather than the card.
+     A floor says the thing we actually mean, and says it against the viewport
+     rather than against an ancestor chain:
 
-     So the ground goes back to `absolute` — the base rule above, which now
-     applies on every surface — and the ARTICLE takes the screen instead.
-     `main` is a flex column at viewport height; `flex: 1` hands its whole
-     height to the card, and `flex-grow` cannot shrink a box below its content,
-     so a twenty-five-field card still lays out at full height and the document
-     scrolls. A zero-field card is a full inset sheet of colour. Same
-     invariant, one declaration, and now it can have corners.
+       · content shorter than the screen → the card is exactly the visible
+         screen less its gutters, so all four corners are on screen and the
+         ground is painted edge to edge at zero fields. The invariant holds.
+       · content taller → the card is its content and the document scrolls,
+         which is what a long card should do.
 
-     This is exactly the pairing `builder-preview.tsx` already uses with
-     `className="flex-1"` on the same component, for the same reason.
-
-     ⚠ **`flex: 1` is correct, and a detour is worth recording so nobody
-     repeats it.** `flex: 1` expands to `1 1 0%` — basis zero, shrink enabled —
-     which looks unsafe for a card taller than the screen, and was briefly
-     "fixed" here to `1 0 auto`. It needed no fix: a flex item's `min-height`
-     is `auto`, which floors it at its content, and Chromium confirms it —
-     twenty fields at 375×420 lay out at 1767px under `1 1 0%` and `1 0 auto`
-     alike, ground included.
-
-     The apparent collapse that prompted the change was an artefact of
-     measuring through a hidden browser pane, where every rect reads 0×0.
-     Measure layout in a real headless browser, not a backgrounded one. */
-  flex: 1;
+     `min-height`, never `height`: a height would clip a long card, and there
+     is no overflow container anywhere in `card-page.tsx` to catch it. */
+  min-height: calc(100svh - var(--cb-inset-top) - var(--cb-inset-bottom));
 
   /* The card's own measure: the 460px content column plus the body's 24px of
      inline padding each side. The column inside is untouched at every width —

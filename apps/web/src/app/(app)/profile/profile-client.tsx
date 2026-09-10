@@ -12,7 +12,7 @@ import {
 import { PageHeader } from "@/components/layout";
 import { useToast } from "@/components/overlay";
 import { Skeleton } from "@/components/primitives/skeleton";
-import { AddFieldPopover, type NewFieldDraft } from "@/components/profile/add-field-popover";
+import { AddFieldDialog, type NewFieldDraft } from "@/components/profile/add-field-dialog";
 import { FieldGroupSection } from "@/components/profile/field-group-section";
 import { ProfileFieldRow } from "@/components/profile/field-row";
 import { IdentityBlock } from "@/components/profile/identity-block";
@@ -632,7 +632,7 @@ function ProfileScreen({
                   isSyntheticGroupId(group.id) ? undefined : `/profile/groups/${group.id}`
                 }
                 addSlot={
-                  <AddFieldPopover
+                  <AddFieldDialog
                     group={group}
                     variant={groupFields.length === 0 ? "primary" : "secondary"}
                     onAdd={(newField) => addField(group, newField)}

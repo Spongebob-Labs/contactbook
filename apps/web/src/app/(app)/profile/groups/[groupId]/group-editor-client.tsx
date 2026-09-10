@@ -17,7 +17,7 @@ import { useToast } from "@/components/overlay";
 import { Button, buttonClassName } from "@/components/primitives/button";
 import { Input } from "@/components/primitives/input";
 import { Skeleton } from "@/components/primitives/skeleton";
-import { AddFieldPopover, type NewFieldDraft } from "@/components/profile/add-field-popover";
+import { AddFieldDialog, type NewFieldDraft } from "@/components/profile/add-field-dialog";
 import { ProfileFieldRow } from "@/components/profile/field-row";
 import { ConfirmDialog } from "@/components/overlay";
 import {
@@ -333,7 +333,7 @@ function GroupEditorScreen({
           description="Add one and every card builder can tick it on straight away. A card is a filter over these fields, not a copy of them."
         >
           <div className="mt-3 flex flex-wrap items-center gap-3">
-            <AddFieldPopover group={group} variant="primary" onAdd={addField} />
+            <AddFieldDialog group={group} variant="primary" onAdd={addField} />
           </div>
         </EmptyState>
       </div>
@@ -375,7 +375,7 @@ function GroupEditorScreen({
         </ol>
 
         <div className="mt-6 flex flex-wrap items-center gap-4">
-          <AddFieldPopover group={group} onAdd={addField} />
+          <AddFieldDialog group={group} onAdd={addField} />
           <Link href="/profile" className={buttonClassName({ variant: "text-link" })}>
             Back to profile
           </Link>

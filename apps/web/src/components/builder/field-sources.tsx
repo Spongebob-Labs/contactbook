@@ -7,7 +7,7 @@ import { Button, Input, Select } from "@/components/primitives";
 import {
   FIELD_TYPE_INPUT_MODES,
   FIELD_TYPE_PLACEHOLDERS,
-} from "@/components/profile/add-field-popover";
+} from "@/components/profile/field-types";
 import { cn } from "@/lib/cn";
 import type { FieldType } from "@/types/domain";
 
@@ -215,7 +215,7 @@ export function NewFieldRow({
               ⚠ THE PLACEHOLDER AND THE KEYBOARD BOTH FOLLOW THE KIND — and with the label
               hidden they are now the *only* thing that says what goes in the box, which makes
               them load-bearing rather than a nicety. Both maps are `Record<FieldType, …>` in
-              `add-field-popover.tsx`, beside the type labels, so this screen and the profile's
+              `profile/field-types.ts`, beside the type labels, so this screen and the profile's
               own add-field flow cannot disagree about what a phone number looks like.
 
               `key={type}` is deliberate: without it React keeps the same input element across a

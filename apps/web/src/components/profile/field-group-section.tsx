@@ -43,7 +43,7 @@ export interface FieldGroupSectionProps {
   fieldCount: number;
   open: boolean;
   onOpenChange: (next: boolean) => void;
-  /** The `AddFieldPopover` for this group. Rendered in the panel and in the empty state. */
+  /** The `AddFieldDialog` for this group. Rendered in the panel and in the empty state. */
   addSlot: ReactNode;
   /**
    * `/profile/groups/[groupId]` — the focused editor (§8D.3). Omit for a section that has no group upstream.

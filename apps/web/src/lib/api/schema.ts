@@ -86,6 +86,37 @@ export type ApiContactSource = (typeof API_CONTACT_SOURCES)[number];
 export const API_SHARE_LINK_STATUSES = ["ACTIVE", "REVOKED"] as const;
 export type ApiShareLinkStatus = (typeof API_SHARE_LINK_STATUSES)[number];
 
+/**
+ * What put a row in the inbound log. Three things do, and telling them apart is the whole
+ * point of the field:
+ *
+ * · `WHATSAPP_MESSAGE` — a real inbound WhatsApp webhook hit. Somebody typed to us.
+ * · `QR_SCAN_CONNECT`  — a stranger scanned a card's QR and verified their phone through the
+ *   public "Save & connect" flow. **No WhatsApp message exists at all.**
+ * · `CARD_SHARE`       — **the owner's own outbound action**: they shared a card with a
+ *   contact. ⚠ Its `fromPhoneE164` is *the owner*, not the other party — the opposite of the
+ *   other two — so a phone join written for inbound activity attributes it to nobody and
+ *   would report the owner's own number as "a number that isn't in your contacts". This is
+ *   why `app/api/inbound/connects/route.ts` asks for the two inbound sources **by name**
+ *   rather than filtering an unfiltered page: a source it never fetches cannot be
+ *   misattributed. Landed with `b376f46` on the API side.
+ *
+ * ⚠ Deliberately NOT added to `api-contract.test.ts`'s enum assertions, because
+ * `openapi.snapshot.json` predates this field: the snapshot's `InboundMessageResponseDto`
+ * still carries only eight properties and its `/inbound-messages` operation still advertises
+ * only `fromPhoneE164` and `limit`. The API has all three — see
+ * `apps/api/src/webhooks/dto/inbound-message-response.dto.ts` and
+ * `list-inbound-messages-query.dto.ts`, which are the source used here. Asserting against the
+ * snapshot would fail on the snapshot's staleness, not on a real drift. Refresh the snapshot
+ * and this becomes assertable.
+ */
+export const API_INBOUND_SOURCES = [
+  "WHATSAPP_MESSAGE",
+  "QR_SCAN_CONNECT",
+  "CARD_SHARE",
+] as const;
+export type ApiInboundSource = (typeof API_INBOUND_SOURCES)[number];
+
 /** `CARD_UPDATE` landed with card-update notifications — it is the purpose the notify send uses. */
 export const API_TEMPLATE_PURPOSES = ["OTP", "CARD_SHARE", "CARD_UPDATE"] as const;
 export type ApiTemplatePurpose = (typeof API_TEMPLATE_PURPOSES)[number];
@@ -355,16 +386,46 @@ export interface PhotoResponseDto {
  */
 export interface InboundMessageResponseDto {
   id: string;
+  /**
+   * What created this row — a real message, or a QR-scan connect. See {@link ApiInboundSource}.
+   *
+   * ⚠ Without this, a QR scan and a WhatsApp message are indistinguishable, which is exactly
+   * the confusion `app/api/inbound/connects/route.ts` used to be stuck with.
+   */
+  source: ApiInboundSource;
   /** `"twilio"` today. */
   provider: string;
-  providerMessageId: string;
-  /** Whoever messaged us — the "connect" this row represents. */
+  /**
+   * ⚠ Always `null` on a `QR_SCAN_CONNECT` or `CARD_SHARE` row — neither involves a message
+   * Twilio delivered to us, so there is no `MessageSid` to carry.
+   */
+  providerMessageId: string | null;
+  /**
+   * Whoever initiated contact — the message sender, the QR scanner, or, on a `CARD_SHARE` row,
+   * ⚠ **the card owner themselves**. See {@link ApiInboundSource} on why that inversion matters
+   * to anything joining these rows against a contact list.
+   */
   fromPhoneE164: string;
+  /**
+   * ⚠ **Means different things depending on `source`.** For `WHATSAPP_MESSAGE` it is our own
+   * fixed WhatsApp business number, the same on every row and worth nothing. For
+   * `QR_SCAN_CONNECT` it is **the scanned card owner's** phone. For `CARD_SHARE` it is the
+   * **contact the card went to**.
+   */
   toPhoneE164: string;
   /** The message text. ⚠ Somebody else's words unless you have matched the number first. */
   body: string | null;
   /** WhatsApp's own display name for the sender, if it provided one. */
   profileName: string | null;
+  /**
+   * The ContactBook user this row resolves to.
+   *
+   * Set on `QR_SCAN_CONNECT` (the owner of the card that was scanned) and on `CARD_SHARE` (the
+   * owner who shared it); always `null` on `WHATSAPP_MESSAGE` today. **This is the only real ownership signal on an otherwise
+   * unscoped endpoint**, and it is what lets a scan be attributed to one owner rather than
+   * inferred from whether the sender happens to sit in their contact list.
+   */
+  resolvedOwnerId: string | null;
   receivedAt: string;
 }
 
@@ -377,6 +438,13 @@ export interface ListInboundMessagesQuery {
    * the caller did not already know. The unfiltered form returns everyone's.
    */
   fromPhoneE164?: string;
+  /**
+   * Narrow to one kind of row — a real message, a QR-scan connect, or an owner's own share.
+   *
+   * Safe on its own terms but **not a substitute for scoping**: `?source=QR_SCAN_CONNECT` still
+   * returns every owner's scans. Pair it with `resolvedOwnerId`.
+   */
+  source?: ApiInboundSource;
   /** Server default 100, hard cap 500. */
   limit?: number;
 }

@@ -6,7 +6,7 @@ import { PanelHead } from "@/components/builder/panel-head";
 import {
   FIELD_TYPE_INPUT_MODES,
   FIELD_TYPE_PLACEHOLDERS,
-} from "@/components/profile/add-field-popover";
+} from "@/components/profile/field-types";
 import { buildFieldRows } from "@/components/builder/field-rows";
 import { FIXTURE_DB } from "@/fixtures";
 

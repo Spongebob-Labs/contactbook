@@ -394,7 +394,14 @@ export function CardPage({ resolved, actions, className }: CardPageProps): React
              preview, which is already inside a rounded, clipping frame of its own. The body is
              transparent on the painted ground, so it has no edge of its own to round. */
           paddingTop: "var(--space-8)",
-          paddingBottom: "var(--space-10)",
+          /* ⚠ A variable with the old value as its default, so the number can be
+             tuned per surface without this file knowing which surface it is on.
+             `card.css` §1b lowers it on `/c/{slug}` only: 40px of padding under
+             the last row was right when the card ran to the bottom of the
+             document with no end, and is dead space now that the card is an
+             object whose own edge sits 12px from the screen. The builder's
+             preview and the marketing tiles keep the original value. */
+          paddingBottom: "var(--cb-card-body-pad-bottom, var(--space-10))",
           paddingInline: "var(--space-6)",
         }}
       >
