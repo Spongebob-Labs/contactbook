@@ -4,6 +4,7 @@ import { Prisma, ShareLink } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AppConfigService } from '../config/app-config.service';
 import { AppLogger } from '../common/logging/app-logger.service';
+import { maskPhone } from '../common/logging/redact';
 import { ApiError } from '../common/errors/api-error';
 import { decryptFieldValueForRead } from '../profile/profile-field-value.util';
 import { ContactsService } from '../contacts/contacts.service';
@@ -38,6 +39,15 @@ const PUBLIC_CARD_INCLUDE = {
 type CardForPublicResolve = Prisma.CardGetPayload<{
   include: typeof PUBLIC_CARD_INCLUDE;
 }>;
+
+function isP2002(err: unknown): boolean {
+  return (
+    !!err &&
+    typeof err === 'object' &&
+    'code' in err &&
+    (err as { code?: string }).code === 'P2002'
+  );
+}
 
 @Injectable()
 export class ShareLinksService {
@@ -79,7 +89,63 @@ export class ShareLinksService {
     const ownerName =
       [owner.firstName, owner.lastName].filter(Boolean).join(' ') || 'Someone';
 
-    return this.ensureActiveLinkAndNotify(card, contact, ownerName);
+    const result = await this.ensureActiveLinkAndNotify(
+      card,
+      contact,
+      ownerName,
+    );
+    await this.logCardShareConnection(owner, contact);
+    return result;
+  }
+
+  /**
+   * Records this (owner, contact) pair in the same connections log
+   * card-connect.service.ts writes QR_SCAN_CONNECT rows to — an
+   * owner-initiated share is a third, distinct way two phone numbers end up
+   * connected, alongside a real WhatsApp message and a QR-scan connect.
+   *
+   * `from` = the owner (they took the action), `to` = the contact — logged
+   * once per (owner, contact) pair EVER, same `@@unique([fromPhoneE164,
+   * toPhoneE164])` every other source shares. Sharing a SECOND, different
+   * card with a contact already logged is a deliberate no-op here: this
+   * table answers "has this owner ever connected with this contact," not
+   * "how many cards have they shared" — same reasoning QR_SCAN_CONNECT
+   * already applies (no per-card field on this table at all).
+   *
+   * Not folded into the same transaction as the ShareLink/outbox write in
+   * ensureActiveLinkAndNotify() — same rationale as the QR-connect write:
+   * this log is observational, not the outbox-in-transaction guarantee
+   * (architecture invariant #3 is about a claimed send really having
+   * happened, not about this record).
+   */
+  private async logCardShareConnection(
+    owner: { id: string; phoneE164: string },
+    contact: { phoneE164: string },
+  ): Promise<void> {
+    try {
+      await this.prisma.inboundMessage.create({
+        data: {
+          source: 'CARD_SHARE',
+          fromPhoneE164: owner.phoneE164,
+          toPhoneE164: contact.phoneE164,
+          resolvedOwnerId: owner.id,
+        },
+      });
+      this.logger.info('sharing.card_share_connection_logged', {
+        resolvedOwnerId: owner.id,
+        contactPhoneE164: maskPhone(contact.phoneE164),
+      });
+    } catch (err) {
+      if (isP2002(err)) {
+        // This owner has connected with this contact before — "log once"
+        // by design, not an error.
+        this.logger.info('sharing.card_share_connection_duplicate_ignored', {
+          resolvedOwnerId: owner.id,
+        });
+        return;
+      }
+      throw err;
+    }
   }
 
   /**

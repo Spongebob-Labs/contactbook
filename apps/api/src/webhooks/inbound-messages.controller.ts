@@ -28,13 +28,14 @@ export class InboundMessagesController {
 
   @Get()
   @ApiOperation({
-    summary: 'History of inbound WhatsApp messages and QR-scan connections',
+    summary: 'History of inbound WhatsApp messages and connection events',
     description:
-      'One row per (fromPhoneE164, toPhoneE164) pair, ever — a real WhatsApp message and a ' +
-      'QR-scan "Save & connect" both land here, distinguished by `source`. A second message ' +
-      '(or a second scan) between a pair already on file produces no new row. No ownership ' +
-      'scoping (`resolvedOwnerId` narrows QR_SCAN_CONNECT rows, but this endpoint itself ' +
-      "returns everyone's). Newest first, capped at 500 rows per call.",
+      'One row per (fromPhoneE164, toPhoneE164) pair, ever — a real WhatsApp message, a ' +
+      'QR-scan "Save & connect", and an owner-initiated card share all land here, ' +
+      'distinguished by `source`. A second event of the same kind between a pair already on ' +
+      'file produces no new row. No ownership scoping (`resolvedOwnerId` narrows ' +
+      "QR_SCAN_CONNECT/CARD_SHARE rows, but this endpoint itself returns everyone's). " +
+      'Newest first, capped at 500 rows per call.',
   })
   @ApiResponse({ status: 200, type: [InboundMessageResponseDto] })
   async list(
