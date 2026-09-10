@@ -33,6 +33,10 @@ export function listInboundMessages(
   return authed({
     method: "GET",
     path: "/inbound-messages",
-    query: { fromPhoneE164: query.fromPhoneE164, limit: query.limit },
+    query: {
+      fromPhoneE164: query.fromPhoneE164,
+      source: query.source,
+      limit: query.limit,
+    },
   });
 }

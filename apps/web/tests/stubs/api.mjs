@@ -275,9 +275,13 @@ const server = createServer(async (req, res) => {
      contain. `?fromPhoneE164=` narrows; `?limit=` truncates. */
   if (path === "/inbound-messages" && method === "GET") {
     const from = url.searchParams.get("fromPhoneE164");
+    /* `?source=` narrows to WHATSAPP_MESSAGE or QR_SCAN_CONNECT. The connects route asks for
+       each separately so a burst of one kind cannot crowd the other out of the 500-row cap. */
+    const source = url.searchParams.get("source");
     const limit = Number(url.searchParams.get("limit") ?? 100);
     const rows = (db.inboundMessages ?? [])
       .filter((m) => from === null || m.fromPhoneE164 === from)
+      .filter((m) => source === null || m.source === source)
       .slice(0, Number.isFinite(limit) ? limit : 100);
     return json(res, 200, rows);
   }

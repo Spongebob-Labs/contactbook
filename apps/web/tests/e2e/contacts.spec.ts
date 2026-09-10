@@ -634,6 +634,93 @@ test("marks the contacts who have messaged you, and counts the ones you don't ha
 });
 
 /**
+ * The QR-scan half: a contact who scanned one of **your** cards is marked, on its own column,
+ * separately from anyone who merely messaged you.
+ *
+ * The two are different events — a `QR_SCAN_CONNECT` row involves no WhatsApp message at all —
+ * so a single "inbound activity" column would tell the owner to go looking for a conversation
+ * that does not exist.
+ */
+test("marks the contacts who scanned your card, separately from who messaged you", async ({
+  page,
+}) => {
+  await gotoReady(page, CONTACTS);
+
+  const scanned = page.locator("[data-contact-scanned-count]");
+  await expect(scanned, "no contact was marked as having scanned your card").not.toHaveCount(0);
+
+  /* The fixture seeds exactly one scan of THIS user's card from the first contact. */
+  await expect(scanned.first()).toHaveAttribute("data-contact-scanned-count", "1");
+
+  /* Both columns are populated for that same contact, and they are not the same number — which
+     is what proves a scan is not being double-counted as a message, or vice versa. */
+  await expect(page.locator("[data-contact-messaged-count]").first()).toHaveAttribute(
+    "data-contact-messaged-count",
+    "2",
+  );
+
+  // The filter chip is offered, because there is something for it to match.
+  await expect(page.getByText("Scanned your card", { exact: false }).first()).toBeVisible();
+});
+
+/**
+ * ⚠ **The false positive this column was built around.**
+ *
+ * `GET /inbound-messages` is a global capture. The phone join alone attributes a scan to
+ * whoever's registry the *scanner* happens to sit in — so a contact of yours who scanned
+ * **somebody else's** card was being reported as having scanned yours.
+ *
+ * `resolvedOwnerId` is the fix: a scan counts only when it names this caller. The fixture seeds
+ * two `QR_SCAN_CONNECT` rows from the *same* known contact — one for this user, one for
+ * `another-owner-user-id` — so a route that ignores ownership reports `2` here and a correct one
+ * reports `1`. Without the second fixture row this assertion cannot fail, which is the only
+ * reason it is worth writing.
+ */
+test("a scan of another owner's card is not counted as a scan of yours", async ({ page }) => {
+  await gotoReady(page, CONTACTS);
+
+  const scanned = page.locator("[data-contact-scanned-count]").first();
+  await expect(scanned).toHaveAttribute("data-contact-scanned-count", "1");
+
+  /* And the other owner's id must not have travelled to the browser either — it is not this
+     caller's data, so it has no business being in the payload at all. */
+  const html = await page.content();
+  expect(
+    html.includes("another-owner-user-id"),
+    "another owner's user id reached the page — the scan row was not dropped server-side",
+  ).toBe(false);
+});
+
+/**
+ * ⚠ **A scan from somebody not in the registry must still be visible.**
+ *
+ * This is the failure the panel was built for, and it was reported from a real staging session:
+ * `/api/inbound/connects` answered `{"connects":[],"unknownCount":0}` on a page reading "No
+ * contacts yet", with a genuine scan sitting in the inbound log. The route required a contact
+ * match for scans as well as messages, so with an empty registry every owned scan was dropped.
+ *
+ * Two things are asserted, and the second is the one that would have caught it: the scan is
+ * rendered, and it is rendered **outside** the table — the table is replaced wholesale by the
+ * empty state when the registry has nothing in it, so a panel inside it would vanish exactly
+ * when it is the only thing worth showing.
+ */
+test("a scan by someone not in your contacts is shown, with their number", async ({ page }) => {
+  await gotoReady(page, CONTACTS);
+
+  const panel = page.locator("[data-inbound-unlinked-scans]");
+  await expect(panel, "an owned scan from an unlisted number was dropped").toHaveCount(1);
+
+  /* The fixture seeds one: `+919000000002`, profileName "Kabir", owned by this user. */
+  await expect(panel).toHaveAttribute("data-inbound-unlinked-scans", "1");
+  await expect(page.locator('[data-unlinked-scan="+919000000002"]')).toHaveCount(1);
+  await expect(panel).toContainText("Kabir");
+
+  /* ⚠ Outside the table. `[data-empty-state]` replaces the table entirely on an empty
+     registry, so a panel nested in it would disappear in the very case it is needed. */
+  await expect(page.locator("[data-empty-state] [data-inbound-unlinked-scans]")).toHaveCount(0);
+});
+
+/**
  * ⚠ The chip's count needs its own spacing: `Chip` puts every child inside one `<span>`, so the
  * `gap-2` on its flex shell never lands between a label and the count beside it. It shipped
  * reading "Added by you4".

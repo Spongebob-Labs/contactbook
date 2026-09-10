@@ -217,41 +217,109 @@ export function buildApiSnapshot() {
      * matched sender must reach the browser and the unmatched one must not. A stub where every
      * sender is a known contact would let the leak through and still pass.
      */
+    /**
+     * ⚠ Every row carries `source`, and the mix is deliberate — see
+     * `app/api/inbound/connects/route.ts`. Four cases, each one a thing the route must get
+     * right and none of them reachable without a fixture for it:
+     *
+     *  1. two `WHATSAPP_MESSAGE` rows from a known contact → the *Messaged you* column
+     *  2. a `QR_SCAN_CONNECT` from a known contact, `resolvedOwnerId` = **this user** → the
+     *     *Scanned your card* column
+     *  3. a `QR_SCAN_CONNECT` from that **same** known contact whose `resolvedOwnerId` is
+     *     **somebody else** → must be DROPPED. This is the false positive the phone join alone
+     *     produced, and it is invisible without a row where the sender is legitimately in the
+     *     registry while the scanned card is not this user's.
+     *  4. a `WHATSAPP_MESSAGE` from an unknown number → the count, never the number
+     */
     inboundMessages: [
       ...(contacts[0] === undefined
         ? []
         : [
             {
               id: "inbound_known_1",
+              source: "WHATSAPP_MESSAGE",
               provider: "twilio",
               providerMessageId: "SMstub00000000000000000000000001",
               fromPhoneE164: contacts[0].phoneE164,
               toPhoneE164: "+15551234567",
               body: "Hi, saw your card",
               profileName: contacts[0].displayName ?? null,
+              resolvedOwnerId: null,
               receivedAt: "2026-09-05T09:00:00.000Z",
             },
             {
               id: "inbound_known_2",
+              source: "WHATSAPP_MESSAGE",
               provider: "twilio",
               providerMessageId: "SMstub00000000000000000000000002",
               fromPhoneE164: contacts[0].phoneE164,
               toPhoneE164: "+15551234567",
               body: "Following up",
               profileName: contacts[0].displayName ?? null,
+              resolvedOwnerId: null,
               receivedAt: "2026-09-04T09:00:00.000Z",
+            },
+            {
+              /* Case 2: this user's own card was scanned. `providerMessageId` is null and
+                 `body` is null because no Twilio message ever existed. */
+              id: "inbound_scan_mine",
+              source: "QR_SCAN_CONNECT",
+              provider: "twilio",
+              providerMessageId: null,
+              fromPhoneE164: contacts[0].phoneE164,
+              /* For a scan this is the OWNER's number, not our business number. */
+              toPhoneE164: user.phone,
+              body: null,
+              profileName: null,
+              resolvedOwnerId: user.id,
+              receivedAt: "2026-09-08T18:05:25.487Z",
+            },
+            {
+              /* ⚠ Case 3, and the whole reason this fixture set is worth reading. Same sender
+                 as above — genuinely one of this user's contacts — but the card scanned belongs
+                 to another owner. The route must drop it: counting it would report a scan of
+                 "your card" that never happened. */
+              id: "inbound_scan_other_owner",
+              source: "QR_SCAN_CONNECT",
+              provider: "twilio",
+              providerMessageId: null,
+              fromPhoneE164: contacts[0].phoneE164,
+              toPhoneE164: "+919000000009",
+              body: null,
+              profileName: null,
+              resolvedOwnerId: "another-owner-user-id",
+              receivedAt: "2026-09-07T12:00:00.000Z",
             },
           ]),
       {
-        /* ⚠ Not in the fixture registry — stands for another user's contact. The route must
-           reduce this to a count and never emit the number. */
+        /* ⚠ Case 5, and the one that reproduces the bug this panel exists for: a scan of THIS
+           user's card by a number that is NOT in the registry. `resolvedOwnerId` proves it is
+           this caller's, so it must appear — with its number — under "scanned your card".
+           The first cut required a contact match for scans and dropped this row silently,
+           which is how a real scan ended up visible nowhere. */
+        id: "inbound_scan_unlinked",
+        source: "QR_SCAN_CONNECT",
+        provider: "twilio",
+        providerMessageId: null,
+        fromPhoneE164: "+919000000002",
+        toPhoneE164: user.phone,
+        body: null,
+        profileName: "Kabir",
+        resolvedOwnerId: user.id,
+        receivedAt: "2026-09-09T08:15:00.000Z",
+      },
+      {
+        /* Case 4: not in the fixture registry — stands for another user's contact. The route
+           must reduce this to a count and never emit the number. */
         id: "inbound_stranger",
+        source: "WHATSAPP_MESSAGE",
         provider: "twilio",
         providerMessageId: "SMstub00000000000000000000000003",
         fromPhoneE164: "+919000000001",
         toPhoneE164: "+15551234567",
         body: "wrong number",
         profileName: "Someone Else",
+        resolvedOwnerId: null,
         receivedAt: "2026-09-03T09:00:00.000Z",
       },
     ],
