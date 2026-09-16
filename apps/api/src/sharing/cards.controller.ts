@@ -10,10 +10,15 @@ import {
   Put,
   Query,
   Req,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
   ApiCookieAuth,
   ApiOperation,
   ApiResponse,
@@ -22,6 +27,7 @@ import {
 import type { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ApiErrorResponseDto } from '../common/errors/api-error-response.dto';
+import { MAX_LOGO_BYTES } from './card-logo-storage.service';
 import { CardsService } from './cards.service';
 import { ShareLinksService } from './share-links.service';
 import { CreateCardDto } from './dto/create-card.dto';
@@ -97,6 +103,67 @@ export class CardsController {
     @Body() dto: UpdateCardDto,
   ) {
     return this.cards.update(req.user!.id, id, dto);
+  }
+
+  @Post(':id/logo')
+  @ApiOperation({
+    summary: 'Upload or replace this card’s logo',
+    description: `JPEG, PNG, or WebP, up to ${MAX_LOGO_BYTES / (1024 * 1024)} MB. Replacing an existing logo deletes the old one from storage.`,
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['file'],
+      properties: { file: { type: 'string', format: 'binary' } },
+    },
+  })
+  @ApiResponse({ status: 200, type: CardResponseDto })
+  @ApiResponse({
+    status: 404,
+    type: ApiErrorResponseDto,
+    description: 'CARD_NOT_FOUND',
+  })
+  @ApiResponse({
+    status: 409,
+    type: ApiErrorResponseDto,
+    description: 'LOGO_STORAGE_NOT_CONFIGURED',
+  })
+  @ApiResponse({
+    status: 413,
+    type: ApiErrorResponseDto,
+    description: 'LOGO_TOO_LARGE',
+  })
+  @ApiResponse({
+    status: 415,
+    type: ApiErrorResponseDto,
+    description: 'LOGO_TYPE_UNSUPPORTED',
+  })
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: MAX_LOGO_BYTES } }),
+  )
+  async uploadLogo(
+    @Req() req: Request,
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.cards.uploadLogo(req.user!.id, id, file);
+  }
+
+  @Delete(':id/logo')
+  @ApiOperation({ summary: 'Remove this card’s logo' })
+  @HttpCode(204)
+  @ApiResponse({ status: 204, description: 'Removed.' })
+  @ApiResponse({
+    status: 404,
+    type: ApiErrorResponseDto,
+    description: 'CARD_NOT_FOUND or LOGO_NOT_FOUND',
+  })
+  async removeLogo(
+    @Req() req: Request,
+    @Param('id') id: string,
+  ): Promise<void> {
+    await this.cards.removeLogo(req.user!.id, id);
   }
 
   @Delete(':id')

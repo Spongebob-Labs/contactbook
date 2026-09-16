@@ -100,6 +100,12 @@ export class AppConfigService {
   get gcs() {
     return {
       profilePhotosBucket: this.env.GCS_PROFILE_PHOTOS_BUCKET,
+      // Falls back to the profile-photos bucket when no dedicated one is
+      // set — the common case is one shared public-read bucket with a
+      // `card-logos/` key prefix distinguishing the two; a genuinely
+      // separate bucket is a one-var upgrade later, not a prerequisite now.
+      cardLogosBucket:
+        this.env.GCS_CARD_LOGOS_BUCKET ?? this.env.GCS_PROFILE_PHOTOS_BUCKET,
       publicBaseUrl:
         this.env.GCS_PUBLIC_BASE_URL ??
         (this.env.GCS_PROFILE_PHOTOS_BUCKET

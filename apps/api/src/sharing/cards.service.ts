@@ -13,6 +13,7 @@ import { ApiError } from '../common/errors/api-error';
 import { decryptFieldValueForRead } from '../profile/profile-field-value.util';
 import { OutboxService } from '../outbox/outbox.service';
 import { TaskEnqueuer } from '../outbox/task-enqueuer';
+import { CardLogoStorageService } from './card-logo-storage.service';
 import { generateShareToken } from './share-token.util';
 import {
   diffCardFields,
@@ -46,6 +47,7 @@ export class CardsService {
     private readonly logger: AppLogger,
     private readonly outbox: OutboxService,
     private readonly enqueuer: TaskEnqueuer,
+    private readonly logoStorage: CardLogoStorageService,
   ) {}
 
   async list(
@@ -402,6 +404,52 @@ export class CardsService {
     return results;
   }
 
+  /**
+   * Upload/replace this card's logo. Mirrors ProfileService.upsertPhoto()'s
+   * shape: upload to storage first (so a rejected file never touches the
+   * row), then swap the URL in, then best-effort delete whatever was there
+   * before — never the other order, which would delete a still-referenced
+   * object if the upload itself failed partway.
+   */
+  async uploadLogo(
+    userId: string,
+    cardId: string,
+    file: { buffer: Buffer; mimetype: string; size: number },
+  ): Promise<CardResponseDto> {
+    const card = await this.findOwned(userId, cardId);
+    const url = await this.logoStorage.upload(cardId, file);
+
+    const row = await this.prisma.card.update({
+      where: { id: cardId },
+      data: { logoUrl: url },
+      include: CARD_WITH_FIELDS_INCLUDE,
+    });
+
+    if (card.logoUrl) {
+      await this.logoStorage.deleteByUrl(card.logoUrl);
+    }
+
+    this.logger.info('sharing.card_logo_uploaded', { userId, cardId });
+    return this.toResponseDto(userId, row);
+  }
+
+  async removeLogo(userId: string, cardId: string): Promise<void> {
+    const card = await this.findOwned(userId, cardId);
+    if (!card.logoUrl) {
+      throw ApiError.notFound(
+        'LOGO_NOT_FOUND',
+        'This card has no logo to remove.',
+      );
+    }
+
+    await this.prisma.card.update({
+      where: { id: cardId },
+      data: { logoUrl: null },
+    });
+    await this.logoStorage.deleteByUrl(card.logoUrl);
+    this.logger.info('sharing.card_logo_removed', { userId, cardId });
+  }
+
   /** IDOR guard: every read/write resolves through this, never a bare findUnique. */
   async findOwned(userId: string, id: string): Promise<CardWithFields> {
     const row = await this.prisma.card.findFirst({
@@ -424,6 +472,7 @@ export class CardsService {
       // the two sides drift (see the now-dead `/c/{slug}` guess this
       // replaces). Same construction ShareLinksService.buildUrl() uses.
       publicUrl: `${this.config.shareBaseUrl.replace(/\/+$/, '')}/c/${card.publicToken}`,
+      logoUrl: card.logoUrl,
       templateId: card.templateId,
       paletteId: card.paletteId,
       groundHex: card.groundHex,
