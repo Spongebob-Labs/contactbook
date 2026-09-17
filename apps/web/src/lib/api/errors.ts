@@ -54,6 +54,16 @@ export type ApiErrorCode =
   | "DUPLICATE_FIELD_IN_CARD"
   | "PHOTO_NOT_A_CARD_FIELD"
   | "CARD_SHARE_TEMPLATE_NOT_CONFIGURED"
+  /**
+   * The card logo quartet. Deliberately *not* folded into the `PHOTO_*` codes above even though
+   * three of the four say something almost identical: they are different uploads against
+   * different endpoints, and a card's logo failing must never render copy about the owner's
+   * profile photo. The API keeps them distinct for the same reason.
+   */
+  | "LOGO_STORAGE_NOT_CONFIGURED"
+  | "LOGO_TOO_LARGE"
+  | "LOGO_TYPE_UNSUPPORTED"
+  | "LOGO_NOT_FOUND"
   // share links
   | "SHARE_LINK_NOT_FOUND"
   /** The owner revoked this link — 410, from resolve and from both connect endpoints. */
@@ -163,6 +173,10 @@ const KNOWN_CODES = new Set<string>([
   "DUPLICATE_FIELD_IN_CARD",
   "PHOTO_NOT_A_CARD_FIELD",
   "CARD_SHARE_TEMPLATE_NOT_CONFIGURED",
+  "LOGO_STORAGE_NOT_CONFIGURED",
+  "LOGO_TOO_LARGE",
+  "LOGO_TYPE_UNSUPPORTED",
+  "LOGO_NOT_FOUND",
   "SHARE_LINK_NOT_FOUND",
   "SHARE_LINK_REVOKED",
   "CANNOT_CONNECT_TO_SELF",
@@ -351,6 +365,33 @@ const COPY: Readonly<Record<ApiErrorCode, Copy>> = {
     kind: "unknown",
     title: "We couldn't send the WhatsApp message",
     detail: "The link below is live — copy it and send it yourself for now.",
+    retryable: false,
+  },
+  LOGO_STORAGE_NOT_CONFIGURED: {
+    kind: "unknown",
+    title: "Logo uploads aren't available yet",
+    detail: "This is being set up on our side. Try again later.",
+    retryable: false,
+  },
+  LOGO_TOO_LARGE: {
+    kind: "unknown",
+    title: "That logo is too large",
+    detail: "Pick one under 20 MB, or export it smaller first.",
+    retryable: false,
+  },
+  LOGO_TYPE_UNSUPPORTED: {
+    kind: "unknown",
+    title: "That file type won't work",
+    detail: "Use a JPEG, PNG or WebP image.",
+    retryable: false,
+  },
+  LOGO_NOT_FOUND: {
+    /* Reachable by removing a logo twice — a double-tap, or two tabs on the same card. The card
+       is already in the state the owner asked for, so the copy says that rather than apologising
+       for a failure that changed nothing. */
+    kind: "not-found",
+    title: "There's no logo to remove",
+    detail: "This card is already showing its name instead.",
     retryable: false,
   },
   SHARE_LINK_NOT_FOUND: {

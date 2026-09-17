@@ -995,6 +995,107 @@ describe("the painted ground", () => {
   });
 });
 
+
+/* ── the logo, in the one image slot ─────────────────────────────────────────────────── */
+
+/**
+ * ⚠ **Both variants draw the logo in the portrait circle, and neither gives it a slot of its
+ * own.**
+ *
+ * The first implementation put it in a band above the circle on the card page and in the
+ * top-left mark chip on the face — two objects where the composition has one, on a hero the
+ * whole design brief keeps to a single subject. `resolveAvatar` now returns the logo as the
+ * circle's content, so what is under test is that each renderer draws whatever it is handed and
+ * neither invents a second place to put it.
+ */
+describe("the card's logo", () => {
+  const LOGO = "https://cdn.example/mark.png";
+
+  function resolveWith(logoUrl: string | null): ResolvedCard {
+    return resolveCard(
+      { ...cardLedgerDemo, logoUrl },
+      fixtureUser,
+      fixtureGroups,
+      fixtureFields,
+    );
+  }
+
+  it("the face draws it in the portrait circle", () => {
+    const { container } = render(<ShareFace resolved={resolveWith(LOGO)} mode="full" />);
+
+    const portrait = container.querySelector("[data-card-portrait]");
+    expect(portrait?.getAttribute("data-card-portrait")).toBe("logo");
+    expect(portrait?.querySelector("img")?.getAttribute("src")).toBe(LOGO);
+  });
+
+  it("the page draws it in the portrait circle", () => {
+    const { container } = render(<CardPage resolved={resolveWith(LOGO)} />);
+
+    const portrait = container.querySelector("[data-card-portrait]");
+    expect(portrait?.getAttribute("data-card-portrait")).toBe("logo");
+    expect(portrait?.querySelector("img")?.getAttribute("src")).toBe(LOGO);
+  });
+
+  /* The circle is the ONLY place it appears. A second copy anywhere is the regression. */
+  it.each([
+    ["face", (r: ResolvedCard) => render(<ShareFace resolved={r} mode="full" />)],
+    ["page", (r: ResolvedCard) => render(<CardPage resolved={r} />)],
+  ])("the %s renders the logo exactly once", (_label, mount) => {
+    const { container } = mount(resolveWith(LOGO));
+    const drawn = [...container.querySelectorAll("img")].filter(
+      (img) => img.getAttribute("src") === LOGO,
+    );
+    expect(drawn).toHaveLength(1);
+  });
+
+  /* The fixture owner has a profile photo, so "no logo" falls to the photo — not to a monogram.
+     That IS the ladder: a logo replaces the circle's content, whatever that content would be. */
+  it("falls back to the owner's photo when there is no logo, on both variants", () => {
+    const resolved = resolveWith(null);
+    expect(resolved.avatar.kind).toBe("photo");
+
+    for (const { container } of [
+      render(<ShareFace resolved={resolved} mode="full" />),
+      render(<CardPage resolved={resolved} />),
+    ]) {
+      expect(
+        container.querySelector("[data-card-portrait]")?.getAttribute("data-card-portrait"),
+      ).toBe("photo");
+    }
+  });
+
+  it("falls all the way to the monogram when there is neither", () => {
+    const resolved = resolveCard(
+      cardLedgerDemo,
+      { ...fixtureUser, avatarUrl: null },
+      fixtureGroups,
+      fixtureFields,
+    );
+    expect(resolved.avatar.kind).toBe("monogram");
+
+    for (const { container } of [
+      render(<ShareFace resolved={resolved} mode="full" />),
+      render(<CardPage resolved={resolved} />),
+    ]) {
+      expect(
+        container.querySelector("[data-card-portrait]")?.getAttribute("data-card-portrait"),
+      ).toBe("monogram");
+    }
+  });
+
+  /**
+   * ⚠ The face's top-left chip stays **text**, always. It is the card's name-mark, and putting
+   * the logo there as well would print the same image twice on a 336×500 pass.
+   */
+  it("leaves the face's mark chip as text", () => {
+    const { container } = render(<ShareFace resolved={resolveWith(LOGO)} mode="full" />);
+    const mark = container.querySelector("[data-card-mark]");
+
+    expect(mark?.querySelector("img")).toBeNull();
+    expect(mark?.textContent?.trim()).toBe("Fernwood Studio");
+  });
+});
+
 /**
  * ⚠ **Layout changes composition. It never changes what the card shares.**
  *

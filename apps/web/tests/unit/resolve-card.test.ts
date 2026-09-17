@@ -391,6 +391,79 @@ describe("resolveCard — avatar precedence (§5.3a, §11 E-19)", () => {
   });
 });
 
+describe("resolveCard — the logo fills the card's one image slot", () => {
+  const avatarOf = (card: ContactCard) => resolve(card).avatar;
+  const LOGO = "https://cdn.example/mark.png";
+
+  /**
+   * ⚠ **The logo goes IN the circle, ahead of the monogram it was uploaded to replace.**
+   *
+   * It was briefly drawn as a band of its own above the portrait, which put two objects in a
+   * hero composed for one. A card has one image slot; this is it.
+   */
+  it("1 — an uploaded logo wins outright, over every photograph", () => {
+    expect(avatarOf({ ...cardLedgerDemo, logoUrl: LOGO })).toEqual({
+      kind: "logo",
+      url: LOGO,
+      alt: "Priyanka Raghunathan",
+    });
+  });
+
+  /**
+   * ⚠ The precedence that is easy to get backwards. `User.avatarUrl` is the owner's face on
+   * every card they own; a logo is a decision made about *this* card. The narrower choice wins,
+   * exactly as `groundHex` beats `paletteId` — otherwise somebody who uploads a mark to their
+   * work card still sees their own face on it.
+   */
+  it("outranks the profile photo, because it is the per-card choice", () => {
+    const withPhoto = { ...fixtureUser, avatarUrl: "/portraits/priyanka.png" };
+    const resolved = resolveCard(
+      { ...cardLedgerDemo, logoUrl: LOGO },
+      withPhoto,
+      fixtureGroups,
+      fixtureFields,
+    );
+
+    expect(resolved.avatar).toEqual({ kind: "logo", url: LOGO, alt: "Priyanka Raghunathan" });
+  });
+
+  it("2 — the profile photo stands in when there is no logo", () => {
+    const withPhoto = { ...fixtureUser, avatarUrl: "/portraits/priyanka.png" };
+    const resolved = resolveCard(cardLedgerDemo, withPhoto, fixtureGroups, fixtureFields);
+
+    expect(resolved.avatar).toEqual({
+      kind: "photo",
+      url: "/portraits/priyanka.png",
+      alt: "Priyanka Raghunathan",
+    });
+  });
+
+  it("3 — the monogram stands in when there is neither (§11 E-19)", () => {
+    const nobody = { ...fixtureUser, avatarUrl: null };
+    const resolved = resolveCard(cardLedgerDemo, nobody, fixtureGroups, fixtureFields);
+
+    expect(resolved.avatar).toEqual({ kind: "monogram", initials: "PR" });
+  });
+
+  /**
+   * ⚠ A `logoUrl` of `""` is a value a nullable text column can hold, and it is not harmless:
+   * an image element with an empty source re-requests the current document, so a blank string is
+   * a broken circle on every card carrying one rather than a falsy that quietly falls through.
+   */
+  it("treats a blank logoUrl as no logo at all", () => {
+    const blank = { ...fixtureUser, avatarUrl: null };
+    for (const logoUrl of ["", "   "]) {
+      const resolved = resolveCard(
+        { ...cardLedgerDemo, logoUrl },
+        blank,
+        fixtureGroups,
+        fixtureFields,
+      );
+      expect(resolved.avatar.kind).toBe("monogram");
+    }
+  });
+});
+
 describe("resolveCard — bio precedence (§5.3a, §11 E-05, E-06)", () => {
   const bioOf = (fieldIds: readonly string[]): string | null =>
     resolve(withFieldIds(cardLedgerDemo, fieldIds)).bio;

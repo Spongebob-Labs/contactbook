@@ -163,6 +163,28 @@ describe("publicUrl", () => {
   });
 });
 
+describe("logoUrl", () => {
+  it("carries the logo through verbatim", () => {
+    const url = "https://storage.googleapis.com/bucket/card-logos/card1/logo.png";
+    expect(toContactCard(apiCard({ logoUrl: url }), "u1").logoUrl).toBe(url);
+  });
+
+  /**
+   * ⚠ The wire has two spellings of "no logo" — an explicit `null` and, on an older row, no key
+   * at all — and unlike `publicUrl` they have never meant anything different. Both collapse to
+   * the domain's single `null` so nothing downstream has to know which one arrived.
+   */
+  it("collapses both of the wire's spellings of 'no logo' into null", () => {
+    expect(toContactCard(apiCard({ logoUrl: null }), "u1").logoUrl).toBeNull();
+
+    const dto = apiCard();
+    delete (dto as { logoUrl?: string | null }).logoUrl;
+    expect(toContactCard(dto, "u1").logoUrl).toBeNull();
+    expect(toContactCard(dto, "u1").logoUrl).not.toBeUndefined();
+  });
+
+});
+
 describe("E.164 conversion", () => {
   it("joins the dial code and the digits with no separator", () => {
     // The API wants strict E.164. One stray space is the difference between a delivered OTP

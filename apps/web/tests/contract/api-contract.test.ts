@@ -34,6 +34,7 @@ import {
   API_FIELD_CATEGORIES,
   API_FIELD_TYPES,
   API_GROUP_CATEGORIES,
+  API_INBOUND_SOURCES,
   API_SHARE_LINK_STATUSES,
   API_TEMPLATE_APPROVALS,
   API_TEMPLATE_PURPOSES,
@@ -108,18 +109,19 @@ describe("API coverage", () => {
   const spec = specOperations();
   const client = clientOperations();
 
-  it("the snapshot holds the 39 operations this integration was scoped against", () => {
+  it("the snapshot holds the 41 operations this integration was scoped against", () => {
     // A guard on the guard: if the snapshot is refreshed and the count moves, every
     // assertion below is measuring a different API than the one the UI was mapped to.
     // 36 -> 38 when card-update notifications landed: /cards/{id}/audience and /notify.
     // 38 -> 39 with GET /inbound-messages, the raw inbound WhatsApp capture.
+    // 39 -> 41 with the card logo pair: POST and DELETE /cards/{id}/logo.
     //
     // ⚠ That one is NOT ownership-scoped — the API's own description says so, and it is tagged
     // `webhooks`. It is implemented in `endpoints/inbound-messages.ts` (`server-only`) and has
     // exactly one consumer: `app/api/inbound/connects/route.ts`, which joins it against the
     // caller's own contacts on the server. Nothing in the browser may call it directly; see
     // that route's header for why.
-    expect(spec).toHaveLength(39);
+    expect(spec).toHaveLength(41);
   });
 
   it("implements every operation in the spec", () => {
@@ -170,6 +172,9 @@ describe("API enums match the spec", () => {
     ["share link status", API_SHARE_LINK_STATUSES, "ShareLinkResponseDto", "status"],
     ["template purpose", API_TEMPLATE_PURPOSES, "WhatsAppTemplateResponseDto", "purpose"],
     ["template approval", API_TEMPLATE_APPROVALS, "WhatsAppTemplateResponseDto", "approvalStatus"],
+    // Assertable since the snapshot refresh that landed the card-logo pair — see the ⚠ on
+    // `API_INBOUND_SOURCES` for why it was exempt before that.
+    ["inbound source", API_INBOUND_SOURCES, "InboundMessageResponseDto", "source"],
   ];
 
   for (const [label, ours, schemaName, property] of cases) {

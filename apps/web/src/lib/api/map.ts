@@ -479,6 +479,10 @@ export function toContactCard(dto: CardResponseDto, userId: string): ContactCard
     // `string | null` is exactly the vocabulary for "the API has no URL for this card".
     // Every renderer already handles null; nothing handles undefined.
     publicUrl: dto.publicUrl ?? null,
+    /* `?? null` collapses the wire's two spellings of "no logo" — an absent key on an older row
+       and an explicit `null` — into the domain's one. Unlike `publicUrl`, the two never meant
+       anything different here; see `ContactCard.logoUrl`. */
+    logoUrl: dto.logoUrl ?? null,
     ...appearance,
     fieldIds: visible.map((field) => field.fieldId),
     updatedAt: dto.updatedAt,

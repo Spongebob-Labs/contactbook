@@ -67,6 +67,28 @@ const STRIPPED_REQUEST_HEADERS = new Set([
   "authorization",
 ]);
 
+/**
+ * Statuses the `Response` constructor refuses to pair with a body — **even an empty one.**
+ *
+ * ⚠ This is not a nicety. `upstream.arrayBuffer()` always yields an `ArrayBuffer`, and a
+ * zero-length `ArrayBuffer` is still *a body* as far as undici is concerned: `new Response(new
+ * ArrayBuffer(0), { status: 204 })` throws `Invalid response status code 204`. The throw happens
+ * inside the route handler, so what the browser receives is a **500 with a Next error page** —
+ * for a call the API answered successfully.
+ *
+ * Every `DELETE` in this API answers `204`, which is what made the failure so quiet: the record
+ * really was deleted, the client saw a 5xx, showed a failure toast, and rolled its optimistic
+ * update back — so the screen put the row, the photo or the logo *back* while the server no
+ * longer had it, and a refresh showed the delete had worked all along.
+ *
+ * Found via `DELETE /cards/{id}/logo`, which is the first 204 this proxy had an assertion
+ * standing behind (`tests/e2e/builder.spec.ts`). It was never specific to that route.
+ *
+ * `304` is here for completeness rather than observation: the fetch above sends no conditional
+ * headers, so the API has nothing to answer it with.
+ */
+const NULL_BODY_STATUSES = new Set([204, 205, 304]);
+
 /** Headers the API sends that must not be replayed to the browser. */
 const STRIPPED_RESPONSE_HEADERS = new Set([
   "connection",
@@ -143,7 +165,7 @@ async function proxy(request: NextRequest, path: string[]): Promise<Response> {
     if (!STRIPPED_RESPONSE_HEADERS.has(key.toLowerCase())) responseHeaders.set(key, value);
   }
 
-  const response = new NextResponse(body, {
+  const response = new NextResponse(NULL_BODY_STATUSES.has(upstream.status) ? null : body, {
     status: upstream.status,
     statusText: upstream.statusText,
     headers: responseHeaders,

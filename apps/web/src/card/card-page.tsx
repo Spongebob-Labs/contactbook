@@ -509,7 +509,11 @@ function IdentityBlock({
     minWidth: 0,
   };
 
-  /* Mark, portrait, name, bio — centred on the ground. The one composition. */
+  /* Mark, portrait, name, bio — centred on the ground. The one composition.
+
+     ⚠ The owner's logo is NOT a fifth element here. It goes *in* the portrait — see
+     `resolveAvatar`. A logo rendered as its own band above the circle put two objects in the
+     hero where the composition has one, and read as a banner stapled to the card. */
   return (
     <div style={column}>
       <BrandMark onPalette={onPalette} />
@@ -518,6 +522,7 @@ function IdentityBlock({
     </div>
   );
 }
+
 
 /**
  * The Contact Book wordmark, at the head of the card.
@@ -552,7 +557,14 @@ function BrandMark({ onPalette }: { onPalette: boolean }): ReactElement {
   );
 }
 
-/** The page's portrait — always a circle, always present. Only its diameter varies by layout. */
+/**
+ * The page's portrait — always a circle, always present. Only its diameter varies by layout.
+ *
+ * ⚠ **This is the card's one image slot, and the owner's logo fills it** when the card has one
+ * — same circle, same diameter, same crop as a photograph, with only `data-card-portrait` saying
+ * which. The logo briefly had a band of its own above this, and the result was two objects in a
+ * hero composed for one. `resolveAvatar` owns the ladder; this draws whatever it returns.
+ */
 function PagePortrait({ resolved, px }: { resolved: ResolvedCard; px: number }): ReactElement {
   const base: CSSProperties = {
     width: `${px}px`,
@@ -562,9 +574,9 @@ function PagePortrait({ resolved, px }: { resolved: ResolvedCard; px: number }):
     flexShrink: 0,
   };
 
-  if (resolved.avatar.kind === "photo") {
+  if (resolved.avatar.kind === "logo" || resolved.avatar.kind === "photo") {
     return (
-      <span data-card-portrait="photo" style={base}>
+      <span data-card-portrait={resolved.avatar.kind} style={base}>
         {/* A plain img element rather than next/image: see the note in share-face.tsx —
             next/image's markup does not survive html-to-image serialisation. (Written without
             the literal tag in the prose: `impeccable`'s broken-image rule is a text regex and

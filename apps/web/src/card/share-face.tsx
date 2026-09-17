@@ -484,7 +484,15 @@ function MarkChip({ label }: { label: string }): ReactElement {
   );
 }
 
-/** The portrait, top-right. A photograph when there is one, the owner's initials when not. */
+/**
+ * The portrait, top-right. The card's logo when it has one, else a photograph, else the owner's
+ * initials — the ladder is `resolveAvatar`'s, not this file's.
+ *
+ * ⚠ **A logo draws in the same circle, the same size, the same crop as a photograph**, and it
+ * gets no treatment of its own. It is the slot's content, not a second slot: the only thing that
+ * changes is `data-card-portrait`, so a test can tell the three apart without the format being
+ * able to vary by which one a card carries.
+ */
 function Portrait({ resolved }: { resolved: ResolvedCard }): ReactElement {
   const base: CSSProperties = {
     width: `${PORTRAIT_PX}px`,
@@ -494,9 +502,9 @@ function Portrait({ resolved }: { resolved: ResolvedCard }): ReactElement {
     flexShrink: 0,
   };
 
-  if (resolved.avatar.kind === "photo") {
+  if (resolved.avatar.kind === "logo" || resolved.avatar.kind === "photo") {
     return (
-      <span data-card-portrait="photo" style={base}>
+      <span data-card-portrait={resolved.avatar.kind} style={base}>
         {/* A plain <img>, deliberately: this subtree is serialised by html-to-image for the PNG
             export, and next/image's wrapper markup, srcset and lazy loading do not survive that
             serialisation — the portrait comes out blank in the exported file. */}

@@ -2419,3 +2419,194 @@ test("a name the owner chose is not auto-selected on focus", async ({ page }) =>
     0,
   );
 });
+
+/* ── the logo ────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * The card's logo — `POST /cards/{id}/logo`, `DELETE /cards/{id}/logo`, and the `file` part of
+ * the multipart `POST /cards`.
+ *
+ * ## Why this is an e2e test and not a unit one
+ *
+ * The reducer's behaviour is already pinned without a browser (`tests/unit/builder-reducer.test.ts`)
+ * and so is the mark's resolution. What neither can reach is the part that actually broke in
+ * every previous version of an upload control: **a real `<input type="file">`, a real
+ * `URL.createObjectURL`, and the preview repainting from a `blob:` URL.** happy-dom has no
+ * object-URL implementation worth trusting and no layout engine, so "the owner picks a file and
+ * the card in the pane wears it" is only a claim until a browser does it.
+ *
+ * ## The two paths, and they are genuinely different requests
+ *
+ * · **An existing card** uploads on pick. `logoUrl` is rejected as a plain string by
+ *   `PATCH /cards/{id}`, so there is no Save that could carry it — the file is either uploaded
+ *   or it is nowhere.
+ * · **`/cards/new`** has no id to address, so the file is held and goes out as the create's
+ *   `file` part. Both are asserted below, because the code paths do not share a line.
+ */
+
+/** A 1×1 transparent PNG — the smallest thing that is genuinely an image to a browser. */
+const PNG_1X1 = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
+  "base64",
+);
+
+async function pickLogo(page: Page) {
+  await page.locator("[data-logo-input]").setInputFiles({
+    name: "mark.png",
+    mimeType: "image/png",
+    buffer: PNG_1X1,
+  });
+}
+
+test("the Design panel offers a logo control, empty to begin with", async ({ page }) => {
+  await gotoReady(page, EDIT_LEDGER);
+  await openPanel(page, "design");
+
+  await expect(page.locator("[data-panel-row='logo']")).toBeVisible();
+  await expect(page.locator("[data-logo-thumb]")).toHaveAttribute("data-logo-thumb", "empty");
+  /* "Add logo", not "Replace" — the label is how the control says which state it is in, and it
+     is the only thing on the row that does. */
+  await expect(page.locator("[data-logo-upload]")).toHaveText(/add logo/i);
+  // Nothing to remove yet, so no control offering it.
+  await expect(page.locator("[data-logo-remove]")).toHaveCount(0);
+});
+
+/**
+ * ⚠ **The preview must wear the logo, not just the panel.**
+ *
+ * A thumbnail that updates while the card beside it does not is the exact failure §8D.4 is
+ * written against — the builder showing a choice it has not applied. The logo fills the card's
+ * one image slot, the portrait circle, so `[data-card-portrait="logo"]` inside the preview
+ * asserts the whole path: file → object URL → reducer → `builderCard` → `resolveCard` →
+ * `resolveAvatar` → `<CardPage>`.
+ */
+test("picking a logo on an existing card uploads it and the preview wears it", async ({ page }) => {
+  await gotoReady(page, EDIT_LEDGER);
+  await openPanel(page, "design");
+
+  const request = page.waitForRequest(
+    (r) => /\/cards\/[^/]+\/logo$/.test(r.url()) && r.method() === "POST",
+  );
+  await pickLogo(page);
+
+  const posted = await request;
+  expect(
+    posted.headers()["content-type"] ?? "",
+    "the upload was not sent as multipart/form-data",
+  ).toContain("multipart/form-data");
+
+  await expect(page.locator("[data-logo-thumb]")).toHaveAttribute("data-logo-thumb", "set");
+  await expect(page.locator("[data-logo-upload]")).toHaveText(/replace/i);
+  await expect(page.locator('[data-builder-preview] [data-card-portrait="logo"]')).toBeVisible();
+});
+
+/**
+ * ⚠ **And the card must not be marked unsaved by it.** The upload has already landed, so a Save
+ * offered afterwards would commit nothing — which teaches an owner that the button is noise.
+ */
+test("an uploaded logo does not leave the card claiming unsaved changes", async ({ page }) => {
+  await gotoReady(page, EDIT_LEDGER);
+  await openPanel(page, "design");
+
+  const status = page.locator("[data-builder-dirty]");
+  // The baseline matters: an assertion that "false" is still "false" proves nothing unless the
+  // screen actually started there.
+  await expect(status).toHaveAttribute("data-builder-dirty", "false");
+
+  await pickLogo(page);
+  await expect(page.locator("[data-logo-thumb]")).toHaveAttribute("data-logo-thumb", "set");
+
+  await expect(
+    status,
+    "an upload that already landed marked the card unsaved, so Save now commits nothing",
+  ).toHaveAttribute("data-builder-dirty", "false");
+});
+
+/**
+ * ⚠ The mirror, and the half that would be broken by "just never set dirty for a logo": on an
+ * unsaved card the file has no route to the server except the create, so Save genuinely does
+ * have something to commit and the screen has to say so.
+ */
+test("a logo picked on a new card does mark it unsaved, because Save is what sends it", async ({
+  page,
+}) => {
+  await gotoReady(page, NEW);
+  await openPanel(page, "design");
+
+  const status = page.locator("[data-builder-dirty]");
+  await expect(status).toHaveAttribute("data-builder-dirty", "false");
+
+  await pickLogo(page);
+  await expect(status).toHaveAttribute("data-builder-dirty", "true");
+});
+
+test("removing a logo calls DELETE and empties the slot", async ({ page }) => {
+  await gotoReady(page, EDIT_LEDGER);
+  await openPanel(page, "design");
+
+  await pickLogo(page);
+  /* ⚠ Wait for the upload to settle before removing. Both controls go inert while a logo request
+     is in flight — deliberately, since a remove racing its own upload is exactly how a card ends
+     up with an orphaned object — so clicking Remove mid-upload is a click on a disabled button.
+     The label is what says the request finished: it reads "Uploading…" until it does. */
+  await expect(page.locator("[data-logo-upload]")).toHaveText(/replace/i);
+  await expect(page.locator("[data-logo-remove]")).toBeEnabled();
+
+  const request = page.waitForRequest(
+    (r) => /\/cards\/[^/]+\/logo$/.test(r.url()) && r.method() === "DELETE",
+  );
+  await page.locator("[data-logo-remove]").click();
+  await request;
+
+  await expect(page.locator("[data-logo-thumb]")).toHaveAttribute("data-logo-thumb", "empty");
+  await expect(page.locator('[data-builder-preview] [data-card-portrait="logo"]')).toHaveCount(0);
+});
+
+/**
+ * ⚠ **`/cards/new` uploads NOTHING on pick — and still shows the logo.**
+ *
+ * There is no card id to address, so a `POST .../logo` here would be a request to a card that
+ * does not exist. The file waits for the create; the preview does not, and that is the half a
+ * unit test cannot see.
+ */
+test("a logo picked on a new card is held, previewed, and sent with the create", async ({
+  page,
+}) => {
+  await gotoReady(page, NEW);
+  await openPanel(page, "design");
+
+  let uploads = 0;
+  page.on("request", (r) => {
+    if (/\/cards\/[^/]+\/logo$/.test(r.url())) uploads += 1;
+  });
+
+  await pickLogo(page);
+
+  // Visible immediately, from the object URL — before anything has been sent anywhere.
+  await expect(page.locator("[data-logo-thumb]")).toHaveAttribute("data-logo-thumb", "set");
+  await expect(page.locator('[data-builder-preview] [data-card-portrait="logo"]')).toBeVisible();
+  expect(uploads, "an unsaved card tried to upload to a card id it does not have").toBe(0);
+
+  const create = page.waitForRequest((r) => r.url().endsWith("/cards") && r.method() === "POST");
+  await page.locator("[data-builder-save]").click();
+
+  const posted = await create;
+  expect(
+    posted.headers()["content-type"] ?? "",
+    "POST /cards was not multipart, so it cannot carry a file",
+  ).toContain("multipart/form-data");
+  /**
+   * ⚠ **The file part is asserted through the API's answer, not by reading the request body.**
+   *
+   * Playwright hands back an empty `postData`/`postDataBuffer` for a body carrying binary parts,
+   * so a `toContain('name="file"')` on either is unfailable rather than passing — it would go
+   * green on a create that sent no file at all.
+   *
+   * The stub reports `logoUrl` on the created card exactly when the request carried a part named
+   * `file` (see `tests/stubs/api.mjs`). Reading that back proves more than the string would
+   * anyway: the part survived the same-origin proxy, which re-streams the body, and arrived at
+   * the API under the name it reads.
+   */
+  const created = await (await posted.response())?.json();
+  expect(created?.logoUrl, "the create reached the API without its `file` part").toBeTruthy();
+});

@@ -65,6 +65,16 @@ export interface PublicCardPayload {
   kind: string | null;
   fullName: string;
   avatarUrl: string | null;
+  /**
+   * The card's logo, when the owner uploaded one. `null` otherwise, and `null` on any API build
+   * that does not send the key — the two are the same state, and the renderer's fallback mark
+   * covers both.
+   *
+   * ⚠ Looked up through the same `attr()` ladder as `cardName` and `kind`, for the same reason:
+   * staging sends `{ owner, card: { … }, fields: [] }`, so a card attribute read off whichever
+   * layout happened to carry the *rows* comes back null on every real payload.
+   */
+  logoUrl: string | null;
   fields: PublicField[];
   /**
    * The owner's saved design. {@link NO_APPEARANCE} when the payload carries none — which is
@@ -264,6 +274,10 @@ export function parsePublicCard(body: unknown): PublicCardPayload | null {
       kind: attr("kind", "type"),
       fullName: name ?? "",
       avatarUrl: avatar,
+      /* `logo` as a second spelling for the same tolerance reason the rest of this function
+         exists: the resolve endpoint is `@ApiExcludeController`, so its payload is not in the
+         spec and cannot be asserted against one. `logoUrl` is what staging sends today. */
+      logoUrl: attr("logoUrl", "logo"),
       fields,
       appearance: won?.appearance ?? NO_APPEARANCE,
       appearanceRejected: won?.rejected ?? [],

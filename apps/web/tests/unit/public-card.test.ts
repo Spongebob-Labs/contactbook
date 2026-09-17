@@ -189,6 +189,71 @@ describe("parsePublicCard — the live staging layout", () => {
   });
 });
 
+describe("parsePublicCard — the card's logo", () => {
+  const base = {
+    owner: { name: "Vansh Mehta", photoUrl: null },
+    fields: [{ type: "PHONE", label: "Mobile", value: "+911234567890" }],
+  };
+
+  /**
+   * ⚠ The trap this test exists for. `fields` is a **root** key on the live layout, so the rows
+   * match shape `root` and every card attribute sits one level down under `card`, untouched. A
+   * `logoUrl` read off the matched layout alone comes back null on every real payload — which is
+   * exactly how `cardName` and `kind` were lost once, and why `attr()` walks the layouts.
+   */
+  it("reads logoUrl from `card` even though the rows matched at the root", () => {
+    const parsed = parsePublicCard({
+      ...base,
+      card: { name: "Work", kind: "WORK", logoUrl: "https://cdn.example/mark.png" },
+    });
+
+    expect(parsed?.shape).toBe("root");
+    expect(parsed?.logoUrl).toBe("https://cdn.example/mark.png");
+  });
+
+  it("reads it off a flat payload too", () => {
+    const parsed = parsePublicCard({
+      ...base,
+      name: "Work",
+      logoUrl: "https://cdn.example/flat.png",
+    });
+    expect(parsed?.logoUrl).toBe("https://cdn.example/flat.png");
+  });
+
+  it("is null when the payload carries none", () => {
+    expect(parsePublicCard({ ...base, card: { name: "Work" } })?.logoUrl).toBeNull();
+  });
+
+  /**
+   * End to end: the recipient's card must wear the mark its owner chose. Without the logo
+   * reaching `resolvePublicCard` the page silently falls back to the company text while the
+   * owner's own screen shows an image — the two surfaces disagreeing about one card, which is
+   * the whole class of defect `public-card-map.ts` exists to prevent.
+   */
+  it("reaches the resolved card the recipient is shown", () => {
+    const parsed = parsePublicCard({
+      ...base,
+      card: { name: "Work", kind: "WORK", logoUrl: "https://cdn.example/mark.png" },
+    });
+    const resolved = resolvePublicCard(parsed!, "https://example.com/c/tok");
+
+    /* In the circle — the card's one image slot — and not in a band of its own. */
+    expect(resolved.avatar).toEqual({
+      kind: "logo",
+      url: "https://cdn.example/mark.png",
+      alt: "Vansh Mehta",
+    });
+  });
+
+  it("falls back to the monogram when there is no logo", () => {
+    const parsed = parsePublicCard({ ...base, card: { name: "Work", kind: "WORK" } });
+    const resolved = resolvePublicCard(parsed!, "https://example.com/c/tok");
+
+    // This payload carries no owner photo either, so the ladder runs all the way down.
+    expect(resolved.avatar.kind).toBe("monogram");
+  });
+});
+
 describe("parsePublicCard — the owner's saved design", () => {
   const base = {
     owner: { name: "Aayush Sharma", photoUrl: null },
@@ -387,6 +452,9 @@ describe("resolvePublicCard", () => {
     kind: "WORK",
     fullName: "Priyanka Raghunathan",
     avatarUrl: "/p.png",
+    // No logo, which is what every card sent before the logo endpoints existed looks like —
+    // the mark falls back to the card's COMPANY field and then to initials.
+    logoUrl: null,
     fields: FIELDS,
     // The default for these cases: a card that never chose, which is what every card sent
     // before the API grew its appearance columns looks like.

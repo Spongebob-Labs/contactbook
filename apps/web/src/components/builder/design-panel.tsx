@@ -6,6 +6,7 @@ import { FINISHES, TEXTURES, type Finish, type Texture, type TexturePresence, ty
 import type { PaletteId, TemplatePalette } from "@/card/template-palettes";
 
 import { BackgroundPicker, groundLabel } from "./background-picker";
+import { LogoPicker } from "./logo-picker";
 import { PanelGroup, PanelRow } from "./panel-row";
 import {
   FinishPicker,
@@ -15,7 +16,14 @@ import {
 } from "./surface-picker";
 
 /**
- * The **Design** section — the card's colour and how that colour is painted.
+ * The **Design** section — the card's mark, its colour, and how that colour is painted.
+ *
+ * ## Three groups, and the logo is the one that is not a material axis
+ *
+ * Colour and Surface are the material system: six axes that all resolve into one painted ground.
+ * Brand is a single row holding a file, and it is grouped separately rather than dropped in
+ * beside Background because "what image is on this card" and "what colour is this card" are not
+ * comparable decisions — putting them under one heading would say they were.
  *
  * ## ⚠ Header layout moved out, and it is now the Layout section
  *
@@ -61,6 +69,15 @@ import {
  */
 
 export interface DesignPanelProps {
+  /**
+   * The mark to show in the Logo row — the uploaded logo, or the object URL of a file waiting
+   * for `POST /cards`. The panel does not know or care which; see `LogoPicker`.
+   */
+  logoUrl: string | null;
+  /** A logo request is in flight. */
+  logoBusy: boolean;
+  onPickLogo: (file: File) => void;
+  onRemoveLogo: () => void;
   paletteId: PaletteId;
   groundHex: string | undefined;
   finish: Finish;
@@ -78,6 +95,10 @@ export interface DesignPanelProps {
 }
 
 export function DesignPanel({
+  logoUrl,
+  logoBusy,
+  onPickLogo,
+  onRemoveLogo,
   paletteId,
   groundHex,
   finish,
@@ -96,6 +117,32 @@ export function DesignPanel({
 
   return (
     <div data-design-panel="" className="flex flex-col gap-8">
+      {/* ⚠ **Brand comes first, above Colour.** The order inside this panel is the order the
+          decisions depend on each other — Colour opens the Surface group because a finish is a
+          way of painting *that colour*. A logo depends on nothing below it and nothing below it
+          depends on a logo; it is the one decision here that is about the owner rather than
+          about the card's material, so it is read first and then left alone. */}
+      <PanelGroup title="Brand">
+        <PanelRow
+          label="Logo"
+          hint="Shown on the card and on the pass. JPEG, PNG or WebP."
+          /* ⚠ "Added", not "Uploaded". This panel is deliberately path-agnostic — on `/cards/new`
+             the file has been chosen and not sent anywhere yet — so the word has to be true in
+             both paths. The thumbnail beside it is the real answer to "where does this row
+             stand"; this line exists so the panel can be read closed. */
+          value={logoUrl === null ? "None" : "Added"}
+          id="logo"
+          last
+        >
+          <LogoPicker
+            logoUrl={logoUrl}
+            busy={logoBusy}
+            onPick={onPickLogo}
+            onRemove={onRemoveLogo}
+          />
+        </PanelRow>
+      </PanelGroup>
+
       <PanelGroup title="Colour">
         <PanelRow
           label="Background"

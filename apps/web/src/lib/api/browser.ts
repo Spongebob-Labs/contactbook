@@ -6,7 +6,7 @@
  *
  * ## Why this exists alongside `endpoints/*`
  * `endpoints/*` runs on the server and is used by Server Components for the initial render.
- * This is the same 36 operations reached from the client, through the same-origin proxy at
+ * This is the same 41 operations reached from the client, through the same-origin proxy at
  * `/api/cb/*`. The proxy passes the API's status and body through **verbatim**, so what you see
  * here is what Swagger shows — same JSON, same status codes, same `x-request-id`.
  *
@@ -333,12 +333,36 @@ export const contacts = {
     cb<ImportContactsResponseDto>({ method: "POST", path: "/contacts/import", body: b }),
 };
 
-/* ── cards (9) ───────────────────────────────────────────────────────────────────────── */
+/* ── cards (11) ──────────────────────────────────────────────────────────────────────── */
+
+/**
+ * The create body as form fields — the browser-side twin of `endpoints/cards.ts`'s
+ * `toCreateCardForm`, and it must stay a twin.
+ *
+ * ⚠ `null` and `undefined` are both **omitted**. On a create that is not lossy: every column
+ * starts null, so "the owner cleared this" and "the owner never set it" are the same state, and
+ * `String(null)` would write the four characters `null` into the column instead.
+ */
+function createCardForm(body: CreateCardDto, logo?: File): FormData {
+  const form = new FormData();
+  for (const [key, value] of Object.entries(body)) {
+    if (value === undefined || value === null) continue;
+    form.set(key, String(value));
+  }
+  if (logo !== undefined) form.set("file", logo);
+  return form;
+}
 
 export const cards = {
   list: (q?: { includeArchived?: boolean }) =>
     cb<CardResponseDto[]>({ method: "GET", path: "/cards", query: q }),
-  create: (b: CreateCardDto) => cb<CardResponseDto>({ method: "POST", path: "/cards", body: b }),
+  /**
+   * ⚠ `multipart/form-data`, always — with a logo or without one. See `endpoints/cards.ts`'s
+   * `createCard` for why the encoding does not vary, and why a logo that fails takes the whole
+   * create with it rather than leaving a bare card behind.
+   */
+  create: (b: CreateCardDto, logo?: File) =>
+    cb<CardResponseDto>({ method: "POST", path: "/cards", form: createCardForm(b, logo) }),
   get: (cardId: string) => cb<CardResponseDto>({ method: "GET", path: `/cards/${id(cardId)}` }),
   update: (cardId: string, b: UpdateCardDto) =>
     cb<CardResponseDto>({ method: "PATCH", path: `/cards/${id(cardId)}`, body: b }),
@@ -354,6 +378,21 @@ export const cards = {
   /** ⚠ Returns `ENQUEUED`, never "delivered". See `NotifyResultDto`. */
   notify: (cardId: string, b: NotifyCardDto) =>
     cb<NotifyResultDto[]>({ method: "POST", path: `/cards/${id(cardId)}/notify`, body: b }),
+  /**
+   * Upload or replace this card's logo. Returns the **whole updated card**, so a caller can
+   * re-map it rather than patching a URL into the card object it is already holding.
+   *
+   * ⚠ Replacing needs no prior remove — the old object is deleted as part of this request. A
+   * remove-then-upload would leave the card bare if the upload half failed.
+   */
+  uploadLogo: (cardId: string, file: File) => {
+    const form = new FormData();
+    form.set("file", file);
+    return cb<CardResponseDto>({ method: "POST", path: `/cards/${id(cardId)}/logo`, form });
+  },
+  /** 204, no body. `LOGO_NOT_FOUND` when there was nothing to remove — see `errors.ts`. */
+  removeLogo: (cardId: string) =>
+    cb<void>({ method: "DELETE", path: `/cards/${id(cardId)}/logo` }),
 };
 
 /* ── public connect (2) — anonymous, and deliberately not in `endpoints/` ───────────── */
@@ -362,7 +401,7 @@ export const cards = {
  * The QR-scan "Save & connect" pair, `POST /public/links/{token}/connect/otp/{request,verify}`.
  *
  * ## Why these live here and nowhere else
- * Three properties set them apart from the 38 operations above, and each one is a reason:
+ * Three properties set them apart from the 41 operations above, and each one is a reason:
  *
  * 1. **They are anonymous.** The caller is a stranger who scanned a QR code, not a signed-in
  *    owner. No guard on the API side, no credential on ours.

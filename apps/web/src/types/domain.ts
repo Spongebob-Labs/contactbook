@@ -195,6 +195,25 @@ export interface ContactCard extends CardSurface {
    */
   publicUrl: string | null;
   /**
+   * The card's uploaded logo — `CardResponseDto.logoUrl`, passed through verbatim.
+   *
+   * ⚠ **Optional, and absent means exactly what `null` means: this card has no logo.** There is
+   * no third state, which is why this is not modelled as a required `string | null` the way
+   * `publicUrl` is. `publicUrl`'s `null` carries real information — "saved, but the API has not
+   * minted a token" is different from "never saved" — so every construction site is made to say
+   * it. A logo has nothing equivalent to distinguish, and sixteen fixtures each declaring
+   * `logoUrl: null` would state nothing a reader does not already know.
+   *
+   * ⚠ **This is not a field the UI may write.** The API rejects `logoUrl` as a plain string on
+   * both create and update; a value here only ever originates from an uploaded file. Nothing in
+   * the builder puts a string in it — see `builder-reducer.ts` for the state that stands in
+   * while a chosen file has not been uploaded yet.
+   *
+   * Resolved into {@link ResolvedAvatar} by `resolveCard` — it fills the card's circular
+   * identity slot, ahead of any photograph — and every renderer reads it from there.
+   */
+  logoUrl?: string | null;
+  /**
    * [ASSUMED — spec AS-02] A new field the API does not have yet. The old schema had no
    * template column, which is exactly why the old wizard taught a template choice and then
    * threw it away on Create. Typed as `TemplateId` so I-1 holds by construction:
@@ -347,7 +366,31 @@ export function contactLabel(contact: Pick<Contact, "displayName" | "phoneE164">
  * Source order: the mapped `PHOTO` field's value, else `User.avatarUrl`, else the monogram.
  * `CardTemplate.avatarKind` decides how the slot is *presented*, not what is in it.
  */
+/**
+ * What fills the card's one circular identity slot.
+ *
+ * ## ⚠ The card's logo is the **first** source, and that placement is the whole point
+ *
+ * There is exactly one image slot on a card and this is it. An uploaded logo was briefly given
+ * a band of its own above the circle, which put two objects in a hero composed for one — a
+ * banner stapled over the card rather than part of it. The circle is already the slot that
+ * answers "who is this card", so a card that has a logo answers it with the logo.
+ *
+ * Four sources, in order, and the first that exists wins:
+ *
+ *   1. `ContactCard.logoUrl` — chosen **for this card**, deliberately, by upload.
+ *   2. The mapped `PHOTO` field — this card's own override of the owner's portrait.
+ *   3. `User.avatarUrl` — the profile-wide portrait.
+ *   4. A monogram. §11 E-19: never an empty circle.
+ *
+ * The logo outranks both photographs because it is the narrower choice: the other two are the
+ * owner's face wherever it is used, and a logo is a decision made about *this card*. Somebody
+ * who uploads a mark to their work card and then sees their own face there has had their choice
+ * silently overruled — the same reason `groundHex` beats `paletteId`.
+ */
 export type ResolvedAvatar =
+  /** The card's uploaded logo. Drawn exactly as a photograph is — same circle, same crop. */
+  | { kind: "logo"; url: string; alt: string }
   | { kind: "photo"; url: string; alt: string }
   | { kind: "monogram"; initials: string };
 
