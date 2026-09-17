@@ -421,6 +421,7 @@ export class ShareLinksService {
       card: {
         name: card.name,
         kind: card.kind,
+        logoUrl: card.logoUrl,
         templateId: card.templateId,
         paletteId: card.paletteId,
         groundHex: card.groundHex,

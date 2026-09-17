@@ -13,6 +13,7 @@ import { ApiError } from '../common/errors/api-error';
 import { decryptFieldValueForRead } from '../profile/profile-field-value.util';
 import { OutboxService } from '../outbox/outbox.service';
 import { TaskEnqueuer } from '../outbox/task-enqueuer';
+import { CardLogoStorageService } from './card-logo-storage.service';
 import { generateShareToken } from './share-token.util';
 import {
   diffCardFields,
@@ -46,6 +47,7 @@ export class CardsService {
     private readonly logger: AppLogger,
     private readonly outbox: OutboxService,
     private readonly enqueuer: TaskEnqueuer,
+    private readonly logoStorage: CardLogoStorageService,
   ) {}
 
   async list(
@@ -65,7 +67,24 @@ export class CardsService {
     return this.toResponseDto(userId, row);
   }
 
-  async create(userId: string, dto: CreateCardDto): Promise<CardResponseDto> {
+  /**
+   * `file` is optional and, when present, is a logo to attach in the same
+   * call — POST /cards is multipart/form-data specifically to allow this
+   * (see cards.controller.ts). Card creation and the logo attach are NOT one
+   * DB transaction (the GCS upload can't participate in one) — instead,
+   * treated as atomic from the caller's perspective by other means: if
+   * attachLogo() fails for any reason (bad mimetype, too large, storage
+   * unconfigured, or a genuine GCS-side failure), the just-created card row
+   * is deleted before the error propagates. Without this, a failed logo
+   * would leave an orphaned, logo-less card silently existing in the
+   * caller's account while they only ever see an error response — worse
+   * than either succeeding cleanly or not existing at all.
+   */
+  async create(
+    userId: string,
+    dto: CreateCardDto,
+    file?: { buffer: Buffer; mimetype: string; size: number },
+  ): Promise<CardResponseDto> {
     const row = await this.prisma.card.create({
       data: {
         userId,
@@ -85,7 +104,22 @@ export class CardsService {
       },
       include: CARD_WITH_FIELDS_INCLUDE,
     });
-    return this.toResponseDto(userId, row);
+
+    if (!file) {
+      return this.toResponseDto(userId, row);
+    }
+
+    try {
+      const withLogo = await this.attachLogo(row.id, null, file);
+      this.logger.info('sharing.card_logo_uploaded', {
+        userId,
+        cardId: row.id,
+      });
+      return this.toResponseDto(userId, withLogo);
+    } catch (err) {
+      await this.prisma.card.delete({ where: { id: row.id } });
+      throw err;
+    }
   }
 
   async update(
@@ -402,6 +436,68 @@ export class CardsService {
     return results;
   }
 
+  /**
+   * Upload/replace this card's logo. Mirrors ProfileService.upsertPhoto()'s
+   * shape: upload to storage first (so a rejected file never touches the
+   * row), then swap the URL in, then best-effort delete whatever was there
+   * before — never the other order, which would delete a still-referenced
+   * object if the upload itself failed partway.
+   */
+  async uploadLogo(
+    userId: string,
+    cardId: string,
+    file: { buffer: Buffer; mimetype: string; size: number },
+  ): Promise<CardResponseDto> {
+    const card = await this.findOwned(userId, cardId);
+    const row = await this.attachLogo(cardId, card.logoUrl, file);
+    this.logger.info('sharing.card_logo_uploaded', { userId, cardId });
+    return this.toResponseDto(userId, row);
+  }
+
+  /**
+   * Upload to storage, then swap the URL in, then best-effort delete
+   * whatever was there before — never the other order, which would delete
+   * a still-referenced object if the upload itself failed partway. Shared
+   * by uploadLogo() (an existing card) and create() (a brand new one, where
+   * `currentLogoUrl` is always null so the delete step is a no-op).
+   */
+  private async attachLogo(
+    cardId: string,
+    currentLogoUrl: string | null,
+    file: { buffer: Buffer; mimetype: string; size: number },
+  ): Promise<CardWithFields> {
+    const url = await this.logoStorage.upload(cardId, file);
+
+    const row = await this.prisma.card.update({
+      where: { id: cardId },
+      data: { logoUrl: url },
+      include: CARD_WITH_FIELDS_INCLUDE,
+    });
+
+    if (currentLogoUrl) {
+      await this.logoStorage.deleteByUrl(currentLogoUrl);
+    }
+
+    return row;
+  }
+
+  async removeLogo(userId: string, cardId: string): Promise<void> {
+    const card = await this.findOwned(userId, cardId);
+    if (!card.logoUrl) {
+      throw ApiError.notFound(
+        'LOGO_NOT_FOUND',
+        'This card has no logo to remove.',
+      );
+    }
+
+    await this.prisma.card.update({
+      where: { id: cardId },
+      data: { logoUrl: null },
+    });
+    await this.logoStorage.deleteByUrl(card.logoUrl);
+    this.logger.info('sharing.card_logo_removed', { userId, cardId });
+  }
+
   /** IDOR guard: every read/write resolves through this, never a bare findUnique. */
   async findOwned(userId: string, id: string): Promise<CardWithFields> {
     const row = await this.prisma.card.findFirst({
@@ -424,6 +520,7 @@ export class CardsService {
       // the two sides drift (see the now-dead `/c/{slug}` guess this
       // replaces). Same construction ShareLinksService.buildUrl() uses.
       publicUrl: `${this.config.shareBaseUrl.replace(/\/+$/, '')}/c/${card.publicToken}`,
+      logoUrl: card.logoUrl,
       templateId: card.templateId,
       paletteId: card.paletteId,
       groundHex: card.groundHex,

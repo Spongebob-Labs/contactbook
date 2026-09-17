@@ -51,6 +51,15 @@ export class CardResponseDto {
 
   @ApiPropertyOptional({
     nullable: true,
+    example: 'https://storage.googleapis.com/.../card-logos/.../logo.jpg',
+    description:
+      'Set only via POST /cards/:id/logo — never accepted on create/update. ' +
+      'NULL until the owner uploads one.',
+  })
+  logoUrl!: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
     example: 'meridian',
     description: 'NULL means the owner never chose one.',
   })

@@ -49,6 +49,11 @@ const base = z.object({
   // Overridable because a bucket can sit behind a CDN/custom domain; defaults
   // to the bucket's own public URL when unset.
   GCS_PUBLIC_BASE_URL: z.string().url().optional(),
+  // Card logo storage. Optional even in production — falls back to
+  // GCS_PROFILE_PHOTOS_BUCKET (same public-read bucket, a `card-logos/`
+  // key prefix) when unset, so a dedicated bucket is a later upgrade, not a
+  // prerequisite. See AppConfigService.gcs.cardLogosBucket.
+  GCS_CARD_LOGOS_BUCKET: z.string().optional(),
 
   // 'inline' runs the task handler in-process on the next tick — used by local
   // dev and integration tests so neither needs a public URL or ngrok.

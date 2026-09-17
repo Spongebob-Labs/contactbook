@@ -31,6 +31,12 @@ export class PublicCardMetaDto {
 
   @ApiPropertyOptional({
     nullable: true,
+    example: 'https://storage.googleapis.com/.../card-logos/.../logo.jpg',
+  })
+  logoUrl!: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
     example: 'meridian',
     description:
       'NULL means the owner never chose one — derive a look from `kind` instead, same fallback the owner app itself uses.',

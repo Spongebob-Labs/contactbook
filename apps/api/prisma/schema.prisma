@@ -271,6 +271,12 @@ model Card {
   /// one generator, one entropy guarantee, across both token namespaces.
   publicToken String @unique
 
+  /// GCS public URL, set only via POST /cards/:id/logo — never a raw
+  /// client-supplied string, same reasoning ProfileField's PHOTO type
+  /// already applies (see CardLogoStorageService). NULL until the owner
+  /// uploads one.
+  logoUrl String?
+
   // Appearance. All nullable and all NULL until the owner explicitly picks one —
   // NULL is load-bearing, it means "derive the look from `kind` instead," the
   // fallback both the owner app and the public page already implement. No
