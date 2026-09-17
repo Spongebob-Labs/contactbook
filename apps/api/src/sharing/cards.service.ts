@@ -67,7 +67,24 @@ export class CardsService {
     return this.toResponseDto(userId, row);
   }
 
-  async create(userId: string, dto: CreateCardDto): Promise<CardResponseDto> {
+  /**
+   * `file` is optional and, when present, is a logo to attach in the same
+   * call — POST /cards is multipart/form-data specifically to allow this
+   * (see cards.controller.ts). Card creation and the logo attach are NOT one
+   * DB transaction (the GCS upload can't participate in one) — instead,
+   * treated as atomic from the caller's perspective by other means: if
+   * attachLogo() fails for any reason (bad mimetype, too large, storage
+   * unconfigured, or a genuine GCS-side failure), the just-created card row
+   * is deleted before the error propagates. Without this, a failed logo
+   * would leave an orphaned, logo-less card silently existing in the
+   * caller's account while they only ever see an error response — worse
+   * than either succeeding cleanly or not existing at all.
+   */
+  async create(
+    userId: string,
+    dto: CreateCardDto,
+    file?: { buffer: Buffer; mimetype: string; size: number },
+  ): Promise<CardResponseDto> {
     const row = await this.prisma.card.create({
       data: {
         userId,
@@ -87,7 +104,22 @@ export class CardsService {
       },
       include: CARD_WITH_FIELDS_INCLUDE,
     });
-    return this.toResponseDto(userId, row);
+
+    if (!file) {
+      return this.toResponseDto(userId, row);
+    }
+
+    try {
+      const withLogo = await this.attachLogo(row.id, null, file);
+      this.logger.info('sharing.card_logo_uploaded', {
+        userId,
+        cardId: row.id,
+      });
+      return this.toResponseDto(userId, withLogo);
+    } catch (err) {
+      await this.prisma.card.delete({ where: { id: row.id } });
+      throw err;
+    }
   }
 
   async update(
@@ -417,6 +449,23 @@ export class CardsService {
     file: { buffer: Buffer; mimetype: string; size: number },
   ): Promise<CardResponseDto> {
     const card = await this.findOwned(userId, cardId);
+    const row = await this.attachLogo(cardId, card.logoUrl, file);
+    this.logger.info('sharing.card_logo_uploaded', { userId, cardId });
+    return this.toResponseDto(userId, row);
+  }
+
+  /**
+   * Upload to storage, then swap the URL in, then best-effort delete
+   * whatever was there before — never the other order, which would delete
+   * a still-referenced object if the upload itself failed partway. Shared
+   * by uploadLogo() (an existing card) and create() (a brand new one, where
+   * `currentLogoUrl` is always null so the delete step is a no-op).
+   */
+  private async attachLogo(
+    cardId: string,
+    currentLogoUrl: string | null,
+    file: { buffer: Buffer; mimetype: string; size: number },
+  ): Promise<CardWithFields> {
     const url = await this.logoStorage.upload(cardId, file);
 
     const row = await this.prisma.card.update({
@@ -425,12 +474,11 @@ export class CardsService {
       include: CARD_WITH_FIELDS_INCLUDE,
     });
 
-    if (card.logoUrl) {
-      await this.logoStorage.deleteByUrl(card.logoUrl);
+    if (currentLogoUrl) {
+      await this.logoStorage.deleteByUrl(currentLogoUrl);
     }
 
-    this.logger.info('sharing.card_logo_uploaded', { userId, cardId });
-    return this.toResponseDto(userId, row);
+    return row;
   }
 
   async removeLogo(userId: string, cardId: string): Promise<void> {
