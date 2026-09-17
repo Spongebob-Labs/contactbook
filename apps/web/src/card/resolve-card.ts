@@ -131,19 +131,42 @@ function fullNameOf(user: User): string {
 }
 
 /**
- * §5.3a: the mapped `PHOTO` field's value, else `User.avatarUrl`, else a monogram.
+ * §5.3a, widened by the card logo: **`Card.logoUrl`**, else the mapped `PHOTO` field's value,
+ * else `User.avatarUrl`, else a monogram.
+ *
+ * ## ⚠ The logo goes first, and it goes *here* rather than in a slot of its own
+ *
+ * A card has one circular identity slot. An uploaded logo was briefly drawn as a separate band
+ * above it, which put two objects in a hero composed for one and read as a banner stuck onto
+ * the card. The circle already answers "who is this card"; a card carrying a logo answers it
+ * with the logo — and the monogram it replaces is exactly what the logo was uploaded to replace.
+ *
+ * It outranks both photographs because it is the **narrower** choice: `User.avatarUrl` is the
+ * owner's face on every card they own, and a logo is a decision made about *this* one. Somebody
+ * who uploads a mark to their work card and still sees their own face on it has had their
+ * choice silently overruled — the same precedence `groundHex` has over `paletteId`.
+ *
+ * `trim()`-and-length-checked rather than trusted: `logoUrl` is a nullable text column and `""`
+ * is a value one can hold. `<img src="">` re-requests the current document, so an empty string
+ * is a broken circle on every card that carries one, not a harmless falsy.
  *
  * §11 E-19 is explicit that the last branch is a monogram and **never** an empty circle, so
  * the initials fall back through the user's name to the card's name rather than resolving
  * to `''` for a user who has not filled in a name yet.
  */
 function resolveAvatar(
+  card: ContactCard,
   photoField: ResolvedField | undefined,
   user: User,
   fullName: string,
   cardName: string,
 ): ResolvedAvatar {
   const alt = fullName.length > 0 ? fullName : cardName;
+
+  const logoUrl = card.logoUrl?.trim() ?? "";
+  if (logoUrl.length > 0) {
+    return { kind: "logo", url: logoUrl, alt };
+  }
 
   if (photoField !== undefined) {
     return { kind: "photo", url: photoField.value.trim(), alt };
@@ -338,7 +361,7 @@ export function resolveCard(
        resolves to the treatment it already rendered. */
     surface,
     fullName,
-    avatar: resolveAvatar(photoField, user, fullName, card.name),
+    avatar: resolveAvatar(card, photoField, user, fullName, card.name),
     bio: resolveBio(rowFields),
     fields: rowFields,
     socialFields,

@@ -831,6 +831,121 @@ describe("editing a field value", () => {
   });
 });
 
+/* ── the logo ────────────────────────────────────────────────────────────────────────── */
+
+describe("the logo axis", () => {
+  /**
+   * `File` is a DOM global, and these tests run in happy-dom where it exists. The reducer never
+   * reads a byte of it — it only carries the reference to `POST /cards` — so a one-byte file is
+   * as faithful a subject as a real image.
+   */
+  const aFile = () => new File(["x"], "mark.png", { type: "image/png" });
+
+  it("opens with no logo on a new card, and with the card's own on an existing one", () => {
+    expect(newState().logoUrl).toBeNull();
+    expect(newState().logoFile).toBeNull();
+
+    const withLogo = editState({ ...cardLedgerDemo, logoUrl: "https://cdn.example/l.png" });
+    expect(withLogo.logoUrl).toBe("https://cdn.example/l.png");
+    /* Nothing pending on open, ever: a pending file is a choice made in *this* session, and
+       seeding one would make a card that already has a logo look like it had an unsaved edit. */
+    expect(withLogo.logoFile).toBeNull();
+    expect(withLogo.dirty).toBe(false);
+  });
+
+  it("treats an absent logoUrl the same as an explicit null", () => {
+    // Both spellings reach the domain — an older row omits the key entirely.
+    expect(editState({ ...cardLedgerDemo, logoUrl: null }).logoUrl).toBeNull();
+    expect(editState(cardLedgerDemo).logoUrl).toBeNull();
+  });
+
+  /**
+   * ⚠ The reason the pending pair exists at all. On `/cards/new` there is no id to upload to, so
+   * the preview has to render from the object URL or the owner picks a logo and watches the card
+   * ignore it until after Save.
+   */
+  it("previews a pending file on an unsaved card, ahead of the stored url", () => {
+    const state = run(newState(), {
+      kind: "logo-pending",
+      file: aFile(),
+      previewUrl: "blob:preview",
+    });
+
+    expect(state.logoFile).not.toBeNull();
+    expect(builderCard(state).logoUrl).toBe("blob:preview");
+  });
+
+  it("marks an unsaved card dirty, because Save is what commits the file", () => {
+    const state = run(newState(), {
+      kind: "logo-pending",
+      file: aFile(),
+      previewUrl: "blob:preview",
+    });
+    expect(state.dirty).toBe(true);
+  });
+
+  /**
+   * ⚠ The mirror of the rule above, and the one that is easy to get backwards. A card that
+   * exists uploads the moment the file is picked, so the same action must NOT ask for a Save
+   * that has nothing left to commit.
+   */
+  it("leaves an existing card clean, because the pick is already being uploaded", () => {
+    const state = run(editState(), {
+      kind: "logo-pending",
+      file: aFile(),
+      previewUrl: "blob:preview",
+    });
+    expect(state.dirty).toBe(false);
+    // …and it still previews immediately, which is the half that must keep working.
+    expect(builderCard(state).logoUrl).toBe("blob:preview");
+  });
+
+  it("swaps the object url for the server's own once the upload lands", () => {
+    const state = run(
+      newState(),
+      { kind: "logo-pending", file: aFile(), previewUrl: "blob:preview" },
+      { kind: "logo-saved", logoUrl: "https://cdn.example/uploaded.png" },
+    );
+
+    expect(state.logoUrl).toBe("https://cdn.example/uploaded.png");
+    /* ⚠ Both cleared. A pending file that survived would be uploaded a second time by the next
+       Save, and a surviving object URL would keep winning in `builderCard` forever. */
+    expect(state.logoFile).toBeNull();
+    expect(state.logoPreviewUrl).toBeNull();
+    expect(builderCard(state).logoUrl).toBe("https://cdn.example/uploaded.png");
+  });
+
+  it("does not clear other pending edits when a logo lands", () => {
+    const state = run(
+      editState(),
+      { kind: "rename", name: "Renamed" },
+      { kind: "logo-saved", logoUrl: "https://cdn.example/uploaded.png" },
+    );
+    // The rename is still uncommitted; a logo write says nothing about it.
+    expect(state.dirty).toBe(true);
+    expect(state.name).toBe("Renamed");
+  });
+
+  it("drops a pending choice when the file is cleared", () => {
+    const state = run(
+      newState(),
+      { kind: "logo-pending", file: aFile(), previewUrl: "blob:preview" },
+      { kind: "logo-pending", file: null, previewUrl: null },
+    );
+
+    expect(state.logoFile).toBeNull();
+    expect(builderCard(state).logoUrl).toBeNull();
+  });
+
+  it("removes a saved logo", () => {
+    const state = run(editState({ ...cardLedgerDemo, logoUrl: "https://cdn.example/l.png" }), {
+      kind: "logo-saved",
+      logoUrl: null,
+    });
+    expect(builderCard(state).logoUrl).toBeNull();
+  });
+});
+
 describe("applyFieldValues", () => {
   const fields = [
     { id: "a", groupId: "g", type: "COMPANY", label: "Company", value: "Old", isSensitive: false },

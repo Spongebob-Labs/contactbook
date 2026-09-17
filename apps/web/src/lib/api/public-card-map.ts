@@ -150,6 +150,10 @@ export function resolvePublicCard(
     type: cardType,
     isSensitive: false,
     publicUrl: shareUrl,
+    /* The recipient sees the mark the owner chose, from the same field the owner's own screen
+       reads — `resolveCard` derives the logo-or-text fallback once for both. Without this line
+       a shared card silently falls back to its company name while its owner sees a logo. */
+    logoUrl: payload.logoUrl,
     ...appearance,
     fieldIds: fields.map((f) => f.id),
     updatedAt: new Date(0).toISOString(),

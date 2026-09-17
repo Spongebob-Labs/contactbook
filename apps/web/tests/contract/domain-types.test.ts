@@ -253,15 +253,18 @@ describe("domain entities (spec §5.2)", () => {
 describe("derived shapes (spec §5.3a, §6.4)", () => {
   it("narrows ResolvedAvatar on `kind` — photo carries a url, monogram carries initials", () => {
     const avatars: ResolvedAvatar[] = [
+      { kind: "logo", url: "/logos/fernwood.png", alt: "Priyanka Raghunathan" },
       { kind: "photo", url: "/portraits/priyanka.png", alt: "Priyanka Raghunathan" },
       { kind: "monogram", initials: "PR" },
     ];
 
+    /* Three members, and only the last has no `url` — which is what both renderers rely on when
+       they branch `logo || photo` into one image and leave the monogram its own. */
     const narrowed = avatars.map((avatar) =>
-      avatar.kind === "photo" ? avatar.url : avatar.initials,
+      avatar.kind === "monogram" ? avatar.initials : avatar.url,
     );
 
-    expect(narrowed).toEqual(["/portraits/priyanka.png", "PR"]);
+    expect(narrowed).toEqual(["/logos/fernwood.png", "/portraits/priyanka.png", "PR"]);
   });
 
   it("keeps ResolvedCard.bio nullable so the slot can collapse rather than reserve space (E-06)", () => {

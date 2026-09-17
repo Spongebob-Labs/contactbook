@@ -2,7 +2,16 @@
 
 import * as TabsPrimitive from "@radix-ui/react-tabs";
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useReducer, useState, useTransition, type ReactElement } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+  useTransition,
+  type ReactElement,
+} from "react";
 
 import { canBuildVcf } from "@/card/build-vcf";
 import { resolveCard } from "@/card/resolve-card";
@@ -312,6 +321,14 @@ function Builder({
   const router = useRouter();
   const [saving, startSaving] = useTransition();
   const [creatingField, setCreatingField] = useState(false);
+  /**
+   * A logo upload or remove is in flight.
+   *
+   * Its own flag rather than `saving`, because these are not saves: on a card that exists they
+   * are complete writes of their own, and folding them into the Save transition would put the
+   * header's Save button into a loading state for a request Save did not make and cannot undo.
+   */
+  const [logoBusy, setLogoBusy] = useState(false);
 
   /**
    * ⚠ THE POST-SAVE NOTIFY PROMPT — the client's change of 2026-09-03.
@@ -466,6 +483,124 @@ function Builder({
     }
   }
 
+  /* ── the logo ──────────────────────────────────────────────────────────────────────── */
+
+  /**
+   * Every object URL this session has minted, so they can all be released.
+   *
+   * ## ⚠ Why a ref and not just a revoke at the call site
+   *
+   * `URL.createObjectURL` pins the file in memory until it is revoked, and the obvious place to
+   * revoke — right after dispatching the next one — is wrong twice over. React has not painted
+   * the new `src` yet when the handler returns, so revoking the old URL there can blank the
+   * preview for a frame; and it does nothing at all for the last URL, which is still live when
+   * the owner navigates away without saving.
+   *
+   * So every URL is remembered and all of them are released on unmount. The set is at most a
+   * handful of entries — one per time the owner re-picked a file on one unsaved card — and
+   * holding a revoked URL in it is harmless.
+   */
+  const objectUrls = useRef<string[]>([]);
+  useEffect(
+    () => () => {
+      for (const url of objectUrls.current) URL.revokeObjectURL(url);
+      objectUrls.current = [];
+    },
+    [],
+  );
+
+  /**
+   * The owner picked a logo.
+   *
+   * ⚠ **Two paths, and which one runs is decided by whether the card exists** — not by anything
+   * the owner did differently:
+   *
+   * · **A card that exists** uploads now. It has to: `logoUrl` is rejected as a plain string by
+   *   `PATCH /cards/{id}`, so there is no way to carry a logo on the Save that commits
+   *   everything else. A file is either uploaded or it is nowhere.
+   * · **`/cards/new`** has no id to address, so the file is held on the reducer and goes out as
+   *   the `file` part of the multipart `POST /cards`. The preview shows it immediately either
+   *   way, from the object URL.
+   *
+   * The pick is shown **before** either path runs, so the card wears the new mark while the
+   * upload is in flight rather than only after it — and on an unsaved card, where there is no
+   * request at all, that dispatch is the whole of the work. `logo-saved` is what later swaps the
+   * object URL for the server's own, or puts the previous one back if the upload failed.
+   */
+  function pickLogo(file: File) {
+    const previewUrl = URL.createObjectURL(file);
+    objectUrls.current.push(previewUrl);
+
+    /* Unconditional: the preview is the half both paths share, and the only half `/cards/new`
+       has. `dirty` is scoped to the unsaved card inside the reducer rather than here, so this
+       call does not have to know which path it is starting. */
+    dispatch({ kind: "logo-pending", file, previewUrl });
+
+    const cardId = state.cardId;
+    if (cardId === null) return;
+
+    /* The value to fall back to if the upload fails. Read before the request and not inside the
+       catch: by then `state` may be a later render's, and `logo-pending` above deliberately did
+       not touch `logoUrl`, so this is still the last thing the server confirmed. */
+    const previous = state.logoUrl;
+
+    setLogoBusy(true);
+    void (async () => {
+      try {
+        /* Returns the whole card, so the URL comes from the API rather than being guessed. No
+           remove-first: `POST .../logo` replaces atomically, and a remove that succeeded before
+           an upload that failed would leave the card bare. */
+        const updated = await cardsApi.uploadLogo(cardId, file);
+        dispatch({ kind: "logo-saved", logoUrl: updated.logoUrl ?? null });
+        toast({ title: "Logo updated" });
+        /* The card list and the card's own screen both render this mark from a server read. */
+        router.refresh();
+      } catch (thrown) {
+        const shown = toScreenError(thrown);
+        toast({ title: shown.title, description: shown.detail, tone: "danger" });
+        /* ⚠ Put the card back on the logo the server still has. Leaving the optimistic preview
+           up would be the card claiming a logo that is not on it — and the owner would carry on,
+           share it, and find the old mark on the page a recipient opens. */
+        dispatch({ kind: "logo-saved", logoUrl: previous });
+      } finally {
+        setLogoBusy(false);
+      }
+    })();
+  }
+
+  /**
+   * Remove the logo.
+   *
+   * On an unsaved card there is nothing to call: the file has never left the browser, so
+   * dropping the pending pair *is* the removal. On a card that exists, `DELETE .../logo` is the
+   * whole operation and the same undo-on-failure rule applies.
+   */
+  function removeLogo() {
+    const cardId = state.cardId;
+    if (cardId === null) {
+      dispatch({ kind: "logo-pending", file: null, previewUrl: null });
+      return;
+    }
+
+    const previous = state.logoUrl;
+    dispatch({ kind: "logo-saved", logoUrl: null });
+
+    setLogoBusy(true);
+    void (async () => {
+      try {
+        await cardsApi.removeLogo(cardId);
+        toast({ title: "Logo removed" });
+        router.refresh();
+      } catch (thrown) {
+        const shown = toScreenError(thrown);
+        toast({ title: shown.title, description: shown.detail, tone: "danger" });
+        dispatch({ kind: "logo-saved", logoUrl: previous });
+      } finally {
+        setLogoBusy(false);
+      }
+    })();
+  }
+
   /**
    * Tick or untick one field — **and persist it immediately.**
    *
@@ -539,19 +674,40 @@ function Builder({
         if (state.cardId === null) {
           // Two calls, because `POST /cards` starts a card with no fields — there is no way to
           // create a populated one in a single request.
-          const created = await cardsApi.create({
-            name: state.name.trim(),
-            kind: toApiCardKind(state.cardType),
-            // The design the owner has been looking at in the preview, from the same state the
-            // preview renders from — so a card is created wearing what they built.
-            ...toAppearanceDto(state),
-          });
+          const created = await cardsApi.create(
+            {
+              name: state.name.trim(),
+              kind: toApiCardKind(state.cardType),
+              // The design the owner has been looking at in the preview, from the same state the
+              // preview renders from — so a card is created wearing what they built.
+              ...toAppearanceDto(state),
+            },
+            /**
+             * ⚠ **The logo rides the create, and that is the only way it can.**
+             *
+             * `POST /cards` is `multipart/form-data` precisely so a card can be born wearing its
+             * mark. The alternative — create, then `POST .../logo` — has no transaction across
+             * it, so a failed second call leaves behind a card the owner can see wearing nothing
+             * they chose. Here a logo that fails takes the whole create with it: nothing is
+             * written, the catch below reports it, and the owner is still on `/cards/new` with
+             * their file still picked.
+             *
+             * `?? undefined` because the reducer's "no pending file" is `null` and the client's
+             * "send no file part" is an absent argument.
+             */
+            state.logoFile ?? undefined,
+          );
           if (state.fieldIds.length > 0) {
             await cardsApi.setFields(created.id, {
               fields: toCardFieldEntries(state.fieldIds),
             });
           }
           dispatch({ kind: "save" });
+          /* ⚠ Swap the object URL for the server's own, now that there is one. Without this the
+             preview keeps rendering from a `blob:` URL that is revoked on unmount and means
+             nothing on any other screen — and `state.logoFile` would still be set, so a second
+             Save would upload the same file again. */
+          dispatch({ kind: "logo-saved", logoUrl: created.logoUrl ?? null });
           toast({ title: "Card created", description: `"${state.name}" shares ${shares}.` });
           // Leaves `/cards/new` for the card that now exists, so a second Save updates rather
           // than creating a duplicate.
@@ -807,6 +963,14 @@ function Builder({
 
                 {def.id !== "design" ? null : (
                   <DesignPanel
+                    /* ⚠ Off `draft`, not off `state`. `builderCard` is what decides a pending
+                       file's preview beats a stored URL, and reading `state.logoUrl` here would
+                       give the panel a different answer than the card beside it — the thumbnail
+                       would stay empty on `/cards/new` while the preview showed the logo. */
+                    logoUrl={draft.logoUrl ?? null}
+                    logoBusy={logoBusy}
+                    onPickLogo={pickLogo}
+                    onRemoveLogo={removeLogo}
                     paletteId={state.paletteId}
                     groundHex={state.groundHex}
                     finish={state.finish}

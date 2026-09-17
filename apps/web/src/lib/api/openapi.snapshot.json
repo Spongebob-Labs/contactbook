@@ -1173,15 +1173,68 @@
         ]
       },
       "post": {
-        "description": "Starts with no fields \u2014 add them with PUT /cards/:id/fields.",
+        "description": "Starts with no fields \u2014 add them with PUT /cards/:id/fields. multipart/form-data, not JSON: the same call optionally accepts a logo file (field name `file`) alongside the card fields below, since a file and a JSON body cannot be mixed in one request. Omit `file` for a card with no logo \u2014 everything else works exactly the same. JPEG, PNG, or WebP, up to 20 MB; a card can also get (or replace) a logo later via POST /cards/:id/logo.",
         "operationId": "CardsController_create_v1",
         "parameters": [],
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": {
+            "multipart/form-data": {
               "schema": {
-                "$ref": "#/components/schemas/CreateCardDto"
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 80,
+                    "example": "Work"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "WORK",
+                      "PERSONAL",
+                      "PAYMENT",
+                      "CUSTOM"
+                    ],
+                    "example": "CUSTOM"
+                  },
+                  "templateId": {
+                    "type": "string",
+                    "example": "meridian"
+                  },
+                  "paletteId": {
+                    "type": "string",
+                    "example": "sapphire"
+                  },
+                  "groundHex": {
+                    "type": "string",
+                    "example": "#1B4F72"
+                  },
+                  "finish": {
+                    "type": "string",
+                    "example": "matte"
+                  },
+                  "texture": {
+                    "type": "string",
+                    "example": "none"
+                  },
+                  "texturePresence": {
+                    "type": "string",
+                    "example": "subtle"
+                  },
+                  "textureScale": {
+                    "type": "string",
+                    "example": "1x"
+                  },
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "Optional logo \u2014 omit for no logo."
+                  }
+                }
               }
             }
           }
@@ -1193,6 +1246,26 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CardResponseDto"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "LOGO_TOO_LARGE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "LOGO_TYPE_UNSUPPORTED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
                 }
               }
             }
@@ -1355,6 +1428,145 @@
           }
         ],
         "summary": "Archive a card",
+        "tags": [
+          "cards"
+        ]
+      }
+    },
+    "/api/v1/cards/{id}/logo": {
+      "post": {
+        "description": "JPEG, PNG, or WebP, up to 20 MB. Replacing an existing logo deletes the old one from storage.",
+        "operationId": "CardsController_uploadLogo_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CardResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "CARD_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "LOGO_STORAGE_NOT_CONFIGURED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "LOGO_TOO_LARGE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "LOGO_TYPE_UNSUPPORTED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cb_access_token": []
+          },
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Upload or replace this card\u2019s logo",
+        "tags": [
+          "cards"
+        ]
+      },
+      "delete": {
+        "operationId": "CardsController_removeLogo_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed."
+          },
+          "404": {
+            "description": "CARD_NOT_FOUND or LOGO_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cb_access_token": []
+          },
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Remove this card\u2019s logo",
         "tags": [
           "cards"
         ]
@@ -1854,17 +2066,31 @@
     },
     "/api/v1/inbound-messages": {
       "get": {
-        "description": "Every message that has hit our WhatsApp number, from anyone, whether or not it resolves to a known Contact or User \u2014 no ownership scoping, this is a raw capture. Newest first, capped at 500 rows per call.",
+        "description": "One row per (fromPhoneE164, toPhoneE164) pair, ever \u2014 a real WhatsApp message, a QR-scan \"Save & connect\", and an owner-initiated card share all land here, distinguished by `source`. A second event of the same kind between a pair already on file produces no new row. No ownership scoping (`resolvedOwnerId` narrows QR_SCAN_CONNECT/CARD_SHARE rows, but this endpoint itself returns everyone's). Newest first, capped at 500 rows per call.",
         "operationId": "InboundMessagesController_list_v1",
         "parameters": [
           {
             "name": "fromPhoneE164",
             "required": false,
             "in": "query",
-            "description": "Only messages from this phone number.",
+            "description": "Only rows from this phone number.",
             "schema": {
               "example": "+919876543210",
               "type": "string"
+            }
+          },
+          {
+            "name": "source",
+            "required": false,
+            "in": "query",
+            "description": "Only rows of this kind \u2014 a real message, a QR-scan connect, or a card share.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "WHATSAPP_MESSAGE",
+                "QR_SCAN_CONNECT",
+                "CARD_SHARE"
+              ]
             }
           },
           {
@@ -1901,7 +2127,7 @@
             "access-token": []
           }
         ],
-        "summary": "Raw history of inbound WhatsApp messages",
+        "summary": "History of inbound WhatsApp messages and connection events",
         "tags": [
           "webhooks"
         ]
@@ -3066,6 +3292,12 @@
             "example": "https://cards.contactbook.app/c/4f8Kq2mR7xJp1sN0vLtQ9a",
             "description": "This card\u2019s own public URL \u2014 what its QR code encodes. Independent of any recipient: it exists before the card has ever been shared with anyone, and revoking one recipient\u2019s link never affects it. Resolves through the same public endpoint as a per-recipient share link."
           },
+          "logoUrl": {
+            "type": "object",
+            "nullable": true,
+            "example": "https://storage.googleapis.com/.../card-logos/.../logo.jpg",
+            "description": "Set only via POST /cards/:id/logo \u2014 never accepted on create/update. NULL until the owner uploads one."
+          },
           "templateId": {
             "type": "object",
             "nullable": true,
@@ -3128,82 +3360,6 @@
           "fields",
           "createdAt",
           "updatedAt"
-        ]
-      },
-      "CreateCardDto": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "example": "Work",
-            "maxLength": 80
-          },
-          "kind": {
-            "type": "string",
-            "enum": [
-              "WORK",
-              "PERSONAL",
-              "PAYMENT",
-              "CUSTOM"
-            ],
-            "default": "CUSTOM"
-          },
-          "templateId": {
-            "type": "string",
-            "enum": [
-              "meridian",
-              "marigold"
-            ],
-            "example": "meridian",
-            "description": "Omit to leave unset \u2014 the frontend then derives a look from `kind` instead."
-          },
-          "paletteId": {
-            "type": "string",
-            "enum": [
-              "onyx",
-              "sapphire",
-              "emerald",
-              "oxblood",
-              "rust",
-              "amber",
-              "clay",
-              "pistachio",
-              "periwinkle"
-            ],
-            "example": "sapphire"
-          },
-          "groundHex": {
-            "type": "string",
-            "example": "#1B4F72",
-            "description": "Free colour, #RRGGBB. Overrides paletteId when set."
-          },
-          "finish": {
-            "type": "string",
-            "example": "matte",
-            "maxLength": 40,
-            "description": "Surface finish. FE-owned value set, not yet enumerated here."
-          },
-          "texture": {
-            "type": "string",
-            "example": "none",
-            "maxLength": 40,
-            "description": "Texture motif, \"none\" included. FE-owned value set, not yet enumerated here."
-          },
-          "texturePresence": {
-            "type": "string",
-            "example": "subtle",
-            "maxLength": 40,
-            "description": "How strongly the texture reads. FE-owned value set, not yet enumerated here."
-          },
-          "textureScale": {
-            "type": "string",
-            "example": "1x",
-            "maxLength": 40,
-            "description": "Multiplier on the texture tile. FE-owned value set, not yet enumerated here."
-          }
-        },
-        "required": [
-          "name"
         ]
       },
       "UpdateCardDto": {
@@ -3719,22 +3875,35 @@
             "type": "string",
             "example": "9c1a1b2c-3d4e-4f5a-8b6c-7d8e9f0a1b2c"
           },
+          "source": {
+            "type": "string",
+            "enum": [
+              "WHATSAPP_MESSAGE",
+              "QR_SCAN_CONNECT",
+              "CARD_SHARE"
+            ],
+            "example": "WHATSAPP_MESSAGE",
+            "description": "WHATSAPP_MESSAGE = a real inbound WhatsApp webhook hit. QR_SCAN_CONNECT = a stranger scanned a card QR and verified their phone via the public \"Save & connect\" flow. CARD_SHARE = an owner shared a card with a contact. Neither of the latter two involves an actual WhatsApp message Twilio delivered to us."
+          },
           "provider": {
             "type": "string",
             "example": "twilio"
           },
           "providerMessageId": {
-            "type": "string",
-            "example": "SM1234567890abcdef1234567890abcdef"
+            "type": "object",
+            "nullable": true,
+            "example": "SM1234567890abcdef1234567890abcdef",
+            "description": "Twilio MessageSid. Null for QR_SCAN_CONNECT rows."
           },
           "fromPhoneE164": {
             "type": "string",
             "example": "+919876543210",
-            "description": "Whoever messaged us \u2014 the \"connect\" this row represents."
+            "description": "Whoever initiated contact \u2014 the message sender, the QR scanner, or the card owner (for a CARD_SHARE row)."
           },
           "toPhoneE164": {
             "type": "string",
-            "example": "+15551234567"
+            "example": "+15551234567",
+            "description": "For WHATSAPP_MESSAGE, our fixed WhatsApp business number. For QR_SCAN_CONNECT, the phone number of the card owner who was scanned. For CARD_SHARE, the phone number of the contact the card was shared with."
           },
           "body": {
             "type": "object",
@@ -3747,6 +3916,12 @@
             "example": "Priya",
             "description": "WhatsApp's own display name for the sender, if provided."
           },
+          "resolvedOwnerId": {
+            "type": "object",
+            "nullable": true,
+            "example": "3f1c2b3a-4d5e-4f6a-8b9c-0d1e2f3a4b5c",
+            "description": "The ContactBook User this row resolves to, if any. Always set for QR_SCAN_CONNECT and CARD_SHARE (both know exactly which owner this is about). Always null for WHATSAPP_MESSAGE today \u2014 no scan-code-in-message resolution exists yet."
+          },
           "receivedAt": {
             "format": "date-time",
             "type": "string",
@@ -3755,8 +3930,8 @@
         },
         "required": [
           "id",
+          "source",
           "provider",
-          "providerMessageId",
           "fromPhoneE164",
           "toPhoneE164",
           "receivedAt"

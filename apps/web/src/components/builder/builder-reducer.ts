@@ -128,6 +128,39 @@ export interface BuilderState {
   readonly texturePresence: TexturePresence;
   /** Multiplier on the texture's authored tile. */
   readonly textureScale: TextureScale;
+  /**
+   * The card's logo **as the server has it** — `null` for a card with none, and `null` on every
+   * unsaved card, which has no server row to hold one.
+   *
+   * ⚠ Not written by picking a file. It changes only when the API has confirmed a write, which
+   * is the whole reason it is separate from {@link BuilderState.logoFile}: this is the one axis
+   * on this screen that the owner cannot set by saying a value. `logoUrl` is rejected as a plain
+   * string by both `POST /cards` and `PATCH /cards/{id}`, so a logo exists exactly where a file
+   * was actually uploaded — never where the builder decided one should be.
+   */
+  readonly logoUrl: string | null;
+  /**
+   * A file the owner chose for a card **that does not exist yet**, waiting for `POST /cards`.
+   *
+   * ## Why the logo is the one control that has a pending state
+   *
+   * §8D.4 says every control is live and nothing pends. This does not break that rule so much
+   * as run out of road for it: there is no `cardId` on `/cards/new`, so there is no address to
+   * upload to. Every other axis can be held in state and sent with the create; a file cannot be
+   * held *anywhere else*, so it is held here and sent as the create's `file` part.
+   *
+   * On a card that exists this is always `null`, because the upload happens the moment the file
+   * is chosen — see `builder-client.tsx`. The two never overlap.
+   */
+  readonly logoFile: File | null;
+  /**
+   * `URL.createObjectURL(logoFile)`, so the preview shows the chosen logo before it is uploaded.
+   *
+   * ⚠ **Created by the caller, never here.** `createObjectURL` allocates a browser resource and
+   * this reducer is pure; it is also the caller's job to `revokeObjectURL` what it made, which
+   * it cannot do if it never held the string. Passed in on the action for exactly that reason.
+   */
+  readonly logoPreviewUrl: string | null;
   readonly fieldIds: readonly string[];
   /**
    * ⚠ **Edited field VALUES, and they are a profile overlay rather than card state.**
@@ -173,6 +206,20 @@ export type BuilderAction =
   | { kind: "texture"; texture: Texture }
   | { kind: "presence"; texturePresence: TexturePresence }
   | { kind: "scale"; textureScale: TextureScale }
+  /**
+   * A logo chosen for a card that has no server row yet — held until Save creates it.
+   *
+   * `file: null` drops the pending choice. The caller passes the object URL it made, and is
+   * responsible for revoking the one this replaces.
+   */
+  | { kind: "logo-pending"; file: File | null; previewUrl: string | null }
+  /**
+   * What the API says this card's logo now is, after an upload or a remove actually landed.
+   *
+   * ⚠ Deliberately does **not** touch `dirty`. The write has already happened, so marking the
+   * card unsaved would ask for a Save that has nothing left to commit.
+   */
+  | { kind: "logo-saved"; logoUrl: string | null }
   | { kind: "field"; fieldId: string; on: boolean }
   /** One field's value, as typed. Live, like every other axis — there is no per-row commit. */
   | { kind: "value"; fieldId: string; value: string }
@@ -214,6 +261,11 @@ export function builderInitialState({ card, userId, seed }: BuilderInit): Builde
       texture: surface.texture,
       texturePresence: surface.texturePresence,
       textureScale: surface.textureScale,
+      /* An unsaved card has no server row, so it cannot have a stored logo — only a pending
+         file, which it does not have yet either. */
+      logoUrl: null,
+      logoFile: null,
+      logoPreviewUrl: null,
       fieldIds: [...seed],
       fieldValues: {},
       paletteChosen: false,
@@ -243,6 +295,12 @@ export function builderInitialState({ card, userId, seed }: BuilderInit): Builde
     texture: surface.texture,
     texturePresence: surface.texturePresence,
     textureScale: surface.textureScale,
+    /* `?? null` collapses the domain's "absent" and "null" — both mean no logo. Nothing is
+       pending on open: a pending file is a choice made in this session, and seeding one would
+       make a card that already has a logo look like it had an unsaved change. */
+    logoUrl: card.logoUrl ?? null,
+    logoFile: null,
+    logoPreviewUrl: null,
     /* Copied, never aliased: the fixtures are frozen `as const` arrays. */
     fieldIds: [...card.fieldIds],
     /* Empty on open, always. An edit is a change the owner makes in this session; seeding it
@@ -327,6 +385,39 @@ export function builderReducer(state: BuilderState, action: BuilderAction): Buil
     case "scale":
       return { ...state, textureScale: action.textureScale, dirty: true };
 
+    case "logo-pending":
+      return {
+        ...state,
+        logoFile: action.file,
+        logoPreviewUrl: action.previewUrl,
+        /* ⚠ **`dirty` only on an unsaved card**, and the branch is on `cardId` rather than on
+           something the caller passes, so the rule lives with the state it describes.
+
+           An unsaved card genuinely holds an uncommitted change: the file is going out as the
+           `file` part of `POST /cards` and has no other route to the server, so Save is what
+           commits it. A card that exists uploads the moment the file is picked — this action
+           only puts the object URL in front of the owner while that request is in flight — so
+           marking it dirty would offer a Save with nothing left to commit, and would keep
+           offering it after the upload succeeded.
+
+           Dropping a pending choice (`file: null`) follows the same rule for the same reason. */
+        dirty: state.cardId === null ? true : state.dirty,
+      };
+
+    case "logo-saved":
+      /* ⚠ `dirty` is untouched — see the action's own note. The upload or the remove has already
+         landed; asking for a Save afterwards would offer to commit nothing.
+
+         The pending pair is cleared unconditionally, including on the create path: the moment
+         the server has a URL, the object URL behind the preview is a stale second copy of the
+         same picture, and leaving it set would keep `builderCard` preferring it forever. */
+      return {
+        ...state,
+        logoUrl: action.logoUrl,
+        logoFile: null,
+        logoPreviewUrl: null,
+      };
+
     case "value":
       /* No trimming and no validation here. §11 E-07 ("a blank value is not a field") is
          `resolveCard`'s rule and it is applied where the card is built, so a value the owner
@@ -398,6 +489,18 @@ export function builderCard(state: BuilderState): ContactCard {
        preview and the page a recipient opens cannot disagree about what the card looks like,
        for the same structural reason they cannot disagree about what it says. */
     ...(state.groundHex === undefined ? {} : { groundHex: state.groundHex }),
+    /**
+     * ⚠ **The pending file's preview wins over the stored URL, and that ordering is the feature.**
+     *
+     * `resolveCard` reads exactly this to build `ResolvedMark`, so the preview pane draws the
+     * logo the owner just picked — on `/cards/new`, before any card exists to upload it to.
+     * Reading `logoUrl` first would show nothing there until after Save, which is the "chose a
+     * design and then watched the card ignore it" failure the whole builder is shaped against.
+     *
+     * The two are never both set: `logo-saved` clears the pending pair the instant the server
+     * answers. So this is a fallback, not a precedence rule that has to keep being right.
+     */
+    logoUrl: state.logoPreviewUrl ?? state.logoUrl,
     finish: state.finish,
     texture: state.texture,
     texturePresence: state.texturePresence,

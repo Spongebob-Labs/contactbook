@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, MessageCircle } from "lucide-react";
+import { ChevronDown, ChevronUp, Download, MessageCircle } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
 
 import { canBuildVcf } from "@/card/build-vcf";
@@ -92,6 +92,19 @@ export function BuilderPreview({ resolved }: BuilderPreviewProps): ReactElement 
   const stageRef = useRef<HTMLDivElement | null>(null);
   const frameRef = useRef<HTMLDivElement | null>(null);
   const budget = useFitBudget(stageRef, frameRef);
+  const edges = useScrollEdges(frameRef);
+
+  /* One control, pointing whichever way there is something to see. At the end of a scrolled
+     frame the only useful direction is back up to the name. */
+  const nudge = (direction: "down" | "up") => {
+    const node = frameRef.current;
+    if (node === null) return;
+    node.scrollBy({
+      // A screenful less a sliver, so the row at the boundary stays on screen as an anchor.
+      top: (direction === "down" ? 1 : -1) * Math.max(node.clientHeight - 40, 80),
+      behavior: "smooth",
+    });
+  };
 
   return (
     <div
@@ -146,11 +159,21 @@ export function BuilderPreview({ resolved }: BuilderPreviewProps): ReactElement 
           behaviour, so the frame below is free to be nothing but the screen. */}
       <div
         data-preview-device=""
-        className="flex min-h-0 w-full max-w-[320px] flex-1 flex-col lg:flex-none"
+        /* ⚠ `relative` is load-bearing for the scroll cue below, and the cue has to hang off
+           THIS element rather than the frame. An absolutely positioned child of a scroll
+           container resolves against that container's scrolled content, so a cue pinned to the
+           "bottom" of the frame would sit at the bottom of the 787px card and scroll away with
+           it — visible only once you had already found the thing it exists to advertise. */
+        className="relative flex min-h-0 w-full max-w-[320px] flex-1 flex-col lg:flex-none"
       >
         <div
           ref={frameRef}
           data-preview-frame=""
+          /* Published so a test can assert "the owner is told there is more" without reading a
+             gradient's computed style. `none` on a card short enough to fit. */
+          data-preview-scroll={
+            !edges.overflowing ? "none" : edges.atEnd ? "at-end" : edges.atTop ? "at-top" : "mid"
+          }
           /* ⚠ **The one scroll container in this preview, and it is not the card.** See the
              module note: `<CardPage>` has no height and no overflow by design, so the thing
              that runs out of room has to be the frame around it. `overflow-y-auto` is the phone
@@ -185,6 +208,48 @@ export function BuilderPreview({ resolved }: BuilderPreviewProps): ReactElement 
             className="flex-1"
           />
         </div>
+
+        {/* ── the scroll cue ───────────────────────────────────────────────────────────
+            ⚠ **A control, not a gradient, and the reason is the palette.** The obvious cue is a
+            fade along the bottom edge, and it cannot work here: the card paints its own ground
+            edge to edge, so a fade to `--canvas` hazes white over a deep Sapphire card, and an
+            ink scrim vanishes on the dark ones and on the light ones alike. There are nine
+            palettes plus free ground colour — no single gradient reads on all of them.
+
+            A pill in the app's own register — surface, hairline, shadow — reads as chrome on
+            every one of them, and being a real button it also answers the thumb: on a 257px
+            window, "tap to see the rest" is more use than "there is more". `[data-preview-scroll]`
+            below carries the state for tests either way.
+
+            Rendered only when the frame actually overflows, so a short card gets no furniture. */}
+        {edges.overflowing ? (
+          <button
+            type="button"
+            data-preview-scroll-nudge={edges.atEnd ? "up" : "down"}
+            aria-label={
+              edges.atEnd
+                ? "Scroll the preview back to the top of the card"
+                : "Scroll the preview down to see the rest of the card"
+            }
+            onClick={() => nudge(edges.atEnd ? "up" : "down")}
+            className={
+              /* ⚠ The corner, not the centre. Centred it landed exactly on the card's own
+                 centred type — it covered the middle of "Head of Partnerships at Fernwood
+                 Studio" on the fixture card, trading one unreadable thing for another. Every
+                 card page centres its identity block and left-aligns its rows, so the
+                 bottom-RIGHT is the one spot with no text under it at any field count. */
+              "absolute bottom-2 right-2 z-10 flex h-9 w-9 items-center " +
+              "justify-center rounded-full border border-line bg-surface text-ink " +
+              "shadow-[var(--elevation-2)] transition-opacity duration-[var(--dur-fast)]"
+            }
+          >
+            {edges.atEnd ? (
+              <ChevronUp aria-hidden="true" size={18} strokeWidth={1.75} />
+            ) : (
+              <ChevronDown aria-hidden="true" size={18} strokeWidth={1.75} />
+            )}
+          </button>
+        ) : null}
       </div>
 
       <p
@@ -336,6 +401,80 @@ function InertActions({ resolved }: { resolved: ResolvedCard }): ReactElement {
  * computes the same number as the first.
  */
 const CAPTION_RESERVE_FALLBACK = 46;
+
+/**
+ * **Where the frame is scrolled, so the preview can say that it scrolls.**
+ *
+ * ## The defect this exists for
+ * The frame is a 320×257 window onto a card page that is 787px tall on the fixture profile —
+ * measured, not estimated. **530 of those pixels are hidden below the fold, and every one of the
+ * card's field rows is among them.** So on a phone the owner ticks a field, the header "Fields 5"
+ * counts it, and the preview does not visibly change: it shows brand, avatar, name and role, and
+ * then stops mid-row at the frame's edge.
+ *
+ * A desktop browser paints a scrollbar on that overflow, which is the whole cue. **A touch
+ * browser paints nothing until a finger is already moving**, so the frame was
+ * indistinguishable from a card that had been clipped — which is exactly how it was reported.
+ *
+ * The fix is not more height. `--builder-preview-h` is `min(38svh, 300px)` and that number is
+ * argued in `builder-client.tsx`: 50svh left the controls 146px on a 640px screen, and the
+ * controls are what the owner is using. A 257px window is the right size; it just has to admit
+ * what it is.
+ *
+ * ## Why a listener and not `:has()` or a CSS scroll-state query
+ * `scroll-state()` is not available across the browsers this ships to, and neither CSS feature
+ * can answer "is there more below" — only JS sees `scrollTop` against `scrollHeight`. The
+ * numbers are published as data attributes so a test can assert the state rather than a
+ * gradient's computed style.
+ */
+interface ScrollEdges {
+  /** Content taller than the frame — a cue is warranted at all. */
+  overflowing: boolean;
+  atTop: boolean;
+  atEnd: boolean;
+}
+
+/** A pixel of slack: fractional layout heights make an exact comparison flicker. */
+const EDGE_EPSILON = 2;
+
+function useScrollEdges(frameRef: React.RefObject<HTMLDivElement | null>): ScrollEdges {
+  const [edges, setEdges] = useState<ScrollEdges>({
+    overflowing: false,
+    atTop: true,
+    atEnd: false,
+  });
+
+  useEffect(() => {
+    const node = frameRef.current;
+    if (node === null) return;
+
+    const read = () => {
+      const hidden = node.scrollHeight - node.clientHeight;
+      setEdges({
+        overflowing: hidden > EDGE_EPSILON,
+        atTop: node.scrollTop <= EDGE_EPSILON,
+        atEnd: node.scrollTop >= hidden - EDGE_EPSILON,
+      });
+    };
+
+    read();
+    node.addEventListener("scroll", read, { passive: true });
+    /* ⚠ The card's own height changes without the frame ever resizing — ticking a field adds a
+       row — so the frame alone is not enough to observe. Its first element child is the card,
+       and that is what grows. */
+    const observer = new ResizeObserver(read);
+    observer.observe(node);
+    const card = node.firstElementChild;
+    if (card !== null) observer.observe(card);
+
+    return () => {
+      node.removeEventListener("scroll", read);
+      observer.disconnect();
+    };
+  }, [frameRef]);
+
+  return edges;
+}
 
 /** Tailwind's `lg`. The one breakpoint value this file has to know, because the two branches
  *  above are genuinely different mechanisms rather than two sizes of the same one. */

@@ -101,14 +101,11 @@ export type ApiShareLinkStatus = (typeof API_SHARE_LINK_STATUSES)[number];
  *   rather than filtering an unfiltered page: a source it never fetches cannot be
  *   misattributed. Landed with `b376f46` on the API side.
  *
- * ⚠ Deliberately NOT added to `api-contract.test.ts`'s enum assertions, because
- * `openapi.snapshot.json` predates this field: the snapshot's `InboundMessageResponseDto`
- * still carries only eight properties and its `/inbound-messages` operation still advertises
- * only `fromPhoneE164` and `limit`. The API has all three — see
- * `apps/api/src/webhooks/dto/inbound-message-response.dto.ts` and
- * `list-inbound-messages-query.dto.ts`, which are the source used here. Asserting against the
- * snapshot would fail on the snapshot's staleness, not on a real drift. Refresh the snapshot
- * and this becomes assertable.
+ * ⚠ This used to be exempt from `api-contract.test.ts`'s enum assertions, because the snapshot
+ * predated the field and asserting against it would have failed on the snapshot's staleness
+ * rather than on a real drift. The refresh that brought the card-logo pair in also brought
+ * `source` and its `/inbound-messages` query parameter, so the exemption is spent: the enum is
+ * asserted against the spec like the other eight.
  */
 export const API_INBOUND_SOURCES = [
   "WHATSAPP_MESSAGE",
@@ -559,11 +556,44 @@ export interface CardResponseDto extends CardAppearanceDto {
    * Make this required only once staging's `/api/docs-json` lists it.
    */
   publicUrl?: string;
+  /**
+   * The card's logo, as a fully-qualified storage URL. `null` — or absent — means the owner has
+   * never uploaded one.
+   *
+   * ⚠ **Read-only on this DTO.** It is not a field a client may set: `POST /cards` and
+   * `PATCH /cards/{id}` both reject `logoUrl` as a plain string outright, and the only way a
+   * value ever appears here is an actual file upload — `file` on the multipart create, or
+   * `POST /cards/{id}/logo`. So nothing in `CreateCardDto`/`UpdateCardDto` mirrors it, and
+   * `toAppearanceDto` deliberately does not carry it alongside the seven design axes.
+   *
+   * Typed `?: string | null` rather than `: string | null` because the API describes it as a
+   * nullable property rather than a required one, and an older row can come back without the
+   * key at all. Absent and `null` mean the same thing here — there is no third state — which is
+   * why `toContactCard` coalesces both to the domain's single "no logo".
+   */
+  logoUrl?: string | null;
   fields: CardFieldResponseDto[];
   createdAt: string;
   updatedAt: string;
 }
 
+/**
+ * ⚠ **`POST /cards` is `multipart/form-data`, not JSON.**
+ *
+ * This interface is still the right description of the *fields* — the spec no longer names a
+ * `CreateCardDto` schema because the operation declares its body inline, but the properties are
+ * exactly these plus an optional binary `file`. What changed is the encoding, and the reason is
+ * structural rather than stylistic: a file and a JSON body cannot share one request, and a card
+ * has to be creatable already wearing its logo (see `uploadCardLogo`'s note on why a create
+ * followed by a separate upload is not an acceptable substitute).
+ *
+ * The file is **not** on this type. It is a second argument to `createCard`, because a `File` is
+ * not a card property — it is the payload that produces one — and putting it here would invite
+ * `JSON.stringify` over an object holding a `File`, which silently serialises to `{}`.
+ *
+ * Every value below is sent as a form field, so it travels as a string. That is safe for exactly
+ * these members and would not be for a boolean or a number; there are none.
+ */
 export interface CreateCardDto extends CardAppearanceDto {
   name: string;
   kind?: ApiCardKind;

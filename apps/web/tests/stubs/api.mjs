@@ -90,6 +90,17 @@ const json = (res, status, body) => {
 
 const notFound = (res, code, message) => json(res, 404, { code, message });
 
+/**
+ * What an uploaded card logo resolves to.
+ *
+ * A `data:` URI rather than a storage URL: the e2e browser has no network beyond localhost, and
+ * a card whose logo 404s renders a broken image — which is indistinguishable, to an assertion,
+ * from the logo not being wired at all. This is a 1×1 transparent PNG, so it loads instantly
+ * and paints nothing that could disturb a contrast or geometry measurement.
+ */
+const STUB_LOGO_URL =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+
 /** Read and discard a request body, so a POST/PATCH/PUT does not hang the socket. */
 function drain(req) {
   return new Promise((done) => {
@@ -271,7 +282,36 @@ const server = createServer(async (req, res) => {
 
   if (path === "/cards" && method === "POST") {
     const first = db.cards[0];
-    return json(res, 201, { ...first, id: "card_created_stub", fields: [] });
+    /* ⚠ `multipart/form-data`, not JSON — the create grew a `file` part so a card can be born
+       wearing its logo. The stub does not parse the multipart body; it only has to answer the
+       one question the UI branches on, which is whether a logo came with the request. The raw
+       body carries `name="file"` in a part header exactly when one did. */
+    const withLogo = rawBody.includes('name="file"');
+    return json(res, 201, {
+      ...first,
+      id: "card_created_stub",
+      fields: [],
+      logoUrl: withLogo ? STUB_LOGO_URL : null,
+    });
+  }
+
+  /* ── the logo pair ───────────────────────────────────────────────────────────────────
+     ⚠ Both routes must precede `/cards/:id`'s PATCH/DELETE branch below, or the id pattern
+     never sees them — the same ordering hazard `audience` carries above. They are matched here,
+     before it, rather than relying on the `([^/]+)$` anchor to exclude them. */
+  const logo = /^\/cards\/([^/]+)\/logo$/.exec(path);
+  if (logo !== null) {
+    const found = db.cards.find((c) => c.id === logo[1]);
+    if (found === undefined) return notFound(res, "CARD_NOT_FOUND", "This card does not exist.");
+
+    if (method === "POST") {
+      // The whole card, the way the real endpoint answers — so the client can re-map it.
+      return json(res, 200, { ...found, logoUrl: STUB_LOGO_URL });
+    }
+    if (method === "DELETE") {
+      res.statusCode = 204;
+      return res.end();
+    }
   }
   if (card !== null && (method === "PATCH" || method === "DELETE")) {
     const found = db.cards.find((c) => c.id === card[1]);
