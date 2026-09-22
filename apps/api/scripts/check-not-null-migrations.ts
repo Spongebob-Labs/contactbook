@@ -35,10 +35,40 @@ const MIGRATIONS_DIR = path.join(__dirname, '..', 'prisma', 'migrations');
 // column change, not arbitrary hand-written SQL.
 const SET_NOT_NULL = /ALTER TABLE "(\w+)" ALTER COLUMN "(\w+)" SET NOT NULL/g;
 
+// Matches: UPDATE "table" SET "column" = ...; — the shape a hand-written
+// inline backfill takes (see e.g. 20260921100000_add_card_appearance_details,
+// which backfills templateId before constraining it, in the same file).
+const UPDATE_COLUMN = /UPDATE "(\w+)"\s+SET\s+"(\w+)"\s*=/gi;
+
 interface Check {
   migration: string;
   table: string;
   column: string;
+}
+
+/**
+ * True when this exact migration.sql already backfills `table`.`column`
+ * itself, earlier in the same file, before the SET NOT NULL at `matchIndex`.
+ * `prisma migrate deploy` runs one migration's whole file as a single unit —
+ * so by the time SET NOT NULL executes, a preceding UPDATE has already
+ * cleared every NULL, and there is nothing for this guard to check the live
+ * database for: the migration is provably self-sufficient. This is the
+ * pattern to prefer over a separate backfill script where practical (one
+ * atomic file, nothing to forget to run first) — the guard needs to
+ * recognize it rather than false-positive on it, which is exactly what
+ * flagged 20260921100000 despite its own inline backfill being correct.
+ */
+function hasPrecedingBackfill(
+  sql: string,
+  matchIndex: number,
+  table: string,
+  column: string,
+): boolean {
+  const before = sql.slice(0, matchIndex);
+  for (const update of before.matchAll(UPDATE_COLUMN)) {
+    if (update[1] === table && update[2] === column) return true;
+  }
+  return false;
 }
 
 function findChecks(): Check[] {
@@ -50,7 +80,9 @@ function findChecks(): Check[] {
 
     const sql = fs.readFileSync(sqlPath, 'utf8');
     for (const match of sql.matchAll(SET_NOT_NULL)) {
-      checks.push({ migration: entry.name, table: match[1], column: match[2] });
+      const [, table, column] = match;
+      if (hasPrecedingBackfill(sql, match.index, table, column)) continue;
+      checks.push({ migration: entry.name, table, column });
     }
   }
   return checks;

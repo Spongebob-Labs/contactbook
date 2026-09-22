@@ -277,18 +277,38 @@ model Card {
   /// uploads one.
   logoUrl String?
 
-  // Appearance. All nullable and all NULL until the owner explicitly picks one —
-  // NULL is load-bearing, it means "derive the look from `kind` instead," the
-  // fallback both the owner app and the public page already implement. No
-  // backfill needed: an existing card with everything NULL renders exactly as
-  // it does today.
-  templateId      String? // "meridian" | "marigold"
-  paletteId       String? // "onyx" | "sapphire" | "emerald" | "oxblood" | "rust" | "amber" | "clay" | "pistachio" | "periwinkle"
-  groundHex       String? // free colour, #RRGGBB — overrides paletteId when set
-  finish          String? // surface finish, FE-owned value set
-  texture         String? // motif, FE-owned value set, "none" included
-  texturePresence String? // how strongly the texture reads, FE-owned value set
-  textureScale    String? // multiplier on the texture tile, FE-owned value set
+  /// GCS public URL, set only via POST /cards/:id/cover — same posture as
+  /// logoUrl. The frontend sends an already-cropped image (its own crop
+  /// dialog bakes the composition into the bytes); this stores and serves
+  /// exactly what it's given, no server-side re-crop/re-fit/re-compress —
+  /// see CardCoverStorageService. NULL until the owner uploads one.
+  coverUrl String?
+
+  /// The position/title printed under the name on the card — overrides the
+  /// profile's own job title for THIS card only, when set. Plain text, not
+  /// derived from a ProfileField.
+  headline String? // max 80 chars, enforced at the DTO layer
+
+  /// One or two lines under the headline. Plain text, not derived from a
+  /// ProfileField.
+  bio String? // max 280 chars, enforced at the DTO layer
+
+  // Appearance. All nullable except templateId, and all NULL/default until the
+  // owner explicitly picks one — NULL is load-bearing, it means "derive the
+  // look from `kind` instead," the fallback both the owner app and the public
+  // page already implement. No backfill needed for the nullable ones: an
+  // existing card renders exactly as it does today. templateId is NOT NULL
+  // with a default (see the migration) because every card needs some
+  // starting field set to seed from, even one that never opened the Design
+  // panel.
+  templateId String @default("meridian") // "meridian" | "marigold"
+  paletteId  String? // "onyx" | "sapphire" | "emerald" | "oxblood" | "rust" | "amber" | "clay" | "pistachio" | "periwinkle" | "mint" | "ivory"
+  groundHex  String? // free colour, #RRGGBB — overrides paletteId when set
+
+  finish          String? @default("gradient") // "flat" | "gradient" | "mesh"
+  texture         String? @default("none") // "none" | "grain" | "grid" | "dots" | "topo"
+  texturePresence String? // "subtle" | "medium" | "strong"
+  textureScale    String? // "fine" | "regular" | "large"
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

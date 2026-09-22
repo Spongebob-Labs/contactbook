@@ -106,6 +106,10 @@ export class AppConfigService {
       // separate bucket is a one-var upgrade later, not a prerequisite now.
       cardLogosBucket:
         this.env.GCS_CARD_LOGOS_BUCKET ?? this.env.GCS_PROFILE_PHOTOS_BUCKET,
+      // Same fallback reasoning as cardLogosBucket — one shared bucket by
+      // default, objects distinguished by the `card-covers/` key prefix.
+      cardCoversBucket:
+        this.env.GCS_CARD_COVERS_BUCKET ?? this.env.GCS_PROFILE_PHOTOS_BUCKET,
       publicBaseUrl:
         this.env.GCS_PUBLIC_BASE_URL ??
         (this.env.GCS_PROFILE_PHOTOS_BUCKET

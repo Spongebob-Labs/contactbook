@@ -54,6 +54,9 @@ const base = z.object({
   // key prefix) when unset, so a dedicated bucket is a later upgrade, not a
   // prerequisite. See AppConfigService.gcs.cardLogosBucket.
   GCS_CARD_LOGOS_BUCKET: z.string().optional(),
+  // Card cover photo storage — same fallback story as GCS_CARD_LOGOS_BUCKET,
+  // a `card-covers/` key prefix distinguishing it in the shared bucket.
+  GCS_CARD_COVERS_BUCKET: z.string().optional(),
 
   // 'inline' runs the task handler in-process on the next tick — used by local
   // dev and integration tests so neither needs a public URL or ngrok.

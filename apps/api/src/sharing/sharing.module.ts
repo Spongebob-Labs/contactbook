@@ -10,6 +10,7 @@ import { ApiError } from '../common/errors/api-error';
 import { CardsController } from './cards.controller';
 import { CardsService } from './cards.service';
 import { CardLogoStorageService } from './card-logo-storage.service';
+import { CardCoverStorageService } from './card-cover-storage.service';
 import { ShareLinksController } from './share-links.controller';
 import { ShareLinksService } from './share-links.service';
 import { PublicLinksController } from './public-links.controller';
@@ -29,6 +30,7 @@ import { WhatsAppTemplateController } from './whatsapp-template.controller';
   providers: [
     CardsService,
     CardLogoStorageService,
+    CardCoverStorageService,
     ShareLinksService,
     CardConnectService,
   ],

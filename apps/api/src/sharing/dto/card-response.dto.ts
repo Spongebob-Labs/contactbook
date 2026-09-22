@@ -60,10 +60,34 @@ export class CardResponseDto {
 
   @ApiPropertyOptional({
     nullable: true,
-    example: 'meridian',
-    description: 'NULL means the owner never chose one.',
+    example: 'https://storage.googleapis.com/.../card-covers/.../cover.jpg',
+    description:
+      'Set only via POST /cards/:id/cover — never a raw string on create/update ' +
+      '(PATCH accepts only an explicit `null` to remove it). Already cropped by ' +
+      "the client to the card's aperture; served verbatim, never re-cropped " +
+      'server-side. NULL until the owner uploads one.',
   })
-  templateId!: string | null;
+  coverUrl!: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    example: 'Head of Partnerships',
+    description:
+      'Printed under the name — overrides the profile job title on this card. NULL means not set.',
+  })
+  headline!: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    example: 'Connecting people, ideas and opportunities.',
+  })
+  bio!: string | null;
+
+  @ApiProperty({
+    example: 'meridian',
+    description: 'Never null — defaults to "meridian" when never chosen.',
+  })
+  templateId!: string;
 
   @ApiPropertyOptional({ nullable: true, example: 'sapphire' })
   paletteId!: string | null;
@@ -75,16 +99,26 @@ export class CardResponseDto {
   })
   groundHex!: string | null;
 
-  @ApiPropertyOptional({ nullable: true, example: 'matte' })
+  @ApiPropertyOptional({
+    nullable: true,
+    example: 'gradient',
+    description:
+      'Defaults to "gradient" when never chosen; still nullable via PATCH.',
+  })
   finish!: string | null;
 
-  @ApiPropertyOptional({ nullable: true, example: 'none' })
+  @ApiPropertyOptional({
+    nullable: true,
+    example: 'none',
+    description:
+      'Defaults to "none" when never chosen; still nullable via PATCH.',
+  })
   texture!: string | null;
 
   @ApiPropertyOptional({ nullable: true, example: 'subtle' })
   texturePresence!: string | null;
 
-  @ApiPropertyOptional({ nullable: true, example: '1x' })
+  @ApiPropertyOptional({ nullable: true, example: 'fine' })
   textureScale!: string | null;
 
   @ApiProperty({ type: [CardFieldResponseDto] })
