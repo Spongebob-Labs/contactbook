@@ -35,10 +35,19 @@ import { Eyebrow } from "./type";
  * The footer's own `<nav>` elements are inside that selector deliberately: below 768px
  * `PillNav` drops its section links, so the footer *is* the page's full navigation at that
  * width and has to be held to the same rule.
+ *
+ * NOTE - IT DID CATCH A THIRD, 2026-09-20: `/#cards` HERE, THE SAME DEFECT AS `pill-nav.tsx`'S
+ * OWN. (This file is under the same emoji lock as `pill-nav.tsx` — `marketing-chrome.test.tsx`
+ * — which is why this carries the word NOTE rather than the warning glyph the rest of the
+ * marketing layer uses.)
+ * The `cards` section was cut from the homepage on 2026-09-19; `pill-nav.tsx` repointed its
+ * identical link to `/templates` the same day (see its own NOTE), but this file's copy of the
+ * link was missed. Rather than repoint it too — which would leave two footer links to the same
+ * destination under two different labels — it is dropped outright: `/templates` ("All nine
+ * designs") already covers it.
  */
 const PRODUCT_LINKS = [
   { href: "/#how-it-works", label: "How it works" },
-  { href: "/#cards", label: "Example cards" },
   { href: "/templates", label: "All nine designs" },
 ] as const;
 

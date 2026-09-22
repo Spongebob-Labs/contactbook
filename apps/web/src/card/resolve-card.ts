@@ -42,6 +42,8 @@ import type {
   FieldType,
   ProfileField,
   ResolvedAvatar,
+  ResolvedBadge,
+  ResolvedCover,
   ResolvedCard,
   ResolvedField,
   User,
@@ -180,6 +182,97 @@ function resolveAvatar(
   const fromName = initialsFor(user.firstName, user.lastName);
   const fromCard = cardName.trim().charAt(0).toUpperCase();
   return { kind: "monogram", initials: fromName || fromCard || "?" };
+}
+
+/**
+ * THE COVER — the card's own uploaded photograph, or nothing.
+ *
+ * ⚠ **This was a LADDER and is deliberately no longer one.** It ran
+ * `coverUrl` → the mapped `PHOTO` field → `User.avatarUrl` → none; the body below records the
+ * defect that removed the last two rungs and the rule for anyone tempted to put them back.
+ *
+ * The card's logo has never been in this ladder and still is not: that is the badge's business
+ * (`resolveAvatar` above), and keeping the two slots independent is why a card wearing a logo
+ * can still carry a photograph.
+ *
+ * The same `trim()`-and-length check as `resolveAvatar`, for the same reason: an empty `src`
+ * re-requests the current document, so `""` is a broken image and not a harmless falsy.
+ */
+function resolveCover(
+  card: ContactCard,
+  fullName: string,
+  cardName: string,
+): ResolvedCover {
+  const alt = fullName.length > 0 ? fullName : cardName;
+
+  /**
+   * ⚠ **THE CARD'S OWN COVER IS THE ONLY SOURCE. There is deliberately no fallback.**
+   *
+   * This used to fall through `card.coverUrl` → the mapped `PHOTO` field → `user.avatarUrl`, on
+   * the reasoning that the owner's face is a sensible default for a card that has chosen
+   * nothing. It is not, and the builder is what proves it: the Design panel read **"Cover ·
+   * None"** while the card beside it rendered a full-bleed photograph of the owner. A control
+   * that says a thing is unset, next to a preview showing it set, is not a default — it is the
+   * screen disagreeing with itself, and the owner has no way to remove an image they never
+   * added.
+   *
+   * It was also the wrong photograph twice over. `user.avatarUrl` is a small round portrait
+   * chosen to be legible at 72px in the badge; stretched across a cover that is 70% of the
+   * card's width it is upscaled, arbitrarily cropped, and competing with the badge — which is
+   * drawing the same face, 40px below it.
+   *
+   * So: **no cover set means no cover.** `COVER_RATIO` already has the `none` case — the hero
+   * collapses to a shorter band in the card's own palette, which is the composition the
+   * two-tone design was drawn for. The badge keeps its own resolution (logo, else monogram) and
+   * is untouched by this.
+   *
+   * ⚠ Do not reintroduce a fallback here without changing the builder at the same time. If a
+   * default is ever wanted, the honest shape is the builder *pre-filling* the cover with the
+   * owner's photo — a real value the owner can see and delete — never the renderer inventing
+   * one the panel cannot see.
+   */
+  const chosen = card.coverUrl?.trim() ?? "";
+  if (chosen.length > 0) return { kind: "photo", url: chosen, alt };
+
+  return { kind: "none" };
+}
+
+/**
+ * THE BADGE LADDER — the card's own mark, else the owner's initials.
+ *
+ * `Card.logoUrl` → monogram, and nothing between them. A photograph is NOT a fallback here:
+ * the badge is a 72px circle straddling the curve directly beneath a cover that is already the
+ * owner's face, and repeating that face at thumbnail size inside its own larger self is the
+ * "two objects in a hero composed for one" problem restated at a smaller scale.
+ *
+ * The initials fall through the user's name to the card's name, so a user who has not filled in
+ * a name yet still gets a mark rather than an empty ring (§11 E-19).
+ */
+function resolveBadge(card: ContactCard, user: User, cardName: string): ResolvedBadge {
+  const logoUrl = card.logoUrl?.trim() ?? "";
+  if (logoUrl.length > 0) {
+    const alt = cardName.trim().length > 0 ? `${cardName.trim()} logo` : "Card logo";
+    return { kind: "logo", url: logoUrl, alt };
+  }
+
+  const fromName = initialsFor(user.firstName, user.lastName);
+  const fromCard = cardName.trim().charAt(0).toUpperCase();
+  return { kind: "monogram", initials: fromName || fromCard || "?" };
+}
+
+/**
+ * The position line: the card's own `headline`, else the first mapped `JOB_TITLE`.
+ *
+ * Trimmed-and-length-checked rather than trusted, like every other nullable text on a card: `""`
+ * is a value one can hold, and an empty headline must collapse the slot rather than reserve an
+ * empty line under the name (§11 E-06's rule, applied to a new field).
+ */
+function resolveHeadline(card: ContactCard, fields: readonly ResolvedField[]): string | null {
+  const own = card.headline?.trim() ?? "";
+  if (own.length > 0) return own;
+
+  const fromField = fields.find((f) => f.type === "JOB_TITLE")?.value.trim() ?? "";
+  return fromField.length > 0 ? fromField : null;
 }
 
 /**
@@ -362,7 +455,20 @@ export function resolveCard(
     surface,
     fullName,
     avatar: resolveAvatar(card, photoField, user, fullName, card.name),
-    bio: resolveBio(rowFields),
+    /* The card page's two image slots. Resolved HERE, beside `avatar`, so the builder's
+       preview and the page a stranger opens cannot disagree about which images a card wears —
+       the same argument that put `palette` and `surface` on this object. */
+    cover: resolveCover(card, fullName, card.name),
+    badge: resolveBadge(card, user, card.name),
+    /* The card's own position line if it has one, else the first mapped JOB_TITLE. Resolved
+       here so the hero and the field stack agree about what was promoted — `splitHeroFields`
+       consumes the JOB_TITLE either way, so a card with a typed headline does not also list its
+       profile title as a row. */
+    headline: resolveHeadline(card, rowFields),
+    /* ⚠ The card's own bio outranks the derivation ENTIRELY — including the
+       `"{JOB_TITLE} at {COMPANY}"` branch, which exists precisely because there was nothing
+       better to show. Once the owner has written one, there is. */
+    bio: card.bio?.trim() || resolveBio(rowFields),
     fields: rowFields,
     socialFields,
     /* ⚠ The card's OWN public URL, and never a recipient's share link.

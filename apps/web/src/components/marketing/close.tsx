@@ -1,67 +1,95 @@
-import { close } from "@/fixtures/marketing";
+import Link from "next/link";
 
+import { close, waitlistPage } from "@/fixtures/marketing";
+import { contactDetails } from "@/lib/site";
+
+import { LeadForm } from "./lead-form";
+import { mkcn } from "./mk-cn";
 import { Section } from "./section";
-import { Heading, MkButtonLink, Prose } from "./type";
+import { Heading, Prose } from "./type";
 
 /**
- * Section 8 — the close. Brief Section 11's final CTA.
+ * Section 5 — the close.
  *
- * ## The only dark surface on the page, and it wears the brand
- * `tone="deep"` is `--mk-green-deep #286257` — the brand green at 7.03:1, carrying white text
- * at 12.4:1. The previous close inverted to Onyx with an Amber button, which was correct when
- * the page had four coloured washes and Amber was its action colour. On a white page whose one
- * accent is a green, ending on Onyx ends on a colour the page does not otherwise use.
+ * ## From one button to an inline capture
+ * The close used to be a headline and a single link out to `/waitlist`. It is the emptiest
+ * surface on the page and, with `belief` cut (2026-09-19), it now also has to carry the ending —
+ * so the capture moves onto the page itself rather than staying one click away. `close.cta`
+ * survives underneath as the plain-text path to the full page, for anyone who would rather not
+ * fill in a field here.
  *
- * ⚠ THE BUTTON IS WHITE, NOT AMBER, AND NOT GREEN. Amber was legal only on a dark ground and
- * is no longer part of this page's palette. A green button on a green ground is a button you
- * have to look for. White on the deep green is 7.03:1 for the fill and carries Onyx type at
- * full strength — the strongest control the page can make, in the one place it wants a reader
- * to act.
+ * ## Reusing `lead-form.tsx`, and the one thing it cannot do unwrapped
+ * `<LeadForm>` already owns the real pipeline — `POST /api/leads`, the 422/503 split, the email
+ * fallback instead of a fake tick — and none of that is duplicated here. But it is written for a
+ * LIGHT ground: its labels are `text-mk-ink` and its submit button is `bg-mk-ink text-mk-white`,
+ * both illegal or invisible on `--mk-accent-deep` for the same reason `<Heading>` needed an
+ * explicit `text-mk-white` a few lines below — Onyx ink on a dark ground measures under 2:1. The
+ * form is not modified; it is set inside its own white surface instead, which is what makes
+ * every one of its built-in states (idle, done, the failed/fallback box) correct again with no
+ * edit to that file.
  *
- * ## ⚠ THIS IS NOT THE BRIEF'S PAIR OF CONTROLS YET
- * The brief closes on "Join the waitlist" and "Contact us". Neither route exists, and a hero
- * or a close whose button 404s is a defect rather than a design decision — so this carries the
- * one control that works today. Both labels and both targets change in the same step that
- * builds `/waitlist` and `/contact`, which is blocked on one decision about where a form
- * submission goes. Flagged in `plan.md`; do not "fix" this by pointing a button at a page that
- * is not there.
+ * ## Why the form asks for a name it does not need to show
+ * An email-only capture cannot be validated through the existing pipeline: `parseLead`
+ * (`src/lib/leads.ts`) requires `name` unconditionally, and that file is not mine to loosen for
+ * one call site. Two fields — name, email — is still far lighter than `/waitlist`'s three plus
+ * an audience question, and it is the smallest field set that a real submission can pass without
+ * duplicating that route's validation here.
  *
- * ## Centred, and it is the only centred thing on the page
- * Everything above is ranged left against the column. A close is a single object with no
- * reading axis to maintain, and centring it is what makes it read as an end rather than as an
- * eighth section. `marketing.spec.ts` asserts that nothing else on the page is centred.
+ * ## Copy: borrowed, not invented
+ * `submitLabel`/`successHeading`/`successBody`/`fallbackBody`/`privacyNote` all come from
+ * `waitlistPage` — the same action, said once, rather than a second set of sentences for what is
+ * still literally "join the waitlist". The one visible side effect: `close.cta`'s label and the
+ * form's own submit button both read "Join the waitlist", because that is the fixture's actual
+ * copy for both destinations and this file does not add words that are not there.
  */
 export function Close() {
-  // `className`, not `innerClassName`: the centring belongs to the SECTION so that
-  // `marketing.spec.ts` can assert "exactly one section on this page is centred" by reading
-  // `textAlign` off `[data-section]`. On an inner div it is invisible to that rule, which is
-  // how the close silently stopped being the page's one centred composition.
   return (
     <Section id="start" tone="deep" labelledBy="close-heading" className="text-center">
-      {/* The colour IS passed, and it has to be. `<Heading>`'s base class carries
-          `text-mk-ink`, which beats the white the section hands down by inheritance — so
-          without this the headline renders near-black on the deep green at about 1.6:1.
-
-          It is also safe to pass now, which it was not an hour ago: `text-mk-heading-xl` was
-          missing from `mk-cn.ts`'s font-size group, so twMerge filed it as a colour, saw it
-          conflict with this one and dropped the SIZE — the headline came out at the inherited
-          18px, smaller than the paragraph under it. That registry gap is fixed, so size and
-          colour now survive together. `final-cta.tsx` used to route around it by omitting the
-          colour here and relying on inheritance, which is what kept the real cause alive. */}
+      {/* The colour IS passed, and it has to be: `<Heading>`'s base class carries `text-mk-ink`,
+          which beats the white the section hands down by inheritance. */}
       <Heading id="close-heading" size="xl" className="text-mk-white">
         {close.headline}
       </Heading>
 
-      {/* `text-mk-white/75` rather than a tone: `<Prose>` has no white level, and both of its
-          ink tones are illegal on a ground this dark. 75% of white on the deep green measures
-          8.9:1. */}
-      <Prose size="lead" className="mx-auto mt-6 max-w-mk-measure-tight text-mk-white/75">
+      {/* `--mk-accent-on-deep` — the softer ink this exact ground was given a token for. See
+          `marketing-steps.css` for why that is a class (`.mk-close-soft`) and not an
+          arbitrary-value utility stacked next to `<Prose>`'s own `text-mk-stone`. */}
+      <Prose size="lead" className={mkcn("mx-auto mt-6 max-w-mk-measure-tight", "mk-close-soft")}>
         {close.body}
       </Prose>
 
-      <MkButtonLink href={close.cta.href} variant="white" size="lg" className="mt-10 md:mt-12">
-        {close.cta.label}
-      </MkButtonLink>
+      <div className="mx-auto mt-10 max-w-sm rounded-mk-block bg-mk-white p-6 text-left md:mt-12 md:p-8">
+        <LeadForm
+          kind="waitlist"
+          fields={[
+            { name: "name", label: "Name", autoComplete: "name" },
+            { name: "email", label: "Email", type: "email", autoComplete: "email" },
+          ]}
+          submitLabel={waitlistPage.submitLabel}
+          successHeading={waitlistPage.successHeading}
+          successBody={waitlistPage.successBody}
+          fallbackBody={waitlistPage.fallbackBody}
+          fallbackEmail={contactDetails.email}
+          privacyNote={waitlistPage.privacyNote}
+        />
+      </div>
+
+      {/* The brief's second control, kept — `close.cta` unchanged, now secondary to the form
+          above rather than the section's only action. Still exactly one link in this section at
+          rest: the form's own control is a `<button>`, and its mailto fallback only renders
+          after a failed submit. */}
+      <p className="mt-8 text-mk-body-sm">
+        <Link
+          href={close.cta.href}
+          className={mkcn(
+            "font-mk-sans font-mk-medium underline decoration-1 underline-offset-2",
+            "transition-colors duration-[var(--mk-dur-tap)]",
+            "mk-close-link",
+          )}
+        >
+          {close.cta.label}
+        </Link>
+      </p>
     </Section>
   );
 }

@@ -39,6 +39,14 @@
 @import "tailwindcss";
 @import "./tokens.css";
 @import "./marketing.css";
+@import "./marketing-skins.css";
+
+/* Per-section partials, one owner each — see docs/landing-integration.md. They are
+   imported here rather than from their components so the cascade order is explicit and
+   a section cannot accidentally outrank the skin layer. */
+@import "./marketing-hero.css";
+@import "./marketing-solution.css";
+@import "./marketing-steps.css";
 
 /* ── 2. Token → Tailwind theme bridge ────────────────────────────────────────
    A theme key must never share a name with the variable it points at:
@@ -446,4 +454,31 @@
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
   box-shadow: 0 0 0 2px var(--focus-offset);
+}
+
+/* ── 6. The dashboard's reach dial ───────────────────────────────────────────
+   One keyframe, and it is the only animation the app chrome carries.
+
+   ⚠ **No `prefers-reduced-motion` block here, deliberately.** §3b zeroes every
+   `--dur-*` token centrally and says in as many words not to add a second
+   reduced-motion block anywhere in this codebase. An animation whose duration
+   is `var(--dur-slow)` is therefore already covered: it collapses to 0ms and
+   the arc simply appears at its final length. Re-guarding it locally would be
+   a second source of truth for the same rule.
+
+   The sweep length is per-score, so it arrives as a custom property the
+   component sets inline rather than as a hard-coded value here. Unitless is
+   correct — SVG's `stroke-dashoffset` takes a <number> in user units. */
+
+@keyframes cb-dial-draw {
+  from {
+    stroke-dashoffset: var(--cb-dial-len, 0);
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+[data-reach-dial-arc] {
+  animation: cb-dial-draw var(--dur-slow) var(--ease-out) both;
 }

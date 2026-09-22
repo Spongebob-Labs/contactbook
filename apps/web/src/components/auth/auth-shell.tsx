@@ -146,7 +146,11 @@ export function AuthShowcase({
 
   return (
     <div data-auth-card="" className={cn("flex w-[200px] flex-col gap-6", className)}>
-      <ShareFace resolved={resolved} mode="thumb" thumbWidth={0.5} />
+      {/* ⚠ `thumbWidth` is a WIDTH IN PIXELS, not a ratio — `<ShareFace>` derives its scale as
+          `thumbWidth / FACE_WIDTH`. This read `0.5`, which is not "half size": it is half of
+          one pixel, a scale of 0.00149, and the showcase card rendered at 0×0 on every auth
+          screen. 200 matches the `w-[200px]` column it sits in. */}
+      <ShareFace resolved={resolved} mode="thumb" thumbWidth={200} />
       {caption === null ? null : <p className="text-sm text-ink-3">{caption}</p>}
     </div>
   );

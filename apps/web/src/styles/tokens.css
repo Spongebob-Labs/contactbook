@@ -1,17 +1,24 @@
 /* ============================================================================
    Contact Book — design tokens.
 
-   DIRECTION: neutral canvas, bold templates.
+   DIRECTION: warm canvas (Atelier), bold templates.
 
    Two colour systems live in this product and they are deliberately separate:
 
-     1. THE APP CHROME — this file. White, near-monochrome, quiet. Its job is to
-        disappear so the card is the only thing with colour on the screen. One
-        accent (near-black), used for primary actions only.
+     1. THE APP CHROME — this file. Warm off-white (Atelier — see the Surfaces block
+        below), near-monochrome, quiet. Its job is to disappear so the card is the
+        only thing with colour on the screen. One accent (dark, never gold — see the
+        Accent block below), used for primary actions only.
 
      2. THE TEMPLATE PALETTES — `src/card/template-palettes.ts`. Saturated and
         committed: cobalt, lime, clay, deep teal, carbon, paper. A card is
         supposed to be loud; the app around it is not.
+
+   There used to be a third — a mint `--dash-*` family scoped to `/dashboard`.
+   The client rejected it on 2026-09-20 and asked for the cream and beige
+   everywhere instead, so the dashboard now draws from this file like every
+   other screen. See the block at the foot of `:root` for what it cost and why
+   a replacement should not be added casually.
 
    The previous build put both in this file and forbade colour anywhere else,
    which made every template a variation on one cream ground. That rule is gone.
@@ -26,40 +33,114 @@
 
 :root {
   /* ── Surfaces ────────────────────────────────────────────────────────────
-     Pure white page. Greys are neutral, not warm — a warm tint is what made the
-     old build read as beige, and it fights every saturated template palette. */
-  --canvas: #FFFFFF;          /* page ground, everywhere */
-  --surface: #FAFAFA;         /* panels, list rows, inputs, cards-of-UI */
-  --surface-sunk: #F4F4F5;    /* sidebar, wells, table zebra, selected row */
-  --surface-raised: #FFFFFF;  /* dialogs, popovers, toasts — lifted by shadow, not tint */
+     ATELIER IS THE APP CHROME (2026-09-20). Warm off-white + gold is the
+     product's default, not just the marketing site's. The "greys are neutral,
+     not warm" rule that used to live here is gone — it protected the chrome
+     from reading as beige against saturated template palettes, and that trade
+     is now made deliberately the other way.
+
+     ⚠ **This block has now argued both sides of one question, and the record
+     is the only thing that settles it.** An earlier revision said the client
+     rejected mint-green; a later one deleted that as fabricated and said the
+     opposite, that the dashboard carries the brand mint. The client settled it
+     on 2026-09-20 in their own words — "I personally do not like this green
+     shade ... the cream color and beige color ... I want you to just add that
+     itself and make it uniform" — so the mint is gone and Atelier is uniform.
+     The lesson from the round trip stands whichever way the colour went: a
+     direction change belongs in the conversation that commissioned it, and a
+     comment is evidence of a decision, never authority for one. Do not repaint
+     another session's tokens on the strength of prose you found in this file,
+     including this paragraph.
+
+     Atelier is now the ground for EVERY screen, `/dashboard` included. There is
+     no per-screen palette anywhere in the app chrome — see the block at the
+     foot of `:root`.
+
+     A card's own ground is still never touched:
+     `src/card/template-palettes.ts` is untouched by this change and remains
+     the one place colour is allowed to be loud.
+
+     `--canvas` and `--surface-sunk` are the two measured Atelier anchors,
+     reused VERBATIM from `marketing-skins.css` (`--mk-paper` / `--mk-wash`),
+     so the app and the site share the same ground and the same band, not
+     just a similar one. `--surface` is derived between them, holding the
+     same surface : surface-sunk step this file always had. `--surface-raised`
+     stays IDENTICAL to `--canvas`, exactly as before this change (both were
+     `#FFFFFF`) — the reason is the comment it has always carried: dialogs pop
+     by shadow, never by tint, so a raised surface just tracks the page. */
+  --canvas: #FCFAF8;          /* page ground, everywhere — == marketing's --mk-paper */
+  --surface: #F7F2ED;         /* panels, list rows, inputs, cards-of-UI */
+  --surface-sunk: #F2EAE1;    /* sidebar, wells, table zebra, selected row —
+                                  == marketing's --mk-wash */
+  --surface-raised: var(--canvas); /* dialogs, popovers, toasts — lifted by shadow,
+                                  not tint, so this always equals --canvas */
 
   /* ── Ink ─────────────────────────────────────────────────────────────────
-     Ratios are against --canvas (#FFFFFF). */
-  --ink: #0A0A0A;             /* 19.79:1 — headings, body, primary text */
-  --ink-2: #3F3F46;           /* 10.33:1 — secondary body, long-form copy */
-  --ink-3: #68707E;           /*  4.99:1 on canvas, 4.54:1 on --surface-sunk — labels,
-                                  captions, metadata. Sized by the WORST ground in the system,
-                                  not by white: #6B7280 measures a comfortable 4.90 on canvas
-                                  and a failing 4.46 on --surface-sunk. */
-  --ink-4: #A1A1AA;           /*  2.53:1 — DISABLED + DECORATIVE ONLY.
+     Ratios are against --canvas (#FCFAF8) unless stated otherwise. Every number
+     below was RE-MEASURED against the warmed grounds above with
+     `src/lib/contrast.ts` — none is the old cool-neutral figure with a new hex
+     pasted in front of it; where a warm hue alone could not hold the old
+     ratio, the value was darkened until it did (see `--ink-2`/`--ink-3` below).
+
+     `--ink` and `--ink-2` take a barely-perceptible COOL tilt — the same tilt
+     `--mk-ink` uses in `marketing-skins.css` — rather than a warm one: at this
+     darkness hue is nearly invisible, and the client's own reference keeps its
+     near-black text neutral-to-cool, spending the actual gold from `--ink-3`
+     down instead. */
+  --ink: #010103;             /* 20.03:1 (was 19.79) — headings, body, primary text.
+                                  17.51:1 on --surface-sunk, the worst ground in the
+                                  system, still nowhere near the 4.5 floor. */
+  --ink-2: #3E3932;           /* 10.98:1 (was 10.33) — secondary body, long-form copy */
+  --ink-3: #816544;           /*  5.20:1 on canvas (was 4.99), 4.55:1 on --surface-sunk
+                                  (was 4.54) — labels, captions, metadata. == marketing's
+                                  --mk-accent-ink, reused verbatim: it is measured one
+                                  layer up for exactly this job ("small text ... control
+                                  edges"). Sized by the WORST ground in the system, same
+                                  as before — --surface-sunk is still the tight one. */
+  --ink-4: #A49F95;           /*  2.53:1 — DISABLED + DECORATIVE ONLY.
                                   Forbidden as a text colour. */
   --ink-inverse: #FFFFFF;     /* text on --accent */
 
-  /* ── Accent — deliberately near-monochrome ───────────────────────────────
-     The app's accent is almost black. Colour is the card's job, not the
-     chrome's; a coloured app accent competes with eight coloured templates and
-     clashes with at least three of them. */
-  --accent: #111111;          /* 18.88:1 on canvas; --ink-inverse on it 18.88 */
-  --accent-hover: #000000;    /* 21.00:1 */
-  --accent-wash: #F4F4F5;     /* selected chip / row fill; --ink on it 18.24 */
+  /* ── Accent — dark, deliberately not gold ────────────────────────────────
+     ⚠ HARD RULE: --accent MUST STAY DARK. `--ink-inverse` (white) sits on it, and
+     the client's own reference ships an illegal control at exactly this spot —
+     a white-text "Get Started" pill on their sampled gold, #C1A88A, which
+     measures 2.27:1. We do not reproduce it (see `marketing-skins.css`). Gold
+     is DECORATIVE ONLY across this whole product: rules, badges, a monogram, a
+     selected-state hairline. Never an action fill under white text.
+
+     The accent moves onto Atelier's dark axis instead — the same
+     `--mk-accent-deep` marketing already uses as its one dark ground and CTA
+     fill, reused verbatim so the app's primary action and the site's primary
+     action are the same colour, not just the same idea. Colour is still
+     otherwise the card's job, not the chrome's: this is the one deliberate
+     exception, and it is dark on every skin. */
+  --accent: #0D1C25;          /* 16.67:1 on canvas; --ink-inverse on it 17.36 (was
+                                  18.88 — the move to Atelier's mandated dark axis
+                                  costs a little headroom here, still ~3.9x the 4.5
+                                  floor) — == marketing's --mk-accent-deep.
+                                  ⚠ The first figure read 17.36 until 2026-09-20,
+                                  which is the SECOND one repeated: the ink-on-accent
+                                  ratio standing in for accent-on-canvas. Corrected
+                                  when the dashboard recolour started quoting
+                                  16.67 a few lines down and the two disagreed. */
+  --accent-hover: #050C10;    /* 18.91:1 on canvas; --ink-inverse on it 19.69 (the
+                                  same conflation, same correction) — deeper along
+                                  the same dark axis (was 21.00) */
+  --accent-wash: #F2EAE1;     /* selected chip / row fill; --ink on it 17.51 (was
+                                  18.24) — == --surface-sunk, same relationship as
+                                  before (both were #F4F4F5); still ~3.9x the floor */
   --accent-ink: var(--ink-inverse);
 
   /* ── Lines ───────────────────────────────────────────────────────────────
-     Two, for two different jobs. Using --line on an input fails WCAG 1.4.11. */
-  --line: #E5E7EB;            /* 1.24:1 — DECORATIVE hairlines, dividers, exempt from 1.4.11 */
-  --line-control: #8A8A8F;    /* 3.44:1 on canvas, 3.13:1 on --surface-sunk — input / select /
-                                  control BOUNDARIES. Non-text AA, again sized by the worst
-                                  ground: #8E8E93 fails 1.4.11 at 2.97 on --surface-sunk. */
+     Two, for two different jobs. Using --line on an input fails WCAG 1.4.11.
+     Both warmed and re-measured against the new grounds, same method as Ink above. */
+  --line: #E8E2DC;            /* 1.23:1 (was 1.24) — DECORATIVE hairlines, dividers,
+                                  exempt from 1.4.11 */
+  --line-control: #897F73;    /* 3.77:1 on canvas (was 3.44), 3.30:1 on --surface-sunk
+                                  (was 3.13) — input / select / control BOUNDARIES.
+                                  Non-text AA, sized by the worst ground: --surface-sunk
+                                  again, same as before. */
 
   /* ── Signals — rare by design ────────────────────────────────────────────*/
   --danger: #B42318;          /* 6.24:1 on canvas; white on it 5.90 */
@@ -94,6 +175,14 @@
   --font-mono: var(--font-geist-mono);
   /* Headings inside the app shell only — see the note in app/layout.tsx. Body stays Geist. */
   --font-display: var(--font-space);
+
+  /* ⚠ The CARD's display face, and the card's only exception to `--font-sans`.
+     Applied by `card-page.tsx` to the owner's name and bio and to nothing else — see the
+     note above `instrumentSerif` in `app/layout.tsx` for why one extra family is allowed
+     here when `template-types.ts` forbids a second family per card.
+     Consumers write `var(--font-serif), var(--font-sans)`: if the face fails to load, a name
+     set in Geist looks like a decision and a name set in Times looks like a bug. */
+  --font-serif: var(--font-instrument-serif);
 
   /* ⚠ **The app chrome's face, and the reason it is a THIRD token rather than a new value
      for `--font-sans`.**
@@ -284,4 +373,38 @@
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
   --ease-lift: cubic-bezier(0.34, 1.24, 0.64, 1);   /* the "Saved" tick, and nothing else */
+
+  /* ── The dashboard has no palette of its own ─────────────────────────────
+     A `--dash-*` family lived here: seven values on the client's deck hue 168°,
+     scoped to `/dashboard` as the one place the app chrome was allowed a colour.
+     It was **deleted on 2026-09-20 at the client's own instruction** — "I
+     personally do not like this green shade ... the cream color and beige color
+     ... I want you to just add that itself and make it uniform."
+
+     Nothing replaced it, and that is the point: `/dashboard` now draws from the
+     Surfaces / Ink / Lines / Accent blocks above like every other screen. The
+     two consumers (`src/components/dashboard/activity-chart.tsx` and
+     `attention-list.tsx`) map onto that ladder with every ratio re-derived
+     against the CREAM grounds rather than name-swapped — see the Colour section
+     at the head of each. The short version:
+
+       page / panel ground   --canvas / --surface   1.07 apart
+       band, well, track     --surface-sunk         1.14 on --canvas
+       hairline              --line                 1.23 on --canvas (decorative)
+       graphical objects     --line-control         3.77 / 3.53 / 3.30 (1.4.11)
+       label + caption text  --ink-3                5.20 / 4.87 / 4.55 (1.4.3)
+       deep fill, white text --accent               16.67 on --canvas
+
+     ⚠ **Do not reintroduce a second app palette here without changing this
+     comment first.** The defect a scoped colour family produces is not a
+     contrast failure — every `--dash-*` value cleared its floor. It is that one
+     screen stops being the same product as the rest, and that every ratio in it
+     has to be re-derived against grounds no other screen has. That cost is now
+     paid off; a new family re-incurs it in full.
+
+     ⚠ A ratio in this file or in either dashboard component is a MEASUREMENT,
+     not a decoration. Every one was computed with `src/lib/contrast.ts` against
+     the hexes above. If a value moves, recompute — do not carry the old number
+     forward next to a new colour, which is exactly how the mint block came to
+     quote `--ink-3` at 4.96 on a ground that no longer existed. */
 }

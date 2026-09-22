@@ -1,8 +1,9 @@
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { CardPage, cardPageSurface } from "@/card/card-page";
+import { CardPage } from "@/card/card-page";
 import {
+  CardGround,
   MESH_BLOOMS,
   GROUND_PRIMARY_MIN,
   GROUND_SECONDARY_MIN,
@@ -228,7 +229,7 @@ describe("the card page is a stack of buttons, not a list of values", () => {
    * design replaced. Asserting exact equality — not merely "does not contain the value" —
    * is what makes adding the value back a red test rather than a judgement call in review.
    */
-  it("prints the owner's label on an action button and nothing else", () => {
+  it("prints the owner's VALUE on an action button, and speaks the label", () => {
     const resolved = resolveFixture(RICHEST.id);
     const { container } = render(<CardPage resolved={resolved} />);
     /* `fields` **and** `socialFields` — the same concatenation `<CardPage>` and `buildVcf` use.
@@ -249,8 +250,18 @@ describe("the card page is a stack of buttons, not a list of values", () => {
       expect(entry, button.outerHTML).toBeDefined();
       const row = (entry as NonNullable<typeof entry>).row;
 
-      expect(button.textContent?.trim()).toBe(row.label);
-      /* …and the value is reachable, just not painted. */
+      /* ⚠ **Reversed on 2026-09-17, and this assertion is the record of it.**
+         The row used to print `row.label` — "Work email" — on the argument that the action is
+         what the button does. It prints the VALUE now: a card is handed over so somebody can
+         see how to reach you, and a column of verbs tells a reader nothing they had not already
+         assumed. What is printed is `row.lines`, never `field.value`, which is what keeps
+         masking and coordinate suppression in force (§7.3) — those are applied by
+         `field-renderers.tsx` before any component sees a string. */
+      expect(button.textContent?.trim()).toBe(row.lines.join(""));
+      /* …and the LABEL is now the thing that is spoken and not painted. A sighted reader can
+         tell three addresses apart by reading them; a screen-reader user needs to be told which
+         is the work one. */
+      expect(button.getAttribute("aria-label")).toContain(row.label);
       expect(button.getAttribute("aria-label")).toContain(row.display);
     }
   });
@@ -302,9 +313,13 @@ describe("the card page is a stack of buttons, not a list of values", () => {
       (li) => li.dataset.cardRowKind as CardPageRowKind,
     );
 
-    /* In §6.4's order: work mobile → `tel:`; company (no destination) → note; UPI, bank and
-       crypto → masked. The order is the resolver's, not a re-sort that puts buttons first. */
-    expect(kinds).toEqual(["action", "note", "masked", "masked", "masked"]);
+    /* In §6.4's order: work mobile → `tel:`; then UPI, bank and crypto → masked. The order is
+       the resolver's, not a re-sort that puts buttons first.
+       ⚠ The `note` that used to sit second was the COMPANY, and it is gone from the stack
+       because the hero prints it — see "does not also list the promoted company as a row".
+       The row is subtracted, not reclassified, which is why the array is shorter rather than
+       differently spelled. */
+    expect(kinds).toEqual(["action", "masked", "masked", "masked"]);
     expect(container.querySelectorAll("[data-card-field-masked]")).toHaveLength(3);
   });
 
@@ -343,17 +358,88 @@ describe("the card page is a stack of buttons, not a list of values", () => {
     expect(row?.querySelectorAll("a")).toHaveLength(0);
   });
 
-  it("wears the Contact Book mark at the top, and does not make it a second way out", () => {
+  /**
+   * ⚠ **The hero's wordmark is the OWNER's company now, and Contact Book moved to the foot.**
+   *
+   * `[data-card-brand]` used to read "Contact Book", above the owner's own name. On a card
+   * somebody hands over at a networking event that is the product advertising itself louder
+   * than the person whose card it is, so the slot went to their company and the attribution
+   * went to `[data-card-credit]` at the bottom — where §8D.5 already put this page's one exit.
+   */
+  it("gives the hero wordmark to the owner's company, and credits Contact Book at the foot", () => {
     const resolved = resolveFixture(RICHEST.id);
+    const company = resolved.fields.find((f) => f.type === "COMPANY");
+    expect(company, "fixture must map a COMPANY for this to mean anything").toBeDefined();
+
     const { container } = render(<CardPage resolved={resolved} />);
     const brand = container.querySelector("[data-card-brand]");
+    const credit = container.querySelector("[data-card-credit]");
 
-    expect(brand?.textContent).toBe("Contact Book");
-    /* §8D.5 gives this page exactly one exit — the caption beneath the card. A link here,
-       above the owner's own name, would be the product advertising itself louder than the
-       person whose card this is. */
-    expect(brand?.closest("a")).toBeNull();
+    expect(brand?.textContent).toBe(company?.value);
     expect(container.querySelector("[data-card-hero]")?.contains(brand)).toBe(true);
+
+    expect(credit?.textContent).toBe("Made with Contact Book");
+    /* Still not a link, and still not in the hero — a second exit at the top is the thing
+       §8D.5 rules out, and moving the words did not change that. */
+    expect(credit?.closest("a")).toBeNull();
+    expect(container.querySelector("[data-card-hero]")?.contains(credit)).toBe(false);
+  });
+
+  /**
+   * ⚠ **THE MARK IS A SIBLING OF THE CREDIT, NEVER A CHILD OF IT.**
+   *
+   * The foot is a lockup now — the words, then the product's mark beneath them. The obvious
+   * implementation puts the mark inside `[data-card-credit]`, and it is wrong twice: it breaks
+   * the two suites that assert that element's exact text (`toHaveText` here and in
+   * `tests/e2e/public-card.spec.ts`), and, more importantly, it makes the attribution depend on
+   * an image loading. The credit has to survive as *text* — in a copy-paste, in a reader mode,
+   * to a screen reader, and on any connection where the asset does not arrive.
+   *
+   * The mark is `aria-hidden` with an empty alt for the other half of the same argument: the
+   * line directly above already says the words, so announcing them again is the footer read
+   * twice.
+   */
+  it("signs the foot with the product's mark, beside the credit text and never inside it", () => {
+    const { container } = render(<CardPage resolved={resolveFixture(RICHEST.id)} />);
+
+    const footer = container.querySelector("[data-card-footer]");
+    const credit = container.querySelector("[data-card-credit]");
+    const mark = container.querySelector("[data-card-credit-logo]");
+
+    expect(footer).not.toBeNull();
+    expect(mark, "the card no longer signs itself").not.toBeNull();
+
+    /* Siblings under the footer — the text is intact and the mark is next to it, not in it. */
+    expect(credit?.contains(mark)).toBe(false);
+    expect(footer?.contains(credit)).toBe(true);
+    expect(footer?.contains(mark)).toBe(true);
+    expect(credit?.textContent).toBe("Made with Contact Book");
+
+    /* Decorative here, because the words are already above it. */
+    expect(mark).toHaveAttribute("aria-hidden", "true");
+    expect(mark).toHaveAttribute("alt", "");
+
+    /* ⚠ Intrinsic size stated, so the foot reserves its box and the card does not jump by the
+       mark's own height the moment it loads — a reflow under the reader's thumb. */
+    expect(mark).toHaveAttribute("width");
+    expect(mark).toHaveAttribute("height");
+  });
+
+  /**
+   * The company is promoted, which means it is SUBTRACTED from the stack — the same rule
+   * `PHOTO` follows. Printing it under the name and again as a row is the card repeating itself
+   * two inches apart, and the row is the less useful copy: a COMPANY has no destination, so it
+   * is a note either way.
+   */
+  it("does not also list the promoted company as a row", () => {
+    const resolved = resolveFixture(RICHEST.id);
+    const company = resolved.fields.find((f) => f.type === "COMPANY");
+    const { container } = render(<CardPage resolved={resolved} />);
+
+    expect(container.querySelector(`[data-card-field="${company?.id}"]`)).toBeNull();
+    /* ⚠ …and it is still in the resolved card, so `buildVcf` still writes `ORG:`. The hero is
+       a view over the fields, never a filter on them. */
+    expect(resolved.fields.some((f) => f.id === company?.id)).toBe(true);
   });
 
   it("paints the stack from the card's own palette, never from a hard-coded colour", () => {
@@ -893,11 +979,29 @@ describe("the painted ground", () => {
    * prose: **every** texture paints over **every** finish. The old renderer refused a motif on
    * anything but `flat`, which is half of why five wallpapers looked like two.
    */
+  /**
+   * ⚠ **Rendered through `<CardGround>` rather than `<CardPage>`, since 2026-09-17.**
+   *
+   * These assertions are about the texture ENGINE — how many layers a motif paints, at what
+   * opacity, on what tile. They reached it through the card page because the card page was its
+   * only renderer. It no longer is: `<CardCover>` passes `texture="none"` while the composition
+   * is evaluated without a motif, so asserting the engine through the page would now be
+   * asserting that the page does not use it — which is true, unrelated, and would delete the
+   * only coverage the engine has.
+   *
+   * `<CardGround>` is the component that owns the layers and is still rendered with a real
+   * texture by the builder's Design panel swatches. Every assertion below is unchanged; only
+   * the mount is.
+   */
+  function mountGround(resolved: ResolvedCard) {
+    return render(<CardGround palette={resolved.palette} {...resolved.surface} />);
+  }
+
   it("paints a texture on every finish, and nothing at all for `none`", () => {
     for (const finish of FINISH_ORDER) {
       for (const texture of TEXTURE_ORDER) {
         const resolved = withSurface(resolveFixture(RICHEST.id), { finish, texture });
-        const { container } = render(<CardPage resolved={resolved} />);
+        const { container } = mountGround(resolved);
         const layers = container.querySelectorAll<HTMLElement>("[data-card-ground-motif]");
         const why = `${finish}/${texture}`;
 
@@ -937,7 +1041,7 @@ describe("the painted ground", () => {
   it.each(TEXTURE_ORDER.filter((t) => t !== "none"))("scales %s off its authored tile", (texture) => {
     for (const textureScale of ["fine", "regular", "large"] as const) {
       const resolved = withSurface(resolveFixture(RICHEST.id), { texture, textureScale });
-      const { container } = render(<CardPage resolved={resolved} />);
+      const { container } = mountGround(resolved);
       const motif = container.querySelector<HTMLElement>("[data-card-ground-motif]");
 
       expect(motif?.getAttribute("data-card-ground-motif")).toBe(texture);
@@ -957,7 +1061,7 @@ describe("the painted ground", () => {
         /* The GROUND's markup, not the card's: the owner's portrait is a real `/public`
            image and is supposed to be one. What may never appear is a remote asset behind
            the card, which is the thing a "wallpaper" acquires during a redesign. */
-        const ground = render(<CardPage resolved={resolved} />).container.querySelector(
+        const ground = mountGround(resolved).container.querySelector(
           "[data-card-ground]",
         ) as HTMLElement;
         const html = ground.outerHTML;
@@ -1011,9 +1115,27 @@ describe("the painted ground", () => {
 describe("the card's logo", () => {
   const LOGO = "https://cdn.example/mark.png";
 
+  /**
+   * ⚠ **`coverUrl` is set EXPLICITLY here, and that is the point of the fixture rather than
+   * noise in it.**
+   *
+   * These tests guard the two-slot split: a card wearing a logo must still show its cover
+   * photograph, because the logo belongs to the badge. They used to get that cover for free —
+   * `resolveCover` fell back to the mapped `PHOTO` field and then to `user.avatarUrl`, so a
+   * fixture that set no cover still resolved one.
+   *
+   * That fallback was removed on 2026-09-20: it rendered a full-bleed photograph on cards whose
+   * own builder panel read "Cover · None", which the owner could not remove because they had
+   * never set it. With it gone, a fixture that sets no cover correctly resolves `kind: "none"` —
+   * so asserting "the photograph survives the logo" against one would have been asserting
+   * nothing at all. The cover is now a real value the card owns, which is the only way it can
+   * ever be one.
+   */
+  const COVER = "https://cdn.example/cover.jpg";
+
   function resolveWith(logoUrl: string | null): ResolvedCard {
     return resolveCard(
-      { ...cardLedgerDemo, logoUrl },
+      { ...cardLedgerDemo, logoUrl, coverUrl: COVER },
       fixtureUser,
       fixtureGroups,
       fixtureFields,
@@ -1048,20 +1170,54 @@ describe("the card's logo", () => {
     expect(drawn).toHaveLength(1);
   });
 
-  /* The fixture owner has a profile photo, so "no logo" falls to the photo — not to a monogram.
-     That IS the ladder: a logo replaces the circle's content, whatever that content would be. */
-  it("falls back to the owner's photo when there is no logo, on both variants", () => {
+  /* The FACE has one image slot and one ladder: a logo replaces the circle's content, whatever
+     that content would be, so "no logo" falls to the owner's photo. Unchanged. */
+  it("the face falls back to the owner's photo when there is no logo", () => {
     const resolved = resolveWith(null);
     expect(resolved.avatar.kind).toBe("photo");
 
-    for (const { container } of [
-      render(<ShareFace resolved={resolved} mode="full" />),
-      render(<CardPage resolved={resolved} />),
-    ]) {
-      expect(
-        container.querySelector("[data-card-portrait]")?.getAttribute("data-card-portrait"),
-      ).toBe("photo");
-    }
+    const { container } = render(<ShareFace resolved={resolved} mode="full" />);
+    expect(
+      container.querySelector("[data-card-portrait]")?.getAttribute("data-card-portrait"),
+    ).toBe("photo");
+  });
+
+  /**
+   * ⚠ **The PAGE has two image slots, and they do not share a ladder.**
+   *
+   * One slot could not serve this composition: the cover wants the person's photograph and the
+   * badge wants the brand mark, and they appear at the same time. Worse, the single ladder
+   * ranked the logo FIRST — so uploading a logo deleted the owner's face from their own card.
+   *
+   * So: COVER = `PHOTO` field → `User.avatarUrl` → none. BADGE = `Card.logoUrl` → monogram, with
+   * no photograph in it at all — repeating the face at 72px directly beneath a cover that is
+   * already the face is two objects in a hero composed for one.
+   */
+  it("the page puts the photo in the cover and the mark in the badge, independently", () => {
+    const withLogo = resolveWith(LOGO);
+    expect(withLogo.cover.kind).toBe("photo");
+    expect(withLogo.badge.kind).toBe("logo");
+
+    const { container } = render(<CardPage resolved={withLogo} />);
+    /* The photograph survives the logo — this is the bug the split exists to fix. */
+    expect(container.querySelector("[data-card-cover-photo]")?.getAttribute("src")).toBe(
+      withLogo.cover.kind === "photo" ? withLogo.cover.url : null,
+    );
+    expect(
+      container.querySelector("[data-card-portrait]")?.getAttribute("data-card-portrait"),
+    ).toBe("logo");
+  });
+
+  it("the page wears a monogram badge over the photo when there is no logo", () => {
+    const resolved = resolveWith(null);
+    expect(resolved.cover.kind).toBe("photo");
+    expect(resolved.badge.kind).toBe("monogram");
+
+    const { container } = render(<CardPage resolved={resolved} />);
+    expect(container.querySelector("[data-card-cover-photo]")).not.toBeNull();
+    expect(
+      container.querySelector("[data-card-portrait]")?.getAttribute("data-card-portrait"),
+    ).toBe("monogram");
   });
 
   it("falls all the way to the monogram when there is neither", () => {

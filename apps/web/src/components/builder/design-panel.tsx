@@ -2,11 +2,17 @@
 
 import type { ReactElement } from "react";
 
+import { selectedLook, type CardLook } from "@/card/card-looks";
 import { FINISHES, TEXTURES, type Finish, type Texture, type TexturePresence, type TextureScale } from "@/card/card-surface";
 import type { PaletteId, TemplatePalette } from "@/card/template-palettes";
 
+import { Input } from "@/components/primitives/input";
+import { TextArea } from "@/components/primitives/textarea";
+
 import { BackgroundPicker, groundLabel } from "./background-picker";
+import { CoverPicker } from "./cover-picker";
 import { LogoPicker } from "./logo-picker";
+import { LookPicker } from "./look-picker";
 import { PanelGroup, PanelRow } from "./panel-row";
 import {
   FinishPicker,
@@ -92,7 +98,32 @@ export interface DesignPanelProps {
   onTexture: (texture: Texture) => void;
   onPresence: (presence: TexturePresence) => void;
   onScale: (scale: TextureScale) => void;
+  /** A curated look — palette and finish at once, clearing any custom colour. */
+  onLook: (look: CardLook) => void;
+
+  /* ── The three UI-only slots. Not persisted — see the ⚠ on `ContactCard`. ──────────────── */
+  coverUrl: string | null;
+  onCover: (previewUrl: string | null) => void;
+  headline: string;
+  onHeadline: (headline: string) => void;
+  bio: string;
+  onBio: (bio: string) => void;
 }
+
+/**
+ * How long a position line and a bio may be.
+ *
+ * ⚠ Enforced here because nothing else can yet — there is no column and therefore no server
+ * validation. The numbers are the ones proposed to the backend in `ContactCard`'s ⚠ block, so
+ * the limit an owner meets today is the limit they will meet after the columns land rather than
+ * a stricter one that silently relaxes, or a looser one that starts rejecting saves.
+ *
+ * They are also the numbers the COMPOSITION holds: the hero centres the bio at a 34ch measure,
+ * and past roughly 240 characters it stops being a bio and starts pushing the first field row
+ * off a phone screen.
+ */
+const HEADLINE_MAX = 80;
+const BIO_MAX = 240;
 
 export function DesignPanel({
   logoUrl,
@@ -112,8 +143,16 @@ export function DesignPanel({
   onTexture,
   onPresence,
   onScale,
+  onLook,
+  coverUrl,
+  onCover,
+  headline,
+  onHeadline,
+  bio,
+  onBio,
 }: DesignPanelProps): ReactElement {
   const textured = texture !== "none";
+  const look = selectedLook(paletteId, finish, groundHex);
 
   return (
     <div data-design-panel="" className="flex flex-col gap-8">
@@ -122,7 +161,13 @@ export function DesignPanel({
           way of painting *that colour*. A logo depends on nothing below it and nothing below it
           depends on a logo; it is the one decision here that is about the owner rather than
           about the card's material, so it is read first and then left alone. */}
-      <PanelGroup title="Brand">
+      {/* ⚠ **"Identity", not "Brand", and it is no longer one row.**
+          It held the logo alone, and the heading was accurate for that. It now holds the four
+          things the hero prints — the mark, the photograph behind it, the position and the bio —
+          which are one decision ("who is this card") taken four ways. The material system below
+          is the other decision, and keeping the two under separate headings is what stops the
+          panel reading as six unrelated dials again. */}
+      <PanelGroup title="Identity">
         <PanelRow
           label="Logo"
           hint="Shown on the card and on the pass. JPEG, PNG or WebP."
@@ -141,8 +186,108 @@ export function DesignPanel({
             onRemove={onRemoveLogo}
           />
         </PanelRow>
+
+        <PanelRow
+          label="Cover"
+          /* ⚠ The hint says "not saved yet" out loud. There is no column for this, so a reload
+             drops it — and a control that silently forgets is worse than one that admits it. */
+          hint="The photo behind the hero. Not saved yet — it will reset on reload."
+          value={coverUrl === null ? "None" : "Added"}
+          id="cover"
+        >
+          <CoverPicker
+            coverUrl={coverUrl}
+            onPick={(previewUrl) => onCover(previewUrl)}
+            onRemove={() => onCover(null)}
+          />
+        </PanelRow>
+
+        <PanelRow
+          label="Position"
+          hint="Printed under the name. Overrides the job title from your profile."
+          value={headline.trim() === "" ? "From profile" : headline}
+          id="headline"
+        >
+          <Input
+            label="Position"
+            hideLabel
+            id="headline"
+            data-headline-input=""
+            value={headline}
+            maxLength={HEADLINE_MAX}
+            placeholder="Founder & CEO"
+            onChange={(event) => onHeadline(event.target.value)}
+          />
+        </PanelRow>
+
+        <PanelRow
+          label="Bio"
+          hint="One or two lines under the position."
+          value={bio.trim() === "" ? "None" : `${bio.trim().length}/${BIO_MAX}`}
+          id="bio"
+          last
+        >
+          <TextArea
+            label="Bio"
+            hideLabel
+            id="bio"
+            data-bio-input=""
+            value={bio}
+            rows={3}
+            maxLength={BIO_MAX}
+            placeholder="Connecting people, ideas and opportunities to create lasting impact."
+            onChange={(event) => onBio(event.target.value)}
+          />
+        </PanelRow>
       </PanelGroup>
 
+      {/* ⚠ **Look comes before the dials, and the dials moved behind a disclosure.**
+
+          The panel used to open on Background and then ask for Finish, Texture, Strength and
+          Size. Four of those six ask the owner to art-direct a surface — how strong the grain,
+          how large the dots — which is a question somebody setting up a contact card has no
+          reason to hold an opinion about and the most likely way for them to make their own
+          card worse.
+
+          A look answers all of them at once, and picking one writes the SAME columns the dials
+          wrote, so nothing new is stored and no migration exists. The dials survive intact
+          underneath: an owner with brand colours has a real need the twelve cannot serve, and
+          this is a default rather than a cage. */}
+      <PanelGroup title="Look">
+        <PanelRow
+          label="Style"
+          hint="Colour and finish, already paired."
+          value={look === null ? "Custom" : look.name}
+          id="look"
+          last
+        >
+          <LookPicker
+            paletteId={paletteId}
+            finish={finish}
+            groundHex={groundHex}
+            selected={look}
+            onSelect={onLook}
+          />
+        </PanelRow>
+      </PanelGroup>
+
+      {/* A native `details`, not a state-driven panel: it needs no JavaScript to open, it is
+          keyboard-operable and screen-reader-announced for free, and its open state is not
+          something the builder should be remembering across a save. */}
+      <details data-design-advanced="" className="group">
+        <summary
+          className="cursor-pointer list-none select-none text-sm text-ink-3 transition-colors hover:text-ink marker:content-none"
+          data-design-advanced-toggle=""
+        >
+          <span className="inline-flex items-center gap-2">
+            <span aria-hidden="true" className="transition-transform group-open:rotate-90">
+              ›
+            </span>
+            Advanced
+          </span>
+        </summary>
+
+        <div className="flex flex-col gap-8 pt-6">
       <PanelGroup title="Colour">
         <PanelRow
           label="Background"
@@ -212,6 +357,8 @@ export function DesignPanel({
           </>
         )}
       </PanelGroup>
+        </div>
+      </details>
     </div>
   );
 }

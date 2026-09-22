@@ -14,6 +14,7 @@ import {
 } from "react";
 
 import { canBuildVcf } from "@/card/build-vcf";
+import { saveLocalCardDraft, withLocalCardDraft } from "@/lib/card-local-draft";
 import { resolveCard } from "@/card/resolve-card";
 import { seedFieldIds } from "@/card/template-seed";
 import { TEMPLATE_LIST } from "@/card/templates";
@@ -31,12 +32,10 @@ import { fetchCardDetail, fetchProfileData } from "@/lib/api/browser-loaders";
 import { toScreenError } from "@/lib/api/errors";
 import { toAppearanceDto } from "@/lib/api/card-appearance";
 import { toCardFieldEntries, toApiCardKind } from "@/lib/api/map";
-import type { ApiFieldCategory } from "@/lib/api/schema";
 import { useApiResource } from "@/lib/use-api";
 import type {
   ContactCard,
   FieldGroup,
-  FieldType,
   ProfileField,
   ResolvedCard,
   User,
@@ -54,7 +53,7 @@ import { BuilderSkeleton } from "./builder-skeleton";
 import { DesignPanel } from "./design-panel";
 import { DroppedFieldsNotice } from "./dropped-fields-notice";
 import { EmptyCardWarning } from "./empty-card-warning";
-import type { CreatedField } from "./field-sources";
+import type { CreatedField, FieldDraft } from "./field-sources";
 import { FieldPicker } from "./field-picker";
 import { PanelHead } from "./panel-head";
 import {
@@ -160,23 +159,18 @@ import {
  */
 
 /**
- * Which profile category a quickly-authored field lands in.
+ * ⚠ `CATEGORY_FOR_QUICK_TYPE` lived here and is DELETED.
  *
- * The builder's create form asks for a *type*, not a category — one fewer decision mid-build. The
- * category still has to be sent, so it is inferred the same way the public card page infers it:
- * a presentation default that decides which section the field appears under on `/profile`, and
- * which the owner can change there.
+ * It mapped a `FieldType` to the category a field would be filed under — every `PHONE` to
+ * `PERSONAL`, every `URL` to `WORK` — because the composer only asked for a type. That guess was
+ * wrong often enough to matter: a work mobile landed in the card's PERSONAL section and the only
+ * way to move it was a trip to `/profile`.
+ *
+ * The composer asks for the category first now (`field-catalogue.ts`), so the draft carries it
+ * and there is nothing left to infer. Do not reintroduce a fallback here: a draft with no
+ * category is a composer bug, and defaulting it would hide that bug behind a plausible wrong
+ * answer — which is exactly what this table did.
  */
-const CATEGORY_FOR_QUICK_TYPE: Readonly<Partial<Record<FieldType, ApiFieldCategory>>> = {
-  PHONE: "PERSONAL",
-  EMAIL: "PERSONAL",
-  ADDRESS: "PERSONAL",
-  JOB_TITLE: "WORK",
-  COMPANY: "WORK",
-  URL: "WORK",
-  SOCIAL_LINK: "SOCIAL",
-  TEXT: "CUSTOM",
-};
 
 /* ── the data this screen renders ─────────────────────────────────────────────────────── */
 
@@ -236,7 +230,12 @@ export function BuilderClient({ cardId }: BuilderClientProps): ReactElement {
 
   const state = result.state;
   const data = result.data?.data ?? null;
-  const card = result.data?.card ?? null;
+  /* ⚠ TEMPORARY: merges the cover, position and bio the API has no column for, so reopening the
+     builder shows what the owner set rather than three empty controls. `initialBuilderState`
+     already reads them off the card (`card.coverUrl ?? null`), so this one call is the whole
+     hydration — see `lib/card-local-draft.ts`. */
+  const loadedCard = result.data?.card ?? null;
+  const card = loadedCard === null ? null : withLocalCardDraft(loadedCard);
   const error = result.error;
 
   /**
@@ -438,14 +437,12 @@ function Builder({
    * tick until **Create card** does the pair. `createAndAddField` still reports success, because
    * from the owner's side the field *was* created and *is* on the card.
    */
-  async function createAndAddField(draft: {
-    type: FieldType;
-    label: string;
-    value: string;
-  }): Promise<CreatedField | null> {
+  async function createAndAddField(draft: FieldDraft): Promise<CreatedField | null> {
     setCreatingField(true);
     try {
-      const category = CATEGORY_FOR_QUICK_TYPE[draft.type] ?? "PERSONAL";
+      /* ⚠ The owner's own choice, straight through. See the note where the guess table used
+         to be for why nothing derives this any more. */
+      const category = draft.category;
       const created = await profileApi.createField({
         // Ungrouped: a field authored mid-build belongs to no particular job or account, and the
         // profile's own grouping is where that decision is made.
@@ -702,6 +699,15 @@ function Builder({
               fields: toCardFieldEntries(state.fieldIds),
             });
           }
+          /* ⚠ **The three UI-only slots, held locally — see `card-local-draft.ts`.**
+             They cannot go in `POST /cards` because no column exists for them, and this is the
+             first moment there is a card id to key them to. Delete this line the day the API
+             carries them. */
+          saveLocalCardDraft(created.id, {
+            coverUrl: state.coverPreviewUrl,
+            headline: state.headline,
+            bio: state.bio,
+          });
           dispatch({ kind: "save" });
           /* ⚠ Swap the object URL for the server's own, now that there is one. Without this the
              preview keeps rendering from a `blob:` URL that is revoked on unmount and means
@@ -729,6 +735,14 @@ function Builder({
           await profileApi.updateField(edit.fieldId, { label: edit.label, value: edit.value });
         }
 
+        /* The same three slots on the update path — see the note on the create path above. */
+        if (state.cardId !== null) {
+          saveLocalCardDraft(state.cardId, {
+            coverUrl: state.coverPreviewUrl,
+            headline: state.headline,
+            bio: state.bio,
+          });
+        }
         dispatch({ kind: "save" });
         const edited = values.length;
         toast({
@@ -984,6 +998,22 @@ function Builder({
                        colour of the same card. */
                     palette={resolved.palette}
                     onPreset={(paletteId) => dispatch({ kind: "palette", paletteId })}
+                    /* ⚠ Two dispatches rather than a new `look` reducer action.
+                       They are the two transitions the reducer already defines, and `palette`
+                       carries the load-bearing half — it unsets `groundHex`, so picking a look
+                       cannot leave a custom colour rendering behind a ticked cell. React batches
+                       both into one render, so the preview never shows the intermediate state.
+                       A dedicated action would add a third way to write the same two columns. */
+                    coverUrl={state.coverPreviewUrl}
+                    onCover={(previewUrl) => dispatch({ kind: "cover", previewUrl })}
+                    headline={state.headline}
+                    onHeadline={(headline) => dispatch({ kind: "headline", headline })}
+                    bio={state.bio}
+                    onBio={(bio) => dispatch({ kind: "bio", bio })}
+                    onLook={(look) => {
+                      dispatch({ kind: "palette", paletteId: look.paletteId });
+                      dispatch({ kind: "finish", finish: look.finish });
+                    }}
                     onGround={(hex) => dispatch({ kind: "ground", hex })}
                     onFinish={(finish) => dispatch({ kind: "finish", finish })}
                     onTexture={(texture) => dispatch({ kind: "texture", texture })}

@@ -1,8 +1,11 @@
 "use client";
 
-import { useRef, type ReactElement } from "react";
+import { useRef, useState, type ReactElement } from "react";
 
 import { Button } from "@/components/primitives/button";
+
+import { ImageCropDialog, dataUrlToFile } from "@/components/builder/image-crop-dialog";
+import { imageToDataUrl } from "@/lib/image-to-data-url";
 
 /**
  * **Logo** — the card's brand mark, and the one control on this screen that sends a file.
@@ -54,7 +57,15 @@ export interface LogoPickerProps {
  */
 const ACCEPT = "image/jpeg,image/png,image/webp";
 
+/* The badge is square on the card (`BADGE × BADGE`, `object-fit: cover`), so the aperture is
+   square too — a logo composed in a letterbox would be re-cropped by the badge and the owner
+   would never see what they chose. */
+const LOGO_ASPECT = 1;
+const LOGO_MAX_EDGE = 512;
+
 export function LogoPicker({ logoUrl, busy, onPick, onRemove }: LogoPickerProps): ReactElement {
+  const [cropping, setCropping] = useState<string | null>(null);
+  const [reading, setReading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   return (
@@ -72,7 +83,13 @@ export function LogoPicker({ logoUrl, busy, onPick, onRemove }: LogoPickerProps)
              here — re-picking the file you just cropped is the normal way this control is used a
              second time. */
           event.target.value = "";
-          if (file !== undefined) onPick(file);
+          if (file === undefined) return;
+          /* Downscale, then compose, then upload the baked square — the raw file never reaches
+             `onPick`, so what is uploaded is exactly what the owner framed. */
+          setReading(true);
+          void imageToDataUrl(file)
+            .then((result) => setCropping(result.dataUrl))
+            .finally(() => setReading(false));
         }}
       />
 
@@ -82,7 +99,7 @@ export function LogoPicker({ logoUrl, busy, onPick, onRemove }: LogoPickerProps)
         <Button
           variant="secondary"
           data-logo-upload=""
-          loading={busy}
+          loading={busy || reading}
           loadingLabel="Uploading…"
           onClick={() => inputRef.current?.click()}
         >
@@ -90,11 +107,38 @@ export function LogoPicker({ logoUrl, busy, onPick, onRemove }: LogoPickerProps)
         </Button>
 
         {logoUrl === null ? null : (
-          <Button variant="text-link" data-logo-remove="" disabled={busy} onClick={onRemove}>
-            Remove
-          </Button>
+          <>
+            {/* Re-frames the saved square. "Replace" is the way back to the original file — see
+                the same note on `CoverPicker`. */}
+            <Button
+              variant="text-link"
+              data-logo-adjust=""
+              disabled={busy}
+              onClick={() => setCropping(logoUrl)}
+            >
+              Adjust
+            </Button>
+            <Button variant="text-link" data-logo-remove="" disabled={busy} onClick={onRemove}>
+              Remove
+            </Button>
+          </>
         )}
       </div>
+
+      <ImageCropDialog
+        open={cropping !== null}
+        onOpenChange={(next) => {
+          if (!next) setCropping(null);
+        }}
+        src={cropping}
+        aspect={LOGO_ASPECT}
+        maxEdge={LOGO_MAX_EDGE}
+        title="Position your logo"
+        onApply={(dataUrl) => {
+          onPick(dataUrlToFile(dataUrl, "logo.jpg"));
+          setCropping(null);
+        }}
+      />
     </div>
   );
 }

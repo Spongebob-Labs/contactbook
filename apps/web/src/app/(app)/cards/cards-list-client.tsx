@@ -5,6 +5,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState, type ReactElement } from "react";
 
 import { resolveCard } from "@/card/resolve-card";
+/* ⚠ TEMPORARY: merges the cover, position and bio the API has no column for. Delete the
+   import and the call together the day it does — see `lib/card-local-draft.ts`. */
+import { withLocalCardDraft } from "@/lib/card-local-draft";
+/* ⚠ TEMPORARY, and owner-facing ONLY — never on a surface a recipient can open. See the
+   module note in `lib/card-demo-fill.ts`. */
+import { withDemoFill } from "@/lib/card-demo-fill";
 import { CARD_TYPE_LABELS, CardThumbTile } from "@/components/app";
 import {
   EmptyFilteredState,
@@ -101,12 +107,18 @@ export function emptyCardsData(real: CardsData): CardsData {
  * **no filter is responsible for that**, so the first-run empty is the honest verdict even
  * with a query in the box. Hence `isFiltered: isFiltering && cards.length > 0`.
  *
- * ── A thumb QR encodes nothing, and that is correct ──────────────────────────────────
+ * ── ⚠ A TILE DRAWS THE CARD, AND NOTHING OF THIS SCREEN'S OWN ────────────────────────
  *
- * Every tile renders a live `<ShareFace mode="thumb">`. Its QR glyph draws rings at
- * 1:1:1:1:1 rather than a finder pattern's 1:1:3:1:1, so no decoder can locate a symbol in
- * it — that is AC-09(h) and §8A.5, asserted as a *requirement* in `cards-list.spec.ts`.
- * Do not "fix" it into a real encode.
+ * Every tile is a live `<CardPage>` at thumbnail scale: the card's cover photograph, its logo,
+ * its palette, its rows. **Nothing this list invents may appear inside one.** A "Tap for QR"
+ * pill and a flip to a QR face were added on 2026-09-21 and removed the same day — a tile is a
+ * picture of the card, and a reader must be able to trust that what they see is what the card
+ * is. `<CardThumbTile>` carries the full reasoning.
+ *
+ * The whole tile is one stretched link to `/cards/{id}`, so a click anywhere on a card opens
+ * it. That is also what makes the rule above structural rather than a convention: a control
+ * under a full-bleed link is unreachable by pointer, so a tile that navigates cannot also hold
+ * a button.
  */
 
 /**
@@ -123,8 +135,8 @@ const NEW_CARD_HREF = "/cards/new";
 const GRID_CLASS = "grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3";
 
 /**
- * §6.5 caps a `thumb` at `scale 0.5` of the 400px design canvas, so a track wider than
- * 200px draws no more card — only a wider empty box around one.
+ * §6.5 caps a `thumb` at `scale 0.5` of the design canvas, so a track wider than 200px draws no
+ * more card — only a wider empty box around one.
  *
  * The three widths are `n × 200 + (n − 1) × 24` for the three column counts, which is
  * exactly what `LoadingSkeleton variant="card-grid"` lays out at the same breakpoints.
@@ -153,8 +165,12 @@ const GRID_CLASS = "grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3";
  * | 414      | 390         | 1.00  | 336   | 54    |
  * | `md` +   | two-up      | 0.595 | 200   | —     |
  *
- * `--card-thumb-scale` is read by `<ShareFace mode="thumb">`; see the note there for why the
- * size is a CSS variable rather than the `thumbWidth` prop. **The cap and the scale are the same
+ * `--card-thumb-scale` is read by `<CardThumbTile>` and by `<CardPageThumb>` inside it; see the
+ * note in `share-face.tsx` for why the size is a CSS variable rather than a prop.
+ *
+ * ⚠ These are **widths**. The tile's height is `TILE_CROP_HEIGHT` in `card-thumb-tile.tsx`;
+ * nothing in this table needed re-deriving when the crop grew, which is exactly why the tile
+ * kept `FACE_WIDTH` as its width. **The cap and the scale are the same
  * number twice** — the `<ul>`'s `max-w` reserves the column and the scale paints inside it — so
  * changing one without the other gives a card floating in an over-wide track, or a clipped one.
  *
@@ -182,7 +198,7 @@ const CARD_TYPE_ORDER: readonly CardType[] = ["BUSINESS", "PERSONAL", "PAYMENT",
 function resolveAll(data: CardsData): ResolvedCard[] {
   return [...data.cards]
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-    .map((card) => resolveCard(card, data.user, data.groups, data.fields));
+    .map((card) => resolveCard(withDemoFill(withLocalCardDraft(card)), data.user, data.groups, data.fields));
 }
 
 /**
@@ -210,8 +226,8 @@ function resultsLabel(count: number): string {
  * Deliberately generic: `loading.tsx` at this segment also covers `/cards/new` and
  * `/cards/[cardId]` whenever those segments have no nearer `loading.tsx` of their own, so
  * this must not claim to be the cards list in words. It is layout-matched instead — a
- * header block at the header's rhythm, then six card bones at the real 400×860 aspect
- * (§8D.3's loading column), never a spinner.
+ * header block at the header's rhythm, then six bones at `TILE_ASPECT_CLASS`, the tile's own
+ * 336×620 (§8D.3's loading column), never a spinner.
  */
 export function CardsListSkeleton(): ReactElement {
   return (

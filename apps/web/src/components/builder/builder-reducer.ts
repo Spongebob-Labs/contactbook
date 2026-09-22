@@ -139,6 +139,29 @@ export interface BuilderState {
    * was actually uploaded — never where the builder decided one should be.
    */
   readonly logoUrl: string | null;
+
+  /* ── ⚠ THREE UI-ONLY SLOTS. NO API COLUMN, NOTHING PERSISTED ──────────────────────────────
+   *
+   * See the block comment on `ContactCard` for what the backend has to add. Until it does,
+   * these live here and travel to the renderer through {@link builderCard}; Save does not send
+   * them and a reload drops them. They are on this state rather than in component-local state
+   * so the preview takes them through the same one resolution as everything else (I-5) — when
+   * the columns land, making them real is a mapping and not a rewrite.
+   */
+
+  /**
+   * An object URL for a cover the owner picked, or `null`.
+   *
+   * ⚠ One slot rather than the `file` + `previewUrl` pair the logo carries, and the asymmetry is
+   * honest: the logo's pair exists because a logo has a *server* state distinct from the chosen
+   * file. A cover has no server state at all yet, so a second field would be modelling a
+   * distinction that does not exist.
+   */
+  readonly coverPreviewUrl: string | null;
+  /** The position line under the name. `""` means "not set" and collapses the slot. */
+  readonly headline: string;
+  /** The bio under the position. `""` means "not set" and collapses the slot. */
+  readonly bio: string;
   /**
    * A file the owner chose for a card **that does not exist yet**, waiting for `POST /cards`.
    *
@@ -196,6 +219,9 @@ export type BuilderAction =
    */
   | { kind: "template"; templateId: TemplateId; seed: readonly string[] }
   | { kind: "palette"; paletteId: PaletteId }
+  | { kind: "cover"; previewUrl: string | null }
+  | { kind: "headline"; headline: string }
+  | { kind: "bio"; bio: string }
   /**
    * A free ground colour, `#RRGGBB` from the Design panel's colour input.
    *
@@ -254,6 +280,11 @@ export function builderInitialState({ card, userId, seed }: BuilderInit): Builde
       name: BUILDER_NEW_CARD_NAME,
       cardType: seedCardType(DEFAULT_TEMPLATE_ID),
       publicUrl: BUILDER_PREVIEW_PUBLIC_URL,
+      /* The three UI-only slots start empty on a new card, and on a loaded one too — see below.
+         Nothing to seed from: the API sends no columns for them yet. */
+      coverPreviewUrl: null,
+      headline: "",
+      bio: "",
       templateId: DEFAULT_TEMPLATE_ID,
       paletteId: TEMPLATES[DEFAULT_TEMPLATE_ID].paletteId,
       groundHex: undefined,
@@ -280,6 +311,14 @@ export function builderInitialState({ card, userId, seed }: BuilderInit): Builde
     userId: card.userId,
     name: card.name,
     cardType: card.type,
+    /* ⚠ **Seeded from the card, which today always means empty — and that is the bug to expect
+       when the columns land.** `toContactCard` never populates these three, so a saved card
+       comes back without them and the owner's cover, position and bio are gone on reload. Read
+       from `card` rather than hard-coded to `null`/`""` so that the moment the mapper starts
+       populating them, this rehydrates with no change here. */
+    coverPreviewUrl: card.coverUrl ?? null,
+    headline: card.headline ?? "",
+    bio: card.bio ?? "",
     publicUrl: card.publicUrl,
     templateId: card.templateId,
     /* A card with no `paletteId` is wearing its template's default and has *not* chosen —
@@ -355,6 +394,20 @@ export function builderReducer(state: BuilderState, action: BuilderAction): Buil
         paletteChosen: true,
         dirty: true,
       };
+
+    case "cover":
+      /* ⚠ **The old object URL is NOT revoked here, and that is the reducer staying pure.**
+         `URL.revokeObjectURL` is a side effect on a browser global; a reducer that performs one
+         cannot be replayed, and `builder-reducer.test.ts` runs every transition without a DOM.
+         The picker owns the lifetime of the URL it minted — it revokes the previous one before
+         dispatching the next — which is the same split `logo-pending` already uses. */
+      return { ...state, coverPreviewUrl: action.previewUrl, dirty: true };
+
+    case "headline":
+      return { ...state, headline: action.headline, dirty: true };
+
+    case "bio":
+      return { ...state, bio: action.bio, dirty: true };
 
     case "ground":
       /* The mirror image, and deliberately **not** normalised, validated or rejected. The
@@ -501,6 +554,13 @@ export function builderCard(state: BuilderState): ContactCard {
      * answers. So this is a fallback, not a precedence rule that has to keep being right.
      */
     logoUrl: state.logoPreviewUrl ?? state.logoUrl,
+    /* The three UI-only slots, spread conditionally so a card that has none carries no key —
+       the same shape `groundHex` uses, and what lets `resolveCard` tell "not set" from "set to
+       empty". `resolveCover`, `resolveHeadline` and the bio precedence each trim before
+       deciding, so a whitespace-only value collapses rather than reserving an empty line. */
+    ...(state.coverPreviewUrl === null ? {} : { coverUrl: state.coverPreviewUrl }),
+    ...(state.headline.trim() === "" ? {} : { headline: state.headline }),
+    ...(state.bio.trim() === "" ? {} : { bio: state.bio }),
     finish: state.finish,
     texture: state.texture,
     texturePresence: state.texturePresence,

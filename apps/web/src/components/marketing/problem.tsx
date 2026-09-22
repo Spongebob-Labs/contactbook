@@ -1,142 +1,135 @@
-import { liveCard, problem } from "@/fixtures/marketing";
+import { problem } from "@/fixtures/marketing";
 
-import { ContactCard } from "./contact-card";
 import { mkcn } from "./mk-cn";
 import { MkReveal } from "./mk-reveal";
 import { Section } from "./section";
-import { accented, HEAD_TO_BODY, Prose, SectionHead } from "./type";
+import { accented, HEAD_TO_BODY, Heading, Prose } from "./type";
 
 /**
  * Section 2 — the problem. Brief Section 2.
  *
- * ## The visual is the client's own best asset
- * Deck page 13: a native phone contact with three fields flagged wrong, beside the same
- * person's live card. It is the most persuasive thing in either document the client sent,
- * because it is not a claim — it is a picture of the reader's own phone.
+ * ## REBUILT 2026-09-21 — the client rejected the card TREATMENT, not the argument
  *
- * ## ⚠ THE LEFT PANEL DELIBERATELY DOES NOT USE OUR CARD COMPONENTS
- * It is a plain white sheet with a hairline, built here, and that is the entire point: it has
- * to read as *not ours*. Rendering it with `<ContactCard>` in a different palette would say
- * "here are two Contact Book cards, one of which is wrong", which is the opposite of the
- * argument. So the two panels share no code, and the visual difference between them is
- * carrying half the meaning.
+ * The client: *"the next section below the hero is also very weak, and it's not making any
+ * sense… I don't want you to just include this green card anymore in this. There should be
+ * proper professional visuals that you will be taking from the internet."* Their reference is a
+ * different register entirely from what this section drew before — a full-bleed photographic
+ * band, then a large serif headline beside a supporting paragraph — and it was sent as an
+ * explicit alternative to the phone-contact/live-card comparison this file used to render.
  *
- * ## ⚠ AND THE RIGHT PANEL'S ROWS ARE READ FROM THE HERO'S LAST BEAT
- * `liveCard.beats.at(-1)` — not a second copy of the same four values. The hero loop ends on
- * the repaired card, so this section is literally the before and after of the story a reader
- * just watched, and the two can never drift apart. Retyping the corrected email here would be
- * two sources of truth for one fact, one edit apart from disagreeing.
+ * ⚠ THE BEFORE/AFTER CARD PAIR IS GONE, NOT RECOLOURED. The previous pass's whole device was two
+ * panels sharing no code on purpose (a fake phone contact beside a real `<ContactCard>`) so the
+ * visual difference between them carried the argument — see git history on this file for that
+ * account in full. That device is what got rejected: an editorial photograph-and-headline
+ * composition cannot also be a phone-screenshot comparison, and keeping one inside the other
+ * would just be the green card the client declined, with a photograph stapled above it. So
+ * `liveCard`, `<ContactCard>` and the `INITIALS`/`SETTLED` derivations this file used to carry
+ * for that comparison are gone with it.
+ *
+ * ⚠ FIVE FIXTURE FIELDS ARE NOW UNUSED, FLAGGED RATHER THAN PATCHED OVER OR INVENTED AROUND.
+ * `problem.beforeLabel`, `.afterLabel`, `.staleTag` and `.beforeRows` only mean anything beside a
+ * rendered phone-contact list — "Saved in your phone" labels a panel that no longer exists, and
+ * a struck-through row needs the list it was a row of. `problem.caption` — "Three of these four
+ * were true when you saved them" — is the same problem one level up: it is the CAPTION for that
+ * exact four-row list, and reads as a dangling reference with the list gone (tried it; a reader
+ * hits "these four" with no four things anywhere on the pass). `problem` is fixture data this
+ * file may read and may NOT edit (task brief), so inventing a new home for any of these five, or
+ * quietly rewriting the caption so it scans on its own, would be new copy wearing old copy's
+ * name. Deleting fields from a shared fixture is a call for whoever owns it, not for this file.
+ * `problem.heading`, `.accent` and `.paragraphs` are unchanged prose about an out-of-date address
+ * book, none of it tied to the card device, and all three are still rendered below.
+ *
+ * ## The photograph, replaced 2026-09-21 — the client was right, it was decorative
+ * The linen band above was surface copied from the reference (a "soft draped fabric" transition)
+ * with none of the reference's ROLE: there, it is a thin seam between two sections; here it was
+ * a 384px block that answered no question a reader had. The client's own words: *"Can you tell
+ * me how this image is actually relevant here? I don't think there is anything in this image
+ * that you have actually added."* Correct — crumpled linen has no relationship to "your address
+ * book is quietly going stale", and no crop of it would have given it one.
+ *
+ * The section's actual claim is that a contact starts decaying the moment it is written down —
+ * "It went out of date the minute you updated it." So the image that belongs here is not a
+ * mood-board texture, it is **the moment that claim is about**: two people meeting for the first
+ * time, a handshake, a number and an email changing hands — which is exactly the instant this
+ * copy says starts going stale. That is the test the linen failed and this photograph passes:
+ * it is here because of what the paragraph says, not because a reference had a coloured band in
+ * this position.
+ *
+ * (Two other options were weighed and set aside, not overlooked: no photograph at all, letting
+ * the headline carry the section alone — defensible, but the client has asked twice for "proper
+ * professional visuals" and a section that visibly answers that brief is worth more than a
+ * purist scroll. And a designed diagram of stale data itself — a struck-through phone-contact
+ * card — which is the exact device this file's previous rebuild deleted on purpose, three
+ * sections up in this same comment block: reintroducing any version of it here would be the
+ * green card the client already declined, wearing a new hue.)
+ *
+ * Pexels photo 3184291, a handshake across a meeting table (photographer: fauxels) — Pexels
+ * License (free for commercial use, no attribution required): pexels.com/photo/3184291/. The
+ * original is a six-person meeting; cropped to the handshake itself, centred, with a face on
+ * either side of it still legible, so the band reads as a greeting rather than as an anonymous
+ * pair of hands. Warm wood table, cream and tan knitwear, no cool blues — the tones the fabric
+ * photo was chosen for, kept, on a photograph the copy can actually defend. Saved at
+ * `public/marketing/problem-meeting.{jpg,webp}`, 1600×615, ~115KB / ~76KB.
+ *
+ * ## No eyebrow above the headline, on purpose
+ * The reference also shows a numbered kicker (`01 —— BUILT FOR MEANINGFUL CONNECTIONS`) sitting
+ * over its headline. `type.tsx`'s `Eyebrow` is explicit that this page banned that construction
+ * outright — "never above a section heading… every `overline` field was removed from the copy
+ * fixture for this reason and `SectionHead` no longer accepts one." Reintroducing it here would
+ * fix one section by breaking a rule every other section still depends on, for a phrase this
+ * file would have to invent besides (nothing in `problem` is a kicker). Dropped rather than
+ * worked around — the photograph and the headline carry the "editorial" register without it.
+ *
+ * ## The full-bleed band reaches the page's own edge, never `100vw`
+ * `marketing.css` already flagged why not, on the ledger rule's own `left` calc: "`100vw`
+ * includes the scrollbar gutter on any platform that reserves one… invisible on this machine and
+ * obvious on Windows." Cancelling `CONTENT_COLUMN`'s own `px-6 md:px-10` (`-mx-6 md:-mx-10`)
+ * reaches the section's own edge — the same ground `<Section>` already paints full-width — with
+ * no viewport unit involved at all. Below `--mk-page-max` (1200px) that edge IS the viewport
+ * edge; above it, the band bleeds to the same 1200px cap the rest of the page holds to, rather
+ * than past it, so the page keeps one width for every section instead of a second rule for this
+ * one.
  */
-
-/** The corrected card, straight off the end of the hero's loop. */
-const SETTLED = liveCard.beats.at(-1)!;
-
-/**
- * ⚠ THE NAME AND INITIALS ARE READ FROM `liveCard`, NOT TYPED HERE.
- * Both panels and the hero's two faces are one person, and the hero's front face takes its
- * identity from a resolved `ContactCard`. A literal here was a fourth place the name lived, and
- * it had already drifted once — the page shipped a section headed "the same person" showing two
- * different people.
- */
-const INITIALS = liveCard.name
-  .split(/\s+/)
-  .filter(Boolean)
-  .map((part) => part[0]!)
-  .slice(0, 2)
-  .join("")
-  .toUpperCase();
 
 export function Problem() {
   return (
     <Section id="problem" tone="wash" labelledBy="problem-heading">
-      <SectionHead
-        heading={accented(problem.heading, problem.accent)}
-        headingId="problem-heading"
-        lead={problem.paragraphs[0]}
-      />
+      <MkReveal index={0} move="rise">
+        <div className="-mx-6 md:-mx-10">
+          {/* `alt=""`: the image illustrates the paragraph beneath it rather than adding a fact
+              that is not already in the copy, so it is decorative under WCAG's own test — a
+              screen reader skips it rather than describing a stock photo the text already made
+              the point of. `loading="lazy"`: the hero fills the first viewport on every tested
+              width, so this band is below the fold on load. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/marketing/problem-meeting.jpg"
+            alt=""
+            width={1600}
+            height={615}
+            loading="lazy"
+            decoding="async"
+            className="block h-56 w-full object-cover md:h-72 lg:h-96"
+          />
+        </div>
+      </MkReveal>
 
-      <Prose className="mt-5 max-w-mk-measure">{problem.paragraphs[1]}</Prose>
-
-      <div className={mkcn(HEAD_TO_BODY, "grid grid-cols-1 gap-8 lg:grid-cols-2 lg:gap-10")}>
-        {/* ── before ─────────────────────────────────────────────────────────────────── */}
-        <MkReveal index={0} move="rise">
-          <figure className="m-0">
-            <figcaption className="text-mk-caption font-mk-medium text-mk-pebble uppercase tracking-[0.1em]">
-              {problem.beforeLabel}
-            </figcaption>
-
-            <div className="mt-3 rounded-mk-block bg-mk-white p-6 ring-1 ring-mk-hairline-strong">
-              <div className="flex items-center gap-3">
-                {/* A grey monogram, not our mint one — this panel is somebody else's software.
-
-                    ⚠ THE INITIALS ARE INK, NOT STONE. `--mk-stone` on `--mk-hairline` measures
-                    3.80:1 at 14px, against a 4.5 requirement, and the page's contrast sweep
-                    named it. `aria-hidden` does not exempt it: hidden from a screen reader is
-                    still visible to an eye, so the bar applies exactly as it would to copy. */}
-                <span
-                  aria-hidden="true"
-                  className="flex size-12 items-center justify-center rounded-mk-pill bg-mk-hairline font-mk-display text-mk-body-sm font-mk-editorial text-mk-ink"
-                >
-                  {INITIALS}
-                </span>
-                <span className="font-mk-display text-mk-heading-sm font-mk-editorial text-mk-ink">
-                  {liveCard.name}
-                </span>
-              </div>
-
-              <dl className="mt-5">
-                {problem.beforeRows.map((row) => (
-                  <div
-                    key={row.id}
-                    className="flex items-baseline justify-between gap-4 border-t border-mk-hairline py-3"
-                  >
-                    <div className="min-w-0">
-                      <dt className="text-mk-caption text-mk-pebble">{row.label}</dt>
-                      <dd
-                        className={mkcn(
-                          "mt-0.5 truncate text-mk-body-sm",
-                          // Struck and dimmed, never hidden: recognising your own out-of-date
-                          // entry is the whole job of this panel, so it has to stay readable.
-                          row.stale ? "text-mk-stone line-through" : "text-mk-ink",
-                        )}
-                      >
-                        {row.value}
-                      </dd>
-                    </div>
-                    {row.stale ? (
-                      <span className="shrink-0 rounded-mk-chrome bg-mk-oxblood/10 px-2 py-1 text-mk-caption font-mk-medium text-mk-oxblood">
-                        {problem.staleTag}
-                      </span>
-                    ) : null}
-                  </div>
-                ))}
-              </dl>
-            </div>
-          </figure>
+      <div className={mkcn(HEAD_TO_BODY, "grid grid-cols-1 gap-8 lg:grid-cols-2 lg:gap-16")}>
+        <MkReveal index={1} move="rise">
+          <Heading id="problem-heading" className="max-w-mk-measure-head">
+            {accented(problem.heading, problem.accent)}
+          </Heading>
         </MkReveal>
 
-        {/* ── after ──────────────────────────────────────────────────────────────────── */}
-        <MkReveal index={1} move="rise">
-          <figure className="m-0">
-            <figcaption className="text-mk-caption font-mk-medium text-mk-green-ink uppercase tracking-[0.1em]">
-              {problem.afterLabel}
-            </figcaption>
-            <div className="mt-3 flex justify-center lg:justify-start">
-              <ContactCard
-                aria-hidden="true"
-                name={liveCard.name}
-                role={liveCard.role}
-                mark={liveCard.mark}
-                rows={SETTLED.rows}
-              />
-            </div>
-          </figure>
+        <MkReveal index={2} move="rise">
+          <div className="flex flex-col gap-4">
+            <Prose size="lead" className="max-w-mk-measure">
+              {problem.paragraphs[0]}
+            </Prose>
+            <Prose className="max-w-mk-measure">{problem.paragraphs[1]}</Prose>
+          </div>
         </MkReveal>
       </div>
-
-      <Prose size="small" className="mt-8 max-w-mk-measure-tight">
-        {problem.caption}
-      </Prose>
     </Section>
   );
 }

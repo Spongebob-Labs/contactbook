@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono, Instrument_Sans, Space_Grotesk } from "next/font/google";
+import { Geist, Geist_Mono, Instrument_Sans, Instrument_Serif, Space_Grotesk } from "next/font/google";
 
 import "@/styles/globals.css";
 
@@ -103,6 +103,36 @@ const instrumentSans = Instrument_Sans({
 });
 
 /**
+ * THE CARD'S DISPLAY SERIF — the owner's name and bio on `/c/{slug}`, and nothing else.
+ *
+ * ## ⚠ This is a deliberate exception to "the card is one family"
+ *
+ * `template-types.ts` states the product's type rule plainly: one typeface across the card, so
+ * personality comes from weight, tracking and case rather than from loading a second family —
+ * written after a build that loaded four families to differentiate eight cards and still had
+ * eight identical cards, because what made them identical was the palette.
+ *
+ * That argument holds for the *variation between cards* and does not reach this. Instrument
+ * Serif is not an axis: every card gets it, no card can choose it, and it is applied to exactly
+ * two elements. What it buys is the difference between a name that reads as a SaaS heading and
+ * one that reads as a business card, which is the single most-cited thing about the reference
+ * this composition was built from.
+ *
+ * Instrument **Serif** rather than a didone chosen by eye: this app already loads Instrument
+ * Sans, and the two were drawn as companions, so the pairing is a fact about the typefaces
+ * rather than a judgement about them.
+ *
+ * One weight (400) and no italic — a display face used at one size in one place needs one
+ * instance, and the second file would be bytes nothing renders.
+ */
+const instrumentSerif = Instrument_Serif({
+  subsets: ["latin"],
+  weight: "400",
+  variable: "--font-instrument-serif",
+  display: "swap",
+});
+
+/**
  * ⚠ **`viewportFit: "cover"` is what makes every `env(safe-area-inset-*)` in this app resolve
  * to a real number.**
  *
@@ -148,7 +178,21 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${geist.variable} ${geistMono.variable} ${spaceGrotesk.variable} ${instrumentSans.variable} h-full antialiased`}
+      /*
+        Next 16 stopped applying `scroll-behavior: smooth` on its own; it is opt-in through
+        this attribute now. Without it the nav's `/#how-it-works` anchor hard-jumps, which
+        is what it had been doing since the upgrade.
+
+        It is an attribute rather than a CSS rule because Next uses it to scope smoothness
+        to ITS OWN router navigations — a blanket `html { scroll-behavior: smooth }` also
+        animates restoration scrolls on back/forward, which reads as the page sliding away
+        from under you.
+
+        The `prefers-reduced-motion` block in `globals.css` still wins: it sets
+        `scroll-behavior: auto !important`, and an attribute does not outrank that.
+      */
+      data-scroll-behavior="smooth"
+      className={`${geist.variable} ${geistMono.variable} ${spaceGrotesk.variable} ${instrumentSans.variable} ${instrumentSerif.variable} h-full antialiased`}
     >
       {/* ⚠ `suppressHydrationWarning` is here for **browser extensions**, and for nothing this
           app does.
@@ -167,6 +211,61 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
 
           If an extension ever stamps `<html>` instead, the same one word goes there. */}
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
+        {/*
+          ⚠ THE INTRO CURTAIN'S GATE, AND THE REASON IT IS A BLOCKING INLINE SCRIPT IN THE
+          ROOT LAYOUT RATHER THAN ANYTHING NICER.
+
+          `components/marketing/intro-curtain.tsx` is a pure-CSS title card keyed on
+          `:root[data-intro="play"]`. Exactly one thing about it cannot be expressed in CSS:
+          "only on a visitor's FIRST load of `/` in this browser session". That needs storage,
+          which needs script — and it needs to have run before the first paint, or the reader
+          sees the hero for a frame and then gets a curtain dropped on it, which is worse than
+          no curtain at all. An inline script at the top of `<body>` is the one place that is
+          guaranteed: it executes during parse, before anything below it is painted, with no
+          network round trip and no wait for React.
+
+          It is in the ROOT layout rather than the marketing one so that it precedes the fixed
+          nav as well as the page. The first line makes that free for every other route: any
+          path that is not `/` returns before touching storage, so the app, the auth flow and
+          the other marketing pages pay one string comparison and nothing else.
+
+          Failure is silent and safe in every direction. If `sessionStorage` throws — Safari
+          private mode, a locked-down enterprise profile — the `catch` leaves the attribute
+          unset. If scripting is off entirely, it never runs. In BOTH cases the attribute is
+          absent, the CSS selector never matches, and the visitor simply gets the hero with no
+          curtain. There is no failure mode in which this leaves a panel over the page.
+
+          ⚠ IT WRITES TO `<body>`, NOT `<html>`, AND THAT IS A FIX RATHER THAN A PREFERENCE.
+          The first cut set the attribute on `document.documentElement` and every load logged a
+          hydration error: React diffs the served `<html>` against the client tree, finds a
+          `data-intro` the server never wrote, and reports a mismatch it explicitly "won't patch
+          up". `<body>` already carries `suppressHydrationWarning` for precisely this class of
+          thing — an attribute stamped onto the shell before React arrives — so putting it there
+          costs nothing and adds no second suppression. `document.body` is non-null here because
+          this script is the body's own first child, so the element exists by the time it runs.
+        */}
+        <script
+          id="cb-intro-gate"
+          /* The string below is static and author-written, with no interpolation of any kind —
+             there is no user input within reach of it. This config does not enable
+             `react/no-danger`, so there is deliberately no disable comment here: an unused one
+             is itself a lint warning. */
+          dangerouslySetInnerHTML={{
+            __html:
+              "(function(){try{" +
+              "if(location.pathname!=='/')return;" +
+              /* `/?intro` replays it on demand. Without this the only way to see the curtain a
+                 second time is a new browser session, which makes it almost impossible to
+                 review — and a reviewer who cannot replay a thing cannot approve it. It is a
+                 read of `location.search` and nothing else: no state, nothing persisted, and
+                 the bare URL is unaffected. */
+              "var f=/[?&]intro(=|&|$)/.test(location.search);" +
+              "if(!f&&sessionStorage.getItem('cb-intro'))return;" +
+              "sessionStorage.setItem('cb-intro','1');" +
+              "document.body.setAttribute('data-intro','play');" +
+              "}catch(e){}})();",
+          }}
+        />
         {children}
       </body>
     </html>

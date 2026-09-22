@@ -2,20 +2,25 @@
 
 import type { ReactElement, ReactNode } from "react";
 
-import { Download, MessageCircle } from "lucide-react";
+import { ArrowRight, SmartphoneNfc } from "lucide-react";
 
 import { canBuildVcf } from "@/card/build-vcf";
 import { CardActionButton } from "@/card/card-action-button";
-import { whatsappActionFor } from "@/components/public-card/whatsapp-button";
 import type { ResolvedCard } from "@/types/domain";
 
 /**
- * The three actions on a scanned card, and deliberately only three.
+ * ⚠ **ONE action, and the card's whole weight is on it.**
  *
- * Save the contact, start a conversation, or connect. Everything else a link-in-bio product
- * would put here is already in the field list below, as a real labelled row with a working
- * `href` — turning six of those rows into six more buttons is how a contact card becomes a
- * link tree.
+ * There were two full-width buttons — Save and Message on WhatsApp — plus a third slot for
+ * Connect. Three stacked controls cost about 160px before a single field appeared, on the
+ * surface with the least vertical room in the product, and the reference this composition is
+ * built from has exactly one. The messaging action is not lost: it is a disc in the social
+ * strip, derived from the card's own `PHONE`, which is where a destination belongs once there
+ * is somewhere for destinations to live. See `SocialStrip` in `card-page.tsx`.
+ *
+ * Everything else a link-in-bio product would put here is already in the field list below, as a
+ * real row with a working `href` — turning six of those rows into six more buttons is how a
+ * contact card becomes a link tree.
  *
  * ## Why `connect` arrives as a node rather than a handler
  * The other two are one-shot: a synthetic click on a blob URL, and an `href`. "Save & connect"
@@ -36,6 +41,21 @@ import type { ResolvedCard } from "@/types/domain";
  */
 export interface PublicCardActionsProps {
   resolved: ResolvedCard;
+  /**
+   * What the one button says.
+   *
+   * ⚠ A prop rather than a literal because the action behind it is going to change and the
+   * label is the only part of this component that has to change with it. Today it writes a
+   * `.vcf`; when the connect flow lands it will ask for a number and send the card over
+   * WhatsApp, and "Send to Phone" is true of both. Swapping the behaviour is then one `onClick`
+   * and no redesign, which is the whole reason the actions arrive here as a slot.
+   *
+   * ⚠ On a DESKTOP browser a `.vcf` is a download rather than something that reaches a phone,
+   * so the label is aspirational there. It is the label the client asked for, it is correct on
+   * the surface this page is overwhelmingly opened on, and it stops being a stretch entirely
+   * the moment the connect flow is wired.
+   */
+  primaryLabel?: string;
   onSaveToContacts: (resolved: ResolvedCard) => void;
   savePending: boolean;
   /** The "Save & connect" flow, already built. `null` renders no connect action at all. */
@@ -47,28 +67,31 @@ export function PublicCardActions({
   onSaveToContacts,
   savePending,
   connect = null,
+  primaryLabel = "Send to Phone",
 }: PublicCardActionsProps): ReactElement {
   const shape = resolved.template.shape.buttonShape;
 
-  /* ⚠ Read from `cardPageSurface`, never re-derived here.
+  /* ⚠ **`canvas`, and this is the line the 2026-09-17 rebuild turned over.**
    *
-   * `classic` runs the palette ground the whole height of the page, so the actions sit ON the
-   * palette. `banner`, `hero` and `minimal` hand the body to the app canvas, so they sit on
-   * white and need the canvas colourway — otherwise Onyx's white primary fill lands on white.
+   * It was `palette`, on the argument that the field stack always stands on the painted ground
+   * so the buttons should take the palette's own button pair. That argument died with the
+   * composition it described: the card page is now two surfaces, the palette owns only the
+   * COVER, and these controls sit on the paper sheet below the curve. On paper, Onyx's
+   * `--c-button-bg` is `#FFFFFF` — an invisible button, which is the exact defect the canvas
+   * colourway was introduced to prevent in the first place.
    *
-   * This used to be a local `template.pageHeader === "solid"`, repeated in three files. Two of
-   * them were reading a template property that the card could override.
+   * `canvas` resolves to `--c-canvas-action-bg` / `--c-canvas-action-ink`, the one pair
+   * `PALETTE_CONTRACT` proves against white rather than against the card's own ground (≥3:1 for
+   * the fill, ≥4.5:1 for its label). It is a deep colour on all nine palettes, so the primary
+   * action is a near-black pill on an Onyx card and a deep-brown one on Amber — the reference's
+   * black pill, arrived at from the contract rather than from a literal.
    *
-   * ⚠ It is now a **constant**, and deliberately still named. The `HeaderLayout` axis is gone,
-   * so the field stack always stands on the painted ground and the buttons are always the
-   * palette colourway; `bodyOnPalette` was the only thing that ever made it `canvas`. Kept as a
-   * named local rather than inlined at the three call sites below, because that inlining is
-   * precisely the drift this comment records. */
-  const surface = "palette" as const;
+   * Still a named local rather than inlined at the three call sites: that inlining is precisely
+   * the drift the previous version of this comment recorded. */
+  const surface = "canvas" as const;
   const saveable = canBuildVcf(resolved);
-  const whatsapp = whatsappActionFor(resolved);
 
-  const count = (saveable ? 1 : 0) + (whatsapp === null ? 0 : 1) + (connect === null ? 0 : 1);
+  const count = (saveable ? 1 : 0) + (connect === null ? 0 : 1);
 
   return (
     <div
@@ -89,28 +112,18 @@ export function PublicCardActions({
           variant="primary"
           surface={surface}
           shape={shape}
-          icon={<Download size={16} strokeWidth={1.75} />}
+          /* The phone-with-an-arrow the reference uses, not a download tray: the tray describes
+             the mechanism (a file) and this button describes the outcome (it reaches your
+             phone), which is also what survives the switch to the connect flow. */
+          icon={<SmartphoneNfc size={18} strokeWidth={1.75} />}
+          /* The arrow the reference puts at the trailing edge. Decorative — the button already
+             says what it does — so it is `aria-hidden` inside `CardActionButton`. */
+          trailing={<ArrowRight size={18} strokeWidth={1.75} />}
           onClick={() => onSaveToContacts(resolved)}
           disabled={savePending}
           busy={savePending}
         >
-          {savePending ? "Saving…" : "Save to contacts"}
-        </CardActionButton>
-      )}
-
-      {whatsapp === null ? null : (
-        <CardActionButton
-          action="whatsapp"
-          paletteId={resolved.palette.id}
-          palette={resolved.palette}
-          variant="secondary"
-          surface={surface}
-          shape={shape}
-          icon={<MessageCircle size={16} strokeWidth={1.75} />}
-          href={whatsapp.href}
-          external={whatsapp.external}
-        >
-          Message on WhatsApp
+          {savePending ? "Sending…" : primaryLabel}
         </CardActionButton>
       )}
 

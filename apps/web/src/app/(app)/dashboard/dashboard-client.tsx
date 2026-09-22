@@ -1,11 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, type ReactElement } from "react";
 
-import { resolveCard } from "@/card/resolve-card";
-import { CardThumbTile } from "@/components/app";
+import { cardPalettes } from "@/card/card-palette";
+import type { TemplatePalette } from "@/card/template-palettes";
 import {
   EmptyState,
   ErrorPanel,
@@ -13,7 +12,6 @@ import {
   ScreenStateRoot,
   resolveDataScreenState,
 } from "@/components/data";
-import { buttonClassName } from "@/components/primitives/button";
 import { fetchDashboardData } from "@/lib/api/browser-loaders";
 import { useApiResource } from "@/lib/use-api";
 import { attention, cardReach, sharingByWeek, totals } from "@/lib/dashboard/metrics";
@@ -23,11 +21,13 @@ import type {
   DashboardTotals,
   WeekBucket,
 } from "@/lib/dashboard/metrics";
+import { reachScore, type ReachScore } from "@/lib/dashboard/reach-score";
 import { ActivityChart } from "@/components/dashboard/activity-chart";
 import { ReachBars } from "@/components/dashboard/reach-bars";
-import { StatTile } from "@/components/dashboard/stat-tile";
+import { ReachPanel } from "@/components/dashboard/reach-panel";
 import { AttentionList } from "@/components/dashboard/attention-list";
-import type { ContactCard, ResolvedCard } from "@/types/domain";
+import { ProfileStrength, type ProfileGroupSummary } from "@/components/dashboard/profile-strength";
+import type { ContactCard } from "@/types/domain";
 
 /**
  * `/dashboard` — the owner's landing surface (spec §8D.3 dashboard row, §4.4 step 1,
@@ -61,12 +61,12 @@ import type { ContactCard, ResolvedCard } from "@/types/domain";
  * · **The `<h1>` lives in `page.tsx`.** `PageHeader` renders it, so every heading here
  *   starts at `h2` and the outline stays h1 → h2 → h3 (the tile's card name).
  *
- * ── The card this screen features is deliberately the worst one ──────────────────────
- * "Most recently updated" resolves to `card_empty_demo`, which maps **zero** fields — the
- * fixtures reproduce the old build's worst bug on purpose (§11.6). `CardThumbTile` carries
- * `FieldCountMeter`, which reads `canBuildVcf` and warns in words, so the dashboard shows
- * the warning on its most prominent object rather than hiding it three screens deep. Do
- * not "fix" the sort to skip it.
+ * ── What this screen deliberately does NOT show ──────────────────────────────────────
+ * A thumbnail of the most recently edited card used to sit in the bottom-right slot. It was
+ * removed 2026-09-20: it is the largest object on the screen the owner lands on when they leave
+ * the builder, and it shows them the card they were just looking at. The slot carries
+ * `<ProfileStrength>` instead — every card is a filter over the profile, so an empty group is a
+ * gap in every card at once, which is the one thing the rest of this page cannot say.
  */
 
 /** §8D.3: "a 'Recent contacts' list of 5". */
@@ -79,10 +79,10 @@ const ATTENTION_BONE_COUNT = 3;
 const SHELL_CLASS = "mt-10 flex flex-col gap-12 pb-16";
 
 /**
- * ≥1024px: totals left, the featured card right (§8D.3). Below that it is one column and
- * the card comes **first**, which is why the card is first in the DOM and `order` moves it
- * right on a wide viewport rather than the other way round — the narrow layout is the one
- * where reading order and visual order have to agree.
+ * ≥1024px: the wide column takes the queue and the 18rem column takes profile strength. Below
+ * that it collapses to one column in DOM order — queue first, which is the order that matters
+ * on a phone, so no `order` is needed and none may be added. See the note on the stats region
+ * about what an `order` does inside this page's flex column.
  */
 const GRID_CLASS =
   "grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,18rem)] lg:items-start lg:gap-14";
@@ -93,19 +93,29 @@ type DashboardApiData = Awaited<ReturnType<typeof fetchDashboardData>>;
 
 interface DashboardData {
   totals: DashboardTotals;
+  /** The headline. Derived here with everything else so the panel re-computes nothing. */
+  score: ReachScore;
+  /**
+   * `cardId` → the colour that card actually wears.
+   *
+   * Derived once here and handed down, rather than each chart looking a card up for itself: the
+   * bars and the attention rows must agree about what colour a card is, and two independent
+   * lookups is two chances to drift.
+   */
+  palettes: ReadonlyMap<string, TemplatePalette>;
   weeks: readonly WeekBucket[];
   reach: readonly CardReach[];
   attention: readonly Attention[];
-  featured: ResolvedCard | null;
+  /** Every profile group with its field count — what `<ProfileStrength>` reads. */
+  groups: readonly ProfileGroupSummary[];
   cards: readonly ContactCard[];
 }
 
 /**
  * Everything the success surface renders, derived once.
  *
- * `resolveCard` is pure (I-4) but not free, and the resource hook returns a **fresh result
- * object on every render** — so this is memoised on the loaded data itself, which the hook
- * keeps referentially stable between loads, and never on the result wrapper around it.
+ * Memoised on the loaded data itself — which the resource hook keeps referentially stable
+ * between loads — and never on the result wrapper, which is a fresh object every render.
  */
 function readDashboard(db: DashboardApiData): DashboardData {
   const metricCards = db.cards.map((card) => ({
@@ -114,12 +124,10 @@ function readDashboard(db: DashboardApiData): DashboardData {
     fieldIds: card.fieldIds,
   }));
 
-  /* Newest first by `updatedAt` — the card the owner most recently touched, which is what
-     "most recent" means to the person who touched it. */
-  const featuredCard = [...db.cards].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
-
   return {
     cards: db.cards,
+    score: reachScore({ cards: metricCards, links: db.links, behind: db.behind }),
+    palettes: cardPalettes(db.cards),
     totals: totals({
       cards: metricCards,
       contactCount: db.contacts.length,
@@ -130,42 +138,10 @@ function readDashboard(db: DashboardApiData): DashboardData {
     weeks: sharingByWeek(db.links, new Date()),
     reach: cardReach(metricCards, db.links),
     attention: attention(metricCards, db.links, db.behindByCardId),
-    featured:
-      featuredCard === undefined
-        ? null
-        : resolveCard(featuredCard, db.user, db.groups, db.fields),
+    /* ⚠ Every group, including the empty ones — they are the whole point. A summary that
+       dropped them would report a profile as complete precisely when it is not. */
+    groups: db.groups.map((g) => ({ id: g.id, name: g.name, fieldCount: g.fieldIds.length })),
   };
-}
-
-
-/** The featured card, its caption and the one way into the builder. */
-function RecentCard({ resolved }: { resolved: ResolvedCard }): ReactElement {
-  return (
-    <section data-dashboard-region="recent-card" className="lg:order-2">
-      {/* A visible heading, not `aria-labelledby` on a landmark: an unnamed `section` is
-          generic, so the outline gets its structure from the heading and the page gains no
-          second named region to keep unique (AC-25). */}
-      <h2 className="text-overline uppercase text-ink-3">Most recent card</h2>
-
-      {/* The tile is `relative` and its title is a stretched link, so the builder link
-          stays outside it — nested inside, the overlay would swallow every click. */}
-      <div className="mt-5 max-w-[240px]">
-        <CardThumbTile
-          resolved={resolved}
-          href={`/cards/${resolved.cardId}`}
-          headingLevel={3}
-        />
-      </div>
-
-      <Link
-        href={`/cards/${resolved.cardId}/edit`}
-        data-dashboard-builder-link=""
-        className={buttonClassName({ variant: "secondary", className: "mt-5" })}
-      >
-        Open builder
-      </Link>
-    </section>
-  );
 }
 
 
@@ -187,24 +163,30 @@ function RecentCard({ resolved }: { resolved: ResolvedCard }): ReactElement {
 function DashboardBones(): ReactElement {
   return (
     <>
+      {/* ⚠ The bones mirror the ARRIVED layout row for row, and that is the whole contract:
+          score first at full width, then the two charts, then the queue beside the profile.
+          When these disagreed — bones in a two-column grid, content in a stack — the page
+          visibly re-flowed on every load, which is the shift §8D.1 and AC-17 forbid. */}
+      <div data-dashboard-region="stats">
+        <LoadingSkeleton variant="stats" label="Loading your reach score" />
+      </div>
+
+      <div data-dashboard-region="charts" className="grid gap-10 lg:grid-cols-2 lg:gap-14">
+        <LoadingSkeleton variant="list" count={3} label="Loading your sharing activity" />
+        <LoadingSkeleton variant="list" count={3} label="Loading your cards by opens" />
+      </div>
+
       <div className={GRID_CLASS}>
-        <div data-dashboard-region="recent-card" className="lg:order-2">
+        <div data-dashboard-region="attention">
           <LoadingSkeleton
-            variant="card"
-            label="Loading your most recent card"
-            className="max-w-[200px]"
+            variant="list"
+            count={ATTENTION_BONE_COUNT}
+            label="Loading what needs attention"
           />
         </div>
-        <div data-dashboard-region="stats" className="lg:order-1">
-          <LoadingSkeleton variant="stats" label="Loading your totals" />
+        <div data-dashboard-region="profile-strength">
+          <LoadingSkeleton variant="list" count={2} label="Loading your profile strength" />
         </div>
-      </div>
-      {/* The charts' box, reserved. The rule this column serves is that **nothing shifts**
-          when the data lands, so the bones have to occupy the same two-up grid the charts
-          will — a stats skeleton alone would let two figures appear under a settled layout,
-          which is exactly the shift it forbids. */}
-      <div data-dashboard-region="attention">
-        <LoadingSkeleton variant="list" count={ATTENTION_BONE_COUNT} label="Loading what needs attention" />
       </div>
     </>
   );
@@ -279,64 +261,44 @@ export function DashboardClient(): ReactElement {
   } else {
     body = (
       <>
-        {/* Row 1 — the five headline numbers. Discrete panels with gaps, deliberately not a
-            `border-y` band: `PageHeader` already closes with a rule, so a banded row put two
-            hairlines around forty pixels of empty space and read as a stray banner.
-
-            Every tile carries a hint, including Cards. One tile without one left a hole in an
-            otherwise even row — the raggedness was as much of the problem as the rules. */}
-        {/* ⚠ **Five tiles, two columns on a phone — so the fifth spans the row rather than
-            dangling beside a void.**
-            5 into 2 leaves a half-empty third row, and a lone tile with an empty cell next to
-            it reads as content that failed to load. `col-span-2` closes the row; the tile
-            switches to its `row` layout at the same breakpoint, because a box twice as wide as
-            it is tall cannot keep a stacked column without becoming mostly empty. From `sm` up
-            the grid is 3 across (5 = 3 + 2, no orphan) and `xl` is 5 across, so neither the
-            span nor the row layout applies above a phone. */}
-        <div
-          data-dashboard-region="stats"
-          className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5"
-        >
-          <StatTile label="Cards" value={dashboard.totals.cards} hint="Built so far" />
-          <StatTile
-            label="People reached"
-            value={dashboard.totals.peopleReached}
-            hint="Hold a live link"
-          />
-          <StatTile label="Opens" value={dashboard.totals.totalOpens} hint="Across every card" />
-          <StatTile
-            label="Not opened"
-            value={dashboard.totals.neverOpened}
-            hint="Sent, never viewed"
-            actionable
-          />
-          <div className="col-span-2 sm:col-span-1">
-            <StatTile
-              label="Not told"
-              value={dashboard.totals.behind}
-              hint="Behind on a change"
-              actionable
-              row
-            />
-          </div>
+        {/* ⚠ **The score sits FIRST, and `lg:order-1` must never come back here.**
+            `SHELL_CLASS` is a flex COLUMN, so an `order` on one child does not arrange columns —
+            it reorders the page. `lg:order-1` against the default `order-0` of its siblings sent
+            the headline panel to the BOTTOM of the dashboard on every desktop viewport, under
+            the charts and the queue, which is where the client found it. The panel answers "how
+            am I doing" and "what next", so it belongs directly under the page title; nothing here
+            takes an `order` unless it is inside a grid that has columns to order. */}
+        <div data-dashboard-region="stats">
+          <ReachPanel score={dashboard.score} totals={dashboard.totals} />
         </div>
 
-        {/* Row 2 — the two charts get the full width between them. Nested in the featured
-            card's column they resolved to ~280px at a 1280px viewport, which puts twelve weekly
-            columns at 21px each and truncates every card name in the reach list. A chart that
-            has to be decoded is not doing its job. */}
+        {/* Row 2 — the two charts get the full width between them. Nested in a side column they
+            resolved to ~280px at a 1280px viewport, which puts twelve weekly columns at 21px
+            each and truncates every card name in the reach list. A chart that has to be decoded
+            is not doing its job. */}
         <div data-dashboard-region="charts" className="grid gap-10 lg:grid-cols-2 lg:gap-14">
           <ActivityChart weeks={dashboard.weeks} />
-          <ReachBars rows={dashboard.reach} />
+          <ReachBars rows={dashboard.reach} palettes={dashboard.palettes} />
         </div>
 
-        {/* Row 3 — what to do, beside the card most recently touched. Pairing them fills the
-            column the card would otherwise leave empty, and puts the actions next to the thing
-            they act on. */}
+        {/* Row 3 — the queue, beside the profile it all draws from.
+
+            ⚠ **The featured-card thumbnail used to sit here and is deliberately gone.** It was a
+            picture of one card the owner had just been editing, on the screen they land on after
+            leaving the builder — it told them something they already knew, and it was the single
+            largest object on the page. The slot now carries profile strength, which is the one
+            relevant thing the rest of the dashboard cannot show: every card is a filter over the
+            profile, so an empty group is a gap in every card at once. */}
         <div className={GRID_CLASS}>
-          {dashboard.featured === null ? null : <RecentCard resolved={dashboard.featured} />}
-          <div className="lg:order-1">
-            <AttentionList rows={dashboard.attention} />
+          {/* ⚠ **No wrapper `data-dashboard-region="attention"` here.** `<AttentionList>` puts
+              that handle on its own `<section>` (attention-list.tsx), so wrapping it in a div
+              carrying the same attribute rendered the region TWICE — every strict Playwright
+              locator on it throws, and the bones render one where the content rendered two.
+              The component is the grid item. `<ProfileStrength>` names itself
+              `[data-profile-strength]` instead, so that one genuinely needs the wrapper. */}
+          <AttentionList rows={dashboard.attention} palettes={dashboard.palettes} />
+          <div data-dashboard-region="profile-strength">
+            <ProfileStrength fieldCount={dashboard.totals.fields} groups={dashboard.groups} />
           </div>
         </div>
       </>

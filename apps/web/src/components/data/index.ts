@@ -19,7 +19,7 @@ export type {
   ScreenStateRootProps,
 } from "./screen-state-root";
 
-export { LoadingSkeleton, CARD_ASPECT_CLASS } from "./loading-skeleton";
+export { LoadingSkeleton, CARD_ASPECT_CLASS, TILE_ASPECT_CLASS } from "./loading-skeleton";
 export type { LoadingSkeletonProps, LoadingSkeletonVariant } from "./loading-skeleton";
 
 export { EmptyState, StateAction } from "./empty-state";

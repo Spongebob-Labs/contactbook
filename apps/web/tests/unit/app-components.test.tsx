@@ -17,6 +17,8 @@ import {
 import { FIELD_CATEGORY_LABELS, FieldList } from "@/components/app/field-list";
 import { StatRow } from "@/components/app/stat-row";
 import { canBuildVcf } from "@/card/build-vcf";
+import { DEFAULT_THUMB_SCALE } from "@/card/card-page-thumb";
+import { FACE_WIDTH } from "@/card/share-face";
 import { resolveCard } from "@/card/resolve-card";
 import { cardEmptyDemo, cardLedgerDemo, fixtureCards } from "@/fixtures/cards";
 import { fixtureContacts } from "@/fixtures/contacts";
@@ -210,13 +212,62 @@ describe("FieldCountMeter (AC-36, §13.2)", () => {
 /* ══ CardThumbTile — E-13, AC-09(h) ════════════════════════════════════════════════ */
 
 describe("CardThumbTile (§8D.3, E-13)", () => {
-  it("renders exactly one live thumb card", () => {
+  /**
+   * ⚠ **The tile draws the CARD PAGE now, not the wallet face.** It rendered
+   * `<ShareFace mode="thumb">` until 2026-09-18, which made every tile the same rectangle with a
+   * QR on it whatever theme, cover or bio the card carried — the face has no theme axis. The
+   * face is unchanged and still shown at full size on `/cards/{id}`; this is only about which of
+   * a card's two presentations a *list* shows.
+   */
+  it("renders exactly one live card page as the thumb", () => {
     renderWithProviders(<CardThumbTile resolved={LEDGER} href="/cards/card_minimal_demo" />);
 
     const roots = document.querySelectorAll("[data-card-root]");
     expect(roots).toHaveLength(1);
-    expect(roots[0]).toHaveAttribute("data-render-mode", "thumb");
+    /* The card page renders at full fidelity and is CROPPED by its wrapper — there is no
+       reduced "thumb" rendering of it, which is what makes the tile honest about the card. */
+    expect(roots[0]).toHaveAttribute("data-render-mode", "full");
     expect(roots[0]).toHaveAttribute("data-template-id", LEDGER.template.id);
+    expect(document.querySelector("[data-card-thumb-variant]")).toHaveAttribute(
+      "data-card-thumb-variant",
+      "page",
+    );
+  });
+
+  /**
+   * ⚠ **The regression this pins: the thumbnail's default is a RATIO, and it used to be a
+   * WIDTH.**
+   *
+   * `<ShareFace mode="thumb">` took `thumbWidth` in pixels, defaulting to 200.
+   * `<CardPageThumb>` replaced it with `scale`, a ratio — and the default came across as `1`,
+   * which means "paint at the full 336px design width". Nothing failed: both are valid numbers
+   * and neither typechecking nor any assertion here could see the units change.
+   *
+   * It broke `/dashboard`, the one caller that passed nothing. Its featured card sits in an
+   * 18rem (288px) column, so a 336px box with `flex-shrink: 0` ran 48px past the column and was
+   * clipped by the edge of the page.
+   *
+   * jsdom does no layout, so this reads the arithmetic rather than the pixels: the width is
+   * `calc(336px * var(--card-thumb-scale, <fallback>))`, and the fallback is the whole bug. A
+   * thumbnail that fills its full design width by default is not a thumbnail, so the assertion
+   * is that the default fits the 200px box the previous API guaranteed — which every current
+   * caller's column is sized around.
+   */
+  it("defaults to a thumbnail that fits its container, never the full-width card", () => {
+    /* ⚠ Asserted on the number, not on the DOM, and that is forced rather than lazy: React
+       writes the box through the CSSOM and jsdom's parser rejects
+       `calc(336px * var(--card-thumb-scale, …))`, so `width` and `height` never reach the
+       rendered `style` attribute. Every DOM-shaped version of this assertion passes against
+       the broken value too — which is worse than no test, because it looks like cover. */
+    expect(DEFAULT_THUMB_SCALE, "the thumbnail defaults to the full-size card").toBeLessThan(1);
+    expect(
+      FACE_WIDTH * DEFAULT_THUMB_SCALE,
+      "the default thumbnail no longer fits a 200px column",
+    ).toBeLessThanOrEqual(200);
+
+    /* The tile still has to reach it — a correct constant the component ignores is no fix. */
+    renderWithProviders(<CardThumbTile resolved={LEDGER} href="/cards/card_minimal_demo" />);
+    expect(document.querySelector("[data-card-thumb]")).not.toBeNull();
   });
 
   it("names the card, its type and its template beside the thumb", () => {
@@ -278,29 +329,100 @@ describe("CardThumbTile (§8D.3, E-13)", () => {
     expect(badge).toHaveTextContent("0 fields");
   });
 
-  it("hides the decorative thumb from assistive technology and offers no control", () => {
+  /**
+   * ⚠ **`aria-hidden` over a focusable descendant is an axe violation in its own right**, and the
+   * card page makes that a live risk in a way the face never did: it renders a real `<a>` per
+   * actionable field — a dozen on a well-filled card — plus the primary action.
+   *
+   * The face's thumbnail rendered its controls as inert *markup*, so the old assertion could be
+   * "there are none". The card page renders the real thing, so the guarantee moved: every one of
+   * them must sit inside an `[inert]` subtree, which removes it from the tab order and from the
+   * accessibility tree together. Asserting "none exist" here would now fail for the wrong
+   * reason and push someone toward gutting the preview.
+   */
+  it("hides the decorative thumb from assistive technology and makes it unfocusable", () => {
     renderWithProviders(<CardThumbTile resolved={LEDGER} href="/cards/card_minimal_demo" />);
     const preview = document.querySelector("[data-card-tile-preview]") as HTMLElement;
 
     expect(preview).toHaveAttribute("aria-hidden", "true");
-    // aria-hidden over a focusable descendant is an axe violation in its own right.
-    expect(preview.querySelectorAll("a, button, input, select, textarea")).toHaveLength(0);
-    // One tab stop per tile: the name.
-    expect(screen.getAllByRole("link")).toHaveLength(1);
+
+    const focusable = [...preview.querySelectorAll("a, button, input, select, textarea")];
+    expect(focusable.length, "the card page draws real controls").toBeGreaterThan(0);
+    expect(
+      focusable.filter((node) => node.closest("[inert]") === null),
+      "a focusable control inside the aria-hidden thumb is not inert",
+    ).toEqual([]);
+
+    /* One tab stop per tile: the name. The tile's own link is outside the preview. */
+    const tile = document.querySelector("[data-card-tile]") as HTMLElement;
+    expect(
+      [...tile.querySelectorAll("a")].filter((node) => node.closest("[inert]") === null),
+    ).toHaveLength(1);
   });
 
-  it("encodes the card's OWN payload in the thumb, not a dummy", () => {
+  /**
+   * ⚠ **NOTHING OF THE LIST'S OWN INVENTION MAY APPEAR INSIDE THE PREVIEW, and a QR is the
+   * specific thing this pins.**
+   *
+   * The tile grew a "Tap for QR" pill and a flip to a QR face on 2026-09-21, and both were
+   * removed the same day at the client's instruction: a tile is a *picture of the card*, and a
+   * card is not a surface for the list's controls. A reader must be able to trust that what
+   * they see in a tile is what the card is.
+   *
+   * The card page carries no symbol, so a list of card pages carries none either. The real,
+   * scannable QR lives on `<ShareFace>`, which is what `/cards/{id}` shows at full size — and
+   * clicking a tile is how you get there.
+   *
+   * ⚠ The whole-tile link is asserted here too, because the two facts are the same fact: a
+   * stretched link makes any control inside the preview unreachable by pointer, so a tile that
+   * navigates on click cannot also hold a button.
+   */
+  it("draws no QR and no control of its own in the tile", () => {
     renderWithProviders(<CardThumbTile resolved={LEDGER} href="/cards/card_minimal_demo" />);
 
-    const zone = document.querySelector("[data-qr-zone]");
-    expect(zone).toHaveAttribute("data-qr-mode", "thumb");
-    expect(zone).toHaveAttribute("aria-hidden", "true");
-    /* No `data-qr-preview` any more: the tile used to carry a fixed dummy string so a scanned
-       gallery preview could not resolve to a real card. The card in a tile is the viewer's
-       own, so resolving to it is correct — and a symbol encoding a lie is worse than a small
-       true one, because an enlarged or exported tile then decodes to nothing meaningful. */
-    expect(zone).not.toHaveAttribute("data-qr-preview");
-    expect(document.querySelector("[data-qr-symbol]")).not.toBeNull();
+    expect(document.querySelector("[data-qr-zone]")).toBeNull();
+    expect(document.querySelector("[data-qr-symbol]")).toBeNull();
+    expect(document.querySelector("[data-qr-glyph]")).toBeNull();
+
+    const preview = document.querySelector("[data-card-tile-preview]") as HTMLElement;
+    expect(
+      [...preview.querySelectorAll("button, a")].filter(
+        (node) => node.closest("[inert]") === null,
+      ),
+      "the preview holds no control of the list's own",
+    ).toEqual([]);
+
+    /* The whole tile is the link — `after:inset-0` stretches it over the preview. */
+    const link = screen.getByRole("link", { name: LEDGER.cardName });
+    expect(link.className).toContain("after:inset-0");
+    expect(link).toHaveAttribute("href", "/cards/card_minimal_demo");
+  });
+
+  /**
+   * The tile shows the card's OWN cover and the card's OWN logo, because it renders the card.
+   *
+   * ⚠ This is asserted rather than assumed because both slots arrive by a ladder that has a
+   * silent fallback at the end of it — `resolveCover` returns `{kind:"none"}` and `resolveBadge`
+   * falls through to a monogram. A tile that quietly dropped a cover would look like a design
+   * choice rather than a bug, and the fixture it is checked against carries both.
+   */
+  it("draws the card's own cover photograph and logo badge", () => {
+    const withArt: ResolvedCard = {
+      ...LEDGER,
+      cover: { kind: "photo", url: "https://cdn.example/cover.jpg", alt: "Cover" },
+      badge: { kind: "logo", url: "https://cdn.example/logo.png", alt: "Ledger logo" },
+    };
+    renderWithProviders(<CardThumbTile resolved={withArt} href="/cards/card_minimal_demo" />);
+
+    const preview = document.querySelector("[data-card-tile-preview]") as HTMLElement;
+    expect(preview.querySelector("[data-card-cover]")).toHaveAttribute("data-cover", "photo");
+    expect(preview.querySelector("[data-card-cover-photo]")).toHaveAttribute(
+      "src",
+      "https://cdn.example/cover.jpg",
+    );
+
+    const badge = preview.querySelector("[data-card-badge]") as HTMLElement;
+    expect(badge.querySelector("img")).toHaveAttribute("src", "https://cdn.example/logo.png");
   });
 
   it("renders a non-navigating tile when no href is given", () => {
@@ -692,6 +814,9 @@ describe("Anti-AI lint lock for src/components/app (F-01, F-04, F-05, F-09, F-10
   it("reads the six components plus the barrel", () => {
     // Was seven plus the barrel. `source-card-link.tsx` is gone: a contact has no source card
     // now, so nothing was left for it to resolve.
+    //
+    // ⚠ Back to seven from eight. `card-tile-preview.tsx` lived here for one day and carried
+    // the flip-to-QR tile; the tile draws only the card now, so the whole file went with it.
     expect(sources.length).toBe(7);
   });
 

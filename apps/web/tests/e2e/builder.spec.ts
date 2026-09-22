@@ -679,11 +679,13 @@ test("the previewed actions are inert look-alikes, not working controls", async 
   await expect(actions).toHaveCount(1);
   await expect(actions).toHaveAttribute("inert", /.*/);
 
-  // Both of them: the Work card shares fields (so `canBuildVcf`) and maps a PHONE (so E-56's
-  // WhatsApp action exists). Same two conditions the live page uses, from the same functions.
-  await expect(actions).toHaveAttribute("data-card-action-count", "2");
+  /* ⚠ ONE, since the card page dropped to a single action. The Work card shares fields, so
+     `canBuildVcf` holds and the button is drawn; the WhatsApp control is gone from the live page
+     and therefore from its preview, which is the property actually under test here — the
+     preview draws whatever the live page draws or it is not a preview. */
+  await expect(actions).toHaveAttribute("data-card-action-count", "1");
   await expect(actions.locator('[data-card-action="save"]')).toHaveCount(1);
-  await expect(actions.locator('[data-card-action="whatsapp"]')).toHaveCount(1);
+  await expect(actions.locator('[data-card-action="whatsapp"]')).toHaveCount(0);
 
   // Not links, and carrying no destination. A `wa.me` href in an editor is one mis-click from
   // an unsaved edit, `inert` or not.

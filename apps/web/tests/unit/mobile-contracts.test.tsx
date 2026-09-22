@@ -224,8 +224,13 @@ describe("the rigid share face on a narrow phone", () => {
    * Android in split-screen (E-15 / E-53, both P0).
    *
    * The rail wraps the FACE, not the block: wrapped around the whole column it took the
-   * wallet-pass prose with it, so the copy was 336px wide in a 296px box and had to be nudged
+   * block's own text with it, so the label was 336px wide in a 296px box and had to be nudged
    * sideways to read — a worse defect than the one being fixed.
+   *
+   * ⚠ The block is down to an eyebrow and the rail — the lede, the QR note and the two
+   * Add-to-Wallet buttons were removed as clutter (2026-09-20). That makes the rail *more*
+   * load-bearing, not less: it is now the only thing standing between a rigid 336px card and
+   * a 296px viewport, so nothing here relaxes.
    */
   it("scopes the overflow to a rail around the card alone", () => {
     const block = webSrc("components/share/wallet-pass-block.tsx");
@@ -233,7 +238,7 @@ describe("the rigid share face on a narrow phone", () => {
     expect(block).toContain("overflow-x-auto");
     expect(block).toContain("overscroll-x-contain");
 
-    // The column itself stays fluid, so the prose and the controls wrap normally.
+    // The column itself stays fluid, so anything beside the card wraps normally.
     expect(block).toContain('maxWidth: "100%"');
   });
 });

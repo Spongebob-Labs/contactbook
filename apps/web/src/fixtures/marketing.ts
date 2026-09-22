@@ -65,14 +65,14 @@ import type { ContactCard, User } from "@/types/domain";
  * ground is the only way this page says so. `belief` sits between the two on the wash, so the
  * alternation still holds and the two dark bands never touch.
  */
+/* `cards`, `corporate` and `belief` were removed on 2026-09-19 with their sections. The nav's
+   "Example cards" link moved to `/templates` rather than being dropped — see `pill-nav.tsx`,
+   where this is now the second time a nav anchor has been orphaned by a section cut. */
 export const MARKETING_SECTION_IDS = [
   "hero",
   "problem",
   "solution",
-  "cards",
   "how-it-works",
-  "corporate",
-  "belief",
   "start",
 ] as const;
 export type MarketingSectionId = (typeof MARKETING_SECTION_IDS)[number];
@@ -95,6 +95,18 @@ export interface HeroCopy {
   readonly cardFrontLabel: string;
   readonly cardBackLabel: string;
   readonly cardHint: string;
+  /**
+   * The four claims under the hero's controls, added 2026-09-19.
+   *
+   * `icon` names a `lucide-react` export. It is a STRING rather than a component so that this
+   * file stays copy-only and imports no React — `fixture-hygiene.test.ts` sweeps this module
+   * and a component import here would make the fixtures a rendering concern.
+   */
+  readonly proof: readonly {
+    readonly icon: string;
+    readonly title: string;
+    readonly body: string;
+  }[];
 }
 
 /**
@@ -130,6 +142,14 @@ export const hero = {
      design decision, and swapping the labels in was the last step of building the routes. */
   primary: { href: "/waitlist", label: "Join the waitlist" },
   secondary: { href: "/corporate", label: "For companies" },
+  /* ⚠ NOT RENDERED SINCE 2026-09-19, AND DELIBERATELY KEPT ANYWAY.
+     `proof[2]` ("Nothing to install" / "They tap a link. It opens in their browser.") now makes
+     this exact claim, with an icon and a heading, a few rows below where this used to sit — the
+     page was saying the same sentence twice on one screen. The row is what a reader actually
+     stops on, so the row won.
+     This line is the client's own phrasing and the origin of that claim, so it stays here as
+     the record rather than being deleted. If the proof row is ever cut, restore this render in
+     `hero.tsx` rather than rewriting the sentence from memory. */
   aside: "Nothing to install for the person you hand it to. It opens in their browser.",
   /* The flip control's accessible name, which changes with the face so it describes what a
      press will do rather than what is currently showing. */
@@ -139,6 +159,36 @@ export const hero = {
      to a reader who happens to be looking at the right moment — and once somebody presses it,
      the cycle stops for good, so the hint is how they learn they are allowed to. */
   cardHint: "Turns on its own \u2014 or press it.",
+  /* The four-up row under the controls. It exists because the hero had a measurable amount of
+     dead space beneath the buttons at desktop widths, and because these are the four things
+     the rest of the page spends a section each proving \u2014 stating them once, early, lets a
+     reader decide to keep scrolling before they have read any of it.
+
+     Each one is a promise the product actually keeps. "Take it back" in particular is not
+     decoration: revocation is a real capability and, since the `cards` section was cut, this
+     is now the only place above the fold that mentions it. */
+  proof: [
+    {
+      icon: "RefreshCw",
+      title: "Always current",
+      body: "Edit once. Everyone holding your card sees it.",
+    },
+    {
+      icon: "SlidersHorizontal",
+      title: "You choose the fields",
+      body: "Each card shows only what you put on it.",
+    },
+    {
+      icon: "Link2",
+      title: "Nothing to install",
+      body: "They tap a link. It opens in their browser.",
+    },
+    {
+      icon: "Undo2",
+      title: "Take it back",
+      body: "Revoke a card and it stops resolving.",
+    },
+  ],
 } as const satisfies HeroCopy;
 /* ════════════════════════════════════════════════════════════════════════════════════════
    THE HERO'S LIVE CARD — the animation the client asked for, written as data.
@@ -901,18 +951,23 @@ const CARD_OWNER = "user_prya";
 /**
  * The person every card on this page belongs to.
  *
- * ⚠ IT IS `FIXTURE_DB.user` WITH TWO CHANGES, AND BOTH ARE FORCED BY THE FACE'S FORMAT:
+ * ⚠ IT IS `FIXTURE_DB.user` WITH TWO CHANGES:
  *
- *   · **A surname that fits.** `<ShareFace>` clamps the name to ONE line by design — a second
- *     line pushes the QR off the 500px canvas — so "Priyanka Raghunathan" rendered as
- *     "Priyanka Raghunath…" in the hero. A truncated name is a bad first impression and it is
- *     not the format's fault: the format is right, the fixture name is just long. Shortened
- *     here rather than in `fixtures/user.ts`, because that user is threaded through the whole
- *     app's tests and a rename there is a change to surfaces this work is not touching.
- *   · **No avatar.** `/portraits/priyanka.png` is a generic silhouette placeholder, and at 56px
- *     on the hero's card it reads as exactly that. `null` makes the face fall back to its own
- *     monogram, which is shipped behaviour and looks designed. Swap the portrait back in the
- *     moment the client sends real photography.
+ *   · **A surname that fits.** Shortened here rather than in `fixtures/user.ts`, because that
+ *     user is threaded through the whole app's tests and a rename there is a change to surfaces
+ *     this work is not touching. This no longer guards a hard one-line clamp — `<CardPage>`'s
+ *     name wraps to two lines by design (`textWrap: "balance"`), unlike the old `<ShareFace>`
+ *     this comment used to describe — but there is no reason to prefer the longer form either,
+ *     so it stays.
+ *   · **No avatar.** See {@link HERO_COVER_URL} below for where a real photograph plugs in, and
+ *     why `avatarUrl` is deliberately not it: `avatarUrl` is profile-wide (every card this user
+ *     owns), while a card page's cover is a decision made about *one* card — `ContactCard
+ *     .coverUrl`, which `resolveCover` (`@/card/resolve-card`) already ranks ahead of it for
+ *     exactly that reason. `null` here leaves the badge on its monogram fallback, which is
+ *     shipped behaviour and reads as designed rather than as a missing image — see
+ *     `resolveBadge`, which never falls back to a photograph at all: the badge is the brand
+ *     mark, not the face, by the product's own two-slot design (`ResolvedCover` vs.
+ *     `ResolvedBadge` in `@/types/domain`).
  */
 export const marketingUser: User = {
   ...FIXTURE_DB.user,
@@ -920,8 +975,122 @@ export const marketingUser: User = {
   avatarUrl: null,
 };
 
-/** The card the hero flips. Emerald, because the hero's ground is white and the deep green is
- *  the brand's own — and because it is the one card on the page shown at full 336x500. */
+/**
+ * ⚠ NO PHOTOGRAPH ASSET EXISTS FOR THIS CARD, AND AN AUTHORED SVG NOW EXISTS AS ITS
+ * UNDERSTUDY — BENCHED, NOT DELETED. Read this whole comment before flipping the constant below.
+ *
+ * `public/portraits/*.png` (what `fixtures/user.ts` points real fixture users at) are
+ * procedurally generated silhouettes — green, and the wrong hue for Atelier's warm ground even
+ * setting that aside. `public/templates/*.png` are blurred dark abstracts, wrong for the same
+ * reason. There is no image-generation credential configured to make a better one, and this
+ * file must not fake a face by guessing or fetching one from somewhere else.
+ *
+ * `public/marketing/hero-cover.svg` was authored to answer that (the client's own words: "why is
+ * there no logo or cover images there?") — a small, hand-drawn abstract in the atelier skin's own
+ * gold tokens, viewBox'd to `COVER_RATIO.photo`'s exact aspect so nothing crops. It is genuinely
+ * ready: `resolveCover` already ranks `ContactCard.coverUrl` ahead of every other source, so
+ * turning it on is truly the one-line change the comment below describes.
+ *
+ * ⚠ MEASURED 2026-09-20, AND IT IS OFF FOR A REASON A LOOK CANNOT SEE. Turning a cover on moves
+ * `cardPageSurface`'s `coverRatio` from `COVER_RATIO.none` (0.3) to `COVER_RATIO.photo` (0.7) —
+ * `@/card/card-page-rows` — which is `+134px` at this card's fixed 336px hero width
+ * (`0.4 * 336 = 134.4`), before a single row changes. Measured with the cover ON and every other
+ * trim on this page already applied (three PERSONAL rows, two WORK rows, the one-line `bio`
+ * below, the logo badge): the SOCIAL strip's own bottom sat **~112px past** the 728px screen —
+ * almost exactly what the earlier, unshortened two-line bio and the un-swapped `field_status`
+ * row had cost between them, because the cover alone re-spent nearly everything those two trims
+ * had bought back. Closing the rest, with the cover still ON, has no more free rows left to give:
+ * by arithmetic (not separately re-measured), it needs the company wordmark gone AND the bio
+ * gone entirely AND WORK down to one row, to land within single-digit pixels of clearing the
+ * screen — three cuts nothing in this task asked for, to recover roughly 112px. That is a worse
+ * card than a shorter one with no cover: it trades a real, requested complaint ("no social
+ * visible") for an unrequested one ("no company, no bio"), to buy a decorative image.
+ *
+ * So the call made here is priority order, taken from this task's own wording: fitting the
+ * social strip inside the screen was named "the single most important outcome"; the cover was
+ * asked for afterwards, as its own numbered step. With the cover OFF and every other trim below
+ * applied, the strip clears the screen with **23px to spare** (measured, `deviceScaleFactor: 2`,
+ * 1440px and 375px viewports, both skins — see the report this pass shipped with for the exact
+ * numbers). That is the shape shipped by default.
+ *
+ * ⚠ THIS IS A ONE-LINE, FULLY REVERSIBLE CALL, NOT A DELETED FEATURE. If the cover is wanted
+ * live regardless of the height cost — a defensible, different call, since the client did ask
+ * for it by name — changing the line below from `null` to `"/marketing/hero-cover.svg"` is the
+ * entire change; nothing else in this file or in `src/card/**` needs to move with it. Re-measure
+ * after: `tests/e2e/marketing.spec.ts` currently asserts the hero makes zero image requests
+ * ("the fixture card carries no cover photo"), which turning this on makes stale and which its
+ * owner would need to widen to allow exactly one request, for exactly this path.
+ *
+ * Whenever the client's own photograph arrives, it replaces the SVG at the same switch:
+ *
+ *   1. Drop the file at `apps/web/public/marketing/hero-cover.jpg` (served at
+ *      `/marketing/hero-cover.jpg` — a new path, not a reuse of either unusable set above).
+ *   2. Change the constant below to `"/marketing/hero-cover.jpg"`.
+ *
+ * `<CardCover>` reads `resolved.cover` straight through however it got there, already crops to
+ * `objectPosition: "50% 28%"` (a portrait's upper third, not a centred crop that takes the chin
+ * off), and already scrims its own lower edge for the curve underneath it — none of that is new
+ * with this pass. What is new is that a real photograph reopens the same +134px question this
+ * comment measures for the SVG, on whatever this card's row count is by then.
+ */
+const HERO_COVER_URL: string | null = "/marketing/hero-cover.jpg";
+
+/**
+ * The hero's card — the same fixture triad every other real card on this page resolves through
+ * (`marketingUser`, `FIXTURE_DB.groups`, `FIXTURE_DB.fields`), rendered by the product's own
+ * `<CardPage>` with no hand-built stand-in for any of it (`hero-card.tsx`'s own header explains
+ * why that file resolves this card itself rather than taking one as a prop).
+ *
+ * ⚠ ENRICHED 2026-09-20, THE SAME DAY THE CLIENT CALLED THE RESULT "VAGUE AND AI-MADE". The
+ * card this fixture described before that day mapped five fields, every one of them `WORK` — so
+ * the complaint was an accurate diagnosis of this exact object: one unlabelled section, no
+ * social strip, and a bio that could never appear because nothing here supplied one distinct
+ * from the role/company line already under the name. `<CardPage>` renders exactly what it is
+ * handed; it was handed almost nothing. Nothing added by that pass invented a value — every id
+ * already existed in `fixtures/profile.ts`, mapped to rows other real cards in this app already
+ * render — and the shape it settled on was two labelled `FieldCategory` sections
+ * (`resolveCard`'s `compareResolvedFields` sorts category first) plus a social strip, which is
+ * the split the client's own reference shows and a single-category card cannot.
+ *
+ * ⚠ TRIMMED, LATER THE SAME DAY, AGAINST A MEASUREMENT RATHER THAN A LOOK. The enrichment above
+ * was correct about *shape* and wrong about *size*: at this card's fixed 336px hero width
+ * (`hero-card.tsx`'s `SCREEN_WIDTH`), fourteen mapped fields rendered the card at 1019px against
+ * the hero's own 728px phone screen (`marketing-hero.css`'s `.mk-phone-frame__screen` — 336px
+ * wide at a 9/19.5 device ratio) — 291px clipped, the social strip entirely inside that clip.
+ * The client's reference fits a cover, a logo, a name, a role, a two-line bio, the action
+ * button, three PERSONAL rows, two WORK rows and the full SOCIAL strip on one screen, so that is
+ * the shape this card was cut back to:
+ *
+ *   · `field_job_title` and `field_company` are still consumed whole by `<CardPage>`'s own hero
+ *     (`splitHeroFields`) into the wordmark and the name's role line, and still never become a
+ *     stack row. `field_bio` is gone from this list entirely — see {@link heroCard.bio} below
+ *     for what replaced it and why removing the id, not just shortening the field, was the
+ *     correct fix.
+ *   · PERSONAL keeps all three of its rows — it was already the reference's shape — though the
+ *     third one changed identity; see the comment on `field_location` below `fieldIds`.
+ *   · WORK drops from four rows to two. Gone: `field_work_phone` (a second phone number, and
+ *     `field_mobile` above already puts one PHONE row on the card) and `field_work_address` (an
+ *     `ADDRESS` row, which prints 1–2 lines and was the single tallest row in the old stack).
+ *     Kept: `field_work_email` and `field_site_url` — one internal action (`mailto:`) and one
+ *     external one (a website), which is more variety per row than a second phone would have
+ *     been.
+ *   · SOCIAL drops `field_github`. The remaining three owner-mapped platforms (`LinkedIn`, `X`,
+ *     `Instagram`) each still have a real drawn mark in `social-glyphs.tsx` rather than falling
+ *     back to the generic glyph, and — plus whichever `PHONE` row `whatsappActionFor` finds,
+ *     which the strip appends as an undeclared fourth disc (`card-page.tsx`'s own note on why
+ *     WhatsApp is derived from the card rather than mapped as a field) — that is four, matching
+ *     the reference's own count and keeping the strip to one line at this card's width.
+ *
+ * ⚠ `logoUrl` TURNS ON IN THIS SAME PASS; `coverUrl` DOES NOT, AND THAT ASYMMETRY IS
+ * DELIBERATE, NOT AN OMISSION. Both are the other half of the client's complaint ("why is there
+ * no logo or cover images there?"), and both are backed by a real asset this pass authored
+ * (`public/marketing/logo-mark.svg`, `public/marketing/hero-cover.svg`). The logo costs nothing —
+ * it fills a badge that already reserves 64px whether it holds a mark or a monogram. The cover
+ * costs `+134px` on its own (`COVER_RATIO.photo` vs `.none`, `@/card/card-page-rows` —
+ * `0.4 * 336 = 134.4`) and, measured with it on, re-clips the SOCIAL strip almost back to where
+ * this pass started. See `HERO_COVER_URL`'s own comment, above, for the full measurement and
+ * exactly how to turn it on anyway.
+ */
 export const heroCard = {
   id: "card_marketing_hero",
   userId: CARD_OWNER,
@@ -930,13 +1099,97 @@ export const heroCard = {
   isSensitive: false,
   publicUrl: "https://card.example/c/2mQ7wZ4nRt8Lp1XcVb3Hs9",
   templateId: "meridian",
-  paletteId: "emerald",
+  /* ⚠ WAS `emerald` UNTIL 2026-09-20, AND THE REASON IT MOVED IS NOT "gold is nicer".
+     The page around this card became Atelier — a warm off-white ground with a gold ladder — and
+     a deep green cover is then the single most saturated thing in the first viewport, pulling
+     the eye to the one element that is NOT the brand. `ivory` (#E7D6BA) is the warm ground in
+     the same nine-palette set, so the hero reads as one composition.
+
+     THIS IS A FIXTURE CHOICE, NOT A SYSTEM CHANGE. All eleven palettes still exist and a real
+     owner still picks their own — `template-palettes.ts` is deliberately untouched, because a
+     card's colour belongs to the person who made it. What changed is which card this page holds
+     up as its example, which is exactly the kind of decision a fixture is for. */
+  paletteId: "ivory",
+  /**
+   * ⚠ ADDED 2026-09-20 — THE OTHER HALF OF "WHY IS THERE NO LOGO … THERE?". `resolveBadge`
+   * (`@/card/resolve-card`) puts a card's own `logoUrl` ahead of the owner's initials for the
+   * circular badge that straddles the curve, so this is what now shows in place of the "PR"
+   * monogram. `public/marketing/logo-mark.svg` is authored for this fixture — two interlocking
+   * rings in `--mk-accent-tint` (#C1A88A, the atelier skin's own decorative gold) rather than a
+   * literal letterform — see that file's own header for the shape and why it survives being
+   * clipped to a circle.
+   */
+  logoUrl: "/marketing/logo-mark.svg",
+  /**
+   * `HERO_COVER_URL` — see its own comment, above, for the full account. Short version: an
+   * authored SVG cover exists and is genuinely wired (`resolveCover` reads this straight
+   * through), but the constant it reads from is `null` by measurement, not by omission — turning
+   * it on costs `+134px` and re-clips the SOCIAL strip this pass exists to un-clip. One-line
+   * change if that trade is ever wanted the other way.
+   */
+  coverUrl: HERO_COVER_URL,
+  /**
+   * ⚠ ADDED 2026-09-20, AND THE REASON IS SUBTRACTION, NOT ADDITION. `field_bio`'s own text —
+   * "Builds the studio's telecom and fintech alliances across South Asia. Ex-product, still
+   * writes the deck." — wraps to three lines at this card's `32ch` bio width (the bio's own
+   * `maxWidth` in `card-page.tsx`), which was the single largest piece of the 291px this card
+   * had to lose. `ContactCard.bio` outranks `resolveBio`'s derivation entirely (`resolve-card
+   * .ts`'s own comment on the precedence), so writing a shorter one HERE — rather than trying to
+   * shorten `fixtures/profile.ts`'s `field_bio`, which other real cards in this app also read —
+   * is what let this card get a tagline without touching a shared fixture. `field_bio` is
+   * deliberately no longer in `fieldIds` below: this string replaces what it would have shown,
+   * so leaving the id mapped as well would have re-added the same sentence as a stray, unlabelled
+   * row the moment its wording stopped matching this one verbatim (`heroBio`'s suppression is
+   * exact-text, not "already covered").
+   *
+   * ⚠ ONE LINE, NOT THE TWO THE REFERENCE SHOWS — MEASURED, NOT ROUNDED DOWN FROM TASTE. A
+   * genuinely two-line version ("Partnerships across South Asia's telecom and fintech scene.",
+   * 61 characters) still measured 48px here; this 33-character line measures 24px, one line at
+   * this card's `text-lg`/1.42 metrics. The 24px was needed: see `HERO_COVER_URL`'s comment for
+   * the budget it closes. If the cover is ever turned back on, revisiting this line first is
+   * cheaper than cutting a row.
+   */
+  bio: "South Asia telecom partnerships.",
   fieldIds: [
+    /* Consumed whole by the identity block — see the module note above. Never rendered as a
+       row. `field_bio` is NOT here — see the comment on `bio`, just above. */
     "field_job_title",
     "field_company",
-    "field_work_phone",
+    /* PERSONAL — a phone, an inbox, and a third, unmasked note row. Section kept at three rows
+       throughout, per the reference's shape; which THIRD field fills it changed on 2026-09-20
+       (below).
+       ⚠ NOT `field_home_address`: it is `isSensitive: true` in `fixtures/profile.ts`, and
+       `isMaskedField` (`@/card/field-renderers`) masks on THAT flag as much as on field type —
+       "encrypted at rest" (CLAUDE.md's non-negotiable #6) names three financial types, but
+       masked-on-the-public-surface (§7.3) is broader and correctly catches anything an owner
+       marked sensitive. Rendered, it is a label plus `••••ndia` — a generic tail-reveal applied
+       to a full street address, which reads as a cut-off string to someone meeting this card
+       for the first time, not as a privacy feature. `field_home_landline` and `field_relation`
+       are `isSensitive: true` for the same reason and are excluded for the same one. */
+    "field_mobile",
+    "field_personal_email",
+    /* ⚠ WAS `field_status` ("Taking partnership intros this quarter") UNTIL 2026-09-20's height
+       pass. Both are unmasked `note` rows and neither is an ambiguous fourth button, which was
+       the whole case for this slot — but `field_status`'s 39-character value wraps to two lines
+       at this card's width (measured: a 56px row instead of the 44px floor), and that spare
+       12px was worth having once a photo-ratio cover made every pixel above the social strip
+       contested. `field_location`'s `LOCATION_TRACKING` value is a §7.3 status chip, never a
+       coordinate, and at 27 characters it clears one line. */
+    "field_location",
+    /* WORK — trimmed from four rows to two on 2026-09-20. Dropped: `field_work_phone` (a
+       second PHONE row when `field_mobile` above already carries one) and `field_work_address`
+       (an `ADDRESS` row, 1–2 lines, the tallest row in the section it left). Kept: one internal
+       action and one external one, which is more variety per row than the two dropped were
+       buying. */
     "field_work_email",
     "field_site_url",
+    /* SOCIAL — real per-platform marks only (see the module note above). `field_github` came
+       out on 2026-09-20: three owner-mapped platforms plus the strip's own derived WhatsApp
+       disc (`whatsappActionFor`, off `field_mobile` above) is four, matching the reference's
+       own count and keeping the strip to one line at this card's width. */
+    "field_linkedin",
+    "field_x",
+    "field_instagram",
   ],
   updatedAt: "2026-09-09T09:00:00.000Z",
 } as const satisfies ContactCard;

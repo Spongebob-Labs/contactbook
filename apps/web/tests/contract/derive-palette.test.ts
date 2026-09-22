@@ -240,6 +240,17 @@ describe("the sweep — every colour, every style, every pair", () => {
    * resolution the 8-bit ray has. The first version of the engine derived the stops from the
    * clamped ground's re-measured saturation instead of the ray it was clamped along, and that
    * bug lived in exactly this neighbourhood.
+   *
+   * ⚠ **An explicit 20s budget, because the CONTRACT grew and this walk pays for all of it.**
+   * It derives 3,084 palettes and evaluates every `PALETTE_CONTRACT` pair against each. The
+   * 2026-09-18 card rebuild added five pairs — the sheet's two app inks, the two accents and the
+   * action fill, all measured on the paper each card is actually read on — which is roughly a
+   * third more work per palette and took the walk past vitest's 5s default.
+   *
+   * The budget is raised rather than the walk narrowed. Byte resolution is the point of this
+   * test: the crossings it exists to sample are one 1/256 step wide, and a coarser sweep steps
+   * straight over the neighbourhood the engine's first real bug lived in. Trading that coverage
+   * for seconds would be trading the only thing here that has ever caught anything.
    */
   it("holds at byte resolution straight through both band edges", () => {
     const failures: string[] = [];
@@ -257,7 +268,7 @@ describe("the sweep — every colour, every style, every pair", () => {
     }
     expect(walked).toBe(6 * 2 * 257);
     expect(failures.slice(0, 12), `${failures.length} failures`).toEqual([]);
-  });
+  }, 20_000);
 });
 
 /* ── The one promise PALETTE_CONTRACT cannot make ────────────────────────────────────── */

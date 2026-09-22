@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="cbLogoTitle">
+  <title id="cbLogoTitle">Contact Book brand mark</title>
+  <!--
+    THE HERO CARD'S LOGO BADGE — authored for this fixture, not sourced.
+
+    Two interlocking rings, warm gold on a transparent ground: a small, geometric stand-in for
+    "staying connected" (two parties, one link between them) rather than a literal letterform —
+    `resolveBadge` (`@/card/resolve-card`) puts `Card.logoUrl` ahead of the initials monogram it
+    would otherwise draw, so this is what now fills the circular badge that straddles the card's
+    curve instead of "PR".
+
+    Both rings sit well inside the square's inscribed circle (max radius from centre ~89px of a
+    128px radius) on purpose: the badge clips this image to a circle with `overflow: hidden` on
+    a 64px disc, so anything near a corner is lost. Nothing here is.
+
+    One hue only (the app's `mk-accent-tint` token, #C1A88A — the atelier skin's decorative gold, sampled in
+    `src/styles/marketing-skins.css`), split across two opacities rather than two colours, so the
+    overlap reads as depth without introducing a second brand colour into a one-colour mark.
+  -->
+  <circle cx="100" cy="128" r="54" fill="none" stroke="#C1A88A" stroke-width="14" />
+  <circle cx="156" cy="128" r="54" fill="none" stroke="#C1A88A" stroke-width="14" opacity="0.55" />
+</svg>

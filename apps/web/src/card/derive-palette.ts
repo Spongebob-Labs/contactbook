@@ -799,6 +799,16 @@ export function derivePalette(requestedHex: string, finish: Finish): DerivedPale
     plateBorder,
     markBg: hexOf(buttonBg),
     markInk: hexOf(buttonInk),
+    /* ⚠ **Always null, and that is the correct answer rather than a gap.**
+       The three sheet slots exist so a CURATED palette can state a paper and an accent that its
+       ground does not imply — Ivory's cream and its two golds. A derived palette has exactly one
+       input, the owner's hex, so there is nothing to derive a third colour *from*: inventing one
+       would be picking a metal on their behalf. `null` routes each slot to its documented
+       fallback — a 3% sheet and `canvasActionBg` for both accents — which is a complete, tested
+       look, and one `PALETTE_CONTRACT` already proves for every hex this function can return. */
+    sheet: null,
+    accent: null,
+    accentText: null,
   };
 
   return {

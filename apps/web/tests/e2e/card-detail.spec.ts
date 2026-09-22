@@ -26,35 +26,34 @@ test.beforeEach(async ({ context, baseURL }) => {
  *
  * ## The one architectural claim this file exists to check
  * `card-detail-client.tsx` calls `resolveCard` **once** and `buildVcf` **once**, and passes
- * those two values down to the renderer, the PNG export and the in-card "Save to contacts"
- * control. That is invariant I-5, and its observable consequence is that the field types
- * listed on the screen are exactly the properties in the saved file (AC-22) — if either
- * surface re-derived, the two would be objects that merely usually agree, which is the old
- * build's "previewed file differs from sent file" bug (§6.4).
+ * those values down to the renderer, the share panel and the PNG export. That is invariant
+ * I-5: if a second surface re-derived, the two would be objects that merely usually agree,
+ * which is the old build's "previewed file differs from sent file" bug (§6.4).
  *
- * ⚠ The share sheet is no longer one of those consumers. It used to print the `.vcf` under
- * "What people receive" and offer a Download button; both were removed, because what a
- * recipient receives is a **link** (§4.2) and that heading said otherwise. See the section
- * below — the I-5 assertions moved to "Save to contacts", and a guard test keeps the file
- * from reappearing in the panel.
+ * ⚠ **No `.vcf` leaves this screen any more, so the I-5 assertions that read one are gone.**
+ * The share sheet stopped offering a file first (what a recipient gets is a **link**, §4.2),
+ * and the owner's "Save to contacts" followed on 2026-09-20. See the block comment above the
+ * share-sheet section for where each claim is proved now — and note that the two guard tests
+ * that keep a file from *reappearing* are still here, because "removed" and "gated" look
+ * identical from the outside otherwise.
  *
  * ## What this file owns
- * · **the wallet vertical** — the share face is presented *as a wallet pass*, captioned, with
- *   the QR's job stated in words and an Add-to-Wallet affordance that is honest about not
- *   being connected. See the section below; the reasoning lives at the head of
+ * · **the wallet pass** — the share face is presented as a named object, at its exact design
+ *   size, with nothing painted over its QR and no inert chrome around it. See the section
+ *   below; the reasoning lives at the head of
  *   `src/components/share/wallet-pass-block.tsx`.
  * · **E-36** — an id that does not resolve lands on the dedicated not-found panel, never an
  *   empty state and never a raw 404.
  * · **E-43** — two fast taps on Export produce exactly one download and a busy control.
  * · **E-44** — a forced export failure shows a retry toast and **always** clears the spinner.
  * · **E-50** — Escape closes the delete dialog and returns focus to its trigger.
- * · **AC-22** — the field types visible on the screen are the field types in the `.vcf`.
  * · **AC-24** — all four state families, each reachable through `?state=`.
  *
  * ## What it deliberately does not own
  * It never decodes a QR: QR-T5 and QR-T6 belong to T27 and run for every template × every
  * viewport (spec §16.1 R-2 — duplicating the run's flakiest assertion buys nothing). It does
- * not re-assert `buildVcf`'s §6.7 table either; T11's unit suite owns that byte for byte.
+ * not re-assert `buildVcf`'s §6.7 table either, nor AC-22's set equality; T11's unit suite
+ * owns both, byte for byte and as a round trip.
  *
  * Every navigation goes through `gotoReady`: animations dead, `document.fonts` settled
  * (§14.6 / R-10) **and** React's throttled streamed reveal waited out (D14). That last part is
@@ -215,73 +214,38 @@ test("masks financial values and offers no reveal control (AC-33)", async ({ pag
 /* ── the share sheet, and the I-5 seam (AC-29) ────────────────────────────────────── */
 
 /**
- * ⚠ The `.vcf` used to be *previewed inside the share sheet*, under the heading
- * "What people receive", next to a **Download .vcf** button. Both are gone, and AC-29 moved
- * with them rather than being deleted.
+ * ⚠ **THE TWO vCARD DOWNLOAD TESTS THAT LIVED HERE ARE DELETED, AND THE CONTROL THEY DROVE
+ * IS GONE FROM THIS ROUTE.**
  *
- * The heading was false. A recipient of this dialog receives a **link** — §4.2's whole point
- * is that the page resolves live, so an edit reaches them with nothing re-sent — and the file
- * that button wrote went to the owner's own downloads folder and nowhere near anybody else.
+ * They were "Save to contacts writes the one vCard, and its raw bytes (§6.9, I-5, AC-29)" and
+ * "the .vcf carries exactly the field types the screen shows (AC-22)", plus a `saveToContacts`
+ * helper that clicked `[data-card-action="save"]` and read the download stream. The owner's
+ * Save button was removed on 2026-09-20 — saving your own card into your own address book is
+ * not an action anybody takes, and the client read the screen as cluttered. With no control to
+ * press, both tests could only have been kept by keeping a button nobody wanted, or by
+ * rewriting them into assertions about nothing. This file's own history is the argument for
+ * deleting them outright: an earlier rename of this very hook left these tests orphaned and
+ * one assertion vacuous, passing against an attribute that existed nowhere.
  *
- * So the one vCard is now proved at the control that actually writes one: the card's own
- * **Save to contacts**, the owner-side mirror of what a recipient presses on `/c/{slug}`. The
- * invariant is unchanged — one `resolveCard`, one `buildVcf`, and the bytes that leave the
- * screen are those. What changed is that there is only one surface left to check.
+ * ⚠ The claims themselves did not go with them, and that is why this is a deletion rather
+ * than a loss:
+ *
+ * · **§6.7 / §6.9 — the bytes, the CRLF endings and the filename** are pinned byte for byte
+ *   by `tests/unit/build-vcf.test.ts`, which is where they always were; the e2e copy was a
+ *   second reading of the same string.
+ * · **AC-22 — "the visible set is the file set"** is a round trip in that same unit suite
+ *   (its "the .vcf carries exactly the field types the card renders" describe block), against
+ *   a reverse property→type table rather than a hand-listed one.
+ * · **§6.9's real download**, in a browser, is `public-card.spec.ts`'s "Send to Phone
+ *   downloads a vCard named after the contact" — on `/c/{slug}`, which is where a recipient
+ *   presses it and which is the product's stated success metric.
+ *
+ * What genuinely is no longer observable from this route is **I-5's seam** — that the bytes
+ * leaving the screen came from the screen's single `resolveCard`/`buildVcf` pair. Nothing
+ * leaves this screen as a `.vcf` any more. `buildVcf` is still called exactly once here, and
+ * still gates the empty state, but the invariant is now proved where it is still reachable:
+ * in `tests/unit/build-vcf.test.ts` and on the public card.
  */
-async function saveToContacts(page: Page): Promise<{ filename: string; body: string }> {
-  const [download] = await Promise.all([
-    page.waitForEvent("download"),
-    page.locator('[data-card-action="save"]').click(),
-  ]);
-
-  const stream = await download.createReadStream();
-  const chunks: Buffer[] = [];
-  for await (const chunk of stream) chunks.push(Buffer.from(chunk));
-
-  return { filename: download.suggestedFilename(), body: Buffer.concat(chunks).toString("utf8") };
-}
-
-test("Save to contacts writes the one vCard, and its raw bytes (§6.9, I-5, AC-29)", async ({
-  page,
-}) => {
-  await gotoReady(page, CARD);
-
-  const { filename, body } = await saveToContacts(page);
-
-  expect(filename).toBe("Priyanka Raghunathan.vcf");
-  expect(body).toContain("FN:Priyanka Raghunathan");
-
-  // The file really is a vCard, with CRLF endings, and the raw bytes are the ones §6.7 pins.
-  expect(body.startsWith("BEGIN:VCARD\r\n")).toBe(true);
-  expect(body.endsWith("END:VCARD\r\n")).toBe(true);
-});
-
-test("the .vcf carries exactly the field types the screen shows (AC-22)", async ({ page }) => {
-  await gotoReady(page, CARD);
-
-  const visible = await page
-    .locator("[data-field-list] [data-field-row]")
-    .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-field-type")));
-
-  const { body } = await saveToContacts(page);
-
-  const expectedProperty: Record<string, string> = {
-    PHONE: "TEL;TYPE=CELL:",
-    EMAIL: "EMAIL;TYPE=INTERNET:",
-    URL: "URL:",
-    JOB_TITLE: "TITLE:",
-    COMPANY: "ORG:",
-  };
-
-  for (const type of visible) {
-    const property = expectedProperty[type ?? ""];
-    expect(property, `no vCard property mapped for ${type}`).toBeDefined();
-    expect(body).toContain(property);
-  }
-
-  // Nothing the screen does not show: no ADDRESS row, no ADR property.
-  expect(body).not.toContain("ADR");
-});
 
 test("the share sheet publishes the same link the QR encodes", async ({ page }) => {
   await gotoReady(page, CARD);
@@ -322,16 +286,31 @@ test("the share sheet offers a link and no file at all (§4.2)", async ({ page }
 /* ── the wallet pass ──────────────────────────────────────────────────────────────── */
 
 /**
- * **The vertical the UI used to leave unsaid.**
+ * **The pass, and the chrome that is deliberately no longer around it.**
  *
- * The share face is a *wallet pass*: it goes into Apple Wallet or Google Wallet, you bring it
- * up on your phone, and someone scans it. Its QR encodes `qrPayload` — the same `/c/{slug}`
- * the Share action sends — so the symbol is a shortcut to the link and not a second artefact.
- * None of that was on screen before `<WalletPassBlock>`: the face was painted with no caption
- * and read as an unexplained second drawing of the card.
+ * The share face is a *wallet pass*: it goes in a phone's wallet, you bring it up, and someone
+ * scans it. Its QR encodes `qrPayload` — the card's own public `/c/{token}` — so the symbol is
+ * a shortcut to the link and not a second artefact.
  *
- * These tests hold the three claims that make the vertical legible, plus the two constraints
- * that make it safe:
+ * ⚠ **The block used to say all of that on screen, and the client asked for it back off.**
+ * Review of 2026-09-20, on this page: *"this page is looking very cluttered. There is too much
+ * information in this, and there is random text in this… this looks very unprofessional."*
+ * Removed, and each has a guard below so it does not return a paragraph at a time:
+ *
+ * · **"Add to Apple Wallet" / "Add to Google Wallet"** and the line under them that read
+ *   *"Neither button installs anything yet."* §3.1 means this build can sign no `.pkpass`, so
+ *   both controls existed only to raise a toast explaining that they do nothing. Stating that
+ *   up front was the honest version of shipping them; not shipping them is better than either,
+ *   and the client was explicit — *"I don't want this thing to be visible in any of the
+ *   places."* The three tests that drove those buttons (the §3.1 no-`.pkpass` sweep and the
+ *   Google twin) are deleted with them; a control that does not exist cannot be pressed, and
+ *   an assertion that it refuses honestly would be an assertion about nothing.
+ * · **The lede and the QR note.** The URL they printed is already on this screen once, as a
+ *   real link, in the metadata block — which is what made the second copy read as random text.
+ * · **"Save to contacts."** See the block comment above the share-sheet section.
+ *
+ * What is asserted instead is that the block is now a name and a card, and that the two
+ * constraints which were never about decoration still hold:
  *
  * · the face stays **unscaled at 336 × 500 with no transformed ancestor**, because
  *   `qr-geometry|plate|overlap|occlusion|scannability.spec.ts` all measure it on this route
@@ -341,29 +320,38 @@ test("the share sheet offers a link and no file at all (§4.2)", async ({ page }
  *   file that made it rather than in a suite nobody expected to touch.
  */
 
-test("presents the face as a wallet pass and says what the QR does", async ({ page }) => {
+test("presents the face as a named pass, with no inert chrome around it", async ({ page }) => {
   await gotoReady(page, CARD);
 
   const block = page.locator("[data-wallet-pass]");
   await expect(block).toHaveCount(1);
 
-  // The caption arrives *before* the object it names — it is above the face in the DOM.
+  /* The name arrives *before* the object it names — it is above the face in the DOM — and it
+     is all that is left of the copy: two words, in the same overline rhythm as "Fields" and
+     "Sent to" in the column beside it. */
   const caption = block.locator("[data-wallet-pass-caption]");
-  await expect(caption).toContainText("Wallet pass");
-  await expect(caption).toContainText("Add it to your phone's wallet");
+  await expect(caption).toHaveText("Wallet pass");
 
-  // The pass itself, inside the block that explains it.
+  // The pass itself, inside the block that names it.
   await expect(block.locator('[data-card-root][data-render-mode="full"]')).toHaveCount(1);
 
-  /* The whole point of the vertical, in one line: the QR opens the card's link, and it is the
-     same link Share sends. Both halves are asserted — a sentence naming the URL without
-     saying it is the Share link would still leave the reader thinking they are two things. */
-  const note = block.locator("[data-wallet-qr-note]");
-  await expect(note).toContainText("/c/prya-hq");
-  await expect(note).toContainText("the same link Share sends");
+  /* ⚠ The removal, asserted rather than trusted. A full card is used deliberately: on an empty
+     card some of these were always absent, so only a card that shares plenty can tell
+     "removed" apart from "gated". */
+  await expect(page.locator("[data-wallet-add]")).toHaveCount(0);
+  await expect(page.locator("[data-wallet-pass-status]")).toHaveCount(0);
+  await expect(page.locator("[data-wallet-qr-note]")).toHaveCount(0);
+  await expect(block).not.toContainText(/add it to your phone's wallet/i);
+  await expect(block).not.toContainText(/scanning the qr/i);
+  await expect(block).not.toContainText(/installs anything/i);
 
-  // The wallet controls are their own affordance, not a fifth header action.
-  await expect(page.locator("[data-wallet-add]")).toHaveCount(2);
+  /* ⚠ AND THE OWNER'S SAVE, which is the one assertion here that is not vacuous by
+     construction: `data-card-action="save"` is alive and asserted elsewhere — it is the
+     recipient's control on `/c/{slug}`, the product's stated success metric. What must not
+     exist is a copy of it on the owner's own card. */
+  await expect(page.locator('[data-card-action="save"]')).toHaveCount(0);
+
+  // Nothing moved into the header to replace it, either: Edit · Share · Export PNG · Delete.
   await expect(page.locator("[data-card-detail-action]")).toHaveCount(4);
 });
 
@@ -443,55 +431,7 @@ test("no part of the wallet block covers the QR plate (E-24's local guard)", asy
   expect(offenders, "a wallet control is painted over the QR").toEqual([]);
 });
 
-test("the wallet controls are honest before they are pressed, and install nothing (§3.1)", async ({
-  page,
-}) => {
-  await gotoReady(page, CARD);
-
-  /* Stated up front, not only after a press. A control that looks live and admits it is inert
-     only once you have used it is the small dishonesty this build keeps refusing. */
-  await expect(page.locator("[data-wallet-pass-status]")).toContainText(
-    "Neither button installs anything yet",
-  );
-
-  const downloads: string[] = [];
-  page.on("download", (download) => {
-    downloads.push(download.suggestedFilename());
-  });
-
-  await page.locator('[data-wallet-add="apple"]').click();
-
-  const toast = page.locator("[data-overlay-toast]");
-  await expect(toast).toBeVisible();
-  // Not `danger`: nothing failed. It is a statement of the state of the world.
-  await expect(toast).toHaveAttribute("data-tone", "default");
-  await expect(toast).toContainText("Wallet delivery isn't connected yet");
-  await expect(toast.locator("[data-toast-description]")).toContainText(
-    "has to be signed by a server",
-  );
-
-  /* §3.1's wall, asserted rather than trusted: no `.pkpass` was fabricated, no anchor was
-     planted, nothing navigated. A download that produces a file no wallet will accept is
-     worse than no download — it fails later, silently, on someone's phone. */
-  await page.waitForTimeout(500);
-  expect(downloads).toEqual([]);
-  await expect(page.locator('a[href$=".pkpass"]')).toHaveCount(0);
-  expect(page.url()).toContain("/cards/card_minimal_demo");
-
-  // The pass is untouched by the press.
-  await expect(page.locator('[data-card-root][data-render-mode="full"]')).toHaveCount(1);
-});
-
-test("the Google control answers the same way", async ({ page }) => {
-  await gotoReady(page, CARD);
-
-  await page.locator('[data-wallet-add="google"]').click();
-  await expect(page.locator("[data-overlay-toast]")).toContainText(
-    "Wallet delivery isn't connected yet",
-  );
-});
-
-test("a zero-field card still has a pass, a link and the wallet controls", async ({ page }) => {
+test("a zero-field card still has a pass and a link", async ({ page }) => {
   await gotoReady(page, EMPTY_CARD);
 
   /* `canBuildVcf` gates the `.vcf` and nothing else. A card that maps no fields still has a
@@ -499,9 +439,15 @@ test("a zero-field card still has a pass, a link and the wallet controls", async
      so the pass is still a pointer to it. Gating the block on emptiness would have invented a
      second meaning for the word on the one screen that keeps it to a single definition. */
   await expect(page.locator("[data-wallet-pass]")).toHaveCount(1);
-  await expect(page.locator('[data-card-action="save"]')).toHaveCount(0);
-  await expect(page.locator('[data-wallet-add="apple"]')).toBeVisible();
-  await expect(page.locator("[data-wallet-qr-note]")).toContainText("/c/prya-blank");
+  await expect(page.locator('[data-card-root][data-render-mode="full"]')).toHaveCount(1);
+
+  /* ⚠ The link, read from the metadata block rather than from the wallet block's prose. That
+     sentence printed the URL a second time and was removed as clutter; the assertion moved to
+     the copy that was always the real one — a link a reader can tap to check what the QR
+     opens. Its href rather than its text, and `/c/` rather than a pinned slug: the token is
+     minted per environment, so a literal would be asserting about the fixture and not about
+     the product. */
+  await expect(page.locator("[data-card-meta-link] a")).toHaveAttribute("href", /\/c\/.+/);
 });
 
 /* ── E-01 / AC-36: the card that shares nothing ───────────────────────────────────── */
@@ -520,7 +466,11 @@ test("a zero-field card offers no .vcf at all and says why (E-01, AC-36)", async
 
   // The card still renders name-only, so the consequence is visible rather than hidden.
   await expect(page.locator('[data-card-root][data-render-mode="full"]')).toHaveCount(1);
-  await expect(page.locator('[data-card-action="save"]')).toHaveCount(0);
+  /* ⚠ A `[data-card-action="save"]` count used to sit here as "an empty card offers no save".
+     It says nothing now: no card offers one on this route, empty or not, so the assertion
+     would pass for a reason that has nothing to do with E-01. The one guard that still means
+     something — the owner's save must not come back at all — is in the wallet-pass section,
+     stated once, on a card that shares plenty. */
 
   await page.locator('[data-card-detail-action="share"]').click();
   await expect(page.locator("[data-share-sheet]")).toBeVisible();

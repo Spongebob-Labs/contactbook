@@ -97,6 +97,16 @@ export interface CardActionButtonProps {
   disabled?: boolean;
   /** Announced state for the save action's in-flight moment. */
   busy?: boolean;
+  /**
+   * An optional mark at the trailing edge — the card page's primary action wears an arrow
+   * there, the way the reference does.
+   *
+   * ⚠ It is a SLOT and not a boolean, and it is placed out of flow rather than added to the
+   * centred group, so the label stays optically centred. An arrow that joins the `icon`/label
+   * group instead shifts every label left by half the arrow's width, which reads as a wobble
+   * the moment two buttons are stacked.
+   */
+  trailing?: ReactNode;
 }
 
 export function CardActionButton({
@@ -113,15 +123,22 @@ export function CardActionButton({
   onClick,
   disabled = false,
   busy = false,
+  trailing,
 }: CardActionButtonProps): ReactElement {
   const primary = variant === "primary";
   const onCanvas = surface === "canvas";
 
   /* Four combinations, resolved once so the style object below stays readable. */
+  /* ⚠ `transparent` and not `--canvas` for the canvas secondary.
+     It was `var(--canvas)` — pure white — which was right while the only surface under it was
+     the white app canvas. The card page's sheet is white carrying 3% of the palette's ground,
+     so an opaque white fill on it reads as a pale rectangle floating on paper. Transparent lets
+     the ghost button take whatever paper it stands on, on every surface; the `--line-control`
+     border below is what makes it a control either way (1.4.11, 3.44:1 on canvas). */
   const fill = onCanvas
     ? primary
       ? "var(--c-canvas-action-bg)"
-      : "var(--canvas)"
+      : "transparent"
     : primary
       ? "var(--c-button-bg)"
       : "var(--c-button-alt-bg)";
@@ -151,7 +168,12 @@ export function CardActionButton({
     justifyContent: "center",
     gap: "var(--space-2)",
     width: "100%",
-    minHeight: "44px", // the pointer-target floor; a card is used with a thumb
+    /* 44 is the pointer-target floor and what every other card action uses. The canvas PRIMARY
+       is the card page's single hero control, so it is taller — but 48 rather than the 56 it
+       briefly was: it is now the ONLY button on the card, so it no longer has to out-shout a
+       second one beneath it, and 8px on the tightest axis in the product is worth more than the
+       emphasis. It still clears the 44px field rows below it by a full step. */
+    minHeight: onCanvas && primary ? "48px" : "44px",
     paddingInline: "var(--space-5)",
     borderRadius: shape === "pill" ? "var(--radius-full)" : "var(--radius-md)",
     background: fill,
@@ -160,6 +182,8 @@ export function CardActionButton({
     fontSize: "var(--text-sm)",
     fontWeight: "var(--weight-medium)",
     letterSpacing: "0.002em",
+    /* The containing block for `trailing`, above. */
+    position: "relative",
     cursor: disabled ? "not-allowed" : "pointer",
     opacity: disabled ? 0.55 : 1,
     transition: `opacity var(--dur-fast) var(--ease-standard)`,
@@ -174,6 +198,20 @@ export function CardActionButton({
         </span>
       )}
       <span>{children}</span>
+      {trailing === undefined ? null : (
+        <span
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            insetInlineEnd: "var(--space-5)",
+            display: "flex",
+            flexShrink: 0,
+            opacity: 0.85,
+          }}
+        >
+          {trailing}
+        </span>
+      )}
     </>
   );
 

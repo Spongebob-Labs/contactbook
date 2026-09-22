@@ -1,0 +1,91 @@
+/**
+ * THE CARD TILE — a card as an object in a list, and nothing else.
+ *
+ * ## ⚠ What this file is allowed to draw, and it is very little
+ *
+ * **Only the card's own design may appear in a tile.** No badge, no pill, no caption, no
+ * affordance of the list's invention — if a reader can see it in the tile, it is something the
+ * card itself draws. That rule is here because it was broken once: a "Tap for QR" pill and a
+ * flip to a QR face were added on 2026-09-21 and removed the same day. A tile is a picture of
+ * the card; the card is not a surface for the list's controls.
+ *
+ * So this file draws exactly three things, and two of them are the frame around the card:
+ *
+ *   1. `.cb-tile-frame` — the box, its radius, its hairline and its shadow. The card is a
+ *      physical object, and an object on a page has an edge and casts a shadow.
+ *   2. `.cb-tile-veil`  — the crop, resolved. See below.
+ *   3. the hover lift    — the whole tile is one link, so the frame answers the pointer.
+ *
+ * ## ⚠ The veil, and why a crop needs one
+ *
+ * A tile is a fixed-height window onto `<CardPage>`, which is a *document* and has no height.
+ * Where that window lands is therefore a function of the card's own content — bio length,
+ * whether the name wrapped, how tall the cover ratio made the photograph. Measured against the
+ * fixture set at 336 wide, the card spends roughly 235px on a photographic cover and another
+ * ~243px on badge, wordmark, name, role, bio and the primary action, so every tile cuts
+ * somewhere inside the first field section and *which pixel* varies per card. One tile ended
+ * under its button; the next was sliced through the middle of a row; the next through the word
+ * SOCIAL. Reported as *"half-cut previews"*, and there was no bug to find: the tile had no
+ * bottom of its own.
+ *
+ * The veil gives it one. It is a fade to `--c-sheet` — **the card's own paper**, the exact
+ * colour that card is printed on — so nothing foreign appears over the design: a row at the
+ * boundary dissolves into the page it is printed on rather than being severed. On a Paper card
+ * that is white; on Ivory it is that palette's cream.
+ *
+ * ⚠ **Do not answer a bad crop by moving the crop.** There is no height at which a
+ * variable-length document ends tidily for every card — that is the property that produced the
+ * report in the first place.
+ */
+
+/* ── the frame ──────────────────────────────────────────────────────────────── */
+
+.cb-tile-frame {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-xl);
+  /* Decorative at 1.23:1 — the same exemption every `--line` rule in the product takes. It is
+     here for the Paper palette, whose ground is the app's own near-white and would otherwise
+     have no edge at all. */
+  border: 1px solid var(--line);
+  box-shadow: var(--elevation-card);
+  transition: box-shadow var(--dur-fast) var(--ease-standard);
+  /* The box is the thumbnail's, set inline from `--card-thumb-scale`. Nothing here may assume
+     a size — see `card-thumb-tile.tsx`. */
+}
+
+/**
+ * The whole tile is one stretched link, so the hover state belongs to the tile and not to the
+ * frame's own `:hover`: a pointer over the caption is still a pointer over the target.
+ * `--elevation-2` is the product's own lifted step; a hand-rolled shadow here would be a colour
+ * literal in a file whose job is to reuse the tokens the card already stands on.
+ */
+[data-card-tile]:hover .cb-tile-frame,
+[data-card-tile]:focus-within .cb-tile-frame {
+  box-shadow: var(--elevation-2);
+}
+
+/* ── the crop, resolved ─────────────────────────────────────────────────────── */
+
+/**
+ * ⚠ **26%, and the ceiling is set by the SHORT card rather than the long one.** The fade has to
+ * start far enough above the crop that a 44px row disappears across its own height rather than
+ * in its last few pixels — which argues for more. But a card with five fields ends *above* the
+ * crop and needs none of this: at 32% the veil reached its social strip and its credit line and
+ * dimmed a perfectly complete card's own ending to nothing. 26% of 620 is ~160px, which clears
+ * three row-heights of fade and still starts below where a short card has finished.
+ */
+.cb-tile-veil {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  height: 26%;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    color-mix(in srgb, var(--c-sheet, var(--canvas)) 45%, transparent) 38%,
+    color-mix(in srgb, var(--c-sheet, var(--canvas)) 90%, transparent) 66%,
+    var(--c-sheet, var(--canvas)) 82%
+  );
+  pointer-events: none;
+}

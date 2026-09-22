@@ -213,6 +213,52 @@ export interface ContactCard extends CardSurface {
    * identity slot, ahead of any photograph — and every renderer reads it from there.
    */
   logoUrl?: string | null;
+
+  /* ── ⚠ THREE UI-ONLY SLOTS. THE API HAS NO COLUMN FOR ANY OF THEM YET ─────────────────────
+   *
+   * `coverUrl`, `headline` and `bio` are set by the builder and rendered by the card. They are
+   * NOT sent to the server and NOT read back from it: `toCreateCardForm` and `updateCard` do not
+   * carry them, and `toContactCard` never populates them, so a reload drops whatever the owner
+   * typed.
+   *
+   * That is deliberate and temporary. The composition needs all three to be worth judging — a
+   * card with no cover, no position and no bio is not the card the client approved — and the
+   * front end can hold them today while the columns are specified. Keeping them on
+   * `ContactCard` rather than in a side-channel means the renderer, the resolver and the
+   * preview all take the same object they already take, so making them real is three mappings
+   * and no redesign.
+   *
+   * ⚠ **What the backend has to add, stated here so it is not archaeology later:**
+   *   · `Card.coverUrl`  — nullable text, written by a multipart upload exactly like
+   *                        `logoUrl` (`POST /cards/{id}/cover`, same size and type limits).
+   *   · `Card.headline`  — nullable text, ≤ 80 chars. The position line under the name.
+   *   · `Card.bio`       — nullable text, ≤ 240 chars.
+   * All three then need adding to `CardResponseDto`, to `toContactCard`, and to the update DTO.
+   */
+
+  /**
+   * The card page's cover photograph, chosen in the builder.
+   *
+   * Outranks the `PHOTO` field and `User.avatarUrl` when set — it is the narrower choice, the
+   * same precedence argument `logoUrl` makes against a profile photo.
+   */
+  coverUrl?: string | null;
+
+  /**
+   * The position line printed under the name — "Founder & CEO".
+   *
+   * Outranks the first mapped `JOB_TITLE`. An owner who has typed a position on THIS card has
+   * made a decision about this card; the profile field is what they get when they have not.
+   */
+  headline?: string | null;
+
+  /**
+   * The bio printed under the position.
+   *
+   * Outranks `resolveBio`'s derivation entirely — including its `"{JOB_TITLE} at {COMPANY}"`
+   * branch, which exists precisely because there was nothing better to show.
+   */
+  bio?: string | null;
   /**
    * [ASSUMED — spec AS-02] A new field the API does not have yet. The old schema had no
    * template column, which is exactly why the old wizard taught a template choice and then
@@ -388,6 +434,44 @@ export function contactLabel(contact: Pick<Contact, "displayName" | "phoneE164">
  * who uploads a mark to their work card and then sees their own face there has had their choice
  * silently overruled — the same reason `groundHex` beats `paletteId`.
  */
+/**
+ * THE COVER — the card page's photographic zone, and the first of two image slots.
+ *
+ * ## Why this exists rather than reusing `ResolvedAvatar`
+ *
+ * `ResolvedAvatar` is ONE slot with a four-step ladder, and the card page's composition needs
+ * TWO images at once: a photograph filling the cover, and a brand mark in the badge that
+ * straddles the curve below it. Asking one ladder to answer both questions produced a real
+ * defect — `card.logoUrl` outranks every photograph, so uploading a logo silently deleted the
+ * owner's face from their own card.
+ *
+ * So the ladder is split by *what the image is for* rather than by precedence:
+ *
+ *   · COVER  — a photograph of the person. `PHOTO` field → `User.avatarUrl` → none.
+ *   · BADGE  — the brand mark. `Card.logoUrl` → monogram. See {@link ResolvedBadge}.
+ *
+ * ⚠ `avatar` is NOT removed and its ladder is unchanged. `<ShareFace>`, the PNG exporter and
+ * the OpenGraph image all render one circle and are correct to; changing their slot to suit a
+ * composition they do not use would be a redesign disguised as a refactor.
+ *
+ * `"none"` rather than `null` so the absent case is a member of the union and every consumer
+ * has to name it — a card with no photograph is the COMMON case, not an edge one, and the
+ * cover must be beautiful in it rather than empty.
+ */
+export type ResolvedCover =
+  | { kind: "photo"; url: string; alt: string }
+  | { kind: "none" };
+
+/**
+ * THE BADGE — the circular mark that straddles the curve between cover and sheet.
+ *
+ * Two members, because the badge always paints: a card with no logo wears its owner's
+ * initials, never an empty ring (§11 E-19, restated for the second slot).
+ */
+export type ResolvedBadge =
+  | { kind: "logo"; url: string; alt: string }
+  | { kind: "monogram"; initials: string };
+
 export type ResolvedAvatar =
   /** The card's uploaded logo. Drawn exactly as a photograph is — same circle, same crop. */
   | { kind: "logo"; url: string; alt: string }
@@ -438,6 +522,21 @@ export interface ResolvedCard {
   surface: ResolvedSurface;
   fullName: string;
   avatar: ResolvedAvatar;
+  /**
+   * The card page's cover photograph, or `none`. See {@link ResolvedCover} for why this is a
+   * separate slot from `avatar` rather than a reading of it.
+   */
+  cover: ResolvedCover;
+  /** The card page's badge mark. See {@link ResolvedBadge}. */
+  badge: ResolvedBadge;
+  /**
+   * The position line, resolved: the card's own `headline` if it has one, else the first mapped
+   * `JOB_TITLE`. `null` when the owner has neither, and the slot collapses.
+   *
+   * Resolved here rather than in the renderer for the same reason `palette` is: the builder's
+   * preview and the page a stranger opens must not disagree about what the card says.
+   */
+  headline: string | null;
   /** `null` collapses the bio slot rather than reserving empty space (§11 E-06). */
   bio: string | null;
   /** Ordered by the §6.4 ordering rule. */
