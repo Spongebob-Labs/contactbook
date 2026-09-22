@@ -37,11 +37,29 @@ export class PublicCardMetaDto {
 
   @ApiPropertyOptional({
     nullable: true,
-    example: 'meridian',
-    description:
-      'NULL means the owner never chose one — derive a look from `kind` instead, same fallback the owner app itself uses.',
+    example: 'https://storage.googleapis.com/.../card-covers/.../cover.jpg',
+    description: "Already cropped by the owner's client — render verbatim.",
   })
-  templateId!: string | null;
+  coverUrl!: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    example: 'Head of Partnerships',
+    description: "Overrides the owner's profile job title on this card.",
+  })
+  headline!: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    example: 'Connecting people, ideas and opportunities.',
+  })
+  bio!: string | null;
+
+  @ApiProperty({
+    example: 'meridian',
+    description: 'Never null — defaults to "meridian" when never chosen.',
+  })
+  templateId!: string;
 
   @ApiPropertyOptional({ nullable: true, example: 'sapphire' })
   paletteId!: string | null;

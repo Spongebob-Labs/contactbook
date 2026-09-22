@@ -7,6 +7,14 @@ import { AppLogger } from '../common/logging/app-logger.service';
 import { maskPhone } from '../common/logging/redact';
 import { ApiError } from '../common/errors/api-error';
 import { decryptFieldValueForRead } from '../profile/profile-field-value.util';
+import { isFinancialFieldType } from '../crypto/field-encryption.util';
+
+/// §7.1 of the card-appearance backend spec: BANK_ACCOUNT/DIGITAL_WALLET/
+/// CRYPTO_WALLET must never reach a public payload, absolutely — "not as
+/// text, not in an attribute," regardless of any owner flag. Fixed value,
+/// no partial reveal (no "last 4 digits") — a masking convention not
+/// specified is a masking convention that can drift or leak inconsistently.
+const MASKED_FIELD_VALUE = '••••';
 import { ContactsService } from '../contacts/contacts.service';
 import { OutboxService } from '../outbox/outbox.service';
 import { TaskEnqueuer } from '../outbox/task-enqueuer';
@@ -422,6 +430,9 @@ export class ShareLinksService {
         name: card.name,
         kind: card.kind,
         logoUrl: card.logoUrl,
+        coverUrl: card.coverUrl,
+        headline: card.headline,
+        bio: card.bio,
         templateId: card.templateId,
         paletteId: card.paletteId,
         groundHex: card.groundHex,
@@ -439,18 +450,25 @@ export class ShareLinksService {
         .map((cf) => ({
           type: cf.field.type,
           label: cf.labelOverride ?? cf.field.label,
-          value: decryptFieldValueForRead(
-            this.config.fieldEncryptionKey,
-            { userId: ownerId, fieldId: cf.field.id, type: cf.field.type },
-            cf.field.value,
-            cf.field.isEncrypted,
-            (err) =>
-              this.logger.error('sharing.public_field_decryption_failed', {
-                cardId: card.id,
-                fieldId: cf.field.id,
-                err: err instanceof Error ? err.message : String(err),
-              }),
-          ),
+          // Masked absolutely for the three financial types — never
+          // decrypted at all on this path, so the plaintext never exists in
+          // this process for a public request, not even transiently. The
+          // owner's own view (CardsService.toResponseDto) is the only path
+          // that ever decrypts these.
+          value: isFinancialFieldType(cf.field.type)
+            ? MASKED_FIELD_VALUE
+            : decryptFieldValueForRead(
+                this.config.fieldEncryptionKey,
+                { userId: ownerId, fieldId: cf.field.id, type: cf.field.type },
+                cf.field.value,
+                cf.field.isEncrypted,
+                (err) =>
+                  this.logger.error('sharing.public_field_decryption_failed', {
+                    cardId: card.id,
+                    fieldId: cf.field.id,
+                    err: err instanceof Error ? err.message : String(err),
+                  }),
+              ),
         })),
     };
   }

@@ -29,6 +29,7 @@ import type { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ApiErrorResponseDto } from '../common/errors/api-error-response.dto';
 import { MAX_LOGO_BYTES } from './card-logo-storage.service';
+import { MAX_COVER_BYTES } from './card-cover-storage.service';
 import { CardsService } from './cards.service';
 import { ShareLinksService } from './share-links.service';
 import { CreateCardDto } from './dto/create-card.dto';
@@ -142,7 +143,14 @@ export class CardsController {
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Rename or recategorize a card' })
+  @ApiOperation({
+    summary: 'Rename, recategorize, or restyle a card',
+    description:
+      'Any subset of the fields below. Omitted = leave alone; explicit `null` (on every ' +
+      'nullable field) clears it back to unset. `coverUrl` is the one exception in the other ' +
+      'direction — the only value it ever accepts is `null`, to remove the cover; a real cover ' +
+      'can only be set via POST /cards/:id/cover.',
+  })
   @ApiResponse({ status: 200, type: CardResponseDto })
   @ApiResponse({
     status: 404,
@@ -216,6 +224,75 @@ export class CardsController {
     @Param('id') id: string,
   ): Promise<void> {
     await this.cards.removeLogo(req.user!.id, id);
+  }
+
+  @Post(':id/cover')
+  @ApiOperation({
+    summary: 'Upload or replace this card’s cover photo',
+    description:
+      `JPEG, PNG, or WebP, up to ${MAX_COVER_BYTES / (1024 * 1024)} MB. Replacing an existing ` +
+      'cover deletes the old one from storage. The image is stored and served exactly as sent — ' +
+      "the client is expected to have already cropped it to the card's aperture (1:0.7). No " +
+      'server-side re-crop, re-fit, or re-compress happens.',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['file'],
+      properties: { file: { type: 'string', format: 'binary' } },
+    },
+  })
+  @ApiResponse({ status: 200, type: CardResponseDto })
+  @ApiResponse({
+    status: 404,
+    type: ApiErrorResponseDto,
+    description: 'CARD_NOT_FOUND',
+  })
+  @ApiResponse({
+    status: 409,
+    type: ApiErrorResponseDto,
+    description: 'COVER_STORAGE_NOT_CONFIGURED',
+  })
+  @ApiResponse({
+    status: 413,
+    type: ApiErrorResponseDto,
+    description: 'COVER_TOO_LARGE',
+  })
+  @ApiResponse({
+    status: 415,
+    type: ApiErrorResponseDto,
+    description: 'COVER_TYPE_UNSUPPORTED',
+  })
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: MAX_COVER_BYTES } }),
+  )
+  async uploadCover(
+    @Req() req: Request,
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.cards.uploadCover(req.user!.id, id, file);
+  }
+
+  @Delete(':id/cover')
+  @ApiOperation({
+    summary: 'Remove this card’s cover photo',
+    description:
+      'Same effect as PATCH /cards/:id with { "coverUrl": null } — either works.',
+  })
+  @HttpCode(204)
+  @ApiResponse({ status: 204, description: 'Removed.' })
+  @ApiResponse({
+    status: 404,
+    type: ApiErrorResponseDto,
+    description: 'CARD_NOT_FOUND or COVER_NOT_FOUND',
+  })
+  async removeCover(
+    @Req() req: Request,
+    @Param('id') id: string,
+  ): Promise<void> {
+    await this.cards.removeCover(req.user!.id, id);
   }
 
   @Delete(':id')

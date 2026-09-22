@@ -14,6 +14,7 @@ import { decryptFieldValueForRead } from '../profile/profile-field-value.util';
 import { OutboxService } from '../outbox/outbox.service';
 import { TaskEnqueuer } from '../outbox/task-enqueuer';
 import { CardLogoStorageService } from './card-logo-storage.service';
+import { CardCoverStorageService } from './card-cover-storage.service';
 import { generateShareToken } from './share-token.util';
 import {
   diffCardFields,
@@ -48,6 +49,7 @@ export class CardsService {
     private readonly outbox: OutboxService,
     private readonly enqueuer: TaskEnqueuer,
     private readonly logoStorage: CardLogoStorageService,
+    private readonly coverStorage: CardCoverStorageService,
   ) {}
 
   async list(
@@ -101,6 +103,8 @@ export class CardsService {
         texture: dto.texture,
         texturePresence: dto.texturePresence,
         textureScale: dto.textureScale,
+        headline: dto.headline,
+        bio: dto.bio,
       },
       include: CARD_WITH_FIELDS_INCLUDE,
     });
@@ -122,12 +126,26 @@ export class CardsService {
     }
   }
 
+  /**
+   * `null` vs omitted is load-bearing on every nullable field below: the
+   * conditional spread includes a key whenever the DTO value is
+   * `!== undefined` — which is true for both a real value AND an explicit
+   * `null`, and false only when the field was left out of the request body
+   * entirely. Prisma then either sets the column or clears it to NULL,
+   * exactly matching "null clears it, omitted leaves it alone."
+   *
+   * `coverUrl` is the one field where clearing has a side effect: an
+   * explicit `null` (the DTO only ever allows null or omitted — see
+   * UpdateCardDto) also deletes the GCS object, same as removeLogo()/
+   * removeCover() do, so a cleared card doesn't leave storage tracking a
+   * URL nothing points at anymore.
+   */
   async update(
     userId: string,
     id: string,
     dto: UpdateCardDto,
   ): Promise<CardResponseDto> {
-    await this.findOwned(userId, id);
+    const existing = await this.findOwned(userId, id);
     const row = await this.prisma.card.update({
       where: { id },
       data: {
@@ -144,9 +162,19 @@ export class CardsService {
         ...(dto.textureScale !== undefined && {
           textureScale: dto.textureScale,
         }),
+        ...(dto.headline !== undefined && { headline: dto.headline }),
+        ...(dto.bio !== undefined && { bio: dto.bio }),
+        // dto.coverUrl, when present at all, is always exactly null (the
+        // DTO rejects anything else) — this is a clear, never a set.
+        ...(dto.coverUrl !== undefined && { coverUrl: null }),
       },
       include: CARD_WITH_FIELDS_INCLUDE,
     });
+
+    if (dto.coverUrl === null && existing.coverUrl) {
+      await this.coverStorage.deleteByUrl(existing.coverUrl);
+    }
+
     return this.toResponseDto(userId, row);
   }
 
@@ -498,6 +526,58 @@ export class CardsService {
     this.logger.info('sharing.card_logo_removed', { userId, cardId });
   }
 
+  /** Upload/replace this card's cover. Mirrors uploadLogo() exactly — see
+   *  CardCoverStorageService for why the bytes are stored verbatim, no
+   *  server-side crop/resize. */
+  async uploadCover(
+    userId: string,
+    cardId: string,
+    file: { buffer: Buffer; mimetype: string; size: number },
+  ): Promise<CardResponseDto> {
+    const card = await this.findOwned(userId, cardId);
+    const row = await this.attachCover(cardId, card.coverUrl, file);
+    this.logger.info('sharing.card_cover_uploaded', { userId, cardId });
+    return this.toResponseDto(userId, row);
+  }
+
+  /** Mirrors attachLogo() exactly. */
+  private async attachCover(
+    cardId: string,
+    currentCoverUrl: string | null,
+    file: { buffer: Buffer; mimetype: string; size: number },
+  ): Promise<CardWithFields> {
+    const url = await this.coverStorage.upload(cardId, file);
+
+    const row = await this.prisma.card.update({
+      where: { id: cardId },
+      data: { coverUrl: url },
+      include: CARD_WITH_FIELDS_INCLUDE,
+    });
+
+    if (currentCoverUrl) {
+      await this.coverStorage.deleteByUrl(currentCoverUrl);
+    }
+
+    return row;
+  }
+
+  async removeCover(userId: string, cardId: string): Promise<void> {
+    const card = await this.findOwned(userId, cardId);
+    if (!card.coverUrl) {
+      throw ApiError.notFound(
+        'COVER_NOT_FOUND',
+        'This card has no cover to remove.',
+      );
+    }
+
+    await this.prisma.card.update({
+      where: { id: cardId },
+      data: { coverUrl: null },
+    });
+    await this.coverStorage.deleteByUrl(card.coverUrl);
+    this.logger.info('sharing.card_cover_removed', { userId, cardId });
+  }
+
   /** IDOR guard: every read/write resolves through this, never a bare findUnique. */
   async findOwned(userId: string, id: string): Promise<CardWithFields> {
     const row = await this.prisma.card.findFirst({
@@ -521,6 +601,9 @@ export class CardsService {
       // replaces). Same construction ShareLinksService.buildUrl() uses.
       publicUrl: `${this.config.shareBaseUrl.replace(/\/+$/, '')}/c/${card.publicToken}`,
       logoUrl: card.logoUrl,
+      coverUrl: card.coverUrl,
+      headline: card.headline,
+      bio: card.bio,
       templateId: card.templateId,
       paletteId: card.paletteId,
       groundHex: card.groundHex,
