@@ -10,8 +10,12 @@ import {
   MinLength,
 } from 'class-validator';
 import {
+  CARD_FINISH_IDS,
   CARD_PALETTE_IDS,
   CARD_TEMPLATE_IDS,
+  CARD_TEXTURE_IDS,
+  CARD_TEXTURE_PRESENCE_IDS,
+  CARD_TEXTURE_SCALE_IDS,
   GROUND_HEX_PATTERN,
 } from './card-appearance.constants';
 
@@ -27,15 +31,13 @@ export class CreateCardDto {
   @IsEnum(CardKind)
   kind?: CardKind;
 
-  // --- Appearance — all optional, all NULL until the owner picks one. See
-  // card-appearance.constants.ts for why templateId/paletteId are enumerated
-  // here and the rest aren't yet. ---
+  // --- Appearance — all optional. templateId defaults to "meridian" at the
+  // DB level when omitted; the rest stay NULL until the owner picks one. ---
 
   @ApiPropertyOptional({
     enum: CARD_TEMPLATE_IDS,
     example: 'meridian',
-    description:
-      'Omit to leave unset — the frontend then derives a look from `kind` instead.',
+    description: 'Omit to default to "meridian".',
   })
   @IsOptional()
   @IsIn(CARD_TEMPLATE_IDS)
@@ -57,45 +59,50 @@ export class CreateCardDto {
   groundHex?: string;
 
   @ApiPropertyOptional({
-    example: 'matte',
-    maxLength: 40,
-    description: 'Surface finish. FE-owned value set, not yet enumerated here.',
+    enum: CARD_FINISH_IDS,
+    example: 'gradient',
+    description: 'Omit to default to "gradient".',
   })
   @IsOptional()
-  @IsString()
-  @MaxLength(40)
+  @IsIn(CARD_FINISH_IDS)
   finish?: string;
 
   @ApiPropertyOptional({
+    enum: CARD_TEXTURE_IDS,
     example: 'none',
-    maxLength: 40,
-    description:
-      'Texture motif, "none" included. FE-owned value set, not yet enumerated here.',
+    description: 'Omit to default to "none".',
   })
   @IsOptional()
-  @IsString()
-  @MaxLength(40)
+  @IsIn(CARD_TEXTURE_IDS)
   texture?: string;
 
-  @ApiPropertyOptional({
-    example: 'subtle',
-    maxLength: 40,
-    description:
-      'How strongly the texture reads. FE-owned value set, not yet enumerated here.',
-  })
+  @ApiPropertyOptional({ enum: CARD_TEXTURE_PRESENCE_IDS, example: 'subtle' })
   @IsOptional()
-  @IsString()
-  @MaxLength(40)
+  @IsIn(CARD_TEXTURE_PRESENCE_IDS)
   texturePresence?: string;
 
+  @ApiPropertyOptional({ enum: CARD_TEXTURE_SCALE_IDS, example: 'fine' })
+  @IsOptional()
+  @IsIn(CARD_TEXTURE_SCALE_IDS)
+  textureScale?: string;
+
   @ApiPropertyOptional({
-    example: '1x',
-    maxLength: 40,
+    example: 'Head of Partnerships',
+    maxLength: 80,
     description:
-      'Multiplier on the texture tile. FE-owned value set, not yet enumerated here.',
+      'Printed under the name — overrides the profile job title on this card.',
   })
   @IsOptional()
   @IsString()
-  @MaxLength(40)
-  textureScale?: string;
+  @MaxLength(80)
+  headline?: string;
+
+  @ApiPropertyOptional({
+    example: 'Connecting people, ideas and opportunities.',
+    maxLength: 280,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(280)
+  bio?: string;
 }

@@ -114,6 +114,10 @@ there is no "fetch user X's cards" surface anywhere in this API.
   flow. Not built into any FE screen yet — full integration guide, request/response shapes, and
   the important gotcha about what the `notify` response does and doesn't confirm:
   **`contactbook-card-notifications`**.
+- Card appearance now persists (`templateId`/`paletteId`/`groundHex`/`finish`/`texture`/etc,
+  `coverUrl`, `headline`, `bio`), `PATCH /cards/:id` has real omitted-vs-`null` semantics, and
+  `POST/DELETE /cards/:id/cover` exists — plus a new single-call `GET /dashboard`. Not built into
+  any FE screen yet: **`contactbook-card-appearance-dashboard`**.
 
 ### Share links — `/share-links/*`
 - `GET /share-links` — every link across all your cards, flat list.

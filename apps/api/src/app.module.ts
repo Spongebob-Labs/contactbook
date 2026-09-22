@@ -12,6 +12,7 @@ import { ProfileModule } from './profile/profile.module';
 import { ContactsModule } from './contacts/contacts.module';
 import { SharingModule } from './sharing/sharing.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { WebhooksModule } from './webhooks/webhooks.module';
     ContactsModule,
     SharingModule,
     WebhooksModule,
+    DashboardModule,
   ],
   providers: [
     {
