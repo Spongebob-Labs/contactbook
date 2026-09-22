@@ -594,8 +594,16 @@ model Message {
 
 enum InboundMessageSource {
   WHATSAPP_MESSAGE // raw webhook hit, Twilio → POST /webhooks/twilio/inbound
-  QR_SCAN_CONNECT // a stranger scanned a card's QR and verified their phone — see sharing/card-connect.service.ts
+  QR_SCAN_CONNECT // a stranger scanned a card's QR and verified their phone via OTP — see sharing/card-connect.service.ts
   CARD_SHARE // an owner shared a card with a contact — see sharing/share-links.service.ts share()
+  /// "Send to my phone" — a stranger scanned a card's QR and typed a phone
+  /// number, with NO proof it's really theirs (no OTP, no WhatsApp-tap
+  /// self-verification). Deliberately a distinct source from
+  /// QR_SCAN_CONNECT: this table is also a trust record, and collapsing a
+  /// verified connect and an unverified one under the same label would lose
+  /// exactly the distinction worth keeping if this number is ever disputed
+  /// or the sending account needs auditing. See CardConnectService.connectViaSend().
+  SEND_TO_PHONE
 }
 
 /// The interaction/connection log: one row per (fromPhoneE164, toPhoneE164)
