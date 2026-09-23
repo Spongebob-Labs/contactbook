@@ -1,10 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { renderWithProviders, screen, within } from "../helpers/render";
 
 import { ReachPanel } from "@/components/dashboard/reach-panel";
 import type { DashboardResponseDto } from "@/lib/api/schema";
-import type { DashboardTotals } from "@/lib/dashboard/metrics";
+import {
+  readDashboardSummary,
+  type DashboardSummary,
+  type DashboardTotals,
+} from "@/lib/dashboard/metrics";
 import { reachScore } from "@/lib/dashboard/reach-score";
 
 const TOTALS: DashboardTotals = {
@@ -27,7 +31,7 @@ const TOTALS: DashboardTotals = {
 function dto(
   totals: DashboardTotals,
   cards: ReadonlyArray<{ id: string; name: string }>,
-): DashboardResponseDto {
+): DashboardSummary {
   return {
     totals,
     cardReach: cards.map((c) => ({
@@ -51,6 +55,10 @@ const LIVE = reachScore(
 );
 
 describe("ReachPanel", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("draws the score once, as a labelled figure rather than loose SVG text", () => {
     renderWithProviders(<ReachPanel score={LIVE} totals={TOTALS} />);
 
@@ -135,6 +143,73 @@ describe("ReachPanel", () => {
     expect(document.querySelector("[data-reach-lever]")).toBeNull();
     expect(document.querySelector("[data-reach-dial]")).toHaveAttribute("data-reach-dial", "");
     expect(document.querySelector("[data-reach-dial]")).toHaveTextContent("\u2014");
+  });
+
+  /* ── a lagging API must never put NaN on the page ──────────────────────────────────── */
+
+  /** Everything React complained about during the test — its "Received NaN" warnings included. */
+  const reactErrors = () => vi.spyOn(console, "error").mockImplementation(() => {});
+
+  /**
+   * ⚠ The reported bug, at the component. `?? ""` and `?? "—"` catch only `null`, so a `NaN`
+   * score reached the DOM as `data-reach-dial="NaN"` and a "NaN" in the dial. Whatever produced
+   * it, a score that is not a finite number is drawn as no score.
+   */
+  it("draws a non-finite score as no score, never as NaN", () => {
+    for (const bad of [Number.NaN, Number.POSITIVE_INFINITY]) {
+      const errors = reactErrors();
+      const { unmount } = renderWithProviders(
+        <ReachPanel score={{ ...LIVE, score: bad }} totals={TOTALS} />,
+      );
+
+      const dial = document.querySelector("[data-reach-dial]")!;
+      expect(dial, String(bad)).toHaveAttribute("data-reach-dial", "");
+      expect(dial, String(bad)).toHaveAttribute("aria-label", "No reach score yet");
+      expect(dial, String(bad)).toHaveTextContent("\u2014");
+      expect(dial.querySelector("[data-reach-dial-arc]"), String(bad)).toBeNull();
+      expect(dial.outerHTML, String(bad)).not.toMatch(/NaN|Infinity/);
+      expect(errors.mock.calls.flat().join(" "), String(bad)).not.toMatch(/NaN/);
+
+      unmount();
+      vi.restoreAllMocks();
+    }
+  });
+
+  /**
+   * End to end, from the payload staging actually returned on 2026-09-23 — every total except
+   * `peopleOpened` — through the wire validator and the score, into the panel.
+   */
+  it("renders a dashboard from an API build without peopleOpened, with no NaN anywhere", () => {
+    const errors = reactErrors();
+    const stagingTotals: Record<string, unknown> = { ...TOTALS };
+    delete stagingTotals.peopleOpened;
+    const summary = readDashboardSummary({
+      ...dto(TOTALS, [
+        { id: "c1", name: "My Card" },
+        { id: "c2", name: "Untitled card" },
+      ]),
+      totals: stagingTotals as unknown as DashboardResponseDto["totals"],
+    });
+
+    renderWithProviders(<ReachPanel score={reachScore(summary)} totals={summary.totals} />);
+
+    const panel = document.querySelector("[data-reach-panel]")!;
+    expect(panel.outerHTML).not.toMatch(/NaN|Infinity|undefined|null/);
+    expect(errors.mock.calls.flat().join(" ")).not.toMatch(/NaN/);
+    /* A real score from the levers that can be measured — told 0/2 + ready 1/2 at 50 each —
+       and no "opened" action, because nobody knows who opened it. */
+    expect(screen.getByRole("img", { name: "Reach score 25 out of 100" })).toBeInTheDocument();
+    expect(document.querySelector('[data-reach-lever="opened"]')).toBeNull();
+  });
+
+  it("prints a dash — never 0 — for a count the API did not send", () => {
+    renderWithProviders(<ReachPanel score={LIVE} totals={{ ...TOTALS, totalOpens: null }} />);
+
+    const strip = document.querySelector("[data-reach-counts]") as HTMLElement;
+    const opens = within(strip).getByText("Opens").parentElement!;
+    expect(opens).toHaveTextContent("\u2014");
+    expect(opens).toHaveTextContent("Not available");
+    expect(opens).not.toHaveTextContent(/\d/);
   });
 
   it("congratulates rather than nags when nothing is outstanding", () => {

@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import type { DashboardResponseDto } from "@/lib/api/schema";
-import { toDashboardView } from "@/lib/dashboard/metrics";
+import {
+  readDashboardSummary,
+  readDashboardTotals,
+  toDashboardView,
+} from "@/lib/dashboard/metrics";
 
 /**
  * ⚠ **What this file used to assert, and where those assertions went.**
@@ -17,7 +21,8 @@ import { toDashboardView } from "@/lib/dashboard/metrics";
  * second source of truth the endpoint deleted.
  *
  * What is left on the client is {@link toDashboardView}: renaming, and one width-driven cap. So
- * that is what this file tests — and, above all, that it does **no arithmetic**.
+ * that is what this file tests — and, above all, that it does **no arithmetic**. Plus
+ * {@link readDashboardTotals}, which checks the counts off the wire; see the second block.
  */
 function dto(over: Partial<DashboardResponseDto> = {}): DashboardResponseDto {
   return {
@@ -109,5 +114,85 @@ describe("toDashboardView", () => {
 
     expect(view.groups).toEqual(groups);
     expect(view.groups.some((g) => g.fieldCount === 0)).toBe(true);
+  });
+});
+
+/**
+ * ⚠ The wire boundary. The deployed API can lag this app's DTO — staging on 2026-09-23 sent no
+ * `peopleOpened`, `reachScore` computed `2 - undefined`, and the dial printed `NaN`. Every count
+ * is checked here, once, before the view or the score sees it, and an unreadable one is `null`:
+ * unknown, which the screen renders as unknown. Never `0`, which would be a measurement.
+ */
+describe("readDashboardTotals", () => {
+  it("passes valid totals through unchanged, keeping behind: null distinct from 0", () => {
+    const rejected: string[] = [];
+    expect(readDashboardTotals(dto().totals, rejected)).toEqual(dto().totals);
+
+    const empty = readDashboardTotals({ ...dto().totals, behind: null }, rejected);
+    const clear = readDashboardTotals({ ...dto().totals, behind: 0 }, rejected);
+    expect(empty.behind).toBeNull();
+    expect(clear.behind).toBe(0);
+    /* `behind: null` is the API's own answer ("no cards yet"), not drift — nothing to report. */
+    expect(rejected).toEqual([]);
+  });
+
+  it("reads a count the API did not send as null — never 0 — and names it", () => {
+    const staging: Record<string, unknown> = { ...dto().totals };
+    delete staging.peopleOpened;
+    const rejected: string[] = [];
+    const totals = readDashboardTotals(staging, rejected);
+
+    expect(totals.peopleOpened).toBeNull();
+    expect(totals.peopleReached).toBe(5);
+    expect(rejected).toEqual(["peopleOpened=undefined"]);
+  });
+
+  it("rejects non-numeric and non-finite counts rather than coercing them", () => {
+    const rejected: string[] = [];
+    const totals = readDashboardTotals(
+      {
+        ...dto().totals,
+        cards: "3",
+        contacts: Number.NaN,
+        fields: Number.POSITIVE_INFINITY,
+        totalOpens: null,
+        neverOpened: {},
+        behind: "0",
+      },
+      rejected,
+    );
+
+    expect(totals).toEqual({
+      cards: null,
+      contacts: null,
+      fields: null,
+      peopleReached: 5,
+      peopleOpened: 4,
+      totalOpens: null,
+      neverOpened: null,
+      behind: null,
+    });
+    expect(rejected).toHaveLength(6);
+  });
+
+  it("reads a missing totals object as every count unknown", () => {
+    const totals = readDashboardTotals(undefined);
+    expect(Object.values(totals).every((v) => v === null)).toBe(true);
+  });
+
+  it("validates only the totals, and hands the rest of the response on untouched", () => {
+    const cardReach = [reachRow(1)];
+    const raw = dto({ cardReach });
+    const summary = readDashboardSummary(raw);
+
+    expect(summary.cardReach).toBe(cardReach);
+    expect(summary.attention).toBe(raw.attention);
+    /* And the view built from a lagging payload carries the unknown through, not a number. */
+    const staging: Record<string, unknown> = { ...raw.totals };
+    delete staging.peopleOpened;
+    const view = toDashboardView(
+      readDashboardSummary({ ...raw, totals: staging as unknown as DashboardResponseDto["totals"] }),
+    );
+    expect(view.totals.peopleOpened).toBeNull();
   });
 });

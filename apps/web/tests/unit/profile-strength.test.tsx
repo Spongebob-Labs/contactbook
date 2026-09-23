@@ -174,6 +174,20 @@ describe("ProfileStrength", () => {
   });
 
   /**
+   * `fieldCount` comes from `GET /dashboard`'s totals, and a deployed API that lags the DTO can
+   * omit a count — which `readDashboardTotals` reads as `null`. The tile then says nothing about
+   * the total rather than "0 fields" (a false measurement) or "null fields" (a leak).
+   */
+  it("leaves the field total out when the API did not send one", () => {
+    renderWithProviders(<ProfileStrength fieldCount={null} groups={MIXED} />);
+
+    expect(root().querySelector("[data-profile-strength-fields]")).toBeNull();
+    expect(root().textContent).not.toMatch(/NaN|null|undefined|\bfields? in all/);
+    /* The group ratio does not depend on the total, so it still stands. */
+    expect(root()).toHaveTextContent("3 of 7 groups filled");
+  });
+
+  /**
    * ⚠ The project floor: status is never carried by colour alone. The meter's fill is the second
    * encoding and the weakest one — at zero filled groups it has no width at all, so "not started"
    * and "failed to render" look identical. The word is the first encoding, and it is asserted as

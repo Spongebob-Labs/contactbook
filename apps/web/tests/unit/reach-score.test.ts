@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { DashboardResponseDto } from "@/lib/api/schema";
+import { readDashboardSummary } from "@/lib/dashboard/metrics";
 import { openLevers, reachScore } from "@/lib/dashboard/reach-score";
 
 /**
@@ -53,6 +54,23 @@ function dto(over: {
 
 const lever = (s: ReturnType<typeof reachScore>, id: string) =>
   s.levers.find((l) => l.id === id)!;
+
+/**
+ * A payload as a lagging API build sends it: `totals` with some keys missing or mistyped.
+ *
+ * ⚠ The cast is the point — the DTO says every count is a number, and the deployed API did not
+ * agree. Staging on 2026-09-23 returned no `peopleOpened`, and the dial rendered `NaN`.
+ */
+function wire(base: DashboardResponseDto, totals: Record<string, unknown>): DashboardResponseDto {
+  return { ...base, totals: totals as unknown as DashboardResponseDto["totals"] };
+}
+
+/** Every number anywhere in the output, so a `NaN` or `Infinity` cannot hide in a nested field. */
+function numbersIn(value: unknown): number[] {
+  if (typeof value === "number") return [value];
+  if (value === null || typeof value !== "object") return [];
+  return Object.values(value).flatMap(numbersIn);
+}
 
 describe("reachScore", () => {
   /**
@@ -139,6 +157,70 @@ describe("reachScore", () => {
     /* One of two cards is finished, and `ready` now carries the whole 100. */
     expect(lever(s, "ready").available).toBe(100);
     expect(s.score).toBe(50);
+  });
+
+  /**
+   * ⚠ The regression. Staging's `/dashboard` predates `peopleOpened`, so `2 - undefined` made the
+   * score `NaN` and React printed it into the dial. A count the API never sent is unknown — the
+   * opened lever drops out and its weight moves to the levers that can be measured — and it is
+   * never scored as "nobody opened it".
+   */
+  it("treats a peopleOpened the API did not send as unknown — never NaN, never 0", () => {
+    const account = dto({
+      cards: [
+        { id: "c1", name: "My Card" },
+        { id: "c2", name: "Untitled card" },
+      ],
+      peopleReached: 2,
+      behind: 1,
+    });
+    const stagingTotals: Record<string, unknown> = { ...account.totals };
+    delete stagingTotals.peopleOpened;
+    const s = reachScore(readDashboardSummary(wire(account, stagingTotals)));
+
+    expect(numbersIn(s).every(Number.isFinite)).toBe(true);
+    expect(lever(s, "opened")).toMatchObject({
+      state: "unknown",
+      done: null,
+      outstanding: null,
+      earned: 0,
+      available: 0,
+    });
+    /* told (1 of 2) and ready (1 of 2) split the 100 evenly: 25 + 25. Coercing the missing count
+       to "0 opened" would have scored this 30, grading the owner on a number nobody sent. */
+    expect(s.score).toBe(50);
+    expect(s.levers.reduce((n, l) => n + l.available, 0)).toBe(100);
+    expect(openLevers(s).map((l) => l.id)).not.toContain("opened");
+  });
+
+  it("treats a non-numeric or non-finite count as unknown, lever by lever", () => {
+    const account = dto({
+      cards: [{ id: "c1", name: "My Card" }],
+      peopleReached: 2,
+      peopleOpened: 1,
+      behind: 0,
+    });
+
+    const scoreWith = (patch: Record<string, unknown>) =>
+      reachScore(readDashboardSummary(wire(account, { ...account.totals, ...patch })));
+
+    for (const bad of ["1", Number.NaN, Number.POSITIVE_INFINITY, null, {}]) {
+      const opened = scoreWith({ peopleOpened: bad });
+      expect(lever(opened, "opened").state, String(bad)).toBe("unknown");
+      expect(numbersIn(opened).every(Number.isFinite), String(bad)).toBe(true);
+
+      /* `peopleReached` feeds two levers, so both go unknown and `ready` carries the score. */
+      const reached = scoreWith({ peopleReached: bad });
+      expect(lever(reached, "opened").state, String(bad)).toBe("unknown");
+      expect(lever(reached, "told").state, String(bad)).toBe("unknown");
+      expect(reached.score, String(bad)).toBe(100);
+
+      /* No card count, no ready lever — and never the "0 of 0 cards" a coerced zero would give. */
+      const cards = scoreWith({ cards: bad });
+      expect(lever(cards, "ready").state, String(bad)).toBe("unknown");
+      expect(lever(cards, "ready").total, String(bad)).toBeNull();
+      expect(numbersIn(cards).every(Number.isFinite), String(bad)).toBe(true);
+    }
   });
 
   it("returns null — never 0 — for an owner with nothing yet", () => {

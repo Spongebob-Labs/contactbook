@@ -4,7 +4,12 @@ import Link from "next/link";
 import { ArrowRight, Check } from "lucide-react";
 
 import type { DashboardTotals } from "@/lib/dashboard/metrics";
-import { openLevers, type LeverId, type ReachScore, type ScoreLever } from "@/lib/dashboard/reach-score";
+import {
+  openLevers,
+  type LeverId,
+  type MeasuredLever,
+  type ReachScore,
+} from "@/lib/dashboard/reach-score";
 import { cn } from "@/lib/cn";
 
 /**
@@ -51,7 +56,7 @@ const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
  * with two cards and turned into a duplicate of the attention list the moment there were six.
  * The lever is the headline and the count; the list underneath is the detail and the links.
  */
-const COPY: Record<LeverId, { done: string; open: (l: ScoreLever) => string; href: string }> = {
+const COPY: Record<LeverId, { done: string; open: (l: MeasuredLever) => string; href: string }> = {
   opened: {
     done: "Everyone you reached opened it",
     open: (l) => `${l.outstanding} of ${l.total} people haven’t opened it yet`,
@@ -173,7 +178,11 @@ export function ReachPanel({ score, totals }: ReachPanelProps): ReactElement {
  * children are announced in document order with no relationship to one another, so a reader hears
  * "55" then "REACH SCORE" as two unconnected strings. One label says the whole thing once.
  */
-function ScoreDial({ score }: { score: number | null }): ReactElement {
+function ScoreDial({ score: given }: { score: number | null }): ReactElement {
+  /* ⚠ A non-finite score is drawn as no score. `?? ""` and `?? "—"` catch only null, so a `NaN`
+     from upstream reached the DOM as `data-reach-dial="NaN"` and a "NaN" in the dial — which
+     React reports, and which reads to the owner as a measurement. */
+  const score = typeof given === "number" && Number.isFinite(given) ? given : null;
   /* An unscored account draws an empty track — never a full ring at zero, which reads as a
      measured failure rather than as "not started". */
   const drawn = score === null ? 0 : CIRCUMFERENCE * (score / 100);
@@ -267,7 +276,15 @@ function CountStrip({ totals }: { totals: DashboardTotals }): ReactElement {
           )}
         >
           <dt className="text-overline uppercase text-ink-3">{item.label}</dt>
-          <dd className="text-lg font-semibold tabular-nums text-ink">{item.value}</dd>
+          {/* `null` is a count the API did not send (see `readDashboardTotals`): a dash, never 0. */}
+          <dd className="text-lg font-semibold tabular-nums text-ink">
+            {item.value ?? (
+              <>
+                <span aria-hidden="true">—</span>
+                <span className="sr-only">Not available</span>
+              </>
+            )}
+          </dd>
         </div>
       ))}
     </dl>

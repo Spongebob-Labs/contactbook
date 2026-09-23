@@ -1,6 +1,6 @@
 import { BUILDER_NEW_CARD_NAME } from "@/components/builder/builder-reducer";
 
-import type { DashboardResponseDto } from "@/lib/api/schema";
+import type { DashboardSummary } from "@/lib/dashboard/metrics";
 
 /**
  * THE REACH SCORE — one number for "is this card doing its job", and the actions that raise it.
@@ -40,6 +40,8 @@ import type { DashboardResponseDto } from "@/lib/api/schema";
  *   behind".
  * - An owner who has never shared a card has **0 of 0** links opened. Scoring that as 0/40 tells
  *   someone with a perfectly good card that they are failing at something they have not done.
+ * - A count the deployed API did not send at all — an older build without `peopleOpened` —
+ *   arrives as `null` from `readDashboardTotals`, and the lever that needed it is unknown too.
  *
  * So an unmeasurable lever is `state: "unknown"` and is **dropped from the denominator**, with
  * its weight redistributed across the levers that can be measured ({@link distribute}). A brand
@@ -52,11 +54,11 @@ const WEIGHTS = { opened: 40, told: 30, ready: 30 } as const;
 
 export type LeverId = keyof typeof WEIGHTS;
 
-export interface ScoreLever {
+interface Lever<Count> {
   id: LeverId;
   /** `done` of `total` — the ratio itself, so the UI never recomputes it from points. */
-  done: number;
-  total: number;
+  done: Count;
+  total: Count;
   /**
    * How many things are actually left to do — the number the owner is asked to act on.
    *
@@ -67,17 +69,34 @@ export interface ScoreLever {
    * Two numbers for one backlog on one screen is precisely the defect the clamp exists to
    * avoid, just moved. So the score stays clamped and the instruction stays truthful.
    */
-  outstanding: number;
+  outstanding: Count;
   /** Points earned, and the points this lever is worth AFTER redistribution. */
   earned: number;
   available: number;
-  /**
-   * `done` — nothing left to do here.
-   * `open` — measurable, and incomplete: this is what becomes a next-best action.
-   * `unknown` — not measurable; contributes nothing and takes no weight.
-   */
-  state: "done" | "open" | "unknown";
 }
+
+/**
+ * A lever that could be measured — every count is a real number from the API.
+ *
+ * `done` — nothing left to do here.
+ * `open` — measurable, and incomplete: this is what becomes a next-best action.
+ */
+export interface MeasuredLever extends Lever<number> {
+  state: "done" | "open";
+}
+
+/**
+ * Not measurable; contributes nothing and takes no weight.
+ *
+ * A count is `null` when the API sent no usable number for it (see `readDashboardTotals`) —
+ * **never coerced to `0`**, because a lever scored on an invented zero is exactly the "you scored
+ * badly" this module refuses to say about data that does not exist.
+ */
+export interface UnknownLever extends Lever<number | null> {
+  state: "unknown";
+}
+
+export type ScoreLever = MeasuredLever | UnknownLever;
 
 export interface ReachScore {
   /**
@@ -138,7 +157,7 @@ function distribute(ids: readonly LeverId[]): Record<string, number> {
  * Untitled card"); that one is a naming rule the API has no opinion about, so it stays here.
  * Trimmed and compared case-insensitively so "untitled card " does not sneak past.
  */
-function readyCardCount(dto: DashboardResponseDto): number {
+function readyCardCount(dto: DashboardSummary): number {
   const empty = new Set(
     dto.attention.filter((row) => row.kind === "no-fields").map((row) => row.cardId),
   );
@@ -149,12 +168,33 @@ function readyCardCount(dto: DashboardResponseDto): number {
   ).length;
 }
 
+/** A lever's inputs before scoring. A count is `null` when the API sent no usable number for it. */
+interface RawLever {
+  done: number | null;
+  total: number | null;
+  outstanding: number | null;
+  measurable: boolean;
+}
+
 /**
- * @param dto the **raw** `GET /dashboard` response — not `toDashboardView`'s output, whose
- *   `reach` is capped at five rows for chart width. Scoring off a truncated roster would rate an
- *   owner with nine cards as though they had five.
+ * Scored only when measurable **and** every count it needs actually arrived.
+ *
+ * The one rule both the weight split and the lever list read, so a lever can never be handed
+ * points by {@link distribute} that it then has no numbers to earn — which would leave the
+ * printed parts summing to less than the score's own denominator.
  */
-export function reachScore(dto: DashboardResponseDto): ReachScore {
+function scorable(
+  r: RawLever,
+): r is RawLever & { done: number; total: number; outstanding: number } {
+  return r.measurable && r.done !== null && r.total !== null && r.outstanding !== null;
+}
+
+/**
+ * @param dto the full `GET /dashboard` response, validated by `readDashboardSummary` — not
+ *   `toDashboardView`'s output, whose `reach` is capped at five rows for chart width. Scoring off
+ *   a truncated roster would rate an owner with nine cards as though they had five.
+ */
+export function reachScore(dto: DashboardSummary): ReachScore {
   /* ── Lever 1 — opened, measured in PEOPLE rather than links ───────────────────────────
      One person holding links to three cards is one person reached, which is how
      `totals.peopleReached` counts them. Measuring this lever in links instead would let a single
@@ -163,7 +203,11 @@ export function reachScore(dto: DashboardResponseDto): ReachScore {
 
      ⚠ This is why the score reads `peopleOpened` and **not** `neverOpened`: the latter counts
      LINKS, and one person may hold three and have opened one. Neither is derivable from the
-     other, which is why the API returns both. */
+     other, which is why the API returns both.
+
+     ⚠ Either may be `null`: an API build older than `peopleOpened` does not send it. The lever is
+     then `unknown` — not "0 of 2 opened", and not the `NaN` that `2 - undefined` once put on
+     the dial. */
   const reachedCount = dto.totals.peopleReached;
   const openedCount = dto.totals.peopleOpened;
 
@@ -175,8 +219,9 @@ export function reachScore(dto: DashboardResponseDto): ReachScore {
      costs nothing and keeps a future upstream regression from printing "-1 people up to date" on
      an owner's dashboard rather than merely being wrong in a log. */
   const behind = dto.totals.behind;
-  const behindCount = behind === null ? 0 : Math.min(Math.max(behind, 0), reachedCount);
-  const toldMeasurable = behind !== null && reachedCount > 0;
+  const behindCount =
+    behind === null || reachedCount === null ? 0 : Math.min(Math.max(behind, 0), reachedCount);
+  const toldMeasurable = behind !== null && reachedCount !== null && reachedCount > 0;
 
   /* ── Lever 3 — ready ──────────────────────────────────────────────────────────────────
      The only lever an owner with no links can move, and therefore the only thing a brand new
@@ -184,18 +229,16 @@ export function reachScore(dto: DashboardResponseDto): ReachScore {
   const readyCards = readyCardCount(dto);
   const cardCount = dto.totals.cards;
 
-  const raw: Record<
-    LeverId,
-    { done: number; total: number; outstanding: number; measurable: boolean }
-  > = {
+  const raw: Record<LeverId, RawLever> = {
     opened: {
       done: openedCount,
       total: reachedCount,
-      outstanding: reachedCount - openedCount,
-      measurable: reachedCount > 0,
+      outstanding:
+        reachedCount === null || openedCount === null ? null : reachedCount - openedCount,
+      measurable: reachedCount !== null && reachedCount > 0,
     },
     told: {
-      done: reachedCount - behindCount,
+      done: reachedCount === null ? null : reachedCount - behindCount,
       total: reachedCount,
       /* The UNCLAMPED backlog — what the owner must actually notify. See `outstanding`. */
       outstanding: Math.max(behind ?? 0, 0),
@@ -204,17 +247,17 @@ export function reachScore(dto: DashboardResponseDto): ReachScore {
     ready: {
       done: readyCards,
       total: cardCount,
-      outstanding: cardCount - readyCards,
-      measurable: cardCount > 0,
+      outstanding: cardCount === null ? null : cardCount - readyCards,
+      measurable: cardCount !== null && cardCount > 0,
     },
   };
 
-  const measurable = (Object.keys(WEIGHTS) as LeverId[]).filter((id) => raw[id].measurable);
+  const measurable = (Object.keys(WEIGHTS) as LeverId[]).filter((id) => scorable(raw[id]));
   const available = distribute(measurable);
 
-  const levers: ScoreLever[] = (Object.keys(WEIGHTS) as LeverId[]).map((id) => {
+  const levers: ScoreLever[] = (Object.keys(WEIGHTS) as LeverId[]).map((id): ScoreLever => {
     const r = raw[id];
-    if (!r.measurable) {
+    if (!scorable(r)) {
       return {
         id,
         done: r.done,
@@ -245,8 +288,8 @@ export function reachScore(dto: DashboardResponseDto): ReachScore {
 }
 
 /** The levers worth acting on, biggest win first — the next-best-action queue. */
-export function openLevers(score: ReachScore): readonly ScoreLever[] {
+export function openLevers(score: ReachScore): readonly MeasuredLever[] {
   return score.levers
-    .filter((l) => l.state === "open")
+    .filter((l): l is MeasuredLever => l.state === "open")
     .sort((a, b) => b.available - b.earned - (a.available - a.earned));
 }

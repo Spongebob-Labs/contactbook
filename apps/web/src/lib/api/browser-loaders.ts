@@ -23,6 +23,7 @@ import {
   toProfile,
   toUser,
 } from "@/lib/api/map";
+import { readDashboardSummary } from "@/lib/dashboard/metrics";
 import {
   contactLabel,
   type CardShareRow,
@@ -252,12 +253,20 @@ function authMe() {
  * is optional on both charts and falls back to a neutral rule.
  */
 export async function fetchDashboardData() {
-  const [summary, cardDtos] = await Promise.all([
+  const [dto, cardDtos] = await Promise.all([
     dashboard.get(),
     /* Appearance only — and non-fatal. A failure here costs the bars their colour, not the
        dashboard its numbers, so it must not take the screen down with it. */
     cards.list().catch(() => []),
   ]);
+
+  /* ⚠ Validated here, where the response enters the app, so the view and the score read the
+     same checked totals. A deployed API older than this DTO omits newer counts — staging shipped
+     without `peopleOpened` and the dial printed NaN — and those read `null` (unknown), never 0.
+     See `readDashboardTotals`. */
+  const rejected: string[] = [];
+  const summary = readDashboardSummary(dto, rejected);
+  if (rejected.length > 0) console.warn("[contactbook] dashboard.totals.unreadable", { rejected });
 
   return {
     summary,

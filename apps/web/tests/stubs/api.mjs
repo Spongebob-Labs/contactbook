@@ -300,6 +300,14 @@ const server = createServer(async (req, res) => {
   if (path === "/share-links" && method === "GET") return json(res, 200, db.shareLinks);
   if (path === "/contacts" && method === "GET") return json(res, 200, db.contacts);
   if (path === "/cards" && method === "GET") return json(res, 200, db.cards);
+  /* ⚠ `GET /dashboard` for the DEFAULT identity, computed from the snapshot with no links.
+     The stateful router answers it for opted-in specs, but the dashboard screen now reads this
+     endpoint and nothing else for its numbers — so without a stateless answer every spec signed
+     in as `e2e-fixture-user` (all of `dashboard.spec.ts`) got a 404 and an error panel. Same
+     computation as the stateful path, over the fixture world as it stands: nothing shared yet. */
+  if (path === "/dashboard" && method === "GET") {
+    return json(res, 200, dashboard({ cards: db.cards, shareLinks: [] }, db));
+  }
 
   const contact = /^\/contacts\/([^/]+)$/.exec(path);
   if (contact !== null && method === "GET") {

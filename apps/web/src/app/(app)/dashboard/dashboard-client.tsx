@@ -122,7 +122,9 @@ function readDashboard(db: DashboardApiData): DashboardData {
        chart width, and the "ready" lever has to count every card the owner has. */
     score: reachScore(db.summary),
     palettes: cardPalettes(db.cards),
-    hasCards: db.summary.totals.cards > 0,
+    /* An unreadable `cards` (null) is not "no cards": treating it as zero would show an owner who
+       has cards the "create your first card" state. Unknown renders the dashboard, dash and all. */
+    hasCards: db.summary.totals.cards === null || db.summary.totals.cards > 0,
   };
 }
 

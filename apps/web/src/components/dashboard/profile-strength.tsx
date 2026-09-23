@@ -78,8 +78,11 @@ export interface ProfileGroupSummary {
 }
 
 export interface ProfileStrengthProps {
-  /** Total profile fields the owner has. */
-  fieldCount: number;
+  /**
+   * Total profile fields the owner has — `null` when the dashboard API did not send a usable
+   * count (see `readDashboardTotals`). The line is then left out, never printed as 0.
+   */
+  fieldCount: number | null;
   /** Every group on the profile, including empty ones. */
   groups: readonly ProfileGroupSummary[];
 }
@@ -143,9 +146,11 @@ export function ProfileStrength({ fieldCount, groups }: ProfileStrengthProps): R
         <h2 id="profile-strength-heading" className="text-overline uppercase text-ink-3">
           Profile strength
         </h2>
-        <p data-profile-strength-fields="" className="text-sm text-ink-3 tabular-nums">
-          {fieldCount} {fieldCount === 1 ? "field" : "fields"} in all
-        </p>
+        {fieldCount === null ? null : (
+          <p data-profile-strength-fields="" className="text-sm text-ink-3 tabular-nums">
+            {fieldCount} {fieldCount === 1 ? "field" : "fields"} in all
+          </p>
+        )}
       </div>
 
       {/* The claim, in full, as one text node. It is deliberately a whole sentence rather than a
