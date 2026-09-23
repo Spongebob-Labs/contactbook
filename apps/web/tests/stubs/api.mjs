@@ -206,6 +206,38 @@ const server = createServer(async (req, res) => {
      The request step keys off the **phone**, since no code exists yet: a national number ending
      `99` returns `OTP_COOLDOWN` carrying `retryAfterSeconds: 42`, and one ending `98` returns
      `OTP_RATE_LIMITED`, which carries no retry hint. */
+  /* ── "Send to my phone" — `POST /public/links/{token}/connect/send` ──────────────────
+     One call, no code. Like the OTP routes it is anonymous and absent from `/api/docs`, so the
+     outcome rides on the **phone** — a national number ending:
+
+       · `97` → 409 `CANNOT_CONNECT_TO_SELF` (the owner's own number; the input stays live)
+       · `96` → 410 `SHARE_LINK_REVOKED`     (the owner turned the card off while the page was
+                                              open — the flow goes terminal)
+       · anything else → 200 `{connected:true}`
+
+     The suffixes are distinct from the OTP routes' `98`/`99` so no number means two things. */
+  const connectSend = /^\/public\/links\/(n\d+)\/connect\/send$/.exec(path);
+  if (connectSend !== null) {
+    if (method !== "POST") return notFound(res, "NOT_FOUND", `Cannot ${method} ${path}`);
+    let body = {};
+    try {
+      body = rawBody.length > 0 ? JSON.parse(rawBody) : {};
+    } catch {
+      body = {};
+    }
+    const phone = typeof body.phoneE164 === "string" ? body.phoneE164 : "";
+    const fail = (status, code, message) =>
+      json(res, status, { statusCode: status, code, message, requestId: "stub-request-id" });
+
+    if (phone.endsWith("97")) {
+      return fail(409, "CANNOT_CONNECT_TO_SELF", "You can't connect to your own card.");
+    }
+    if (phone.endsWith("96")) {
+      return fail(410, "SHARE_LINK_REVOKED", "This card is no longer being shared.");
+    }
+    return json(res, 200, { connected: true });
+  }
+
   const connect = /^\/public\/links\/(n\d+)\/connect\/otp\/(request|verify)$/.exec(path);
   if (connect !== null) {
     if (method !== "POST") return notFound(res, "NOT_FOUND", `Cannot ${method} ${path}`);

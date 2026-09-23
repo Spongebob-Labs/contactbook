@@ -58,7 +58,11 @@ export interface PublicCardActionsProps {
   primaryLabel?: string;
   onSaveToContacts: (resolved: ResolvedCard) => void;
   savePending: boolean;
-  /** The "Save & connect" flow, already built. `null` renders no connect action at all. */
+  /**
+   * The connect flow — today "Send to my phone" (`ConnectSendFlow`). A node rather than a
+   * handler, so this tier never needs to know which connect path the page chose. `null` renders
+   * no connect action at all.
+   */
   connect?: ReactNode;
 }
 

@@ -418,7 +418,8 @@ export const cards = {
 /* ── public connect (2) — anonymous, and deliberately not in `endpoints/` ───────────── */
 
 /**
- * The QR-scan "Save & connect" pair, `POST /public/links/{token}/connect/otp/{request,verify}`.
+ * The QR-scan connect endpoints — the OTP pair, `POST /public/links/{token}/connect/otp/{request,
+ * verify}`, and the zero-verification `POST /public/links/{token}/connect/send`.
  *
  * ## Why these live here and nowhere else
  * Three properties set them apart from the 41 operations above, and each one is a reason:
@@ -450,7 +451,10 @@ export interface ConnectOtpRequestResult {
   devCode?: string;
 }
 
-/** `POST …/connect/otp/verify` → 200. A second verify by the same scanner is a no-op, not an error. */
+/**
+ * `POST …/connect/otp/verify` and `POST …/connect/send` → 200. Connecting a second time is a
+ * no-op, not an error.
+ */
 export interface ConnectResult {
   connected: true;
 }
@@ -482,6 +486,25 @@ export const publicConnect = {
       method: "POST",
       path: `/public/links/${id(token)}/connect/otp/verify`,
       body: { phoneE164, code },
+    }),
+  /**
+   * "Send to my phone" — one call, no OTP. Same outcome as a successful `otpVerify`: a contact on
+   * the owner's side, a live `ShareLink`, and the card link sent to this number over WhatsApp.
+   *
+   * ⚠ **The number is trusted as typed.** Nothing proves it belongs to the caller, so a mistyped
+   * number sends the owner's card to a stranger. The API logs it under its own source
+   * (`SEND_TO_PHONE`) so it is never mistaken for a verified connect, and it has **no rate
+   * limit** — there is no `OtpService.request()` step to carry one.
+   *
+   * @throws {ApiError} `SHARE_LINK_NOT_FOUND` (404) / `SHARE_LINK_REVOKED` (410) if the token is
+   * dead — checked before anything is sent; `CANNOT_CONNECT_TO_SELF` (409, the number is the card
+   * owner's own). No `OTP_*` code is reachable: this path never touches `OtpService`.
+   */
+  send: (token: string, phoneE164: string) =>
+    send<ConnectResult>({
+      method: "POST",
+      path: `/public/links/${id(token)}/connect/send`,
+      body: { phoneE164 },
     }),
 };
 
