@@ -42,15 +42,42 @@ const b64url = (value: string): string =>
  * returns `true` — for anything that does not `split(".")` into exactly three parts. The
  * signature segment is a constant: nothing in the browser or in the stub reads it.
  */
-export function fixtureAccessToken(expiresInSeconds = TEN_YEARS_S): string {
+export function fixtureAccessToken(expiresInSeconds = TEN_YEARS_S, sub = DEFAULT_SUB): string {
   const header = b64url(JSON.stringify({ alg: "none", typ: "JWT" }));
   const payload = b64url(
-    JSON.stringify({
-      sub: "e2e-fixture-user",
-      exp: Math.floor(Date.now() / 1000) + expiresInSeconds,
-    }),
+    JSON.stringify({ sub, exp: Math.floor(Date.now() / 1000) + expiresInSeconds }),
   );
   return `${header}.${payload}.e2e`;
+}
+
+/**
+ * The default identity. Every spec that does not ask for its own gets this one, and the stub
+ * serves it straight from the fixture snapshot with writes echoed and discarded — the behaviour
+ * the whole suite was written against.
+ */
+const DEFAULT_SUB = "e2e-fixture-user";
+
+/**
+ * A `sub` that gives this test **its own mutable copy of the fixture world** in the e2e stub.
+ *
+ * ## ⚠ Why a test would want one, and why it is not the default
+ *
+ * The stub normally accepts writes and discards them, so "change it, reload, it is still there"
+ * cannot be asserted — which is exactly what has to be asserted about the card's design columns,
+ * since the entire point of `coverUrl`/`headline`/`bio`/the seven axes becoming real columns is
+ * that they survive a reload. `tests/stubs/state.mjs` grows a real store for callers that opt in.
+ *
+ * It is opt-in because Playwright runs `fullyParallel` across three viewport projects against
+ * **one** stub process. Persisted writes visible to everyone would turn 22 existing spec files
+ * into a race — one reading a card another had just renamed. Keying the store on `sub` makes
+ * each test's world private.
+ *
+ * ⚠ **The label must be unique per test, and the random suffix is what makes it so across the
+ * three viewport projects.** The same test body runs three times concurrently; without it, all
+ * three would share a partition and the third would read the first's cards.
+ */
+export function statefulSub(label: string): string {
+  return `e2e-state-${label}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 /**
@@ -64,12 +91,16 @@ export function fixtureAccessToken(expiresInSeconds = TEN_YEARS_S): string {
  * a rotation, which keeps the harness clear of `POST /auth/refresh` and of the reuse-detection
  * stampede its own note warns about — and the access token above never goes stale anyway.
  */
-export async function signIn(context: BrowserContext, baseURL: string): Promise<void> {
+export async function signIn(
+  context: BrowserContext,
+  baseURL: string,
+  options?: { sub?: string },
+): Promise<void> {
   const { hostname } = new URL(baseURL);
   await context.addCookies([
     {
       name: "cb_at",
-      value: fixtureAccessToken(),
+      value: fixtureAccessToken(undefined, options?.sub),
       domain: hostname,
       path: "/",
       httpOnly: true,
@@ -80,6 +111,10 @@ export async function signIn(context: BrowserContext, baseURL: string): Promise<
 }
 
 /** `signIn` for a spec that only has the `page` fixture to hand. */
-export async function signInPage(page: Page, baseURL: string): Promise<void> {
-  await signIn(page.context(), baseURL);
+export async function signInPage(
+  page: Page,
+  baseURL: string,
+  options?: { sub?: string },
+): Promise<void> {
+  await signIn(page.context(), baseURL, options);
 }

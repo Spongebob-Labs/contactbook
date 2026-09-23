@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { buildVcf, canBuildVcf } from "@/card/build-vcf";
 import { isUnknownRegistryIdError, UnknownRegistryIdError } from "@/card/errors";
 import { resolveCard } from "@/card/resolve-card";
+import type { User } from "@/types/domain";
 import { TEMPLATES } from "@/card/templates";
 import { cardEmptyDemo, cardLedgerDemo, fixtureCards } from "@/fixtures/cards";
 import {
@@ -654,5 +655,104 @@ describe("resolveCard — one object for preview and payload (I-5, AC-29)", () =
     expect(buildVcf(after)).not.toBe(buildVcf(before));
     expect(buildVcf(after)).not.toContain("TITLE:");
     expect(after.fields.some((entry) => entry.type === "JOB_TITLE")).toBe(false);
+  });
+});
+
+/**
+ * ⚠ THE THREE UI-ONLY SLOTS — `coverUrl`, `headline` and `bio` on the card.
+ *
+ * The API has no column for any of them yet (see the ⚠ block on `ContactCard`), so the builder
+ * holds them and the resolver reads them. These assertions are what will still be true after the
+ * columns land, which is the point of putting the precedence in the resolver rather than in the
+ * builder: making them real is a mapping change, not a behaviour change.
+ */
+describe("resolveCard — the card's own cover, position and bio", () => {
+  it("prefers the card's cover over the PHOTO field and the owner's avatar", () => {
+    const resolved = resolve({ ...cardLedgerDemo, coverUrl: "https://cdn.example/cover.jpg" });
+
+    expect(resolved.cover).toEqual({
+      kind: "photo",
+      url: "https://cdn.example/cover.jpg",
+      alt: expect.any(String) as unknown as string,
+    });
+  });
+
+  /**
+   * ⚠ The regression the two-slot split exists to prevent, asserted from the resolver's side: a
+   * card wearing a logo must still show the owner's face on its cover. One slot ranked the logo
+   * first, so uploading a mark deleted the photograph.
+   */
+  it("keeps the cover when the card also carries a logo", () => {
+    const resolved = resolve({
+      ...cardLedgerDemo,
+      logoUrl: "https://cdn.example/mark.png",
+      coverUrl: "https://cdn.example/cover.jpg",
+    });
+
+    expect(resolved.badge.kind).toBe("logo");
+    expect(resolved.cover.kind).toBe("photo");
+  });
+
+  /**
+   * ⚠ **THE REGRESSION THIS EXISTS FOR, REPORTED FROM THE BUILDER.**
+   *
+   * `resolveCover` used to fall through `coverUrl` → the mapped `PHOTO` field →
+   * `user.avatarUrl`. So a card that had chosen no cover rendered a full-bleed photograph of
+   * its owner — while the Design panel two inches away read **"Cover · None"**, and offered no
+   * way to remove an image the owner had never added. The screen was disagreeing with itself.
+   *
+   * The fixture user carries an avatar AND the fixture card maps a `PHOTO` field, so both
+   * removed rungs are present and reachable here: if either is ever restored, this goes red.
+   */
+  it("shows NO cover when the card sets none, even with a profile photo and an avatar", () => {
+    const withAvatar: User = { ...fixtureUser, avatarUrl: "https://cdn.example/avatar.jpg" };
+    const resolved = resolveCard(
+      { ...cardLedgerDemo, coverUrl: null },
+      withAvatar,
+      fixtureGroups,
+      fixtureFields,
+    );
+
+    expect(resolved.cover.kind).toBe("none");
+
+    /* The badge is a SEPARATE slot and must be unaffected — it may still show the photograph.
+       Asserting this here is what stops the fix being "over-applied" to the circle as well. */
+    expect(resolved.badge.kind).not.toBe("none");
+  });
+
+  it("prefers the card's headline over the first mapped job title", () => {
+    const withTitle = resolve(cardLedgerDemo);
+    expect(withTitle.headline, "the fixture must map a JOB_TITLE").not.toBeNull();
+
+    const resolved = resolve({ ...cardLedgerDemo, headline: "Founder & CEO" });
+    expect(resolved.headline).toBe("Founder & CEO");
+  });
+
+  it("prefers the card's bio over the derivation, including the composed one", () => {
+    const resolved = resolve({ ...cardLedgerDemo, bio: "Connecting people and ideas." });
+    expect(resolved.bio).toBe("Connecting people and ideas.");
+  });
+
+  /**
+   * `""` and whitespace are values one can hold, and they must COLLAPSE the slot rather than
+   * reserve an empty line under the name (§11 E-06's rule, applied to the new fields). An empty
+   * string that fell through as "set" would print a blank row in the hero.
+   */
+  it("treats a blank cover, headline or bio as not set", () => {
+    const resolved = resolve({ ...cardLedgerDemo, coverUrl: "  ", headline: "   ", bio: "\t" });
+
+    expect(resolved.headline).not.toBe("   ");
+    expect(resolved.cover.kind === "photo" ? resolved.cover.url : "").not.toBe("  ");
+    expect(resolved.bio).not.toBe("\t");
+  });
+
+  /** The slots are additive: a card that sets none resolves exactly as it did before they existed. */
+  it("changes nothing for a card that sets none of them", () => {
+    const before = resolve(cardLedgerDemo);
+    const after = resolve({ ...cardLedgerDemo, coverUrl: null, headline: null, bio: null });
+
+    expect(snapshot(after.cover)).toBe(snapshot(before.cover));
+    expect(after.headline).toBe(before.headline);
+    expect(after.bio).toBe(before.bio);
   });
 });

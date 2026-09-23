@@ -3,8 +3,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { fixtureCards } from "@/fixtures";
 import { LONG_NAME } from "@/fixtures/extremes";
 
-import { PROJECT_VIEWPORT, boxOf, gotoReady, screenshotElement } from "../helpers/e2e";
-import { decodeQrPng } from "../helpers/qr-decode";
+import { PROJECT_VIEWPORT, boxOf, gotoReady } from "../helpers/e2e";
 
 /**
  * `/cards` — the cards list (spec §8D.3 cards-list row, §6.1 R-10, AC-24, AC-09(h),
@@ -30,19 +29,26 @@ import { decodeQrPng } from "../helpers/qr-decode";
  *    of the three alone is trivially satisfiable.
  * 2. **Zero cards is the FIRST-RUN empty, never the filtered variant** (E-09) — even with
  *    a query in the box, because an empty collection is not something a filter did.
- * 3. **A `thumb` QR must NOT decode** (AC-09(h), §8A.5, E-31). `<QrZone mode="thumb">`
- *    draws a glyph whose rings are 1:1:1:1:1 rather than a finder pattern's 1:1:3:1:1, so
- *    no decoder can locate a symbol in it. **A failure here means someone "fixed" the
- *    glyph into a real encode.** Asserted the strong way — a real raster through `jsqr` —
- *    because counting `[data-qr-symbol]` alone is trivially satisfiable and a decode is not.
+ * 3. **A tile draws the card and nothing else** — no QR, and no control of the list's own
+ *    invention. A "Tap for QR" pill and a flip to a QR face lived here for one day and were
+ *    removed: a tile is a picture of the card, and the whole tile is one link to that card's
+ *    page. Asserted on the absence of a symbol *and* on the absence of a second tab stop,
+ *    because a stretched link makes any control inside the preview unreachable anyway.
  *
  * Column counts are read from **computed style**, never from a class name: §8D.3 is about
  * what the reader sees, and an `xl:grid-cols-3` that never matches would pass a class check.
  */
 
 /** §8D.3: 3-up ≥1280px, 2-up 768–1279px, 1-up ≤767px. */
-/** The gallery tile is `aspect-[336/500]` — the face's own proportion. */
-const TILE_ASPECT = 500 / 336;
+/**
+ * The list tile is `TILE_ASPECT_CLASS` — `aspect-[336/620]`, and NOT the face's 336×500.
+ *
+ * ⚠ The two parted on 2026-09-21. The gallery's template cells are still the face's proportion;
+ * a tile on this screen opens its window to `TILE_CROP_HEIGHT` so a reader sees field rows and
+ * not only the hero, then draws its own foot. The bones and the tiles have to agree or the grid
+ * shifts the moment the cards arrive (AC-17).
+ */
+const TILE_ASPECT = 620 / 336;
 
 const EXPECTED_COLUMNS: Record<number, number> = { 360: 1, 768: 2, 1440: 3 };
 
@@ -139,14 +145,34 @@ test.describe("the shell (§8D.3 cards-list row)", () => {
     }
   });
 
-  test("every tile links to its own card detail route", async ({ page }) => {
+  /**
+   * ⚠ **The whole tile is the link, not just its name.** `after:absolute after:inset-0` on the
+   * name's anchor stretches it over the preview, so a click anywhere on the card opens that
+   * card's page — which is also why nothing inside the preview may be interactive.
+   */
+  test("every tile links to its own card detail route, from anywhere on the card", async ({
+    page,
+  }) => {
     await gotoCards(page);
 
     for (const card of fixtureCards) {
-      const link = page.locator(`[data-card-tile="${card.id}"]`).getByRole("link");
+      const tile = page.locator(`[data-card-tile="${card.id}"]`);
+      const link = tile.getByRole("link");
       await expect(link).toHaveCount(1);
       await expect(link).toHaveAttribute("href", `/cards/${card.id}`);
+
+      /* Exactly one tab stop per tile: everything in the preview is inert. */
+      await expect(tile.locator("button")).toHaveCount(0);
     }
+  });
+
+  /** Clicking the card itself — not the caption — navigates. The stretched link, proven. */
+  test("clicking the preview opens that card's page", async ({ page }) => {
+    await gotoCards(page);
+
+    const target = fixtureCards[0];
+    await page.locator(`[data-card-tile="${target.id}"] [data-card-tile-preview]`).click();
+    await expect(page).toHaveURL(new RegExp(`/cards/${target.id}$`));
   });
 });
 
@@ -396,44 +422,64 @@ test.describe("E-13 — a 40+ character name clamps and the grid does not reflow
 });
 
 /**
- * A thumbnail carries a REAL pattern and a FAKE payload.
+ * A TILE DRAWS THE CARD, AND NOTHING OF THE LIST'S OWN.
  *
- * This block used to assert the opposite: that a thumbnail rendered no `[data-qr-symbol]` at
- * all, only an abstract corner-and-dots glyph. That glyph was honest about being decorative and
- * useless for the one job a tile has — showing what the finished card looks like. Every tile
- * read as a wireframe.
+ * ## What this block has asserted, in three versions, and why it is back where it started
  *
- * So thumbnails now encode a real symbol from a fixed dummy string. The assertion that matters
- * is the one below, and it is *stronger* than the old one: a tile must not decode to anybody's
- * actual card. A thumbnail is scaled to roughly 200px, so it is not decodable in practice
- * either — but the payload is the guarantee and the size is a happy accident of the layout.
+ * It read *"a thumb QR must not decode"*, then *"a thumb QR is a real pattern with a dummy
+ * payload"*, then *"the tile turns over to its QR"*. All three described a symbol in the grid.
+ * There is none, and there is not meant to be: the tile is a **picture of the card**, the card
+ * page carries no symbol, and a list of card pages carries none either.
+ *
+ * The flip-to-QR was added on 2026-09-21 and removed the same day at the client's instruction.
+ * The reasoning is worth keeping because it is a rule and not a preference: a reader looking at
+ * a tile must be able to trust that what they see is what the card is, and the moment the list
+ * draws a control on top of the card they cannot. The real, scannable QR lives on
+ * `<ShareFace>`, which is what `/cards/{id}` shows at full size — and clicking a tile is how a
+ * reader gets there.
  */
-test.describe("a thumb QR is a real pattern with a dummy payload", () => {
-  test("renders a real symbol that never encodes a card URL", async ({ page }) => {
+test.describe("a tile is the card and nothing else", () => {
+  test("draws no QR anywhere in the grid", async ({ page }) => {
     await gotoCards(page);
 
     const grid = page.locator("[data-cards-grid]");
-    const zones = grid.locator("[data-qr-zone]");
-    await expect(zones).toHaveCount(fixtureCards.length);
-
-    /* A real pattern is present on every tile, and the old abstract glyph is not. */
-    await expect(grid.locator("[data-qr-symbol]")).toHaveCount(fixtureCards.length);
+    await expect(grid.locator("[data-qr-zone]")).toHaveCount(0);
+    await expect(grid.locator("[data-qr-symbol]")).toHaveCount(0);
     await expect(grid.locator("[data-qr-glyph]")).toHaveCount(0);
+  });
 
-    for (let index = 0; index < fixtureCards.length; index += 1) {
-      const zone = zones.nth(index);
-      await expect(zone).toHaveAttribute("data-qr-mode", "thumb");
-      await expect(zone).toHaveAttribute("data-qr-preview", "true");
-      await expect(zone).toHaveAttribute("aria-hidden", "true");
+  /**
+   * The cover and the logo are the two slots a tile is most likely to drop silently, because
+   * both resolve through a ladder that ends in a fallback — `resolveCover` returns `none` and
+   * `resolveBadge` falls through to a monogram. A tile missing one looks like a design choice
+   * rather than a bug, so it is asserted against the fixtures that carry them.
+   */
+  test("draws each card's own cover and badge, exactly as the card page does", async ({
+    page,
+  }) => {
+    await gotoCards(page);
+
+    const grid = page.locator("[data-cards-grid]");
+
+    /* Every tile paints a cover zone, and each names which kind it is — `photo` when the card
+       has one, `none` when it does not. An absent `[data-card-cover]` means the tile is not
+       rendering the real card. */
+    const covers = grid.locator("[data-card-cover]");
+    await expect(covers).toHaveCount(fixtureCards.length);
+    for (const kind of await covers.evaluateAll((nodes) =>
+      nodes.map((n) => n.getAttribute("data-cover")),
+    )) {
+      expect(["photo", "none"]).toContain(kind);
     }
 
-    /* THE assertion: no tile's markup carries a real card path. Checked on the markup rather
-       than by decoding, because a 200px thumbnail is below the decode threshold — so a decode
-       returning null would prove the tile is small, not that the payload is safe. */
-    const markup = await zones.evaluateAll((nodes) => nodes.map((n) => n.outerHTML));
-    for (const [index, html] of markup.entries()) {
-      expect(html, `tile ${index} embeds a real card path`).not.toContain("/c/");
-    }
+    /* Every tile paints a badge — a logo when the card has one, its owner's initials when not
+       (§11 E-19: never an empty ring). */
+    await expect(grid.locator("[data-card-badge]")).toHaveCount(fixtureCards.length);
+
+    /* And a card carrying a cover photograph shows that photograph in its tile. */
+    const photos = grid.locator("[data-card-cover-photo]");
+    const withPhoto = fixtureCards.filter((card) => (card.coverUrl ?? "").trim() !== "").length;
+    await expect(photos).toHaveCount(withPhoto);
   });
 });
 

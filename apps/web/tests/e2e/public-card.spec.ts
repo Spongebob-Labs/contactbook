@@ -87,7 +87,11 @@ test("renders exactly one full card and no QR at all (AC-11)", async ({ page }) 
   await expect(page.locator("[data-qr-glyph]")).toHaveCount(0);
 
   // And the page still ends with the owner's fields, which is what a scan is for.
-  await expect(page.locator("[data-card-fields]")).toHaveAttribute("data-field-count", "5");
+  /* ⚠ 3, not 5. The card still maps five fields; two of them — the job title and the company —
+     are printed by the hero and subtracted from the stack, and `data-field-count` has always
+     been the number of rows PAINTED rather than `resolved.fields.length`. Declaring more than
+     is drawn is the old build's "5 fields / 4 rows" defect, restated as an off-by-one. */
+  await expect(page.locator("[data-card-fields]")).toHaveAttribute("data-field-count", "3");
 });
 
 /* ── the stack: one tappable button per field the owner added ────────────────────── */
@@ -96,21 +100,40 @@ test("renders exactly one full card and no QR at all (AC-11)", async ({ page }) 
  * The five fields of `/c/prya-hq`, and what each of them must become.
  *
  * Written out rather than derived so the expectation is readable as a *design decision*: a
- * destination is a button, everything else is quiet text, and a button wears the owner's
- * label and never their data. Deriving these from `FIELD_RENDERERS` would make the test pass
- * by construction and prove nothing about the page.
+ * destination is a button, everything else is quiet text, and a button wears the owner's data
+ * with the label spoken rather than printed. Deriving these from `FIELD_RENDERERS` would make
+ * the test pass by construction and prove nothing about the page.
+ *
+ * ⚠ **`promoted` is the 2026-09-17 addition.** The first `JOB_TITLE` and the first `COMPANY` are
+ * printed by the hero — as the role line and the wordmark — and are therefore SUBTRACTED from
+ * the stack, the same rule `PHOTO` has always followed. They stay in this table so the
+ * subtraction is asserted rather than silently absent, and so the table still describes all five
+ * of the card's fields.
  */
 const HQ_ROWS = [
-  { id: "field_work_phone", kind: "action", label: "Work mobile", href: "tel:+919820115577" },
-  { id: "field_job_title", kind: "note", label: "Role", text: "Head of Partnerships" },
-  { id: "field_company", kind: "note", label: "Company", text: "Fernwood Studio" },
+  {
+    id: "field_work_phone",
+    kind: "action",
+    label: "Work mobile",
+    href: "tel:+919820115577",
+    text: "+91 98201 15577",
+  },
+  { id: "field_job_title", kind: "note", label: "Role", text: "Head of Partnerships", promoted: true },
+  { id: "field_company", kind: "note", label: "Company", text: "Fernwood Studio", promoted: true },
   {
     id: "field_work_email",
     kind: "action",
     label: "Work email",
     href: "mailto:priyanka@fernwood.example",
+    text: "priyanka@fernwood.example",
   },
-  { id: "field_site_url", kind: "action", label: "Website", href: "https://fernwood.example" },
+  {
+    id: "field_site_url",
+    kind: "action",
+    label: "Website",
+    href: "https://fernwood.example",
+    text: "fernwood.example",
+  },
 ] as const;
 
 /**
@@ -123,13 +146,20 @@ const HQ_ROWS = [
  * action is what the button does. `toHaveText` is exact, so putting the value back is a red
  * test rather than a matter of taste.
  */
-test("renders one tappable button per actionable field, labelled and not valued", async ({
+test("renders one tappable button per actionable field, valued and not labelled", async ({
   page,
 }) => {
   await gotoReady(page, CARD_WITH_PHONE);
 
   for (const expected of HQ_ROWS) {
     const row = page.locator(`[data-card-field="${expected.id}"]`);
+
+    /* Promoted to the hero, so it is not a row at all — see the ⚠ on `HQ_ROWS`. */
+    if ("promoted" in expected && expected.promoted) {
+      await expect(row).toHaveCount(0);
+      continue;
+    }
+
     await expect(row).toHaveAttribute("data-card-row-kind", expected.kind);
 
     if (expected.kind !== "action") continue;
@@ -137,9 +167,14 @@ test("renders one tappable button per actionable field, labelled and not valued"
     const button = row.locator(`[data-card-action-button="${expected.id}"]`);
     await expect(button).toHaveCount(1);
     await expect(button).toHaveAttribute("href", expected.href);
-    /* The label, exactly — no address, no phone number, no URL. */
-    await expect(button).toHaveText(expected.label);
-    /* …and the value still reaches a screen reader, where it costs no pixels. */
+    /* ⚠ **Reversed on 2026-09-17.** The row printed `expected.label` — "Work email" — on the
+       argument that the action is what the button does. It prints the VALUE now: a card is
+       handed over so somebody can see how to reach you, and a column of verbs tells a reader
+       nothing they had not already assumed. `toHaveText` is exact, so putting the label back is
+       a red test rather than a matter of taste. */
+    await expect(button).toHaveText(expected.text);
+    /* …and the LABEL is now what reaches a screen reader, where it costs no pixels — it is what
+       tells a blind reader WHICH of three addresses this row is. */
     await expect(button).toHaveAttribute("aria-label", new RegExp(`^${expected.label}: .+`));
   }
 
@@ -162,35 +197,69 @@ test("renders one tappable button per actionable field, labelled and not valued"
  * dead too, which is a worse outcome than the row being quiet.
  */
 test("descriptive fields render as text, never as dead controls", async ({ page }) => {
-  await gotoReady(page, CARD_WITH_PHONE);
+  /* ⚠ The masking card, not `prya-hq`. Both of `prya-hq`'s notes were its job title and its
+     company, and both are promoted to the hero now, so that fixture has no descriptive row left
+     to prove the rule with. `prya-pay`'s rows are all notes by construction (a masked value is
+     never actionable — AC-33), which is exactly the shape this test is about. */
+  await gotoReady(page, CARD_WITH_FINANCIALS);
 
-  for (const expected of HQ_ROWS.filter((row) => row.kind === "note")) {
-    const row = page.locator(`[data-card-field="${expected.id}"]`);
-    await expect(row.locator(`[data-card-note="${expected.id}"]`)).toHaveCount(1);
-    await expect(row.locator("[data-card-field-value]")).toHaveText(expected.text);
+  /* ⚠ Derived from the PAGE rather than from a table, and only here.
+     This file's rule is that expectations are written out so they read as design decisions — but
+     the decision under test is a *property of every non-destination row* ("it is never a
+     control"), not the identity of particular rows. Deriving the SET from the DOM and asserting
+     the PROPERTY keeps the rule sharp; writing the set out would only pin which fields the
+     masking fixture happens to carry, which is not what this test is for. */
+  const rows = page.locator(
+    '[data-card-field-row][data-card-row-kind="note"], [data-card-field-row][data-card-row-kind="masked"]',
+  );
+  const count = await rows.count();
+  expect(count, "the masking fixture must carry at least one descriptive row").toBeGreaterThan(0);
+
+  for (let i = 0; i < count; i += 1) {
+    const row = rows.nth(i);
+    await expect(row.locator("[data-card-note]")).toHaveCount(1);
+    await expect(row.locator("[data-card-field-value]")).not.toBeEmpty();
+    /* Not a link, not a button, not a control of any kind. A control the reader presses to no
+       effect teaches them the real ones above it are probably dead too. */
     await expect(row.locator("a")).toHaveCount(0);
     await expect(row.locator("[data-card-action-button]")).toHaveCount(0);
   }
 });
 
-/** The mark at the head of the card — quiet, and deliberately not a second way out (§8D.5). */
-test("wears the Contact Book mark above the identity block", async ({ page }) => {
+/**
+ * ⚠ **The hero's wordmark is the OWNER's company, and Contact Book moved to the foot.**
+ *
+ * It used to read "Contact Book", above the owner's own name. On a card somebody hands over at
+ * a networking event that is the product advertising itself louder than the person whose card
+ * it is, so the slot went to their company and the attribution went to the credit line at the
+ * bottom — where §8D.5 already puts this page's one exit. Neither is a link, which is the part
+ * of the old rule that has not changed.
+ */
+test("gives the hero wordmark to the company, and credits Contact Book at the foot", async ({
+  page,
+}) => {
   await gotoReady(page, CARD_WITH_PHONE);
 
   const brand = page.locator("[data-card-brand]");
   await expect(brand).toHaveCount(1);
-  await expect(brand).toHaveText("Contact Book");
+  await expect(brand).toHaveText("Fernwood Studio");
   await expect(brand).toBeVisible();
   await expect(page.locator("[data-card-hero] [data-card-brand]")).toHaveCount(1);
   await expect(brand.locator("a")).toHaveCount(0);
 
-  /* Above the avatar, not beside the name. */
+  const credit = page.locator("[data-card-credit]");
+  await expect(credit).toHaveText("Made with Contact Book");
+  await expect(credit.locator("a")).toHaveCount(0);
+  await expect(page.locator("[data-card-hero] [data-card-credit]")).toHaveCount(0);
+
+  /* ⚠ The order is BADGE → wordmark → name, and the badge is first because it straddles the
+     curve above the sheet. It used to be wordmark → portrait → name. */
   const brandBox = await brand.boundingBox();
-  const portraitBox = await page.locator("[data-card-portrait]").boundingBox();
+  const badgeBox = await page.locator("[data-card-portrait]").boundingBox();
   const nameBox = await page.locator("[data-card-name]").boundingBox();
-  expect(brandBox && portraitBox && nameBox).toBeTruthy();
-  expect((brandBox?.y ?? 0) + (brandBox?.height ?? 0)).toBeLessThanOrEqual(portraitBox?.y ?? 0);
-  expect(portraitBox?.y ?? 0).toBeLessThan(nameBox?.y ?? 0);
+  expect(brandBox && badgeBox && nameBox).toBeTruthy();
+  expect((badgeBox?.y ?? 0) + (badgeBox?.height ?? 0)).toBeLessThanOrEqual(brandBox?.y ?? 0);
+  expect(brandBox?.y ?? 0).toBeLessThan(nameBox?.y ?? 0);
 });
 
 /**
@@ -316,18 +385,27 @@ test("renders the card in the product's single typeface", async ({ page }) => {
   expect(family.toLowerCase()).toContain("geist");
 });
 
-/* ── the two actions, and exactly two (§8A.2, §6.9, AC-20) ───────────────────────── */
+/* ── ONE action, and the WhatsApp destination moved (§8A.2, §6.9, AC-20) ─────────── */
 
-test("renders exactly two action buttons when a PHONE is mapped (AC-20)", async ({ page }) => {
+/**
+ * ⚠ **One button, not two.** Save and Message on WhatsApp were two full-width controls costing
+ * about 110px before a single field appeared, on the surface with the least vertical room in the
+ * product. The messaging destination is not lost — it is a disc in the social strip, derived from
+ * the card's own `PHONE` — so what this test pins is that the button count came down AND the
+ * destination survived, which are the two halves of the change.
+ */
+test("renders exactly one action button, and keeps WhatsApp as a destination", async ({ page }) => {
   await gotoReady(page, CARD_WITH_PHONE);
 
-  await expect(page.locator("[data-card-action]")).toHaveCount(2);
-  await expect(page.locator("[data-card-actions]")).toHaveAttribute("data-card-action-count", "2");
+  await expect(page.locator("[data-card-action]")).toHaveCount(1);
+  await expect(page.locator("[data-card-actions]")).toHaveAttribute("data-card-action-count", "1");
   await expect(page.locator('[data-card-action="save"]')).toHaveCount(1);
-  await expect(page.locator('[data-card-action="whatsapp"]')).toHaveCount(1);
+  await expect(page.locator('[data-card-action="whatsapp"]')).toHaveCount(0);
 
-  // §6.9: the secondary is a wa.me deep link that leaves the app safely (§7.3, AC-32).
-  const whatsapp = page.locator('[data-card-action="whatsapp"]');
+  // §6.9: the deep link is still a wa.me that leaves the app safely (§7.3, AC-32) — it is just
+  // a disc in the strip now rather than a button under the bio.
+  const whatsapp = page.locator('[data-card-social="whatsapp"]');
+  await expect(whatsapp).toHaveCount(1);
   await expect(whatsapp).toHaveAttribute("href", "https://wa.me/919820115577");
   await expect(whatsapp).toHaveAttribute("target", "_blank");
   await expect(whatsapp).toHaveAttribute("rel", "noopener noreferrer");
@@ -367,7 +445,7 @@ test("the card's own palette, not the template's default, paints the actions", a
   );
 });
 
-test("Save to contacts downloads a vCard named after the contact (§6.9)", async ({ page }) => {
+test("Send to Phone downloads a vCard named after the contact (§6.9)", async ({ page }) => {
   await gotoReady(page, CARD_WITH_PHONE);
 
   const [download] = await Promise.all([
@@ -378,13 +456,15 @@ test("Save to contacts downloads a vCard named after the contact (§6.9)", async
   expect(download.suggestedFilename()).toBe("Priyanka Raghunathan.vcf");
 });
 
-test("omits the WhatsApp action entirely when no PHONE is mapped (E-56)", async ({ page }) => {
+test("omits the WhatsApp destination entirely when no PHONE is mapped (E-56)", async ({ page }) => {
   await gotoReady(page, CARD_WITHOUT_PHONE);
 
   await expect(page.locator("[data-card-action]")).toHaveCount(1);
   await expect(page.locator('[data-card-action="save"]')).toHaveCount(1);
-  // Absent from the DOM, never rendered-and-disabled.
-  await expect(page.locator('[data-card-action="whatsapp"]')).toHaveCount(0);
+  /* Absent from the DOM, never rendered-and-disabled. E-56 is unchanged by the move: the disc
+     is derived from the first mapped `PHONE`, so no phone means no disc, exactly as no phone
+     used to mean no button. */
+  await expect(page.locator('[data-card-social="whatsapp"]')).toHaveCount(0);
   await expect(page.getByText("Message on WhatsApp")).toHaveCount(0);
 });
 
@@ -404,9 +484,12 @@ test("renders no Save to contacts button at all on a zero-field card (E-02, AC-3
   await expect(page.locator('[data-card-root][data-render-mode="full"]')).toHaveCount(1);
   await expect(page.locator("[data-card-name]")).toHaveText("Priyanka Raghunathan");
   await expect(page.locator("[data-qr-symbol]")).toHaveCount(0);
-  // The mark and the identity survive; the stack is absent rather than an empty container,
+  // ⚠ The identity and the CREDIT survive; the stack is absent rather than an empty container,
   // so the page ends after the identity instead of holding a gap where rows would be.
-  await expect(page.locator("[data-card-brand]")).toHaveCount(1);
+  // `[data-card-brand]` is no longer asserted here: it prints the owner's COMPANY now, and a
+  // zero-field card maps none, so the slot correctly collapses. The credit is the thing that is
+  // on every card whatever it shares.
+  await expect(page.locator("[data-card-credit]")).toHaveCount(1);
   await expect(page.locator("[data-card-fields]")).toHaveCount(0);
   await expect(page.locator("[data-card-action-button]")).toHaveCount(0);
 
@@ -415,7 +498,7 @@ test("renders no Save to contacts button at all on a zero-field card (E-02, AC-3
   await expect(page.locator('[data-card-action="save"]')).toHaveCount(0);
   await expect(page.locator("[data-card-action]")).toHaveCount(0);
   await expect(page.locator("[data-card-actions]")).toHaveAttribute("data-card-action-count", "0");
-  await expect(page.getByText("Save to contacts")).toHaveCount(0);
+  await expect(page.getByText("Send to Phone")).toHaveCount(0);
 
   await expect(page.locator("[data-public-card-empty-note]")).toHaveText(
     "This card doesn't share any details yet.",
@@ -682,10 +765,14 @@ test("the card scrolls as one object, ground locked to the card", async ({ page 
     const g = document.querySelector("[data-card-ground]") as HTMLElement;
     const a = document.querySelector('[data-card-variant="page"]') as HTMLElement;
     const n = document.querySelector("[data-card-name]") as HTMLElement;
+    const c = document.querySelector("[data-card-cover]") as HTMLElement;
     return {
       position: getComputedStyle(g).position,
+      coverPosition: getComputedStyle(c).position,
       ground: g.getBoundingClientRect().top,
+      cover: c.getBoundingClientRect().top,
       groundHeight: Math.round(g.getBoundingClientRect().height),
+      coverHeight: Math.round(c.getBoundingClientRect().height),
       articleHeight: Math.round(a.getBoundingClientRect().height),
       viewport: window.innerHeight,
       name: n.getBoundingClientRect().top,
@@ -696,9 +783,19 @@ test("the card scrolls as one object, ground locked to the card", async ({ page 
   /* ⚠ `absolute`, not `fixed`. The note above is the whole reason. */
   expect(before.position).toBe("absolute");
 
-  /* It is the card, not the viewport. On a card long enough to scroll, the article is TALLER
-     than the screen — so this also proves the ground is not silently viewport-sized. */
-  expect(Math.abs(before.groundHeight - before.articleHeight)).toBeLessThanOrEqual(2);
+  /* ⚠ **The ground fills the COVER, not the article.** It used to fill the whole card, and this
+     assertion compared it to the article's height. The two-tone composition put the palette in
+     the cover and paper everywhere below it, so the ground is cover-sized by design now. */
+  expect(Math.abs(before.groundHeight - before.coverHeight)).toBeLessThanOrEqual(2);
+
+  /* ⚠ **`relative`, not `sticky`.** The cover was pinned for one release: it held still while
+     the sheet scrolled up over it. The sheet is opaque and sits above it, so what that actually
+     produced was a photograph being progressively eaten by the content — reported, correctly, as
+     "the cover image is hiding". `card.css` §1c carries the full note. This assertion is what
+     stops it being reintroduced as a one-line change. */
+  expect(before.coverPosition).toBe("relative");
+
+  /* On a card long enough to scroll, the article is TALLER than the screen. */
   expect(before.articleHeight).toBeGreaterThan(before.viewport);
 
   expect(before.scrollable, "the page must actually be scrollable for this to prove anything")
@@ -708,6 +805,8 @@ test("the card scrolls as one object, ground locked to the card", async ({ page 
   const after = await page.evaluate(() => ({
     ground: (document.querySelector("[data-card-ground]") as HTMLElement).getBoundingClientRect()
       .top,
+    cover: (document.querySelector("[data-card-cover]") as HTMLElement).getBoundingClientRect()
+      .top,
     name: (document.querySelector("[data-card-name]") as HTMLElement).getBoundingClientRect().top,
     y: window.scrollY,
   }));
@@ -716,6 +815,8 @@ test("the card scrolls as one object, ground locked to the card", async ({ page 
   expect(after.name - before.name, "the content must scroll").toBe(-80);
   /* Together, to the pixel. A ground that lagged or held still is the regression. */
   expect(after.ground - before.ground, "the ground must scroll WITH the card").toBe(-80);
+  /* And the cover with it — the half the client actually reported. */
+  expect(after.cover - before.cover, "the cover must scroll WITH the card").toBe(-80);
 });
 
 /**
@@ -738,7 +839,10 @@ test("every row is fully painted with the animation killed", async ({ page }) =>
 
   const state = await page.evaluate(() =>
     [
-      ...document.querySelectorAll("[data-card-fields] > li, [data-card-actions] > *"),
+      /* ⚠ `[data-card-fields] li`, a DESCENDANT selector — it was `> li` while
+         `[data-card-fields]` was the `<ul>` itself. It is now a wrapper holding one `<ul>` per
+         category section, so the rows sit one level deeper. */
+      ...document.querySelectorAll("[data-card-fields] li, [data-card-actions] > *"),
     ].map((el) => {
       const cs = getComputedStyle(el as HTMLElement);
       return { opacity: cs.opacity, translate: cs.translate };
@@ -783,7 +887,9 @@ test("states the type details the browser would otherwise default", async ({ pag
       /* Which ground each region stands on — `card.css` keys `::selection` and the caret off
          this, because `--c-ink` is WHITE on the five deep palettes and a single ink-tinted
          selection rule would paint white on white the moment a reader dragged across a
-         canvas-bodied card. */
+         canvas-bodied card.
+         ⚠ Both are `"false"` since the two-tone rebuild: the palette owns the COVER and nothing
+         else, so every region carrying text stands on the paper sheet. */
       hero: document.querySelector("[data-card-hero]")?.getAttribute("data-card-on-palette"),
       body: document.querySelector("[data-card-body]")?.getAttribute("data-card-on-palette"),
     };

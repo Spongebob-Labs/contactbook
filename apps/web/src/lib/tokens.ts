@@ -32,7 +32,13 @@ export type SignalToken =
   | "success-wash";
 export type QrToken = "qr-module" | "qr-plate";
 
-export type ColourToken = SurfaceToken | InkToken | LineToken | AccentToken | SignalToken | QrToken;
+export type ColourToken =
+  | SurfaceToken
+  | InkToken
+  | LineToken
+  | AccentToken
+  | SignalToken
+  | QrToken;
 
 export type DesignTokens = Record<ColourToken, string>;
 
@@ -45,27 +51,32 @@ export type DesignTokens = Record<ColourToken, string>;
  * resolve one level of aliasing.
  */
 export const TOKENS: DesignTokens = Object.freeze({
-  /* Surfaces */
-  canvas: "#FFFFFF",
-  surface: "#FAFAFA",
-  "surface-sunk": "#F4F4F5",
-  "surface-raised": "#FFFFFF",
+  /* Surfaces — Atelier (warm off-white + gold), the product-wide default since 2026-09-20.
+     `canvas`/`surface-sunk` are `tokens.css`'s reuse of marketing's measured `--mk-paper` /
+     `--mk-wash`; `surface-raised` mirrors `tokens.css`'s `var(--canvas)` alias verbatim, since
+     this map only ever holds resolved colours. */
+  canvas: "#FCFAF8",
+  surface: "#F7F2ED",
+  "surface-sunk": "#F2EAE1",
+  "surface-raised": "#FCFAF8",
 
   /* Ink */
-  ink: "#0A0A0A",
-  "ink-2": "#3F3F46",
-  "ink-3": "#68707E",
-  "ink-4": "#A1A1AA",
+  ink: "#010103",
+  "ink-2": "#3E3932",
+  "ink-3": "#816544",
+  "ink-4": "#A49F95",
   "ink-inverse": "#FFFFFF",
 
   /* Lines */
-  line: "#E5E7EB",
-  "line-control": "#8A8A8F",
+  line: "#E8E2DC",
+  "line-control": "#897F73",
 
-  /* Accent */
-  accent: "#111111",
-  "accent-hover": "#000000",
-  "accent-wash": "#F4F4F5",
+  /* Accent — dark axis (Atelier's `--mk-accent-deep`), never gold. See the hard-rule comment
+     above `--accent` in tokens.css: gold under white text is the client reference's own
+     illegal 2.27:1 control, and this product does not reproduce it. */
+  accent: "#0D1C25",
+  "accent-hover": "#050C10",
+  "accent-wash": "#F2EAE1",
   "accent-ink": "#FFFFFF",
 
   /* Signals */

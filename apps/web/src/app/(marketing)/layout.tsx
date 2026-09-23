@@ -1,5 +1,8 @@
+import { Suspense } from "react";
+
 import { PillNav } from "@/components/marketing/pill-nav";
 import { SiteFooter } from "@/components/marketing/site-footer";
+import { SkinSwitch } from "@/components/marketing/skin-switch";
 import { OverlayStyles } from "@/components/overlay";
 
 /**
@@ -53,7 +56,24 @@ import { OverlayStyles } from "@/components/overlay";
 
 export default function MarketingLayout({ children }: LayoutProps<"/">) {
   return (
-    <div data-mk-root="" className="flex min-h-full flex-1 flex-col bg-mk-paper">
+    /*
+      `data-mk-skin` is stamped HERE, in the server HTML, so the default skin costs no
+      JavaScript and cannot flash. THE DEFAULT IS `atelier` — warm off-white + gold — because
+      the client rejected `verdant` (the mint-green deck) outright; see `marketing-skins.css`
+      for the measured palette. `verdant` is not deleted: it stays reachable at `?skin=verdant`
+      for comparison, which is `<SkinSwitch />` below's only job; see that file for why a
+      layout cannot read the query param itself.
+
+      NOTE - It must stay on the SAME element as `data-mk-root`. `marketing-skins.css` selects
+      `[data-mk-root][data-mk-skin="…"]` as a compound, specifically so it outranks
+      `marketing.css`'s single-attribute `[data-mk-root]` declarations without needing
+      `!important`. Splitting them across two elements silently reverts every token.
+    */
+    <div
+      data-mk-root=""
+      data-mk-skin="atelier"
+      className="flex min-h-full flex-1 flex-col bg-mk-paper"
+    >
       {/*
         THESIS: a contact book is maintenance, not storage; this page is a stack of the
         product's own passes, and it refuses the flat hairline document the category ships.
@@ -76,6 +96,19 @@ export default function MarketingLayout({ children }: LayoutProps<"/">) {
         review, the verdict, DESIGN.md, and every shipping raster carrying its provenance.
       */}
       <OverlayStyles />
+      {/*
+        Suspense is REQUIRED, not defensive. `useSearchParams` in a prerendered route
+        client-side-renders everything up to the nearest boundary — so without this, the
+        nav, the footer and every section above would drop out of the prerender to serve a
+        review-only query param.
+
+        The docs also warn that dev renders on demand and therefore does NOT suspend, so
+        the broken version looks completely fine locally and only shows up in a production
+        build. `null` is the right fallback: the component renders nothing either way.
+      */}
+      <Suspense fallback={null}>
+        <SkinSwitch />
+      </Suspense>
       <PillNav />
       <main id="main" className="flex-1 pt-20">
         {children}

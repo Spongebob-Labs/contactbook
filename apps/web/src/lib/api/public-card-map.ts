@@ -154,6 +154,12 @@ export function resolvePublicCard(
        reads — `resolveCard` derives the logo-or-text fallback once for both. Without this line
        a shared card silently falls back to its company name while its owner sees a logo. */
     logoUrl: payload.logoUrl,
+    /* ⚠ The recipient gets the owner's own cover, position and bio — the whole point of these
+       having become columns. While they lived in the owner's `localStorage` this route could
+       not see them, so a shared card was always plainer than its builder preview. */
+    coverUrl: payload.coverUrl,
+    headline: payload.headline,
+    bio: payload.bio,
     ...appearance,
     fieldIds: fields.map((f) => f.id),
     updatedAt: new Date(0).toISOString(),

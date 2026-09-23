@@ -8,8 +8,9 @@ import { MkButtonLink } from "./type";
  * in `src/components/marketing/**` that leaves the flat plane.
  *
  * The shape is design.md's: a rounded bar of pure white floating over the paper ground,
- * wordmark left, the three section links in the space between, and two controls right — a
- * ghost "Log in" and a dark filled "Get started".
+ * wordmark left and two controls right — a ghost "Log in" and a dark filled waitlist button.
+ * The three section links that used to sit between them were removed on 2026-09-20; see
+ * `SECTION_LINKS` below.
  *
  * ── Why this may carry elevation when nothing else here can ──────────────────────────
  * The direction is flat-first: a surface in normal flow separates itself with a hairline, not
@@ -24,10 +25,10 @@ import { MkButtonLink } from "./type";
  *
  * ── No icons, at all ─────────────────────────────────────────────────────────────────
  * The marketing page uses no icons above the footer, and a test asserts zero `<svg>` inside
- * `<main>` outside a card. That is why the mobile layout *drops* the three centre links
+ * `<main>` outside a card. That is why the mobile layout *dropped* the three centre links
  * rather than folding them behind a hamburger — the glyph would be the first icon on the
- * page. The links stay reachable at every width from `SiteFooter`, which is why the footer
- * carries the full section list rather than a token two.
+ * page. They are gone at every width now (2026-09-20), and `SiteFooter` is the one place the
+ * section routes stay reachable — which is why it carries the full list, not a token two.
  *
  * ── NOTE — IT OVERFLOWED ITS OWN PILL BELOW 390px, AND THE FIX IS FOUR VALUES ─────────────
  * At 360px the bar needed roughly 380px of content and had 336px of room, so "Get started" ran
@@ -55,26 +56,27 @@ import { MkButtonLink } from "./type";
  * The previous version was `"use client"` for one reason: it called `buttonClassName` from
  * the product's `<Button>`, which lives in a client module, and a server component that calls
  * into one throws before rendering. It now uses `MkButtonLink` from `./type`, which is a
- * plain server-safe module — so the six static links in the loudest chrome in the product no
+ * plain server-safe module — so the static links in the loudest chrome in the product no
  * longer ship a hydration payload to say nothing.
  */
 
-const SECTION_LINKS = [
-  // `/#…` targets are sections of `/`. The ids are part of the chrome contract:
-  // `(marketing)/page.tsx` must keep exposing `how-it-works` and `pricing`.
-  /* NOTE - REPOINTED 2026-09-08. It was `/#how-it-works` and `/#faq`; the FAQ section is
-     deleted, so `#faq` was a nav link to nothing. The spec's anchor test reads its targets off
-     the rendered nav for exactly this reason, and caught it.
+/*
+   NOTE - EMPTY ON PURPOSE SINCE 2026-09-20, ON THE CLIENT'S INSTRUCTION: *"in the nav bar, remove
+   the example cards. Remove the page of four companies. Remove How it works. Just make it a
+   bland nav bar."*
 
-     This file is under an emoji lock (`marketing-chrome.test.tsx`), which is why these notes
-     carry the word NOTE rather than the warning glyph the rest of the layer uses. The brief's suggested nav is "How it works / For individuals / For companies / About /
-     Join waitlist"; `For individuals` is dropped because the whole homepage is for individuals
-     and it would link to the page you are already on, and `For companies` plus the waitlist
-     arrive with their routes. */
-  { href: "/#how-it-works", label: "How it works" },
-  { href: "/#cards", label: "Example cards" },
-  { href: "/corporate", label: "For companies" },
-] as const;
+   It held three: `/#how-it-works`, `/templates` (labelled "Example cards") and `/corporate`.
+   The bar is now the wordmark, Log in, and the waitlist — the one thing the page is asking for.
+
+   NOTE - THE ROUTES STILL EXIST AND ARE STILL REACHABLE. Only the nav entries are gone.
+   `/corporate` is the one page with real depth behind it and the hero's secondary control still
+   points at it; the footer still links `/templates`. Deleting those routes was NOT asked for and
+   would take the hero's second CTA down with it.
+
+   Kept as an empty list rather than deleted along with the `<ul>` below, because this bar has
+   twice had a nav entry orphaned by a section cut (`#faq`, then `#cards`) and the next hand to
+   add one should find the seam, the history, and the test that guards it — not rebuild it. */
+const SECTION_LINKS: readonly { readonly href: string; readonly label: string }[] = [];
 
 /**
  * design.md's Pill Nav Tab: transparent, 14px Geist at medium weight, 8px radius, and a
@@ -124,15 +126,28 @@ export function PillNav() {
         Contact Book
       </Link>
 
-      <ul className="mx-auto hidden items-center gap-2 md:flex">
-        {SECTION_LINKS.map((link) => (
-          <li key={link.href}>
-            <Link href={link.href} className={TAB_CLASS}>
-              {link.label}
-            </Link>
-          </li>
-        ))}
-      </ul>
+      {/*
+        The `<ul>` renders only when there is something in it. An empty list is not the same
+        thing as no list: assistive tech announces "list, 0 items", and an empty `<ul>` is a
+        markup smell that outlives whatever emptied it.
+
+        `mx-auto` is what pushed the controls to the right edge, so with the list gone a plain
+        spacer takes that job — the bar's geometry is unchanged either way, and it comes back
+        automatically the moment a link is added.
+      */}
+      {SECTION_LINKS.length > 0 ? (
+        <ul className="mx-auto hidden items-center gap-2 md:flex">
+          {SECTION_LINKS.map((link) => (
+            <li key={link.href}>
+              <Link href={link.href} className={TAB_CLASS}>
+                {link.label}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <span className="mx-auto" aria-hidden="true" />
+      )}
 
       {/* NOTE — Horizontal padding only. The `py-2.5` both controls inherit from `MkButtonLink`'s
           `md` size is what gives them a hittable height, and shrinking a bar by shrinking its

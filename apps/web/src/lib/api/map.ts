@@ -483,6 +483,15 @@ export function toContactCard(dto: CardResponseDto, userId: string): ContactCard
        and an explicit `null` — into the domain's one. Unlike `publicUrl`, the two never meant
        anything different here; see `ContactCard.logoUrl`. */
     logoUrl: dto.logoUrl ?? null,
+    /* ⚠ **Real columns now, read straight off the wire.** These three lived in `localStorage`
+       (`card-local-draft.ts`, deleted) until the API grew columns for them, which meant the
+       owner's own phone did not show what they set on their laptop and `/c/{token}` — resolved
+       server-side — never showed them at all. Same `?? null` collapse as `logoUrl`: an absent
+       key on an older row and an explicit `null` are one state, and every renderer already
+       handles `null` while nothing handles `undefined`. */
+    coverUrl: dto.coverUrl ?? null,
+    headline: dto.headline ?? null,
+    bio: dto.bio ?? null,
     ...appearance,
     fieldIds: visible.map((field) => field.fieldId),
     updatedAt: dto.updatedAt,

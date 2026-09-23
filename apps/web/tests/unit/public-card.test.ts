@@ -455,6 +455,11 @@ describe("resolvePublicCard", () => {
     // No logo, which is what every card sent before the logo endpoints existed looks like —
     // the mark falls back to the card's COMPANY field and then to initials.
     logoUrl: null,
+    // Likewise: a card whose owner set no cover, no position and no bio. The cases that DO
+    // exercise them override these per-test.
+    coverUrl: null,
+    headline: null,
+    bio: null,
     fields: FIELDS,
     // The default for these cases: a card that never chose, which is what every card sent
     // before the API grew its appearance columns looks like.

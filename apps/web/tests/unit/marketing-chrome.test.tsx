@@ -120,35 +120,23 @@ function expectRoutable(href: string | null, routes: Set<string>) {
 }
 
 describe("PillNav — the floating pill bar (spec §8D.6, §8.7)", () => {
-  it("renders one wordmark, three centre links and two CTAs — six links, no more", () => {
+  it("renders one wordmark and two CTAs — three links, no more", () => {
+    /* ⚠ WAS "one wordmark, three centre links and two CTAs — six links". The three centre
+       links were removed on 2026-09-20 on the client's instruction ("just make it a bland nav
+       bar"); see `SECTION_LINKS` in `pill-nav.tsx` for what they were and why the seam stayed.
+
+       The COUNT is still asserted, and that is the point of this test: this bar has now had a
+       nav entry orphaned three times (`#faq`, `#cards`, and the whole centre row), and an
+       assertion that merely checked "some links exist" would have caught none of them. */
     renderWithProviders(<PillNav />);
 
     const nav = screen.getByRole("navigation", { name: /primary/i });
     const links = within(nav).getAllByRole("link");
-    expect(links).toHaveLength(6);
+    expect(links).toHaveLength(3);
 
     expect(within(nav).getByRole("link", { name: "Contact Book" })).toHaveAttribute(
       "href",
       "/",
-    );
-    /* `Templates` left the nav on 2026-09-09. It is reachable from the Example cards section
-       and from the footer, and the brief's suggested nav has no room for a fourth section link
-       once "For companies" earns its place. */
-    expect(within(nav).getByRole("link", { name: "For companies" })).toHaveAttribute(
-      "href",
-      "/corporate",
-    );
-    expect(within(nav).getByRole("link", { name: "How it works" })).toHaveAttribute(
-      "href",
-      "/#how-it-works",
-    );
-    // The third section link was "Questions" → `/#faq` until 2026-09-08. The FAQ section is
-    // deleted — five accordion answers on a one-scroll overview page is the text-heaviness the
-    // client pushed back on — so the slot goes to the example cards, which is the question a
-    // visitor actually arrives with: what will mine look like?
-    expect(within(nav).getByRole("link", { name: "Example cards" })).toHaveAttribute(
-      "href",
-      "/#cards",
     );
     expect(within(nav).getByRole("link", { name: "Join the waitlist" })).toHaveAttribute(
       "href",
@@ -158,10 +146,21 @@ describe("PillNav — the floating pill bar (spec §8D.6, §8.7)", () => {
       "href",
       "/signin/phone",
     );
-    /* The primary control was "Get started" → `/signup/first-name` until 2026-09-09. That is
-       the right control for a launched product and the wrong one for a pre-launch site: the
-       page's whole ask is the waitlist, and a nav sending people elsewhere competes with its
-       own page. Asserted above as "Join the waitlist". */
+
+    /* The routes themselves are NOT gone — only the nav entries. `/corporate` still backs the
+       hero's secondary control and `/templates` is still in the footer, so neither is orphaned
+       by this change. Asserting their absence HERE is what keeps the bar bland. */
+    for (const label of ["How it works", "Example cards", "For companies"]) {
+      expect(within(nav).queryByRole("link", { name: label })).toBeNull();
+    }
+  });
+
+  it("renders no empty list when the centre row is empty", () => {
+    /* An empty `<ul>` announces as "list, 0 items". `pill-nav.tsx` renders the list only when
+       it has entries; this pins that so emptying it never leaves the wart behind. */
+    renderWithProviders(<PillNav />);
+    const nav = screen.getByRole("navigation", { name: /primary/i });
+    expect(within(nav).queryAllByRole("list")).toHaveLength(0);
   });
 
   it("gives every link an accessible name (AC-25)", () => {
@@ -468,9 +467,40 @@ describe("(marketing)/layout.tsx — the shared chrome (spec §8D.6)", () => {
   });
 
   it("stays independent of the page it wraps (§3.5 cut order)", () => {
-    // The chrome must not import `/`'s sections: cutting T26 may not break T19.
+    /* The chrome must not import `/`'s sections: cutting T26 may not break T19.
+
+       DERIVED FROM `page.tsx` RATHER THAN FROM A HAND-WRITTEN ALLOWLIST, 2026-09-19. This
+       read `not.toMatch(/from "@\/components\/marketing\/(?!pill-nav|site-footer)/)` — a
+       negative lookahead naming the two components that happened to be chrome when it was
+       written. That is the same shape as the route manifest and the nav label list, both of
+       which were replaced for the same reason: a test that restates a list fails when the
+       list moves, for a stale reason, while the thing it claims to protect is fine.
+
+       It fired on `skin-switch`, which is chrome by every definition that matters — it is
+       mounted by the layout, it applies to `/templates`, `/waitlist` and `/contact` as much
+       as to `/`, and deleting the homepage would not touch it. The allowlist had no way to
+       know that; it only knew two names.
+
+       The real property is "the chrome does not import a component the PAGE imports", and
+       the page is the source of truth for what a section is. Now a new chrome component
+       needs no edit here, and a new section is guarded the moment it is added to the page. */
     const layout = source("app/(marketing)/layout.tsx");
-    expect(layout).not.toMatch(/from "@\/components\/marketing\/(?!pill-nav|site-footer)/);
+    const page = source("app/(marketing)/page.tsx");
+
+    const sectionImports = [
+      ...page.matchAll(/from "(@\/components\/marketing\/[^"]+)"/g),
+    ].map((match) => match[1]!);
+
+    // If this ever reads zero the assertion below is vacuous, which would pass silently.
+    expect(sectionImports.length).toBeGreaterThan(0);
+
+    for (const specifier of sectionImports) {
+      expect(
+        layout,
+        `the chrome imports ${specifier}, which is a section of the page it wraps`,
+      ).not.toContain(`from "${specifier}"`);
+    }
+
     expect(layout).not.toContain("./page");
   });
 });

@@ -1,0 +1,174 @@
+/* ============================================================================
+   MARKETING SKINS — one layout, two palettes.
+
+   The client supplied two directions on the same page: the deck palette
+   (`verdant`) and the cream/gold reference hero (`atelier`). They are NOT two
+   designs. Every component, measure, radius and type step is identical; the
+   only thing that changes is this token block.
+
+   ── WHY THAT IS POSSIBLE, AND IT IS NOT A COINCIDENCE ──────────────────────
+   Measured, both palettes are structurally the SAME system:
+
+       a ~2.2:1 brand tint on a near-white ground, plus one dark closing
+       surface, and a warm-grey text ladder.
+
+   verdant tint #69C0B0 is 2.15:1 on its ground.
+   atelier tint #C1A88A is 2.18:1 on its ground.
+
+   Three light rungs of one hue and one deep ground. Same five roles, different
+   hue. So the contract is written once, here, and every component reads the
+   role — never the colour.
+
+   ── THE ROLE NAMES ARE `--mk-accent-*`, NOT `--mk-green-*` ─────────────────
+   `marketing.css` names the brand ladder `--mk-green-*` because when it was
+   written there was only ever going to be one, and it was green. Under
+   `atelier` those variables hold gold, which makes every consumer read as a
+   lie. Renaming ~90KB of documented stylesheet to fix that is not worth the
+   diff, so the ladder gains `--mk-accent-*` as its real names and the
+   `--mk-green-*` names are kept pointing at them.
+
+   NEW CODE READS `--mk-accent-*`. The green names are a compatibility shim and
+   should shrink over time; they are not a second palette.
+
+   ── EVERY VALUE BELOW IS DERIVED AGAINST THE WORSE GROUND ──────────────────
+   This page has two light grounds (paper and wash) and a colour that clears
+   its threshold on paper can fail one section down on the wash. That already
+   happened once on this project — the first green ladder measured 3.01/4.52 on
+   white and dropped to 2.85/4.26 on the wash. So each rung below is the
+   smallest shift along its own hue that satisfies the contract on BOTH.
+
+   Ratios in the comments are `paper / wash`, computed, not estimated.
+   `tests/contract/marketing-skins.test.ts` recomputes all of them.
+   ============================================================================ */
+
+/* ── VERDANT — the client's deck ────────────────────────────────────────────
+   The deck is one hue (168°) at five saturations on white. That discipline is
+   the system and is kept exactly: nothing here drifts to blue-teal or
+   yellow-green.
+
+   TWO OF THE DECK'S OWN VALUES SURVIVED THE DERIVATION UNCHANGED, which is
+   worth recording — `#15A185` measures 3.25/3.03 and `#0C7560` measures
+   5.63/5.26, so both already satisfy their contracts and there was no reason
+   to invent a substitute. The deck was right; it only needed a rung ADDED.
+
+   THE ADDED RUNG IS THE DEEP GROUND. The deck's darkest value carries white at
+   only 5.63:1, and it is used on p5 as a full-bleed ground under white text.
+   That passes AA for body but leaves nothing for a softer secondary ink on the
+   same surface, which is the same trap the card palettes hit (see
+   `template-palettes.ts` — a ground needs its primary ink at 7:1, not 4.5, to
+   have room for a second one). `#0A5A4A` continues the deck's own logic —
+   deeper means more saturated — and clears 8.16:1.
+
+   ⚠ The deck's #769893 sage and #B7B6B6 footer grey are deliberately absent.
+   White on that sage is 3.14:1 and that grey is 2.02:1 on white; neither can
+   be text on the web. Raised with the client. */
+
+[data-mk-root][data-mk-skin="verdant"] {
+  --mk-paper: #ffffff;
+  --mk-white: #ffffff;
+  --mk-wash: #eafbf6;          /* the deck's #C5F7ED, lightened to a page wash —
+                                  at full strength it is a fill, not a ground */
+
+  --mk-accent-tint: #69c0b0;   /* 2.15 / 2.01 — DECORATIVE ONLY. Deck logo value,
+                                  verbatim. Rules, badges, the monogram, a filled
+                                  dot. Never text, never a control edge. */
+  --mk-accent-display: #15a185;/* 3.25 / 3.03 — deck value, verbatim. Accent words
+                                  inside a headline, at display sizes only. */
+  --mk-accent-ink: #0c7560;    /* 5.63 / 5.26 — deck value, verbatim. Small text,
+                                  links, control boundaries. */
+  --mk-accent-deep: #0a5a4a;   /* white 8.16:1 — the page's one dark ground.
+                                  Added, not taken from the deck; see above. */
+  --mk-accent-on-deep: #eafbf6;/* the wash, reused as the softer ink ON the deep
+                                  ground — 7.62:1 there. This is what the 8:1
+                                  primary bought. */
+}
+
+/* ── ATELIER — the reference hero ───────────────────────────────────────────
+   Sampled pixel-exact from the supplied screenshot rather than eyeballed. The
+   single most useful thing that sampling found: THE GROUND IS #FCFAF8, which
+   is 2% off white, not cream. This matters because warm cream grounds were
+   explicitly rejected on this project once — that rejection was about card
+   grounds and a borrowed editorial system, and it does not reach a 2% warm
+   cast on a marketing page.
+
+   ⚠ THE REFERENCE'S OWN CTA IS ILLEGAL AND IS NOT REPRODUCED. Its "Get
+   Started" pill is white text on #C1A88A, which measures 2.27:1. The gold is
+   kept exactly where the reference uses it decoratively (logo, rules, icon
+   badges) and the pill takes `--mk-accent-deep` ink instead, at 7.63:1 — which
+   also reads more expensive, not less.
+
+   The display and ink rungs are the smallest darkening of the sampled gold
+   that clears 3:1 and 4.5:1 on BOTH grounds. The sampled gold itself clears
+   neither. */
+
+[data-mk-root][data-mk-skin="atelier"] {
+  --mk-paper: #fcfaf8;         /* sampled */
+  --mk-white: #ffffff;         /* a lifted surface still goes pure white, so a
+                                  card reads as ON the page rather than as it */
+  --mk-wash: #f2eae1;          /* sampled — the reference's icon-badge fill,
+                                  which doubles as its band ground */
+
+  --mk-accent-tint: #c1a88a;   /* 2.18 / 1.91 — DECORATIVE ONLY. Sampled gold,
+                                  verbatim. Same role as verdant's tint. */
+  --mk-accent-display: #a48157;/* 3.44 / 3.01 — derived, holding the sampled
+                                  gold's hue and saturation. */
+  --mk-accent-ink: #816544;    /* 5.20 / 4.55 — derived, same axis. */
+  --mk-accent-deep: #0d1c25;   /* white 17.36:1 — sampled from the reference's
+                                  own dark CTA. Nearly black, faintly blue. */
+  --mk-accent-on-deep: #c1a88a;/* the tint returns as the soft ink on the deep
+                                  ground — 7.63:1 there. */
+
+  /* The text ladder warms with the ground. Same roles, same thresholds. */
+  --mk-ink: #14161a;           /* 17.40 / 15.21 */
+  --mk-stone: #6b6259;         /*  5.74 /  5.01 — secondary body copy */
+  --mk-pebble: #6d6a64;        /*  5.18 /  4.53 — captions, eyebrows. The
+                                  reference samples #6E6B65 here, which is 4.46
+                                  on the wash — one step under. Darkened once. */
+}
+
+/* ── The compatibility shim ─────────────────────────────────────────────────
+   Applied to both skins at the same specificity as the blocks above, so the
+   legacy names always resolve to whatever the active skin set. Deleting a line
+   here is safe once nothing reads that name. */
+
+[data-mk-root][data-mk-skin] {
+  --mk-green: var(--mk-accent-tint);
+  --mk-green-display: var(--mk-accent-display);
+  --mk-green-ink: var(--mk-accent-ink);
+  --mk-green-deep: var(--mk-accent-deep);
+}
+
+/* ── The display face ───────────────────────────────────────────────────────
+   Both skins take the serif. The client asked for one structure in two
+   palettes, so the typeface is part of the structure, not part of the skin.
+
+   `Instrument_Serif` is ALREADY loaded in `app/layout.tsx` as
+   `--font-instrument-serif` (it is the app's `--font-serif`), so this costs
+   zero additional bytes and no new font request — the face is downloaded
+   either way.
+
+   ⚠ This overrides `marketing.css`'s `[data-mk-root]` declaration, which
+   points at Space Grotesk. That block carries a long note about a substitution
+   hazard when a face is route-scoped; it still applies, which is why the
+   fallback stack below ends on a serif rather than falling through to a
+   grotesque. A missing Instrument Serif should degrade to Georgia, not to the
+   body face — the whole hierarchy here is serif-display over sans-body, and
+   losing that distinction is a bigger visual jump than a substituted serif. */
+
+[data-mk-root][data-mk-skin] {
+  --mk-font-display: var(--font-instrument-serif), "Instrument Serif", Georgia,
+    "Times New Roman", serif;
+}
+
+/* A high-contrast display serif at 88px wants tighter tracking and a shorter
+   line than a grotesque did. The scale itself is untouched — only the optical
+   corrections a serif needs that Space Grotesk did not. */
+
+[data-mk-root][data-mk-skin] {
+  --mk-text-display-tracking: -0.012em;
+  --mk-text-heading-xl-tracking: -0.010em;
+  --mk-text-heading-lg-tracking: -0.008em;
+  --mk-weight-display: 400;   /* Instrument Serif ships one weight; asking for
+                                 700 gets a synthesised bold, which on a
+                                 high-contrast serif smears the thin strokes */
+}

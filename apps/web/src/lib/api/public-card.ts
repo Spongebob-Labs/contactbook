@@ -75,6 +75,23 @@ export interface PublicCardPayload {
    * layout happened to carry the *rows* comes back null on every real payload.
    */
   logoUrl: string | null;
+  /**
+   * The card's cover photograph, headline and bio — **real `Card` columns, returned on the
+   * public payload exactly as the owner set them**.
+   *
+   * ⚠ These three used to be held in the owner's `localStorage` because no column existed, which
+   * meant `/c/{token}` — resolved server-side — could never show them at all: a recipient opened
+   * a plainer card than the one the builder had been previewing. They come off the wire now, and
+   * this is the surface where that difference is visible, so it is the surface worth checking
+   * first if they ever stop arriving.
+   *
+   * Read through the same `attr()` ladder as `logoUrl`, for the same reason: staging nests card
+   * attributes under `card`, so reading them off whichever layout carried the *rows* returns
+   * `null` on every real payload.
+   */
+  coverUrl: string | null;
+  headline: string | null;
+  bio: string | null;
   fields: PublicField[];
   /**
    * The owner's saved design. {@link NO_APPEARANCE} when the payload carries none — which is
@@ -278,6 +295,12 @@ export function parsePublicCard(body: unknown): PublicCardPayload | null {
          exists: the resolve endpoint is `@ApiExcludeController`, so its payload is not in the
          spec and cannot be asserted against one. `logoUrl` is what staging sends today. */
       logoUrl: attr("logoUrl", "logo"),
+      /* Same ladder, same tolerance. No second spelling for these: unlike `logo`, they have only
+         ever had one name on the wire, and inventing an alias nobody has observed is a rule that
+         cannot be verified — see the ⚠ on `ALIASES` in `card-appearance.ts`. */
+      coverUrl: attr("coverUrl"),
+      headline: attr("headline"),
+      bio: attr("bio"),
       fields,
       appearance: won?.appearance ?? NO_APPEARANCE,
       appearanceRejected: won?.rejected ?? [],

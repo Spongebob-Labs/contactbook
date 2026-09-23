@@ -1,13 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { renderWithProviders, screen, userEvent, within } from "../helpers/render";
+import { renderWithProviders, screen, userEvent, waitFor, within } from "../helpers/render";
 import { FieldPicker } from "@/components/builder/field-picker";
 import { PanelHead } from "@/components/builder/panel-head";
-import {
-  FIELD_TYPE_INPUT_MODES,
-  FIELD_TYPE_PLACEHOLDERS,
-} from "@/components/profile/field-types";
 import { buildFieldRows } from "@/components/builder/field-rows";
+import { ALL_OFFERS, FIELD_CATALOGUE } from "@/components/builder/field-catalogue";
 import { FIXTURE_DB } from "@/fixtures";
 
 /**
@@ -48,8 +45,22 @@ function setup(
 }
 
 /** Open the composer and hand back its form. */
+/** Open the composer. Leaves it on step 1 — the category and offer chooser. */
 async function openComposer(container: HTMLElement) {
   await userEvent.click(container.querySelector("[data-field-new-open]")!);
+  return container.querySelector("[data-field-choose]") as HTMLElement;
+}
+
+/**
+ * Open it and walk to step 2 by choosing a category and an offer, exactly as an owner does.
+ *
+ * Driving the real chips rather than reaching into state is the point: an offer that is listed
+ * in the catalogue but never wired to the value step fails here.
+ */
+async function chooseOffer(container: HTMLElement, category: string, offerId: string) {
+  await userEvent.click(container.querySelector("[data-field-new-open]")!);
+  await userEvent.click(container.querySelector(`[data-field-category="${category}"]`)!);
+  await userEvent.click(container.querySelector(`[data-field-offer="${offerId}"]`)!);
   return container.querySelector("[data-create-field-form]") as HTMLElement;
 }
 
@@ -252,29 +263,88 @@ describe("the fields panel", () => {
     expect(toggle().getAttribute("aria-expanded")).toBe("false");
     await userEvent.click(toggle());
     expect(toggle().getAttribute("aria-expanded")).toBe("true");
-    expect(container.querySelector("[data-create-field-form]")).not.toBeNull();
+    /* ⚠ Open lands on the CHOOSER, not on a form. The composer used to open straight onto
+       `[ Kind ▾ ] [ value ] [ Add ]`; it now asks where the field goes first. */
+    expect(container.querySelector("[data-field-choose]")).not.toBeNull();
+    expect(container.querySelector("[data-create-field-form]")).toBeNull();
 
     await userEvent.click(toggle());
     expect(toggle().getAttribute("aria-expanded")).toBe("false");
-    expect(container.querySelector("[data-create-field-form]")).toBeNull();
+    expect(container.querySelector("[data-field-choose]")).toBeNull();
+  });
+
+  /**
+   * ⚠ **THE CATEGORY IS CHOSEN, AND IT REACHES THE CREATE CALL.**
+   *
+   * This is the whole redesign in one assertion. The composer used to send a type and let
+   * `builder-client.tsx` guess the category from it, so every `PHONE` became `PERSONAL` and a
+   * work mobile landed in the wrong section of the card. A guess reinstated anywhere fails here.
+   */
+  it("sends the category the owner picked, not one inferred from the type", async () => {
+    const onCreateField = vi.fn(() => Promise.resolve({ fieldId: "f1", category: "WORK" }));
+    const { container } = setup([], { onCreateField: onCreateField as never });
+
+    await chooseOffer(container, "WORK", "work-mobile");
+    await userEvent.type(
+      container.querySelector("[data-create-field-value]")!,
+      "+91 98201 15577",
+    );
+    await userEvent.click(screen.getByRole("button", { name: /^add$/i }));
+
+    expect(onCreateField).toHaveBeenCalledWith({
+      type: "PHONE",
+      label: "Work mobile",
+      value: "+91 98201 15577",
+      /* A PHONE filed under WORK — the exact pair the deleted guess table could not express. */
+      category: "WORK",
+    });
+  });
+
+  /** Six chips, exactly one chosen, typed as a radio group so arrow keys and "2 of 6" are free. */
+  it("offers the categories as a radiogroup with exactly one chosen", async () => {
+    const { container } = setup([], { onCreateField: () => Promise.resolve(null) });
+    await openComposer(container);
+
+    const chips = [...container.querySelectorAll("[data-field-category]")];
+    expect(chips.length).toBe(FIELD_CATALOGUE.length);
+    expect(chips.filter((c) => c.getAttribute("aria-checked") === "true")).toHaveLength(1);
+    expect(screen.getByRole("radiogroup", { name: /field category/i })).toBeInTheDocument();
+  });
+
+  /** Choosing a category swaps the offers beneath it, and nothing else moves. */
+  it("shows only the chosen category's offers", async () => {
+    const { container } = setup([], { onCreateField: () => Promise.resolve(null) });
+    await openComposer(container);
+
+    const shown = () =>
+      [...container.querySelectorAll("[data-field-offer]")].map((e) =>
+        e.getAttribute("data-field-offer"),
+      );
+
+    expect(shown()).toEqual(FIELD_CATALOGUE[0].offers.map((o) => o.id));
+
+    await userEvent.click(container.querySelector('[data-field-category="SOCIAL"]')!);
+    expect(shown()).toEqual(
+      FIELD_CATALOGUE.find((s) => s.category === "SOCIAL")!.offers.map((o) => o.id),
+    );
+    expect(shown(), "the social section must offer LinkedIn by name").toContain("linkedin");
   });
 
   /**
    * ⚠ **THE LABELS ARE OFF THE SCREEN, NOT OUT OF THE ACCESSIBILITY TREE.**
    *
-   * "Remove the kind and the value" is about two printed form labels on a panel whose subject is
+   * "Remove the kind and the value" is about printed form labels on a panel whose subject is
    * picking fields. AC-25 sweeps every route with axe and an unlabelled control is a serious
    * violation, so `hideLabel` is the mechanism: the names survive, the ink does not.
    */
-  it("asks for a kind and a value with no printed labels", async () => {
+  it("asks for a value with no printed labels", async () => {
     const { container } = setup([], { onCreateField: () => Promise.resolve(null) });
-    const form = await openComposer(container);
+    const form = await chooseOffer(container, "PERSONAL", "mobile");
 
-    /* Named, and reachable by that name. */
-    expect(within(form).getByLabelText(/value/i)).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: /kind/i })).toBeInTheDocument();
+    /* Named, and reachable by that name — the offer's own label is the control's name now. */
+    expect(within(form).getByLabelText(/mobile/i)).toBeInTheDocument();
 
-    /* But nothing prints them: every label in the composer is screen-reader-only. */
+    /* But nothing prints it: every label in the composer is screen-reader-only. */
     const visibleLabels = [...form.querySelectorAll("label")].filter(
       (label) => !label.className.includes("sr-only"),
     );
@@ -290,7 +360,7 @@ describe("the fields panel", () => {
   it("refuses a blank value locally rather than round-tripping to be told", async () => {
     const onCreateField = vi.fn(() => Promise.resolve(null));
     const { container } = setup([], { onCreateField: onCreateField as never });
-    await openComposer(container);
+    await chooseOffer(container, "PERSONAL", "mobile");
 
     await userEvent.click(screen.getByRole("button", { name: /^add$/i }));
 
@@ -301,66 +371,40 @@ describe("the fields panel", () => {
   });
 
   /**
-   * ⚠ THE VALUE BOX MUST SAY WHAT GOES IN IT, FOR THE KIND THAT IS SELECTED — and with the
-   * label hidden this is now the *only* thing that says it, which promotes the placeholder from
-   * a nicety to the control's name in ink.
+   * ⚠ THE VALUE BOX MUST SAY WHAT GOES IN IT, FOR THE OFFER THAT WAS CHOSEN — and with the label
+   * hidden this is the *only* thing that says it, which promotes the placeholder from a nicety
+   * to the control's name in ink.
    *
-   * Asserted by driving the real `<Select>` rather than by reading the map, so a placeholder
-   * that is defined but never wired fails.
+   * It is also where the catalogue earns its keep: LinkedIn and "Other profile" are the same
+   * `FieldType` and must not share a placeholder, because the whole reason they are two offers
+   * is that `linkedin.com/in/…` is a question an owner can answer without thinking.
    */
-  it("shows the selected kind's own example in the value box", async () => {
+  it("shows the chosen offer's own example, even between offers of one type", async () => {
     const { container } = setup([], { onCreateField: () => Promise.resolve(null) });
-    await openComposer(container);
     const value = () => container.querySelector("[data-create-field-value]") as HTMLInputElement;
 
-    /* PHONE is the composer's default. */
-    expect(value().placeholder).toBe(FIELD_TYPE_PLACEHOLDERS.PHONE);
-    expect(value().inputMode).toBe("tel");
+    await chooseOffer(container, "SOCIAL", "linkedin");
+    expect(value().placeholder).toMatch(/linkedin\.com/i);
+    expect(value().inputMode).toBe("url");
 
-    await userEvent.click(screen.getByRole("combobox", { name: /kind/i }));
-    await userEvent.click(screen.getByRole("option", { name: /^social link$/i }));
-
+    await userEvent.click(container.querySelector("[data-field-offer-back]")!);
+    await userEvent.click(container.querySelector('[data-field-offer="github"]')!);
     expect(
       value().placeholder,
-      "the value box kept the phone example after the kind changed",
-    ).toBe(FIELD_TYPE_PLACEHOLDERS.SOCIAL_LINK);
-    expect(value().inputMode).toBe("url");
+      "the value box kept LinkedIn's example after a different offer of the same type",
+    ).toMatch(/github\.com/i);
   });
 
   /**
-   * Every kind this composer offers needs an example. A `Record<FieldType, string>` is total by
-   * annotation, but an empty string is legal in it — deliberately, for the structured kinds that
-   * have their own editors — so nothing stops a new *offered* kind shipping blank.
+   * Every offer needs an example and a unique id. The ids are React keys and test handles, and a
+   * duplicate would silently make one offer unreachable.
    */
-  it("has a non-empty example for every kind it offers", async () => {
-    const { container } = setup([], { onCreateField: () => Promise.resolve(null) });
-    await openComposer(container);
+  it("has a non-empty example and a unique id for every offer it lists", () => {
+    const ids = ALL_OFFERS.map((offer) => offer.id);
+    expect(new Set(ids).size, `duplicate offer ids: ${ids.join(", ")}`).toBe(ids.length);
 
-    await userEvent.click(screen.getByRole("combobox", { name: /kind/i }));
-    const offered = screen
-      .getAllByRole("option")
-      .map((option) => option.getAttribute("data-value") ?? option.textContent ?? "");
-
-    expect(offered.length).toBeGreaterThan(1);
-
-    /* Radix labels its options; map the label back to the kind through the same shortlist the
-       composer offers, so this fails on a kind added without an example either way. */
-    const byLabel: Record<string, keyof typeof FIELD_TYPE_PLACEHOLDERS> = {
-      Phone: "PHONE",
-      Email: "EMAIL",
-      "Job title": "JOB_TITLE",
-      Company: "COMPANY",
-      Website: "URL",
-      "Social link": "SOCIAL_LINK",
-      Address: "ADDRESS",
-      "Anything else": "TEXT",
-    };
-
-    const blank = offered.filter((label) => {
-      const kind = byLabel[label.trim()];
-      return kind === undefined || (FIELD_TYPE_PLACEHOLDERS[kind] ?? "") === "";
-    });
-    expect(blank, `these offered kinds have no example value: ${blank.join(", ")}`).toEqual([]);
+    const blank = ALL_OFFERS.filter((offer) => offer.placeholder.trim() === "");
+    expect(blank.map((o) => o.id), "offers with no example value").toEqual([]);
   });
 
   /**
@@ -370,10 +414,34 @@ describe("the fields panel", () => {
    */
   it("uses inputMode for the keyboard, not a validating input type", async () => {
     const { container } = setup([], { onCreateField: () => Promise.resolve(null) });
-    await openComposer(container);
+    await chooseOffer(container, "PERSONAL", "personal-email");
     const value = container.querySelector("[data-create-field-value]") as HTMLInputElement;
     expect(["text", "tel", "search"], `value input is type=${value.type}`).toContain(value.type);
-    expect(Object.values(FIELD_TYPE_INPUT_MODES)).not.toContain("password");
+    expect(value.inputMode).toBe("email");
+  });
+
+  /** After a successful add the composer returns to the chooser, category intact. */
+  it("returns to the chooser after an add, keeping the category", async () => {
+    const onCreateField = vi.fn(() => Promise.resolve({ fieldId: "f1", category: "SOCIAL" }));
+    const { container } = setup([], { onCreateField: onCreateField as never });
+
+    await chooseOffer(container, "SOCIAL", "linkedin");
+    await userEvent.type(
+      container.querySelector("[data-create-field-value]")!,
+      "linkedin.com/in/maya",
+    );
+    await userEvent.click(screen.getByRole("button", { name: /^add$/i }));
+
+    /* ⚠ `waitFor`: the return to step 1 happens in the `.then` of the create promise, one
+       microtask after the click resolves. Asserting synchronously reads the DOM before React
+       has re-rendered — green or red depending on scheduling, which is worse than red. */
+    await waitFor(() =>
+      expect(container.querySelector("[data-field-choose]")).not.toBeNull(),
+    );
+    expect(
+      container.querySelector('[data-field-category="SOCIAL"]')?.getAttribute("aria-checked"),
+      "the owner was thrown back to Personal after adding a social link",
+    ).toBe("true");
   });
 
   it("omits the composer entirely when there is no API to write to", () => {

@@ -1,0 +1,344 @@
+/* ============================================================================
+   marketing-solution — owned by ONE section. See `docs/landing-integration.md`.
+
+   ⚠ REWRITTEN 2026-09-21 (FIFTH ATTEMPT). THE MATRIX IS GONE.
+
+   The previous version of this file drove a 12 x 3 grid of coloured dots: a
+   spotlight walking three columns, a value flickering to an older one and
+   back, a cell dimming under a struck line and an "Off" pill. Eleven beats,
+   eight keyframe blocks, all of it performed on 8px dots — and the verdict
+   was *"what are these dots, why are the colours changing, how are these
+   dots connecting"*. `solution.tsx`'s module header carries the full account
+   of why a comparison grid was the wrong genre for this claim rather than a
+   badly drawn one.
+
+   What this file drives now is much smaller, because the exhibit is now made
+   of objects that explain themselves: a band of twelve labelled chips, three
+   real `<CardPage>` renders beneath it, and one 12s clock that walks the
+   three cards four seconds each — the lit card rises, and the chips it
+   carries light in that card's own colour.
+
+   Read before touching anything below:
+
+     - every colour is an `--mk-*` token or the card's own `--c-*` — no
+       literal, on either skin;
+     - every animated property is `transform` or `opacity` — nothing else.
+       `tests/unit/marketing-solution.test.tsx` parses every `@keyframes`
+       block in this file and fails on anything else;
+     - the UN-animated default IS a finished, correct picture — twelve chips
+       and three visibly different cards. That is not a fallback, it is the
+       reason this pattern was chosen: a switcher or a scroll-morph says
+       NOTHING at rest, and this section has already failed twice by needing
+       the reader to act before it meant anything;
+     - every rule that moves anything lives inside
+       `@media (prefers-reduced-motion: no-preference)`. Nothing here listens
+       for a scroll, an intersection or a click.
+
+   ⚠ DELIBERATELY UNLAYERED — NOT INSIDE `@layer components`, and this is a
+   reversal of an older comment rather than an oversight. Tailwind v4 emits
+   utility classes UNLAYERED, and an unlayered rule beats a layered one for
+   the same property however specific the layered one is.
+   `marketing-steps.css` shipped the layered version the same week and caught
+   the reason not to: a layered `color` lost to `<Prose>`'s own
+   `text-mk-stone` on the same element, silently, and only the page-wide
+   contrast sweep caught it — happy-dom has no cascade, so nothing in the
+   unit suite could have.
+   ============================================================================ */
+
+[data-solution-exhibit] {
+  /* ⚠ ONE CLOCK, AND EVERYTHING READS IT. Two independent `infinite`
+     animations of different durations drift against each other, so the chips
+     would light under a card that is no longer the one rising. Every rule
+     below is a slice of this single number.
+
+     12s = three cards x 4s. Four seconds is about as fast as a reader can
+     notice a card rise, follow the colour to the chips, and read two of them
+     before it moves on. */
+  --mk-solution-dur: 12s;
+
+  /* The card renders' width, as the ratio `<CardPageThumb>` reads. The card's
+     design width is 336px, so these are 101 / 141 / 168 / 195px.
+
+     ⚠ THREE-UP AT EVERY WIDTH, INCLUDING THE SMALLEST — the comparison IS the
+     argument, and a stacked column of three cards is three cards, not a
+     comparison. At 101px a reader cannot read a row, and does not need to:
+     what carries at that size is that one card is deep, one is middling and
+     one is two rows tall. That is the claim. */
+  --card-thumb-scale: 0.3;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   THE PROFILE BAND
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.mk-sol-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 0;
+  list-style: none;
+}
+
+/* ⚠ `position: relative` is what the lit overlays are absolutely positioned
+   against, and `isolation` keeps them out of any stacking context a skin
+   might introduce above. The chip sizes itself to its own label; the overlay
+   inherits that box exactly, so the two can never disagree by a pixel. */
+.mk-sol-chip {
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: var(--mk-radius-pill);
+  border: 1px solid var(--mk-hairline-strong);
+  padding: 4px 10px;
+  font-size: var(--mk-text-caption);
+  line-height: 1.4;
+  color: var(--mk-pebble);
+  white-space: nowrap;
+}
+
+/* The private field is on no card and can never be on one. It reads quieter
+   than the rest and carries its own tag — the one chip whose state is a fact
+   about the field rather than about a card. */
+.mk-sol-chip[data-field-state="private"] {
+  border-style: dashed;
+}
+
+.mk-sol-chip__face {
+  position: relative;
+  z-index: 1;
+}
+
+/* One per card that carries this field. Painted in that card's own ground,
+   sized to the chip it covers, and invisible until the walk reaches its
+   column. `inset: -1px` so the fill covers the chip's own hairline rather
+   than sitting inside it and leaving a grey ring. */
+.mk-sol-chip__lit {
+  position: absolute;
+  inset: -1px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--mk-radius-pill);
+  padding: 4px 10px;
+  opacity: 0;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   THE DIVIDE, AND THE THREE CARDS
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.mk-sol-divide {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--mk-hairline);
+}
+
+.mk-sol-cards {
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+  justify-content: center;
+  gap: 12px;
+  margin-top: 20px;
+  padding: 0;
+  list-style: none;
+}
+
+.mk-sol-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+  text-align: center;
+}
+
+/* ⚠ The crop's container. `<CardPageThumb>` sizes itself from
+   `--card-thumb-scale` and clips its own overflow; this element exists to be
+   the positioning context for the veil and to give the card an edge and a
+   shadow, because a card is a physical object and an object on a page has
+   both. */
+.mk-sol-card__frame {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border-radius: var(--mk-radius-control);
+  border: 1px solid var(--mk-hairline);
+  box-shadow: var(--mk-shadow-card);
+}
+
+/* ⚠ THE CROP NEEDS A BOTTOM DRAWN UNDER IT. The card is a document with no
+   fixed height, so a fixed window cuts it wherever that card's own content
+   happens to land — through the middle of a field row as often as not, which
+   reads as broken rather than as "there is more card". Same defect, same
+   treatment and same reasoning as `card-tile.css`.
+
+   ⚠ It fades to `--c-sheet`, the paper THAT card is printed on — set by
+   `paletteVars` on the frame in `solution.tsx`. Fading to the exhibit's own
+   white would leave a visible pale band across the clay card. */
+.mk-sol-card__veil {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  height: 30%;
+  background-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    color-mix(in srgb, var(--c-sheet) 45%, transparent) 38%,
+    color-mix(in srgb, var(--c-sheet) 90%, transparent) 68%,
+    var(--c-sheet) 84%
+  );
+  pointer-events: none;
+}
+
+.mk-sol-card__name {
+  margin-top: 12px;
+  font-weight: var(--mk-weight-medium);
+  font-size: var(--mk-text-body-sm);
+  color: var(--mk-ink);
+}
+
+.mk-sol-card__note {
+  margin-top: 2px;
+  font-size: var(--mk-text-caption);
+  line-height: 1.45;
+  color: var(--mk-pebble);
+  /* The note is the only wrapping text in the column and the only thing that
+     can make three columns uneven. Held to the card's own width so a long
+     note lengthens its column instead of widening it. */
+  max-width: calc(336px * var(--card-thumb-scale));
+}
+
+.mk-sol-card__count {
+  margin-top: 6px;
+  font-size: var(--mk-text-caption);
+  font-weight: var(--mk-weight-medium);
+  font-variant-numeric: tabular-nums;
+  color: var(--mk-stone);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   BREAKPOINTS — the scale, and nothing else. One DOM at every width.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+@media (min-width: 640px) {
+  [data-solution-exhibit] {
+    --card-thumb-scale: 0.42;
+  }
+
+  .mk-sol-cards {
+    gap: 16px;
+  }
+}
+
+@media (min-width: 768px) {
+  [data-solution-exhibit] {
+    --card-thumb-scale: 0.5;
+  }
+
+  .mk-sol-cards {
+    gap: 20px;
+  }
+}
+
+@media (min-width: 1024px) {
+  [data-solution-exhibit] {
+    --card-thumb-scale: 0.58;
+  }
+
+  .mk-sol-cards {
+    gap: 24px;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   THE WALK — the one beat.
+
+   ⚠ EVERY `0%` AND `100%` BELOW ARE IDENTICAL, AND THAT IS WHAT MAKES THE
+   STATIC PICTURE CORRECT RATHER THAN MERELY INTENDED. The un-animated
+   default is the finished exhibit; the loop only ever departs from it and
+   returns.
+
+   ⚠ NOTHING IS DIMMED. The obvious walk recedes the two unlit cards. It is
+   not done: the page-wide AA sweep walks every text node against its
+   computed ground and a faded card render is exactly what fails it — and,
+   more to the point, the matrix's real sin was one colour channel meaning
+   three things at once. Here the lit card RISES, and colour only ever means
+   which card.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+@media (prefers-reduced-motion: no-preference) {
+  .mk-sol-chip__lit {
+    animation: mk-sol-chip-lit var(--mk-solution-dur) var(--mk-ease) infinite;
+  }
+
+  .mk-sol-card {
+    animation: mk-sol-card-rise var(--mk-solution-dur) var(--mk-ease) infinite;
+  }
+
+  /* ⚠ NEGATIVE delays, and the sign is the whole mechanism: a negative delay
+     starts an element that far INTO its cycle, so all three run one clock and
+     simply read different points of it. Column 1 is one third behind, column
+     2 two thirds — which puts their lit windows at 4-8s and 8-12s.
+
+     One selector for both the chips and the cards, because both carry
+     `data-mk-walk-col` and both want the same offset. */
+  [data-solution-exhibit] [data-mk-walk-col="1"] {
+    animation-delay: calc(var(--mk-solution-dur) / -3);
+  }
+
+  [data-solution-exhibit] [data-mk-walk-col="2"] {
+    animation-delay: calc(var(--mk-solution-dur) / -3 * 2);
+  }
+}
+
+/* A third of the cycle lit, with a short fade at each end so a chip arrives
+   rather than blinks. 33.33% is the handover point to the next column. */
+@keyframes mk-sol-chip-lit {
+  0% {
+    opacity: 0;
+  }
+
+  4% {
+    opacity: 1;
+  }
+
+  29% {
+    opacity: 1;
+  }
+
+  33.33% {
+    opacity: 0;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes mk-sol-card-rise {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+
+  4% {
+    transform: translate3d(0, -10px, 0);
+  }
+
+  29% {
+    transform: translate3d(0, -10px, 0);
+  }
+
+  33.33% {
+    transform: translate3d(0, 0, 0);
+  }
+
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+}

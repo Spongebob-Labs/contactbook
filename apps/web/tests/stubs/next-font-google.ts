@@ -49,6 +49,16 @@ export const Space_Grotesk = loader("space");
  */
 export const Instrument_Sans = loader("instrument");
 
+/**
+ * The CARD's display serif, loaded by the root layout for `card-page.tsx`'s name and bio.
+ *
+ * Added with the 2026-09-17 card rebuild, and the gap announced itself exactly as this file's
+ * header promises it would: `mobile-contracts.test.tsx` imports the root layout directly, and
+ * the whole file died at import with `Instrument_Serif is not a function` on the first run
+ * after the font was added. One line, and the loud failure did its job.
+ */
+export const Instrument_Serif = loader("instrument-serif");
+
 /*
  * `Fraunces` was here, for the display face `(marketing)/layout.tsx` used to load itself. That
  * layout now loads no typeface at all — marketing draws the app's own Space Grotesk through

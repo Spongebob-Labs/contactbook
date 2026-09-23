@@ -17,10 +17,19 @@
  *
  * `saveCardAction` performs them in that order and reports what actually happened.
  *
- * ## What Save cannot persist
- * Appearance. `templateId`, `paletteId`, `groundHex`, `finish`, `texture` — none has a column
- * (`docs/INTEGRATION.md` ask #2), so the builder's design panel is read-only against the API and
- * nothing here pretends to store it. A card's look is derived from its `kind`.
+ * ## ⚠ These actions have no callers, and they are NOT the builder's save path
+ * The builder commits through `lib/api/browser.ts` directly (`builder-client.tsx`), so that the
+ * requests are visible in the Network tab and the design panel can upload a logo or a cover the
+ * moment it is picked — neither of which a server action can do. Everything below is kept
+ * because the endpoints it wraps are real, but nothing in the app reaches it.
+ *
+ * The note that stood here said appearance *could not* be persisted: "`templateId`, `paletteId`,
+ * `groundHex`, `finish`, `texture` — none has a column, so the builder's design panel is
+ * read-only against the API". All seven axes have columns now, as do `headline`, `bio` and
+ * `coverUrl`, and the builder writes every one of them. **If these actions are ever wired up,
+ * they have to carry the appearance too** — `toAppearanceDto` plus `headline`/`bio` on the
+ * create and the update, and `coverUrl` on neither, since a cover can only come from
+ * `POST /cards/{id}/cover`.
  */
 
 import { revalidatePath } from "next/cache";

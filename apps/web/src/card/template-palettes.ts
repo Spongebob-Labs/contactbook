@@ -45,7 +45,13 @@ export type PaletteId =
   | "amber"
   | "clay"
   | "pistachio"
-  | "periwinkle";
+  | "periwinkle"
+  /* The brand hue. Lighter than the other four lights and the only palette taken from the
+     client's own deck rather than picked here — see its entry. */
+  | "mint"
+  /* Warm neutral — the reference theme. See its entry for why it carries the three optional
+     sheet fields that every other palette leaves null. */
+  | "ivory";
 
 export interface TemplatePalette {
   id: PaletteId;
@@ -154,6 +160,51 @@ export interface TemplatePalette {
   /** Fill behind a monogram when the card has no photo. */
   markBg: string;
   markInk: string;
+
+  /* ── The card page's SHEET, and the three slots only it uses ──────────────────────────── */
+
+  /**
+   * The paper the card page is read on. `null` derives it — white carrying 3% of `ground`.
+   *
+   * ## Why an override exists at all
+   *
+   * The derived sheet is right for eight of the ten: it keeps a Sapphire card's paper faintly
+   * cool and a Rust card's faintly warm without either becoming a tint block, and it does it
+   * from one rule. It cannot express a paper that is a *deliberate colour* rather than a
+   * whisper of the cover — and the reference theme's cream is exactly that: the warmth is the
+   * point, not a side effect of the ground above it.
+   *
+   * ⚠ **An override must stay near-white.** Every ink on the sheet is an APP token (`--ink`,
+   * `--ink-2`) proven against `--canvas`, and `PALETTE_CONTRACT` re-proves both against this
+   * value when it is set. A sheet dark enough to need light ink is not a sheet, it is a second
+   * ground, and the two-tone composition has no room for one.
+   */
+  sheet: string | null;
+
+  /**
+   * The decorative accent — icon discs, hairlines, the curve's edge, the social glyphs.
+   *
+   * `null` falls back to `canvasActionBg`, which is what the eight neutral palettes want: their
+   * accent IS their action colour and a second hue would be a third voice on a two-tone card.
+   *
+   * Held to **3:1 on the sheet** and not 4.5, because everything it paints is a graphical
+   * object under 1.4.11 rather than text. {@link accentText} is the slot for the text case, and
+   * the split is the whole reason there are two: the reference's gold is legible as a mark and
+   * illegible as a word, and one slot could only have got one of those right.
+   */
+  accent: string | null;
+
+  /**
+   * The accent used for TEXT — the company wordmark, and the badge's monogram.
+   *
+   * `null` falls back to `canvasActionBg`. Held to **4.5:1 on the sheet** (1.4.3).
+   *
+   * ⚠ This is normally a DEEPER tone than {@link accent}, and Ivory is why the pair exists: the
+   * reference sets its wordmark in a light gold that measures about 2.1:1 on cream. That is not
+   * a near miss to be waved through, it is unreadable — so the mark keeps a gold that clears
+   * 3:1 and the word takes a bronze that clears 4.5:1. They read as the same metal.
+   */
+  accentText: string | null;
 }
 
 /**
@@ -263,6 +314,9 @@ export const TEMPLATE_PALETTES: Record<PaletteId, TemplatePalette> = {
     plateBorder: null,
     markBg: "#FFFFFF",
     markInk: "#17191D",
+    sheet: null,
+    accent: null,
+    accentText: null,
   },
   sapphire: {
     id: "sapphire",
@@ -286,6 +340,9 @@ export const TEMPLATE_PALETTES: Record<PaletteId, TemplatePalette> = {
     plateBorder: null,
     markBg: "#CBD9F7",
     markInk: "#112656",
+    sheet: null,
+    accent: null,
+    accentText: null,
   },
   emerald: {
     id: "emerald",
@@ -309,6 +366,9 @@ export const TEMPLATE_PALETTES: Record<PaletteId, TemplatePalette> = {
     plateBorder: null,
     markBg: "#BFE6D2",
     markInk: "#0A3325",
+    sheet: null,
+    accent: null,
+    accentText: null,
   },
   oxblood: {
     id: "oxblood",
@@ -332,6 +392,9 @@ export const TEMPLATE_PALETTES: Record<PaletteId, TemplatePalette> = {
     plateBorder: null,
     markBg: "#F2CBD3",
     markInk: "#4E1220",
+    sheet: null,
+    accent: null,
+    accentText: null,
   },
   rust: {
     id: "rust",
@@ -355,6 +418,9 @@ export const TEMPLATE_PALETTES: Record<PaletteId, TemplatePalette> = {
     plateBorder: null,
     markBg: "#FFFFFF",
     markInk: "#7A3318",
+    sheet: null,
+    accent: null,
+    accentText: null,
   },
   amber: {
     id: "amber",
@@ -378,6 +444,9 @@ export const TEMPLATE_PALETTES: Record<PaletteId, TemplatePalette> = {
     plateBorder: null,
     markBg: "#3A2408",
     markInk: "#FFFFFF",
+    sheet: null,
+    accent: null,
+    accentText: null,
   },
   clay: {
     id: "clay",
@@ -401,6 +470,9 @@ export const TEMPLATE_PALETTES: Record<PaletteId, TemplatePalette> = {
     plateBorder: null,
     markBg: "#4A1D14",
     markInk: "#FFFFFF",
+    sheet: null,
+    accent: null,
+    accentText: null,
   },
   pistachio: {
     id: "pistachio",
@@ -424,6 +496,9 @@ export const TEMPLATE_PALETTES: Record<PaletteId, TemplatePalette> = {
     plateBorder: "#8A9968",
     markBg: "#1F3310",
     markInk: "#FFFFFF",
+    sheet: null,
+    accent: null,
+    accentText: null,
   },
   periwinkle: {
     id: "periwinkle",
@@ -447,6 +522,157 @@ export const TEMPLATE_PALETTES: Record<PaletteId, TemplatePalette> = {
     plateBorder: "#8089A8",
     markBg: "#1B2450",
     markInk: "#FFFFFF",
+    sheet: null,
+    accent: null,
+    accentText: null,
+  },
+
+  /**
+   * MINT — the brand hue, and the first palette lifted from the client's deck rather than
+   * composed here.
+   *
+   * ## Where the colours come from
+   *
+   * `ContactBook About Us v13.pdf` paints 24 slides out of a single hue. Every green in it
+   * measures **H=168°**, varied only by saturation and lightness: `#C5F7ED` (the pale tint),
+   * `#51E8CA` (the bright mint), `#69C0B0` (the logo), `#15A185` (the deep accent) and
+   * `#0C7560` (the darkest, used for strokes). This palette is that ladder re-spaced to fit
+   * the constraints below: the stops hold S=0.76, the saturation the deck's own two tints
+   * share, and `buttonBg` is `#0C7560` verbatim.
+   *
+   * ## ⚠ Why the stops are NOT the deck's values verbatim
+   *
+   * The deck's pale mint sits at L=0.845 on a white ground, so its own gradient would span
+   * L 0.845→1.0 — a delta of 0.155, under the 0.19–0.23 every other light palette here runs
+   * at, and a card that flat reads as an unpainted surface rather than as a colour. The mint
+   * end is therefore deepened to L=0.735, restoring a 0.219 delta (mid-pack for the set) while
+   * staying on the deck's hue and saturation. The deck's own `#C5F7ED` lands within a
+   * hundredth of this gradient's midpoint, so the tint the client already knows is still the
+   * colour the card averages to.
+   *
+   *     ink        #0F1114 on the darkest stop   14.13:1   (needs 7)
+   *     inkSoft    #3C6B62 on the darkest stop    4.52:1   (needs 4.5)
+   *     ink/inkSoft separation                    3.13:1   (needs 1.4)
+   *     line       #96D4C8 on the darkest stop    1.25:1   (needs 1.2)
+   *     buttonBg   #0C7560 on the darkest stop    4.21:1   (needs 3)
+   *     buttonAltBorder #49887C, darkest stop     3.08:1   (needs 3)
+   *     canvasActionBg #0C7560 on the canvas      5.63:1   (needs 4.5)
+   *     accent/accentText on the derived sheet    5.61:1   (needs 3 / 4.5)
+   *
+   * ## The slot this is the first preset to need
+   *
+   * `ground` is L=0.830, which leaves white at **1.19:1** against it and the QR plate at
+   * **1.05:1** — both under the 1.5 at which a white shape stops being self-evident. Mint is
+   * therefore the first palette to set `faceBorder` as well as `plateBorder`, and the field
+   * comment on `faceBorder` predicted this exact case: "the need is real for any future
+   * near-white ground". Without the face edge a Mint card on the white app canvas is an
+   * absence, which is the bug that retired the old white Paper palette.
+   *
+   * ## ⚠ Why no second accent, when the deck has one
+   *
+   * The deck runs two greens: `#15A185` on marks and a deeper one on words — a split that
+   * `accent`/`accentText` exist to express, and that Ivory uses for its two golds. Mint leaves
+   * both `null`, so the accent is `canvasActionBg` and the card speaks with one green. The
+   * card format is committed to two tones, and a mark-green distinct from the word-green would
+   * be a third voice on a face with room for two. If the deck's split is ever wanted here,
+   * these are the two slots it goes in: `#15A185` clears the 3:1 mark bar on this sheet at
+   * 3.23, which is why it is recorded here rather than left to be re-measured.
+   */
+  mint: {
+    id: "mint",
+    name: "Mint",
+    ground: "#BFF6EC",
+    gradientFrom: "#EEFDFA",
+    gradientTo: "#90F0DD",
+    gradientAngle: 154,
+    groundAlt: null,
+    ink: "#0F1114",
+    inkSoft: "#3C6B62",
+    line: "#96D4C8",
+    /* The deck's darkest green, unmodified. At 5.63:1 on white it clears the TEXT bar the
+       wordmark needs, not just the 3:1 a fill alone would have got away with. */
+    buttonBg: "#0C7560",
+    buttonInk: "#FFFFFF",
+    buttonAltBg: "#BFF6EC",
+    buttonAltInk: "#0F1114",
+    buttonAltBorder: "#49887C",
+    canvasActionBg: "#0C7560",
+    canvasActionInk: "#FFFFFF",
+    /* The ground is 1.19:1 on the app canvas — the face has no edge of its own without this. */
+    faceBorder: "#56A092",
+    /* And 1.05:1 against a white plate: the most dissolved ground in the set. */
+    plateBorder: "#56A092",
+    markBg: "#0C7560",
+    markInk: "#FFFFFF",
+    /* Derived. The deck reads on white, and 3% of a mint ground over white is #FDFFFE — which
+       is the honest answer here, not a tint invented to look deliberate. */
+    sheet: null,
+    accent: null,
+    accentText: null,
+  },
+
+  /**
+   * IVORY — the reference theme, and the only palette that uses the three sheet slots.
+   *
+   * ## What it is for
+   *
+   * The client's reference card is a warm sand cover, a cream sheet, gold marks and a near-black
+   * pill. Eight of the nine presets can get close by accident — a derived sheet at 3% of a warm
+   * ground is faintly cream — and none of them can get there on purpose, because the gold is a
+   * *third* colour: it is neither the ground nor the action fill.
+   *
+   * So Ivory is the palette that says out loud what the other nine leave derived. Every number
+   * below was solved with `src/lib/contrast.ts` against both gradient stops and against its own
+   * cream sheet, not chosen by eye:
+   *
+   *     ink        #0F1114 on the darkest stop   11.37:1   (needs 7)
+   *     inkSoft    #4F4229 on the darkest stop    5.89:1   (needs 4.5)
+   *     ink/inkSoft separation                    1.93:1   (needs 1.4)
+   *     line       #B39C72 on the darkest stop    1.60:1   (needs 1.2)
+   *     buttonAltBorder #6E5C3C, darkest stop     3.87:1   (needs 3)
+   *     accent     #A87F33 on the cream sheet     3.39:1   (needs 3)
+   *     accentText #8F6A26 on the cream sheet     4.58:1   (needs 4.5)
+   *     canvasActionBg #1A1713 on the sheet      16.57:1   (needs 4.5)
+   *
+   * ## ⚠ The two golds, and why the reference's single gold could not be used
+   *
+   * The reference sets `CONTACTBOOK` in a light gold on cream. Measured, that is about 2.1:1 —
+   * not a near miss, unreadable. A mark can live at 3:1 (1.4.11, graphical objects); a word
+   * cannot (1.4.3 wants 4.5). One slot would have had to pick a side: keep the light gold and
+   * ship an illegible wordmark, or darken it and lose the glint on every icon disc.
+   *
+   * Two slots keep both. `#A87F33` carries the discs, the hairlines and the curve's edge;
+   * `#8F6A26` carries the wordmark and the monogram. They are the same hue two steps apart and
+   * read as one metal on the page.
+   */
+  ivory: {
+    id: "ivory",
+    name: "Ivory",
+    ground: "#E7D6BA",
+    gradientFrom: "#F2E7D3",
+    gradientTo: "#DCC6A0",
+    gradientAngle: 152,
+    groundAlt: null,
+    ink: "#0F1114",
+    inkSoft: "#4F4229",
+    line: "#B39C72",
+    buttonBg: "#1A1713",
+    buttonInk: "#FFFFFF",
+    buttonAltBg: "#E7D6BA",
+    buttonAltInk: "#0F1114",
+    buttonAltBorder: "#6E5C3C",
+    canvasActionBg: "#1A1713",
+    canvasActionInk: "#FFFFFF",
+    faceBorder: null,
+    /* The ground is light enough that a white QR plate would dissolve into it — the one case
+       this slot exists for. */
+    plateBorder: "#B9A47E",
+    markBg: "#1A1713",
+    markInk: "#FFFFFF",
+    /* Cream, and deliberately warmer than the 3% derivation would produce. */
+    sheet: "#FAF6EE",
+    accent: "#A87F33",
+    accentText: "#8F6A26",
   },
 };
 
@@ -526,6 +752,16 @@ export function paletteVars(p: TemplatePalette): Record<string, string> {
     "--c-face-border": p.faceBorder ?? "transparent",
     "--c-canvas-action-bg": p.canvasActionBg,
     "--c-canvas-action-ink": p.canvasActionInk,
+
+    /* ── The card page's sheet, resolved HERE so the fallbacks exist once ─────────────────
+       `sheet`, `accent` and `accentText` are nullable, and their fallbacks are rules rather
+       than values — "3% of the ground over white", "the action fill". Resolving them in this
+       function means every consumer reads a concrete colour and no renderer has to remember
+       the rule. `card-page.tsx` used to spell the 3% mix itself, which put the rule in two
+       places the moment a palette could override it. */
+    "--c-sheet": sheetOf(p),
+    "--c-accent": p.accent ?? p.canvasActionBg,
+    "--c-accent-text": p.accentText ?? p.canvasActionBg,
   };
 }
 
@@ -542,6 +778,64 @@ export function paletteVars(p: TemplatePalette): Record<string, string> {
  * owns that value and this is the one place a card-side rule needs to know it.
  */
 export const APP_CANVAS = "#FFFFFF";
+
+/**
+ * How much of the ground a derived sheet carries. 3% and not more: at 4% a deep ground pulls
+ * the sheet to about #F6F6F6, where `--ink-3` measures 4.43:1 and misses AA. 3% keeps every app
+ * ink token inside the margin it was proven at on pure white.
+ */
+const SHEET_TINT = 0.03;
+
+/**
+ * THE RESOLVED SHEET — the paper the card page is read on, always a real colour.
+ *
+ * ⚠ **A hex and never a `color-mix()`, and the contract is what forced that.** `paletteVars`
+ * emitted the mix as a CSS expression, and `tests/contract/template-palettes.test.ts` asserts
+ * every custom property it emits is a hex or `transparent` — for a good reason of its own: one
+ * unparseable value inside a `border` shorthand invalidates the whole declaration.
+ *
+ * Computing it here is strictly better than relaxing that rule. The sheet becomes a colour the
+ * contract can measure, so `PALETTE_CONTRACT` proves the app inks and the action fill against
+ * the paper of ALL TEN palettes rather than only against the one that overrides it — which is
+ * the case that could actually have shipped illegible.
+ *
+ * The mix is not imported from `card-ground.ts`, which has one: that module imports
+ * `TemplatePalette` from this one, so the dependency would be a cycle. Six lines of sRGB
+ * arithmetic is the cheaper answer than restructuring two modules around it.
+ */
+/**
+ * ⚠ Memoised, and the reason is a test that started timing out rather than a micro-optimisation.
+ *
+ * Five `PALETTE_CONTRACT` pairs read the sheet, and `derive-palette.test.ts` sweeps every pair
+ * against a freshly derived palette for **every byte value** through both band edges. That turned
+ * one mix per palette into five, and pushed the sweep past its 5s budget — a real regression in
+ * the cost of the contract, not a slow machine.
+ *
+ * Keyed on the palette object rather than on its hex so a derived palette, which is a new object
+ * every time, still pays the arithmetic once across the five pairs that ask about it. A `WeakMap`
+ * so nothing is retained: the sweep allocates hundreds of thousands of palettes and a `Map` would
+ * hold every one of them for the life of the process.
+ */
+const SHEET_CACHE = new WeakMap<TemplatePalette, string>();
+
+export function sheetOf(p: TemplatePalette): string {
+  if (p.sheet !== null) return p.sheet;
+
+  const cached = SHEET_CACHE.get(p);
+  if (cached !== undefined) return cached;
+
+  const ground = p.ground.replace("#", "");
+  const channel = (i: number): number => {
+    const g = Number.parseInt(ground.slice(i * 2, i * 2 + 2), 16);
+    /* Over white, so the other side of the mix is 255 on every channel. */
+    return Math.round(g * SHEET_TINT + 255 * (1 - SHEET_TINT));
+  };
+
+  const mixed =
+    `#${[0, 1, 2].map((i) => channel(i).toString(16).padStart(2, "0")).join("")}`.toUpperCase();
+  SHEET_CACHE.set(p, mixed);
+  return mixed;
+}
 
 export interface PalettePair {
   label: string;
@@ -663,6 +957,75 @@ export const PALETTE_CONTRACT: readonly PalettePair[] = [
     fg: (p) => p.canvasActionBg,
     bg: () => APP_CANVAS,
     min: 3,
+  },
+  /**
+   * ⚠ **The same pair again at a TEXT threshold, and the reason is the card page's rebuild.**
+   *
+   * `canvasActionBg` used to be one thing: the fill of a card action drawn on white. A fill is
+   * a control boundary, so 3:1 is the right bar (1.4.11) and the pair above is correct for it.
+   *
+   * The 2026-09-17 card page promoted the same colour to `--cb-accent` and paints TEXT with it —
+   * the company wordmark above the owner's name — as well as the social glyphs and the badge's
+   * monogram. Text is 1.4.3, which is 4.5:1, and borrowing a boundary ratio for text is exactly
+   * the kind of quiet reuse that ships something illegible.
+   *
+   * All nine presets clear this comfortably (the weakest is Amber's `#3A2408` at about 13:1),
+   * so this asserts a property the set already has rather than forcing a change. It is here so
+   * the NEXT palette cannot take the 3:1 route and land a wordmark nobody can read — and so
+   * `derivePalette`, which must satisfy every pair in this contract for an arbitrary hex, is
+   * held to it too.
+   */
+  {
+    label: "canvasActionBg is legible as TEXT on the app canvas (wordmark, glyphs, monogram)",
+    fg: (p) => p.canvasActionBg,
+    bg: () => APP_CANVAS,
+    min: 4.5,
+  },
+
+  /* ── The card page's SHEET, measured on EVERY palette.
+     `sheetOf` returns the palette's own paper when it states one and the 3% derivation when it
+     does not, so these five pairs are asserted against the colour each card is actually read
+     on — not against `APP_CANVAS`, which only nine of the ten are. That distinction is the
+     whole point: the derived sheet is where an ink could quietly fall under AA, because nobody
+     picked it by hand. ─────────────────────────────────────────────────────────────────────
+   */
+  {
+    label: "app ink stays legible on an overridden sheet",
+    fg: () => "#0A0A0A",
+    bg: (p) => sheetOf(p),
+    min: 4.5,
+  },
+  {
+    label: "app secondary ink stays legible on an overridden sheet",
+    fg: () => "#3F3F46",
+    bg: (p) => sheetOf(p),
+    min: 4.5,
+  },
+  /**
+   * The decorative accent is a GRAPHICAL OBJECT — icon discs, hairlines, the curve's edge — so
+   * 1.4.11's 3:1 is the right bar and 4.5 would be borrowing a text threshold for a mark.
+   */
+  {
+    label: "accent is discernible as a mark on the sheet",
+    fg: (p) => p.accent ?? p.canvasActionBg,
+    bg: (p) => sheetOf(p),
+    min: 3,
+  },
+  /**
+   * ⚠ And the text accent at 4.5 — the pair that stops the reference's own light gold shipping
+   * as a wordmark. See the note on `accentText`.
+   */
+  {
+    label: "accentText is legible as a WORD on the sheet",
+    fg: (p) => p.accentText ?? p.canvasActionBg,
+    bg: (p) => sheetOf(p),
+    min: 4.5,
+  },
+  {
+    label: "the primary action fill is legible on the sheet it sits on",
+    fg: (p) => p.canvasActionBg,
+    bg: (p) => sheetOf(p),
+    min: 4.5,
   },
 
   /* ── Decorative hairlines. Held to "visible at all", NOT to 3:1.

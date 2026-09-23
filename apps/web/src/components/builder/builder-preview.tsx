@@ -1,12 +1,11 @@
 "use client";
 
-import { ChevronDown, ChevronUp, Download, MessageCircle } from "lucide-react";
+import { ArrowRight, ChevronDown, ChevronUp, SmartphoneNfc } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
 
 import { canBuildVcf } from "@/card/build-vcf";
 import { CardActionButton } from "@/card/card-action-button";
 import { CardPage } from "@/card/card-page";
-import { hasWhatsAppAction } from "@/components/public-card/whatsapp-button";
 import type { ResolvedCard } from "@/types/domain";
 
 /**
@@ -293,10 +292,15 @@ function InertActions({ resolved }: { resolved: ResolvedCard }): ReactElement {
   /* `solid` runs the palette the full height of the page, so the actions stand ON the palette;
      `band` and `quiet` hand the body to the app canvas, so they need the canvas colourway or
      Cobalt's white primary fill lands on white. The live page decides it exactly this way. */
-  const surface = resolved.template.pageHeader === "solid" ? "palette" : "canvas";
+  /* ⚠ **`canvas`, unconditionally, matching the live page.** It used to branch on the template's
+     legacy `pageHeader`; the card page is two surfaces now, the palette owns only the cover, and
+     these controls stand on the paper sheet. `public-card-actions.tsx` carries the full note. */
+  const surface = "canvas" as const;
   const saveable = canBuildVcf(resolved);
-  const messageable = hasWhatsAppAction(resolved);
-  const count = (saveable ? 1 : 0) + (messageable ? 1 : 0);
+  /* ⚠ **One action, matching the live page.** The WhatsApp button is gone from both — it is a
+     disc in the social strip now, derived from the card's `PHONE`. The preview draws whatever
+     the live page draws or it is not a preview. */
+  const count = saveable ? 1 : 0;
 
   return (
     <div
@@ -317,23 +321,10 @@ function InertActions({ resolved }: { resolved: ResolvedCard }): ReactElement {
           variant="primary"
           surface={surface}
           shape={shape}
-          icon={<Download size={16} strokeWidth={1.75} />}
+          icon={<SmartphoneNfc size={18} strokeWidth={1.75} />}
+          trailing={<ArrowRight size={18} strokeWidth={1.75} />}
         >
-          Save to contacts
-        </CardActionButton>
-      )}
-
-      {!messageable ? null : (
-        <CardActionButton
-          action="whatsapp"
-          paletteId={resolved.palette.id}
-          palette={resolved.palette}
-          variant="secondary"
-          surface={surface}
-          shape={shape}
-          icon={<MessageCircle size={16} strokeWidth={1.75} />}
-        >
-          Message on WhatsApp
+          Send to Phone
         </CardActionButton>
       )}
     </div>

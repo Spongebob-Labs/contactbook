@@ -80,162 +80,50 @@
   pointer-events: none;
 }
 
-[data-card-variant="page"] > [data-card-ground] {
+/* ⚠ The ground moved. It used to be a direct child of the article and painted the whole card;
+   in the two-tone composition it paints the COVER only, so it is a child of `[data-card-cover]`.
+   The old `[data-card-variant="page"] > [data-card-ground]` selector is kept alongside the new
+   one rather than replaced: `<CardGround>` is still rendered directly under a card root by the
+   marketing page's card objects, and deleting the rule would collapse those to zero height. */
+[data-card-variant="page"] > [data-card-ground],
+[data-card-cover] > [data-card-ground] {
   position: absolute;
   inset: 0;
 }
 
-/* ── 1b. THE CARD IS AN OBJECT ON A PAGE ──────────────────────────────────────
+/* ── 1c. THE COVER SCROLLS WITH THE CARD ──────────────────────────────────────
 
-   ⚠ **The client's change of 2026-09-09, and the only thing he asked for on
-   this page by name.** In substance: the QR face and the templates are
-   *"striking, beautiful"* — and then you scan one, land here, and the card
-   *"displays all fields but looks like a plain, basic card."*
+   ⚠ **The pinned cover is REMOVED, and this note is why — so nobody puts it
+   back on the same reasoning it went in on.**
 
-   He was right, and the cause was that one card had three presentations and
-   only one of them was not an object:
+   It was `position: sticky`: the cover held still and the sheet scrolled up over
+   it, so the curve travelled across the photograph like a card being drawn out
+   of a wallet. That was the one authored moment in the page's motion and it
+   worked exactly as designed.
 
-     · `<ShareFace>` — 336×500, `--face-radius`, `--c-face-border`,
-       `--elevation-card`. A physical thing. This is what he was shown.
-     · The builder's preview — `[data-preview-frame]` is `rounded-[26px]` with
-       a hairline and `--elevation-2`, and it is `overflow-y-auto`, which CLIPS
-       the card inside it to that radius. So the owner designs a card with
-       rounded corners…
-     · `/c/{slug}` — `width: 100%`, the ground `position: fixed`, and no radius
-       anywhere. …and the recipient got a full-bleed rectangle.
+   It was also wrong, and the client's report is the proof: *"when we are
+   scrolling down the cover image is hiding."* The sheet is opaque and sits above
+   the cover, so a pinned cover is a photograph being progressively **eaten** by
+   the content rising over it. Read as motion it is elegant; read as a card it
+   looks like the image is failing to load. Nobody scrolling a contact card is
+   thinking about parallax — they are thinking "where did the picture go".
 
-   The recipient's view was the only one that was not a card, and it is the one
-   that sells the product. So it becomes one — in the **share face's own three
-   declarations**, not in a new set of numbers invented here:
+   So the card scrolls as ONE object. The cover leaves the top of the screen the
+   way the top of any page does, which is the behaviour that needs no explaining.
 
-       border-radius: var(--radius-xl)     — the same 20px as --face-radius
-       border: 1px solid var(--c-face-border, transparent)
-       box-shadow: var(--elevation-card)
+   ⚠ This also deletes a whole class of fragility, and that is worth keeping in
+   view before anyone reaches for sticky again: a sticky element sticks within
+   its nearest SCROLLING ancestor, so any ancestor with an `overflow` other than
+   `visible` silently became the scroll container and the effect quietly did
+   nothing. `<CardPage>` renders in three places and two of them are scrolled
+   frames — the builder's preview and the marketing tiles — so the mechanism was
+   one `overflow` away from behaving differently in each. Nothing about the card
+   depends on scroll position now.
 
-   `--c-face-border` is why this is not a grey ring around a deep card: it is
-   `transparent` on every palette but Paper, whose ground is the same white as
-   the page and would otherwise have no edge at all. That per-palette answer
-   already existed on the face; it is reused rather than re-derived. And
-   `tokens.css` describes `--elevation-card` as the one exception to flat
-   elevation, "because it is a physical object on a page" — which is now true
-   of two objects rather than one.
-
-   ⚠ **`--cb-page-inset: 12px` is not a taste value.** `tokens.css`, on
-   `--face-w`: "336 + 12px page padding each side == 360, the narrowest
-   supported viewport." At 360px this card therefore lands at exactly
-   `--face-w`: the scanned card and the face that was scanned are the same
-   width on the narrowest phone, which is what "consistent with the current
-   style" has to mean if it means anything measurable.
-   `env(safe-area-inset-*)` raises the gutter on a notched device, never
-   lowers it.
-
-   ⚠ **This does NOT contradict "the deck is flat" (DESIGN.md, 2026-09-08).**
-   That withdrew inset, radius and shadow from the *marketing sections* —
-   bands of one scrolling argument, where a raised edge makes the reader
-   notice the furniture instead of the point. This is a single card object on
-   a phone. Do not harmonise the two.
-
-   ⚠ **Everything here is scoped to `[data-card-page-surface]`**, which only
-   `app/c/[slug]/page.tsx` sets. The builder's preview and the marketing cards
-   render the same component and must not gain a second inset inside a frame
-   that already has one.                                                      */
-
-[data-card-page-surface] {
-  /* The gutter the card floats in — both axes, so the result is an object and
-     not a full-height column that happens to have side margins. */
-  --cb-page-inset: 12px;
-
-  /* Named, because the card's own height floor below has to subtract exactly
-     these two and a second copy of the expression would drift from this one. */
-  --cb-inset-top: max(var(--cb-page-inset), env(safe-area-inset-top));
-  --cb-inset-bottom: max(var(--cb-page-inset), env(safe-area-inset-bottom));
-
-  padding-top: var(--cb-inset-top);
-  padding-bottom: var(--cb-inset-bottom);
-  padding-left: max(var(--cb-page-inset), env(safe-area-inset-left));
-  padding-right: max(var(--cb-page-inset), env(safe-area-inset-right));
-
-
-  /* ⚠ **`100svh`, and NOT the `min-h-full` this element also carries. This is
-     THE iOS BUG — the reason the card looked full-screen on a real phone while
-     measuring correct in every desktop test.**
-
-     `min-h-full` is `min-height: 100%`, resolved against `<html>`, which is
-     `h-full`. On a desktop browser that is the window and all is well. **On
-     iOS Safari `100%` resolves against the LARGE viewport — the height the
-     page would have with the toolbars hidden — while what the reader can
-     actually see is the SMALL viewport, roughly 100–180px shorter.**
-
-     So the card was laid out up to ~180px taller than the visible area. Its
-     side gutters and top corners were on screen; its bottom gutter and both
-     bottom corners sat below the fold, reachable only by scrolling. The card
-     read as edge-to-edge — exactly the "the whole card is on the full screen,
-     what was the point of the rounded corners" report — and the strip of page
-     that appears and disappears beneath it as Safari's toolbar collapses is
-     the white line in that report.
-
-     ⚠ **This is invisible to Chromium at a fixed viewport**, where `100%`,
-     `100vh` and `100svh` are the same number. It cannot be found by resizing a
-     desktop browser. An earlier pass removed this very declaration as
-     "redundant" on exactly that bad evidence. It is not redundant.
-
-     `svh` not `dvh`: `dvh` re-measures as the toolbar collapses and would
-     resize the card mid-scroll. `svh` is the smaller of the two states, so the
-     card fits on open and simply gains page beneath it once the toolbar
-     retracts. */
-  min-height: 100svh;
-
-  /* ⚠ 24px, down from the 40px `card-page.tsx` defaults to.
-
-     That 40px was correct while the card ran to the bottom of the document and
-     simply stopped — the padding WAS the bottom of the page. The card now ends
-     in a rounded edge 12px from the screen, so the reader sees 40px of empty
-     ground, then an edge, then 12px of page: 52px of nothing under the last
-     row, on the axis a phone has least of.
-
-     It also buys back the 16px that decides whether a short card's bottom
-     corners are on screen when it opens. A three-field card measured 653px
-     against 640px of room at 390×664; at 24px it fits. This does not and
-     cannot make every card fit — a six-field card is taller than any phone and
-     is meant to scroll — it makes the common one land whole. */
-  --cb-card-body-pad-bottom: var(--space-6);
-}
-
-[data-card-page-surface] [data-card-variant="page"] {
-  /* ⚠ **The card's height floor — this is what keeps the ground independent of
-     the field count, and it is stated rather than grown.**
-
-     It used to be `flex: 1`: let the article take whatever room `main` had
-     spare. That reads well and is wrong on a phone, because it inherits
-     `main`'s height — and `main` sits inside `<body class="min-h-full">`,
-     which on iOS Safari is the LARGE viewport (see the note above). So
-     "fill the parent" filled a box up to ~180px taller than the screen and
-     pushed the bottom of the card off it.
-
-     A floor says the thing we actually mean, and says it against the viewport
-     rather than against an ancestor chain:
-
-       · content shorter than the screen → the card is exactly the visible
-         screen less its gutters, so all four corners are on screen and the
-         ground is painted edge to edge at zero fields. The invariant holds.
-       · content taller → the card is its content and the document scrolls,
-         which is what a long card should do.
-
-     `min-height`, never `height`: a height would clip a long card, and there
-     is no overflow container anywhere in `card-page.tsx` to catch it. */
-  min-height: calc(100svh - var(--cb-inset-top) - var(--cb-inset-bottom));
-
-  /* The card's own measure: the 460px content column plus the body's 24px of
-     inline padding each side. The column inside is untouched at every width —
-     the card is simply the box that has appeared around it. */
-  max-width: calc(var(--page-measure) + 2 * var(--space-6));
-  margin-inline: auto;
-
-  /* The share face's edge, verbatim. See the ⚠ above. */
-  border-radius: var(--radius-xl);
-  border: 1px solid var(--c-face-border, transparent);
-  box-shadow: var(--elevation-card);
-}
+   If a pinned masthead is ever actually wanted, it is a different design and not
+   a one-line revert: the cover would have to be a fixed-height header with the
+   sheet scrolling in the viewport BENEATH it, which costs about 40% of a phone
+   screen permanently and is a real trade against reading twenty fields. */
 
 /* The ground fills the card and takes its corners with it.
 
@@ -327,8 +215,12 @@
     animation: cb-card-arrive var(--dur-slow) var(--ease-out) backwards;
   }
 
+  /* ⚠ `[data-card-fields] li`, a DESCENDANT selector — it was `> li` while
+     `[data-card-fields]` was the `<ul>` itself. It is now a wrapper holding one
+     `<ul>` per category section, so the rows are one level deeper. This is the
+     only place the sectioning is visible from outside `card-page.tsx`. */
   [data-card-page-surface] [data-card-variant="page"] [data-card-actions] > *,
-  [data-card-page-surface] [data-card-variant="page"] [data-card-fields] > li {
+  [data-card-page-surface] [data-card-variant="page"] [data-card-fields] li {
     animation: cb-stack-rise var(--dur-base) var(--ease-out) backwards;
     /* ⚠ `--cb-rise-base` offsets the whole stagger so the rows follow the
        card in rather than racing it. 120ms is a third of the card's own

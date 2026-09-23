@@ -14,6 +14,7 @@ export * as profile from "@/lib/api/endpoints/profile";
 export * as contacts from "@/lib/api/endpoints/contacts";
 export * as cards from "@/lib/api/endpoints/cards";
 export * as shareLinks from "@/lib/api/endpoints/share-links";
+export * as dashboard from "@/lib/api/endpoints/dashboard";
 export * as templates from "@/lib/api/endpoints/templates";
 
 export { ApiError, isApiError, isSessionExpired, supportReference, toScreenError } from "@/lib/api/errors";

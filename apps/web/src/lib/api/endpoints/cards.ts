@@ -192,3 +192,47 @@ export function uploadCardLogo(id: string, file: File): Promise<CardResponseDto>
 export function removeCardLogo(id: string): Promise<void> {
   return authed({ method: "DELETE", path: `/cards/${encodeURIComponent(id)}/logo` });
 }
+
+/* ── the cover ───────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Upload this card's cover photograph, or replace the one it has.
+ *
+ * JPEG / PNG / WebP, **5 MB** — a quarter of the logo's 20 MB, because a cover is a
+ * photograph and the cap is the thing stopping a raw phone capture going up whole.
+ *
+ * ## ⚠ The API stores and serves exactly the bytes it is given
+ * There is no server-side crop, resize or recompress. The owner's composition is baked into the
+ * file **before** it is sent — 1:0.7 aspect, ≤1280px long edge, JPEG q86, produced by the
+ * builder's own crop dialog (`image-crop-dialog.tsx`). Point this at a raw file picker and a
+ * full-length photograph renders as a head crop on the card, the builder preview and the public
+ * page at once. That is the bug the cover feature exists to fix; do not reintroduce it.
+ *
+ * Replacing deletes the old object as part of the same request, so a caller never removes first
+ * — and must not, since a remove that succeeded followed by an upload that failed leaves the
+ * card bare.
+ *
+ * Returns the **whole card**, like the logo pair, so the caller re-maps rather than patching a
+ * URL into an object it is already holding and hoping the two agree.
+ *
+ * @throws `CARD_NOT_FOUND` (404), `COVER_STORAGE_NOT_CONFIGURED` (409), `COVER_TOO_LARGE`
+ * (413), `COVER_TYPE_UNSUPPORTED` (415).
+ */
+export function uploadCardCover(id: string, file: File): Promise<CardResponseDto> {
+  const form = new FormData();
+  form.set("file", file);
+  return authed({ method: "POST", path: `/cards/${encodeURIComponent(id)}/cover`, form });
+}
+
+/**
+ * Remove this card's cover. `204`, no body — the hero falls back to its flat ground.
+ *
+ * Identical in effect to `PATCH /cards/{id}` with `coverUrl: null`; either is fine, and this one
+ * is used because it says what it does.
+ *
+ * @throws `CARD_NOT_FOUND` (404), `COVER_NOT_FOUND` (404 — the card has no cover to remove,
+ * reachable by a double-tap or a second tab, and a state the owner already wanted).
+ */
+export function removeCardCover(id: string): Promise<void> {
+  return authed({ method: "DELETE", path: `/cards/${encodeURIComponent(id)}/cover` });
+}

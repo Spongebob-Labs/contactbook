@@ -4,11 +4,36 @@ import { MAX_PAYLOAD_BYTES, payloadByteLength } from "@/card/qr-geometry";
 import { resolveCard } from "@/card/resolve-card";
 import { TEMPLATE_LIST } from "@/card/templates";
 import { FIXTURE_DB } from "@/fixtures";
-import { heroCard, marketingUser } from "@/fixtures/marketing";
 
 import { PROJECT_VIEWPORT, gotoReady, screenshotElement } from "../helpers/e2e";
 import { decodeQrPng, decodeWithRetry } from "../helpers/qr-decode";
 import { centreZone, gotoCardFace } from "../helpers/qr-surface";
+import { signIn } from "../helpers/session";
+
+/**
+ * ⚠ REAL DEFECT, FOUND RECONCILING THIS SUITE TO THE 2026-09-20 HERO REBUILD, FIXED THE SAME DAY.
+ *
+ * Every decode in this file moved from the public `/c/{slug}` page to `/cards/{id}` — see the
+ * module header below — and `/cards/**` is a GATED `(app)` route: `proxy.ts` redirects any
+ * request with no `cb_at` cookie to `/signin/phone`. This file's rewrite moved the navigation
+ * target but never added the session every sibling suite on `/cards/**` already carries
+ * (`card-detail.spec.ts`, `builder.spec.ts`, `contacts.spec.ts`, `profile.spec.ts`,
+ * `builder-mobile.spec.ts` — see `tests/helpers/session.ts`'s own header for why this is a
+ * `beforeEach` hook and not a global `storageState`).
+ *
+ * Unauthenticated, `gotoCardFace` did not fail — it could not tell it had been redirected,
+ * because `/signin/phone`'s own sidebar ("What you're building") renders a `[data-qr-plate]`
+ * preview of its own, using the fixture's first demo card regardless of which id the URL
+ * named. Every decode in this file was silently reading THAT card. Eight of the eleven tests
+ * below still failed, because their expected payload is a different card's — but three did
+ * not: `meridian`'s own fixture card, `payloadByteLength`'s and the port-disagreement check all
+ * happen to be keyed off `CARDS[0]`, which the sidebar's demo card matches by coincidence, so
+ * they passed while reading the wrong page for the wrong reason. That is a more dangerous
+ * failure mode than an outright red run: three green checks that were proving nothing.
+ */
+test.beforeEach(async ({ context, baseURL }) => {
+  await signIn(context, baseURL!);
+});
 
 /**
  * **QR-T5 — the ground truth of this product** (spec §8A.6, §8A.7; AC-09(g); §11 E-25).
@@ -149,102 +174,63 @@ test("QR-T5 · the zero-field card's QR decodes (E-02, §8A)", async ({ page }) 
 });
 
 /**
- * **Every real symbol on the marketing homepage decodes; every decorative one is inert.**
+ * **The homepage carries no QR symbol at all, and that is a new, true property — not a
+ * weakened one.**
  *
- * ## What this replaced, and why the claim survived the page
+ * ## History, restated so the next reader does not have to reconstruct it from git blame
  *
- * This was "both live cards on `/` decode, including the rotated hero" — it decoded a −2°
- * tilted hero card and a scan-demo card, and counted one preview thumbnail per template. All
- * three subjects are gone: the redesign removed the hero card (it was oversized and the film
- * took its place), the scan-demo section, and the template strip.
+ * This assertion has moved twice. It was "both live cards on `/` decode, including the rotated
+ * hero" — a tilted hero card plus a scan-demo card, before the 2026-09 rebuild. Then, once the
+ * bento shipped and was later cut, it became "the hero's `<ShareFace>` decodes through its
+ * flip" — a real 336×500 wallet pass on the front face of a 3D flip, auto-cycling to a
+ * `<LiveCard>` look-alike on the back. **That subject is gone too.** The 2026-09-20 pass
+ * (`docs/landing-integration.md`, ROUND 2 — hero card) replaced the wallet-pass-and-flip with
+ * the card page (`@/card/card-page`) — see `hero-card.tsx` — which has never carried a QR at
+ * all (see `card-page.tsx`'s own header: a page reached by scanning a code has no reason to
+ * show that code again). There is nothing left on `/` for this test to decode, and there is not
+ * supposed to be.
  *
- * The subjects went; **the claim did not**, and it is the one this file exists for — a symbol
- * on a public page either resolves to the card it advertises or it is a dead target. So it is
- * re-pointed at what `/` actually renders now: the bento's scan exhibit, which is a deliberate
- * `mode="full"` render at `FACE_WIDTH`, and the card studio's wallet pass, which is a scaled
- * `mode="thumb"`.
+ * ## ⚠ Do not read the zero below as this file losing coverage
  *
- * ## The split is the interesting part
+ * The decode guarantee this test used to carry for the hero did not vanish, it *relocated*
+ * before this rewrite and stayed there: `/cards/{id}` renders the real `<ShareFace mode="full">`
+ * — the actual wallet pass, QR included — and the `QR-T5 · ${template.id}` loop at the top of
+ * this file, plus "the zero-field card's QR decodes" beneath it, already decode it there, per
+ * template, at every project viewport. Removing the hero's own symbol does not touch that
+ * coverage; the hero was never the wallet pass's only renderer, and `/cards/{id}` was already
+ * the assertion's real home before this test existed.
  *
- * Those two modes encode different things **on purpose**, and the page's whole argument is that
- * it tells the truth about the product:
+ * ## The old safety net, made total rather than weakened
  *
- * · the exhibit is 141px — one pixel above `MIN_QR_SIZE_PX` — and carries the real payload,
- *   because it is captioned as something the reader may point a phone at right now;
- * · the wallet pass is scaled to ~91px, under the decode floor. It carries the real payload
- *   too, now that no symbol in the product encodes a dummy.
- *
- * The safety property that used to come from a fake payload now comes from the fixture: every
- * demo card's `publicUrl` is on `card.example`, an RFC 2606 reserved domain nobody can own. So
- * a symbol on this page is honest AND cannot resolve to a real person's card — which is the
- * stronger guarantee, because it holds however large the symbol is rendered.
+ * The previous version's last act was checking that a homepage symbol never encodes
+ * `contactbook.app`. With zero symbols on the page, that check is not softened — it is
+ * subsumed: there is nothing here that could encode *any* URL, real or fixture, for a
+ * stranger's phone to resolve. What that leaves is a smaller, different, and already-covered
+ * claim — `marketingUser`/`heroCard` still render real-shaped fixture text (a name, a role, a
+ * phone number, an email) as plain rows and live `tel:`/`mailto:`/`https:` links in the card
+ * page, same as every other `resolveCard` fixture the product renders un-redacted
+ * (`/templates`, the builder) — and holding those values to reserved ranges and RFC 2606
+ * domains is `tests/contract/fixture-hygiene.test.ts`'s job, not a QR test's.
  */
-test("QR-T5 · every symbol on the homepage is real, and the hero's decodes through its flip", async ({
+test("QR-T5 · the homepage carries no QR symbol now that the hero renders the card page", async ({
   page,
-}, testInfo) => {
-  const viewport = PROJECT_VIEWPORT[testInfo.project.name];
-
-  /**
-   * ⚠ THE HOMEPAGE'S SYMBOL CENSUS CHANGED ON 2026-09-09, AND THE DECODE IS NOW THE POINT.
-   *
-   * It was one full-size symbol (a scan exhibit inside the bento) and one thumb (the studio
-   * cell). Both are gone with the bento. The page now renders:
-   *
-   *   · **one `full` symbol** — the hero's card, which is a real `<ShareFace>` at its authored
-   *     336×500 on the FRONT FACE OF A FLIP, and
-   *   · **six `thumb` symbols** — the example-cards section, one per palette.
-   *
-   * The decode below is the most valuable assertion in this file now, because of where that
-   * symbol sits. DESIGN.md is explicit that the pass's QR has ONE pixel of clearance over
-   * `MIN_QR_SIZE_PX` and that a transform on an ancestor spends headroom that does not exist —
-   * and a 3D flip is exactly such a transform. The flip is `rotateY` alone with no scale, so the
-   * resting front face should be pixel-identical to an untransformed one. "Should be" is not
-   * good enough for a scanning target: this decodes the real raster, through
-   * `transform-style: preserve-3d`, at every viewport. If a future hand adds a scale, a
-   * `perspective` tweak or a `will-change` that pins a mid-flight raster, this goes red and the
-   * message says why.
-   */
-  const heroPayload = resolveCard(
-    heroCard,
-    marketingUser,
-    FIXTURE_DB.groups,
-    FIXTURE_DB.fields,
-  ).qrPayload;
-
+}) => {
   await gotoReady(page, "/");
 
-  const real = page.locator('[data-qr-zone][data-qr-mode="full"]');
-  const thumbs = page.locator('[data-qr-zone][data-qr-mode="thumb"]');
-  await expect(real, "the hero's card is the page's one full-size symbol").toHaveCount(1);
-  await expect(thumbs, "one thumb per example card").toHaveCount(6);
+  /* No `[data-qr-mode]` filter: neither a full-size nor a scaled symbol may appear anywhere on
+     this page. `<QrZone>` is the only thing in the product that emits `[data-qr-zone]`
+     (`qr-zone.tsx`), so this is a direct, page-wide assertion that nothing on `/` renders one. */
+  await expect(page.locator("[data-qr-zone]")).toHaveCount(0);
 
-  /* The hero's face must be showing — it is what the server renders and the flip's resting
-     state — or this would be measuring the back of a card. */
-  await expect(page.locator("button[data-hero-card]")).toHaveAttribute("data-face", "front");
-
-  expect(
-    await decodeZone(real),
-    `the hero's symbol did not decode at ${viewport}px. It sits on the front face of a 3D flip, ` +
-      "so the first thing to suspect is a transform on an ancestor — a scale, a perspective " +
-      "change, or a cached raster from `will-change`. Per §14.6 the fix is the geometry or the " +
-      "animation, never this assertion",
-  ).toBe(heroPayload);
-
-  /* ⚠ The guarantee, restated where it now lives. Every symbol on this page is a REAL encode of
-     a real fixture URL, so what must hold is that none of them can resolve to an actual
-     person's card: the marketing page renders fixtures, and every fixture URL is on an RFC 2606
-     reserved domain nobody can own. That holds however large a symbol is rendered, which is a
-     stronger guarantee than the fake payload it replaced. */
-  for (const zone of [real, thumbs.first(), thumbs.last()]) {
-    const html = await zone.evaluate((node) => node.outerHTML);
-    expect(html, "a marketing symbol must not embed a resolvable production URL").not.toContain(
-      "contactbook.app",
-    );
-  }
-  expect(
-    heroPayload,
-    "the marketing fixture must sit on a domain nobody can own",
-  ).toContain(".example/");
+  /* Non-vacuity: this must be a real, rendered hero and not an error boundary or an empty
+     section — otherwise "zero symbols" would be true of a blank page for the wrong reason.
+     `[data-hero-card]` is `hero-card.tsx`'s own hook for the object it renders in place of the
+     old flip button; `[data-card-root]` is `<CardPage>`'s, asserted here as evidence the real
+     component rendered rather than some other stand-in. */
+  const card = page.locator("[data-hero-card]");
+  await expect(card).toHaveCount(1);
+  await expect(card.locator("[data-card-root]")).toHaveCount(1);
+  await expect(card.locator("[data-qr-zone]")).toHaveCount(0);
 });
 
 /* ── the two tests that keep the eleven above honest ──────────────────────────────── */
@@ -252,14 +238,35 @@ test("QR-T5 · every symbol on the homepage is real, and the hero's decodes thro
 /**
  * **X-7, asserted rather than commented.**
  *
- * `qrPayload` is built from `NEXT_PUBLIC_SITE_URL` (default `http://localhost:3000`) at
- * module scope; Playwright serves the build on port **3100**. So the string encoded in every
- * symbol on this page deliberately disagrees with the address bar, and the eleven decodes
- * above compare against `resolved.qrPayload` for that reason. Pinning the disagreement here
- * means a future reader who "fixes" those comparisons to use the live URL turns this red and
- * gets the explanation, instead of turning eleven cells red and hunting for a cause.
+ * ⚠ THE MECHANISM CHANGED UNDERNEATH THIS TEST, AND IT WAS STALE UNTIL THIS PASS — REAL DEFECT
+ * OR STALE SPEC: STALE, and here is how to tell the difference.
+ *
+ * This used to read: `qrPayload` is built from `NEXT_PUBLIC_SITE_URL` (default
+ * `http://localhost:3000`) at module scope, while Playwright serves the build on port
+ * **3100**, so the string encoded in every symbol deliberately disagrees with the address bar.
+ * That stopped being how `qrPayload` is built — `resolve-card.ts`'s own header now states
+ * purity (I-4) as an invariant: "since the QR payload became `card.publicUrl` rather than a URL
+ * assembled from `NEXT_PUBLIC_SITE_URL`, no environment read either. A call is a pure function
+ * of its arguments in the strictest sense." `resolveCard` reads no env var at all any more, so
+ * there is no `NEXT_PUBLIC_SITE_URL` left for it to disagree with the test port over, and
+ * `expect(decoded).toContain(":3000")` could not pass against any build, correct or broken —
+ * it was asserting a mechanism the resolver had already stopped having.
+ *
+ * That makes it a stale spec rather than a real defect: nothing regressed, a documented,
+ * reasoned invariant (I-4, purity) landed in `resolve-card.ts` and this test was never updated
+ * to match. It surfaced only once "keeps every decode in this file honest" (below) started
+ * actually reaching this assertion — until this pass added the missing `signIn` hook (see the
+ * top of this file), every test here silently decoded the sign-in page's own preview instead,
+ * so this line never ran against a real result to notice it was wrong.
+ *
+ * The guarantee the test exists for did not go away, it moved: a QR must encode the CARD's own
+ * address, never the address bar the browser happens to be serving the page from. Restated
+ * against what `qrPayload` actually is now — `card.publicUrl`, a fixture-minted
+ * `https://card.example/...` URL, never `page.url()`'s own origin. Pinning that here still
+ * means a future reader who "fixes" the per-template comparisons to use the live URL turns this
+ * red and gets the explanation, instead of turning six cells red and hunting for a cause.
  */
-test("QR-T5 · the payload is the configured site URL, not the port the tests run on", async ({
+test("QR-T5 · the payload is the card's own minted URL, not the port the tests run on", async ({
   page,
 }) => {
   const { card, resolved } = CARDS[0];
@@ -269,8 +276,8 @@ test("QR-T5 · the payload is the configured site URL, not the port the tests ru
   expect(decoded).toBe(resolved.qrPayload);
 
   expect(page.url()).toContain(":3100");
-  expect(decoded).toContain(":3000");
   expect(decoded).not.toContain(":3100");
+  expect(decoded).toBe(card.publicUrl);
 });
 
 /**

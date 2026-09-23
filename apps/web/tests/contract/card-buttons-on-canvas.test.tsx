@@ -3,11 +3,8 @@ import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { resolveCard } from "@/card/resolve-card";
 import { TEMPLATE_PALETTES, PALETTE_ORDER } from "@/card/template-palettes";
-import { ToastProvider } from "@/components/overlay";
 import { WalletPassBlock } from "@/components/share/wallet-pass-block";
-import { cardLedgerDemo, FIXTURE_DB } from "@/fixtures";
 
 import { renderWithProviders } from "../helpers/render";
 
@@ -31,18 +28,12 @@ import { renderWithProviders } from "../helpers/render";
  * there, it is the identical hex. A control can be perfectly legible and still be the wrong
  * object.
  *
- * So this file asserts the two halves of the rule that replaced it, one measured and one
- * structural. It is a source-and-data contract rather than a rendered one deliberately:
- * `tests/e2e/card-detail.spec.ts` cannot cover it today (that route redirects to the auth flow
- * in the harness), and a rule this cheap to restate should not depend on a browser.
+ * So this file asserts the rule that replaced it — measured, then structural, then in the
+ * rendered tree. It is mostly a source-and-data contract rather than a rendered one
+ * deliberately: a rule this cheap to restate should not depend on a browser, and
+ * `tests/e2e/card-detail.spec.ts` has repeatedly proved to be the slower place to learn that
+ * a hook was renamed out from under an assertion.
  */
-
-const resolved = resolveCard(
-  cardLedgerDemo,
-  FIXTURE_DB.user,
-  FIXTURE_DB.groups,
-  FIXTURE_DB.fields,
-);
 
 const CARD_DETAIL = resolve(
   process.cwd(),
@@ -99,52 +90,41 @@ describe("a card-coloured button never stands on the app canvas", () => {
   });
 
   /**
-   * And the placement half of the same report: the owner's action must not be inside the
-   * wallet block's horizontal scroll rail.
+   * The same report, one client review later: **the block holds a card, and no controls at
+   * all.**
    *
-   * That rail exists so the rigid 336px face can overhang a 296px column without scrolling the
-   * document. The save button was passed as `children` and went into it, so on a 320px screen
-   * it came out 40px narrower than the card and needed a sideways scroll to reach its own right
-   * edge. `action` renders outside the rail; `children` is the card and nothing else.
+   * ⚠ This replaces an assertion that the owner's "Save to contacts" was rendered *outside*
+   * the block's horizontal scroll rail. That rule is not relaxed, it has lost its subject —
+   * the `action` slot it policed is gone, along with the save button, the two Add-to-Wallet
+   * buttons and the prose under them (client review 2026-09-20: *"this page is looking very
+   * cluttered… there is random text in this"*). The two wallet buttons were the sharper
+   * problem: neither could install anything in this build, and both said so in body copy
+   * beneath themselves, which is a control whose only function is to apologise for existing.
+   *
+   * So what is asserted now is the shape that removal left: the rail still wraps the face —
+   * that is what the rail is for, and `mobile-contracts` proves the same thing from the
+   * source — and nothing else in the block is pressable. A control added here later belongs
+   * outside the rail and must wear the app's chrome, which is what the two tests either side
+   * of this one hold.
    */
-  it("the wallet block renders the owner's action outside the scroll rail", () => {
+  it("the wallet block wraps the face in the rail and offers no control of its own", () => {
     const { container } = renderWithProviders(
-      <ToastProvider>
-        <WalletPassBlock
-          resolved={resolved}
-          action={<button data-probe-action="">Save to contacts</button>}
-        >
-          <div data-probe-face="" />
-        </WalletPassBlock>
-      </ToastProvider>,
+      <WalletPassBlock>
+        <div data-probe-face="" />
+      </WalletPassBlock>,
     );
 
     const rail = container.querySelector("[data-wallet-pass-rail]");
     expect(rail, "the block no longer has a scroll rail").not.toBeNull();
-
-    /* The face is inside the rail — that is what the rail is for. */
     expect(rail!.querySelector("[data-probe-face]"), "the face left the rail").not.toBeNull();
 
-    /**
-     * ⚠ AND THE ACTION IS NOT. This is the assertion that matters, and an earlier version of
-     * this test could not make it: it compared the source positions of `data-wallet-pass-rail`
-     * and `data-wallet-pass-action`, which are in the same order whether the action is a
-     * sibling of the rail or nested inside it — so it passed with the bug reintroduced. Asking
-     * the rendered tree is the only way to tell the two apart.
-     */
     expect(
-      rail!.querySelector("[data-probe-action]"),
-      "the owner's action is inside the horizontal scroll rail: pass it via `action`, and keep " +
-        "`children` to the card alone",
-    ).toBeNull();
+      container.querySelectorAll("button, a, [role='button']").length,
+      "the wallet block grew a control back — read this test's header before adding one",
+    ).toBe(0);
 
-    /* It is still present, and still under the face. */
-    const action = container.querySelector("[data-wallet-pass-action] [data-probe-action]");
-    expect(action, "the `action` slot did not render what it was given").not.toBeNull();
-    expect(
-      rail!.compareDocumentPosition(action!) & Node.DOCUMENT_POSITION_FOLLOWING,
-      "the owner's action is rendered above the face",
-    ).toBeTruthy();
+    /* The eyebrow survived, because a 336x500 object with a QR on it still needs a name. */
+    expect(container.textContent).toBe("Wallet pass");
   });
 
   it("the card-detail screen passes the face alone as children", () => {
@@ -153,15 +133,19 @@ describe("a card-coloured button never stands on the app canvas", () => {
     const close = detail.indexOf("</WalletPassBlock>");
     expect(open, "the card-detail screen no longer renders the wallet block").toBeGreaterThan(-1);
 
-    /* Everything after the opening tag's own `>` and before the close is `children`. */
-    const body = detail.slice(detail.indexOf(">", detail.indexOf("action={") ) + 1, close);
+    /* Everything after the opening tag's own `>` and before the close is `children`.
+       ⚠ This used to seek from `action={`, the prop that carried the owner's save button. The
+       prop is gone with the button, so the scan starts at the element itself — and `<WalletPassBlock`
+       is now the whole opening tag, which is exactly the state this test wants to keep. */
+    const body = detail.slice(detail.indexOf(">", open) + 1, close);
     expect(
       (body.match(/<ShareFace/g) ?? []).length,
       "the wallet block's children must be exactly one ShareFace",
     ).toBe(1);
     expect(
       /<Button|<CardActionButton|<button/.test(body),
-      "a control is passed as children — it belongs in the `action` slot, outside the rail",
+      "a control is passed as children — it would be sized by the rail and need a sideways " +
+        "scroll to reach its own right edge; put it in the block, outside the rail",
     ).toBe(false);
   });
 });

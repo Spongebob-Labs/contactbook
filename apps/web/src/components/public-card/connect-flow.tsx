@@ -1,18 +1,12 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useState,
-  type CSSProperties,
-  type ReactElement,
-  type ReactNode,
-} from "react";
+import { useCallback, useEffect, useState, type CSSProperties, type ReactElement } from "react";
 
 import { Check, UserPlus } from "lucide-react";
 
 import { CardActionButton } from "@/card/card-action-button";
 import { paletteVars } from "@/card/template-palettes";
+import { INK, INK_SOFT, Panel, fieldStyle, helperStyle } from "@/components/public-card/connect-panel";
 import { publicConnect } from "@/lib/api/browser";
 import { isApiError, toScreenError } from "@/lib/api/errors";
 import { digitsOnly, validateOtp, validatePhone } from "@/lib/auth-validation";
@@ -210,6 +204,8 @@ export function ConnectFlow({ resolved, token }: ConnectFlowProps): ReactElement
   return (
     <div
       data-connect-flow=""
+      /* Which of the two connect paths this is — see `connect-send-flow.tsx` for the other. */
+      data-connect-mode="otp"
       /* Published so a test can assert the stage without reverse-engineering which control is
          on screen — the same reasoning as `data-card-action-count` next door. */
       data-connect-stage={stage}
@@ -229,7 +225,7 @@ export function ConnectFlow({ resolved, token }: ConnectFlowProps): ReactElement
           paletteId={resolved.palette.id}
           palette={resolved.palette}
           variant="secondary"
-          surface="palette"
+          surface="canvas"
           shape={shape}
           icon={<UserPlus size={16} strokeWidth={1.75} />}
           onClick={() => {
@@ -285,7 +281,7 @@ export function ConnectFlow({ resolved, token }: ConnectFlowProps): ReactElement
             paletteId={resolved.palette.id}
             palette={resolved.palette}
             variant="primary"
-            surface="palette"
+            surface="canvas"
             shape={shape}
             onClick={() => void requestCode()}
             disabled={pending || remaining > 0}
@@ -327,7 +323,7 @@ export function ConnectFlow({ resolved, token }: ConnectFlowProps): ReactElement
             paletteId={resolved.palette.id}
             palette={resolved.palette}
             variant="primary"
-            surface="palette"
+            surface="canvas"
             shape={shape}
             onClick={() => void verifyCode()}
             /* A dead code cannot be verified at any speed, so the control says so rather than
@@ -372,7 +368,7 @@ export function ConnectFlow({ resolved, token }: ConnectFlowProps): ReactElement
       {/* One slot, announced when it changes. `role="status"` rather than `alert`: every message
           this flow produces is something to read and act on, not an interruption. */}
       {message === null ? null : (
-        <p role="status" data-connect-message="" style={{ ...helperStyle, color: "var(--c-ink)" }}>
+        <p role="status" data-connect-message="" style={{ ...helperStyle, color: INK }}>
           {message}
         </p>
       )}
@@ -380,70 +376,15 @@ export function ConnectFlow({ resolved, token }: ConnectFlowProps): ReactElement
   );
 }
 
-/* ── the panel and its three styles ──────────────────────────────────────────────────── */
-
-const fieldStyle: CSSProperties = {
-  minHeight: "44px", // the same thumb-sized floor `CardActionButton` uses
-  paddingInline: "var(--space-4)",
-  borderRadius: "var(--radius-md)",
-  /* The alt-button pair, not the ground: an input painted `--c-ground` on a `--c-ground` panel
-     has no edge, and the alt pair is the one already proven legible against this palette. */
-  background: "var(--c-button-alt-bg)",
-  color: "var(--c-button-alt-ink)",
-  border: "1px solid var(--c-button-alt-border)",
-  fontSize: "var(--text-sm)",
-  width: "100%",
-};
-
-const helperStyle: CSSProperties = {
-  margin: 0,
-  fontSize: "var(--text-xs)",
-  lineHeight: 1.5,
-  color: "var(--c-ink-soft)",
-};
+/* ── the resend link's style — `Panel`, `fieldStyle` and `helperStyle` live in
+   `connect-panel.tsx`, shared with the send flow ── */
 
 const linkStyle: CSSProperties = {
   alignSelf: "center",
   background: "none",
   border: "none",
   padding: "var(--space-1) var(--space-2)",
-  color: "var(--c-ink-soft)",
+  color: INK_SOFT,
   fontSize: "var(--text-xs)",
   textDecoration: "underline",
 };
-
-/** A titled group on the palette ground. Borderless — the gap does the separating. */
-function Panel({
-  title,
-  helper,
-  icon,
-  children,
-}: {
-  title: string;
-  helper: string;
-  icon?: ReactElement;
-  children?: ReactNode;
-}): ReactElement {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
-      <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
-        <p
-          style={{
-            margin: 0,
-            display: "flex",
-            alignItems: "center",
-            gap: "var(--space-2)",
-            fontSize: "var(--text-sm)",
-            fontWeight: "var(--weight-medium)",
-            color: "var(--c-ink)",
-          }}
-        >
-          {icon === undefined ? null : <span aria-hidden="true">{icon}</span>}
-          {title}
-        </p>
-        <p style={helperStyle}>{helper}</p>
-      </div>
-      {children}
-    </div>
-  );
-}

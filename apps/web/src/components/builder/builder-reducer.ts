@@ -139,6 +139,50 @@ export interface BuilderState {
    * was actually uploaded — never where the builder decided one should be.
    */
   readonly logoUrl: string | null;
+
+  /* ── THE COVER, THE POSITION AND THE BIO ─────────────────────────────────────────────────
+   *
+   * ⚠ **All three are real `Card` columns now and all three persist.** They were UI-only slots
+   * held in `localStorage` (`card-local-draft.ts`, since deleted) while the API had nowhere to
+   * put them, which meant a cover set on a laptop was invisible on the owner's own phone and
+   * `/c/{token}` — resolved server-side — never rendered any of them at all.
+   *
+   * `headline` and `bio` are plain text and ride the same `PATCH /cards/{id}` as the design
+   * axes. The cover is a file and therefore behaves like the logo, below.
+   */
+
+  /**
+   * The cover the server currently holds, or `null`.
+   *
+   * ⚠ Now a `file` + `previewUrl` + `url` trio exactly like the logo's, where it used to be one
+   * slot. The asymmetry the old comment defended was that a cover had no server state; it has
+   * one now, so the same three-way distinction the logo needs applies here for the same reason:
+   * "what the server has", "what the owner just composed", and "the bytes still to be sent".
+   */
+  readonly coverUrl: string | null;
+  /**
+   * A cover for a card **that does not exist yet**, waiting for its `POST /cards/{id}/cover`.
+   *
+   * ⚠ **Unlike the logo, a cover can never ride the create.** `POST /cards` takes a `file` part
+   * for the logo, and there is no equivalent for the cover — the API is explicit that a cover is
+   * always a second call once there is an id to address. So on `/cards/new` this holds the baked
+   * file across the create, and `onSave` uploads it immediately afterwards.
+   */
+  readonly coverFile: File | null;
+  /**
+   * The composed cover as a `data:` URL, so the preview draws it before it is uploaded.
+   *
+   * ⚠ A **data** URL, not an object URL, and that is deliberate rather than incidental: the crop
+   * dialog produces the bytes (`ImageCropDialog` → canvas → data URL) and the same string is
+   * both what the preview paints and what {@link dataUrlToFile} turns into the upload's body.
+   * Nothing to revoke, so this one carries none of the lifetime bookkeeping `logoPreviewUrl`
+   * does.
+   */
+  readonly coverPreviewUrl: string | null;
+  /** The position line under the name. `""` means "not set" and collapses the slot. */
+  readonly headline: string;
+  /** The bio under the position. `""` means "not set" and collapses the slot. */
+  readonly bio: string;
   /**
    * A file the owner chose for a card **that does not exist yet**, waiting for `POST /cards`.
    *
@@ -197,6 +241,15 @@ export type BuilderAction =
   | { kind: "template"; templateId: TemplateId; seed: readonly string[] }
   | { kind: "palette"; paletteId: PaletteId }
   /**
+   * The owner composed a cover (or dropped a pending one with `file: null`). The mirror of
+   * `logo-pending`, and `cover-saved` is what later swaps in the URL the server answers with.
+   */
+  | { kind: "cover-pending"; file: File | null; previewUrl: string | null }
+  /** The server has confirmed a cover — or confirmed its removal, with `coverUrl: null`. */
+  | { kind: "cover-saved"; coverUrl: string | null }
+  | { kind: "headline"; headline: string }
+  | { kind: "bio"; bio: string }
+  /**
    * A free ground colour, `#RRGGBB` from the Design panel's colour input.
    *
    * The same axis as `palette` and its mirror image: this sets `groundHex`, that clears it.
@@ -254,6 +307,13 @@ export function builderInitialState({ card, userId, seed }: BuilderInit): Builde
       name: BUILDER_NEW_CARD_NAME,
       cardType: seedCardType(DEFAULT_TEMPLATE_ID),
       publicUrl: BUILDER_PREVIEW_PUBLIC_URL,
+      /* An unsaved card has no server row, so it has no stored cover — and no composed one
+         yet either. `headline`/`bio` start empty and go out on the create itself. */
+      coverUrl: null,
+      coverFile: null,
+      coverPreviewUrl: null,
+      headline: "",
+      bio: "",
       templateId: DEFAULT_TEMPLATE_ID,
       paletteId: TEMPLATES[DEFAULT_TEMPLATE_ID].paletteId,
       groundHex: undefined,
@@ -280,6 +340,18 @@ export function builderInitialState({ card, userId, seed }: BuilderInit): Builde
     userId: card.userId,
     name: card.name,
     cardType: card.type,
+    /* ⚠ **Seeded from the card, and the card is now seeded from the API.** `toContactCard`
+       populates all three off `CardResponseDto`, so reopening the builder rehydrates exactly
+       what the owner last saved — on any device. This used to read a card the mapper never
+       populated, which is why the note that stood here predicted the reload would lose them.
+
+       `coverUrl`, not `coverPreviewUrl`: this is the server's own URL, and the preview slot is
+       reserved for a crop composed in this session that has not been uploaded yet. */
+    coverUrl: card.coverUrl ?? null,
+    coverFile: null,
+    coverPreviewUrl: null,
+    headline: card.headline ?? "",
+    bio: card.bio ?? "",
     publicUrl: card.publicUrl,
     templateId: card.templateId,
     /* A card with no `paletteId` is wearing its template's default and has *not* chosen —
@@ -355,6 +427,38 @@ export function builderReducer(state: BuilderState, action: BuilderAction): Buil
         paletteChosen: true,
         dirty: true,
       };
+
+    case "cover-pending":
+      return {
+        ...state,
+        coverFile: action.file,
+        coverPreviewUrl: action.previewUrl,
+        /* ⚠ **`dirty` only on an unsaved card** — the same rule, and the same reason, as
+           `logo-pending`. A card that exists uploads the instant the crop is applied, so this
+           action only puts the composed image in front of the owner while that request is in
+           flight; marking it dirty would offer a Save with nothing left to commit. An unsaved
+           card really is holding uncommitted bytes, because its upload cannot happen until the
+           create has produced an id. */
+        dirty: state.cardId === null ? true : state.dirty,
+      };
+
+    case "cover-saved":
+      /* ⚠ The pending pair is cleared unconditionally, including on the create path: once the
+         server has a URL the composed data URL is a stale second copy of the same picture, and
+         leaving it set would keep `builderCard` preferring it forever. `dirty` is untouched —
+         the write has already landed. */
+      return {
+        ...state,
+        coverUrl: action.coverUrl,
+        coverFile: null,
+        coverPreviewUrl: null,
+      };
+
+    case "headline":
+      return { ...state, headline: action.headline, dirty: true };
+
+    case "bio":
+      return { ...state, bio: action.bio, dirty: true };
 
     case "ground":
       /* The mirror image, and deliberately **not** normalised, validated or rejected. The
@@ -468,6 +572,14 @@ export function builderReducer(state: BuilderState, action: BuilderAction): Buil
  * (I-4), and nothing on either preview reads it.
  */
 export function builderCard(state: BuilderState): ContactCard {
+  /* ⚠ **The composed crop wins over the stored URL, for the reason `logoUrl` gives below.** On
+     `/cards/new` the preview must draw the cover the owner just framed, before any card exists
+     to upload it to; reading `coverUrl` first would show nothing there until after Save, which
+     is the "chose a design and then watched the card ignore it" failure the builder is shaped
+     against. The two are never both set — `cover-saved` clears the pending slot the instant the
+     server answers — so this is a fallback, not a precedence rule that has to keep being right. */
+  const cover = state.coverPreviewUrl ?? state.coverUrl;
+
   return {
     id: state.cardId ?? BUILDER_PREVIEW_CARD_ID,
     userId: state.userId,
@@ -501,6 +613,18 @@ export function builderCard(state: BuilderState): ContactCard {
      * answers. So this is a fallback, not a precedence rule that has to keep being right.
      */
     logoUrl: state.logoPreviewUrl ?? state.logoUrl,
+    /* The three UI-only slots, spread conditionally so a card that has none carries no key —
+       the same shape `groundHex` uses, and what lets `resolveCard` tell "not set" from "set to
+       empty". `resolveCover`, `resolveHeadline` and the bio precedence each trim before
+       deciding, so a whitespace-only value collapses rather than reserving an empty line. */
+    /* ⚠ **The composed crop wins over the stored URL, for the reason `logoUrl` gives above.**
+       On `/cards/new` the preview must draw the cover the owner just framed, before any card
+       exists to upload it to. The two are never both set — `cover-saved` clears the pending
+       slot the instant the server answers — so this is a fallback, not a precedence rule that
+       has to keep being right. */
+    ...(cover === null ? {} : { coverUrl: cover }),
+    ...(state.headline.trim() === "" ? {} : { headline: state.headline }),
+    ...(state.bio.trim() === "" ? {} : { bio: state.bio }),
     finish: state.finish,
     texture: state.texture,
     texturePresence: state.texturePresence,

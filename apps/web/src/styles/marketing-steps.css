@@ -1,0 +1,512 @@
+/* ============================================================================
+   marketing-steps — owned by ONE section. See `docs/landing-integration.md`.
+
+   This file exists so that three parallel builds never edit `marketing.css`
+   at the same time. Everything here must:
+     - read `--mk-*` tokens, never a colour literal (both skins must work);
+     - animate transform/opacity only;
+     - keep its final state as the DEFAULT, with motion gated behind
+       `@media (prefers-reduced-motion: no-preference)`.
+   ============================================================================ */
+
+/* ── Section 4 — "How it works" ──────────────────────────────────────────────
+   REBUILT 2026-09-21. See `how-it-works.tsx`'s header for the measurements and
+   the survey behind this shape; the short version is that five columns at
+   1120px content is 205px each, and 205px is the width at which a real card
+   render becomes 98px wide and its 30px name paints at 9px.
+
+   Three columns now, ~341px each — the measure Cal.com uses for the same job.
+   Every rule below is in service of two properties: one construction method
+   per row, and a window large enough that the type inside it is type.
+   ──────────────────────────────────────────────────────────────────────── */
+
+@layer components {
+  .mk-steps-rail {
+    display: flex;
+    flex-direction: column;
+    gap: 3.5rem;
+  }
+
+  /* ⚠ 64rem, AND THE NUMBER IS DERIVED RATHER THAN PICKED. Three columns need
+     three frames plus 2 gaps to fit inside the content column, and each frame
+     must be wide enough to hold the deck (a 212px face plus its offsets) and the
+     hero face (252px) without cropping. At 1024px minus the page's gutters a
+     column is ~293px, which clears both; 768px does not. The previous version put
+     five 148px visuals into a 768px breakpoint and overflowed the viewport by
+     79px; deriving the breakpoint from the widest fixed child is what stops
+     that recurring, and `tests/unit/marketing-steps.test.tsx` recomputes it. */
+  @media (min-width: 64rem) {
+    .mk-steps-rail {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 2rem;
+      align-items: start;
+    }
+  }
+
+  .mk-steps-item {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── the frame ─────────────────────────────────────────────────────────────
+     ⚠ FIFTH BUILD, 2026-09-22. THE FRAME IS THE FIX, and it replaces the
+     "fragment window" four earlier builds tried to make work. That window was
+     an invisible 352×N box holding three different KINDS of object — a list, a
+     bare card, a navy face — cropped against nothing. Three unlike things in
+     identical columns never read as one row however precisely the columns are
+     aligned, and a crop with nothing to explain it reads as a bug.
+
+     So every column now holds the SAME visible object: this white panel, same
+     height, same hairline, same label register. What differs is only what sits
+     inside it — and inside, nothing is cropped, because every artefact is the
+     rigid 336×500 share face at a width chosen to fit. */
+  .mk-steps-frame {
+    --mk-steps-frame-h: 480px;
+    position: relative;
+    width: 100%;
+    height: var(--mk-steps-frame-h);
+    padding: 20px 22px 22px;
+    border-radius: var(--mk-radius-block);
+    border: 1px solid var(--mk-hairline);
+    background-color: var(--mk-white);
+    box-shadow: var(--mk-shadow-card);
+    overflow: hidden;
+  }
+
+  .mk-steps-frame__body {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+  }
+
+  .mk-steps-frame__label {
+    margin: 0 0 12px;
+    font-family: var(--mk-font-sans);
+    font-size: var(--mk-text-caption);
+    font-weight: var(--mk-weight-medium);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--mk-pebble);
+  }
+
+  /* ── frame 01 — the profile, in the card's own row grammar ─────────────── */
+  .mk-steps-profile__rows {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  /* 44px is the product's own row floor, kept so the redraw has the card's
+     rhythm rather than a rhythm invented for a picture of it. */
+  .mk-steps-profile__row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 44px;
+    border-top: 1px solid var(--mk-hairline);
+  }
+
+  .mk-steps-profile__row:first-child {
+    border-top: 0;
+  }
+
+  /* Holds a drawn icon. Five empty grey circles was the clearest tell that this
+     was a wireframe of a UI rather than a picture of one. */
+  .mk-steps-profile__disc {
+    display: flex;
+    flex: 0 0 auto;
+    width: 28px;
+    height: 28px;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--mk-radius-pill);
+    background-color: var(--mk-wash);
+    color: var(--mk-accent-ink);
+  }
+
+  .mk-steps-profile__name {
+    flex: 0 0 auto;
+    font-family: var(--mk-font-sans);
+    font-size: var(--mk-text-body-sm);
+    color: var(--mk-ink);
+  }
+
+  /* The quiet tier, ellipsed rather than wrapped: a wrapped value makes one row
+     taller than the rest, and a ragged list inside a fixed frame reads as a
+     layout fault. */
+  .mk-steps-profile__value {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: right;
+    font-family: var(--mk-font-sans);
+    font-size: var(--mk-text-caption);
+    color: var(--mk-pebble);
+  }
+
+  .mk-steps-profile__more {
+    margin: 12px 0 0;
+    font-family: var(--mk-font-sans);
+    font-size: var(--mk-text-caption);
+    color: var(--mk-pebble);
+  }
+
+  /* ── frame 02 — the deck ───────────────────────────────────────────────────
+     Three faces stacked with a diagonal offset. Not a fan: a fan overlaps two
+     cards' CONTENT and every fanned version of this step read as clutter. A deck
+     offsets whole cards so the two behind contribute exactly one thing each — a
+     strip of their own colour along the top and right edges — while only the
+     front card's content is read. */
+  .mk-steps-deck {
+    position: relative;
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 0;
+  }
+
+  .mk-steps-deck__card {
+    position: absolute;
+    /* Each card sits one step up and one step right of the one in front of it.
+       `--mk-steps-deck-i` is 0 for the front card; the (n − 1)/2 term recentres
+       the whole stack on the frame's own centre. */
+    transform: translate3d(
+      calc((var(--mk-steps-deck-i) - (var(--mk-steps-deck-n) - 1) / 2) * var(--mk-steps-deck-step)),
+      calc(((var(--mk-steps-deck-n) - 1) / 2 - var(--mk-steps-deck-i)) * var(--mk-steps-deck-step)),
+      0
+    );
+    border-radius: var(--mk-radius-block);
+    box-shadow: var(--mk-shadow-card);
+  }
+
+  /* ── frame 03 — one face, large ────────────────────────────────────────── */
+  .mk-steps-hero-face {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 0;
+  }
+
+  .mk-steps-hero-face > * {
+    border-radius: var(--mk-radius-block);
+    box-shadow: var(--mk-shadow-card);
+  }
+
+  /* ── the rail, and the discs it runs through ──────────────────────────────
+     ⚠ IT SITS BETWEEN THE PICTURE AND ITS WORDS NOW. It used to be a separate
+     strip above the whole row, with the entire visual shelf between a marker
+     and the text it numbered — at that distance it read as unrelated
+     furniture, which is most of why the flow was called confusing. Here the
+     rule passes through the disc directly under each fragment, so picture,
+     number and sentence are one object. */
+  .mk-steps-track {
+    position: relative;
+    display: flex;
+    align-items: center;
+    height: 2.75rem;
+    margin-top: 1.25rem;
+  }
+
+  .mk-steps-seg {
+    position: absolute;
+    top: 50%;
+    height: 1px;
+    background-color: var(--mk-ink);
+    opacity: 0.16;
+  }
+
+  /* Below `lg` the rail is a vertical stack, so a horizontal rule between
+     steps would connect nothing. The segments only exist as a rule at the
+     width where the three steps are actually side by side. */
+  .mk-steps-seg[data-edge="before"],
+  .mk-steps-seg[data-edge="after"] {
+    display: none;
+  }
+
+  /* ⚠ BOUNDED BY `left`/`right`, NEVER BY `width: 100vw` — AND THAT IS A FIX, NOT
+     A STYLE. The first cut of this rule gave each segment `width: 100vw` and
+     relied on nothing to clip it: an absolutely positioned child of a
+     `position: relative` column, 1440px wide, starting at the column's own
+     left edge, pushed `document.scrollWidth` to **2020px against a 1440px
+     viewport** — a 580px horizontal scroll on every desktop, which is the
+     exact defect `tests/e2e/marketing.spec.ts`'s "never scrolls sideways"
+     exists to catch.
+
+     Each segment now reaches from its own disc to 1rem past its column's
+     edge — half of the 2rem grid gap — so the segment leaving one step meets
+     the segment entering the next in the middle of the gap and the rule reads
+     as continuous. The two outer ends draw nothing (the component omits them),
+     so the rail cannot extend past the rail. */
+  @media (min-width: 64rem) {
+    .mk-steps-seg[data-edge="before"] {
+      display: block;
+      right: calc(100% - 1.375rem);
+      left: -1rem;
+    }
+
+    .mk-steps-seg[data-edge="after"] {
+      display: block;
+      left: 2.75rem;
+      right: -1rem;
+    }
+  }
+
+  /* 44px, not a 14px numeral. The survey's finding: an ordinal set as small
+     grey type reads as a footnote, and every site that makes a numbered rail
+     work draws the number inside a real disc — HiHello's are 40px and fill
+     solid on the active step. This is that, at the size the page's own type
+     scale supports. */
+  .mk-steps-marker {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex: 0 0 auto;
+    width: 2.75rem;
+    height: 2.75rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--mk-radius-pill);
+    border: 1px solid var(--mk-hairline-strong);
+    background-color: var(--mk-white);
+  }
+
+  .mk-steps-marker__n {
+    font-family: var(--mk-font-display);
+    font-size: var(--mk-text-body);
+    color: var(--mk-accent-ink);
+  }
+
+
+  .mk-steps-title {
+    margin-top: 1rem;
+    font-size: var(--mk-text-heading-sm);
+  }
+
+  /* ── the two properties, under the three actions ──────────────────────────
+     Quieter by construction: no fragment, no disc, no ordinal. The hierarchy
+     is the argument — three things you do, then two things that stay true. */
+  .mk-steps-after {
+    margin: 3.5rem 0 0;
+    padding: 2rem 0 0;
+    list-style: none;
+    display: grid;
+    gap: 2rem;
+    border-top: 1px solid var(--mk-hairline);
+  }
+
+  @media (min-width: 48rem) {
+    .mk-steps-after {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 3rem;
+    }
+  }
+
+  .mk-steps-after__title {
+    font-size: var(--mk-text-subheading);
+  }
+}
+
+/* ── The rail's motion ────────────────────────────────────────────────────
+   ⚠ THE 9s INFINITE WALK IS DELETED, 2026-09-22, AND IT WAS A DEFECT RATHER
+   THAN A TASTE CALL. It was added because the client asked for the section to
+   feel lively. It made three things worse, and a survey of thirteen shipped
+   marketing sites (Linear, Stripe, Cal.com, Raycast, Attio, Vercel, Dub,
+   Framer, Resend, Mercury, HiHello, Blinq, Duolingo) named all three:
+
+     1. **WCAG 2.2.2 Pause, Stop, Hide — Level A, normative.** Motion that
+        starts automatically, runs longer than five seconds and sits beside
+        other content must offer a way to pause, stop or hide it. The walk met
+        all three conditions and offered none. A one-shot entrance is not
+        merely nicer here; it removes the obligation entirely.
+     2. **It sat in an empirically empty band.** Of every infinite loop
+        measured across those sites, all were either under ~2s (a caret, a
+        spinner — a living detail carrying no message) or over ~10s (ambient
+        drift). Nothing loops a multi-beat MESSAGE in the 5–12s band, which is
+        where a loop reads as an advertisement repeating itself. NN/g's
+        auto-forwarding work is explicit that self-starting motion gets
+        filtered out as an ad — a plausible reason the client's eye never
+        rested on this row at all.
+     3. **It moved the product instead of the ground.** Every site measured
+        animates the surroundings and leaves the artefact still: Linear's dot
+        matrix moves, its issue panels do not; Stripe's gradient moves, its
+        checkout does not. A screenshot that bobs 4px reads as a rendering
+        bug — and it was one, measurably: it left the lifted panel's top edge
+        4px out of line with the other two at all times.
+
+   What is left is ONE staggered sequence, played once, ending at rest — and,
+   as of the block below, played when the SECTION is scrolled into view rather
+   than when the page loads. */
+/* ── the sequence is keyed on the SECTION'S OWN REVEAL, not on page load ───
+   ⚠ 2026-09-22. The client: *"whenever the website is loaded I see the hero
+   animate — when I scroll, each section should show its animation again … as
+   the user scrolls, the animation should load."* Correct diagnosis. Every rule
+   below used to be a plain `animation … both` under the reduced-motion guard,
+   which means it started on the DOCUMENT clock the instant the stylesheet
+   applied. The whole ~1.4s sequence had finished before anyone could possibly
+   have scrolled this far, so a visitor arrived at a finished still and the
+   work read as if it did not exist.
+
+   `how-it-works.tsx` already wraps this rail in `<MkReveal>`, which stamps
+   `data-mk-reveal="armed"` on it while it sits below the fold and flips it to
+   `"in"` — once — the moment it enters the viewport (`mk-reveal.tsx`,
+   `marketing.css`). So the rules are now keyed on that attribute, and the
+   sequence begins the moment the reader can see it. Three properties of the
+   existing contract are kept on purpose and each is load-bearing:
+
+     · **Armed is displaced, never hidden.** `marketing.spec.ts` fails any
+       armed element whose opacity is under 1 — a page that lands mid-scroll
+       must never show a screen of invisible content. While armed, the inner
+       items sit a few pixels low at full opacity, exactly like `mk-reveal`.
+     · **The fill is `backwards`, not `both`.** `both` would hold the keyframe's
+       `from` (opacity 0) on the element from load until `in` arrived, which is
+       the hidden state above by another route. `backwards` shows the `from`
+       only during the animation's own delay AFTER `in` — the stagger window,
+       under a second, on-screen.
+     · **No attribute at all is the resting state.** With scripting off, under
+       reduced motion, or if the rail is already on screen at load (MkReveal
+       does not arm on-screen content, so nothing above the fold ever jumps),
+       the attribute is never set and everything below simply sits finished.
+
+   The failsafe in `mk-reveal.tsx` releases `armed → in` after 12s regardless,
+   so even a broken observer cannot leave the sequence unplayed. */
+@media (prefers-reduced-motion: no-preference) {
+  /* While the section waits below the fold: displaced, visible. */
+  [data-steps-rail][data-mk-reveal="armed"] .mk-steps-item,
+  [data-steps-rail][data-mk-reveal="armed"] .mk-steps-after__item,
+  [data-steps-rail][data-mk-reveal="armed"] .mk-steps-profile__row,
+  [data-steps-rail][data-mk-reveal="armed"] .mk-steps-hero-face {
+    transform: translate3d(0, 14px, 0);
+  }
+
+  /* The deck's cards carry a resting transform of their own (the diagonal
+     offset), so their armed displacement is a further step along that same
+     diagonal — never a competing axis. */
+  [data-steps-rail][data-mk-reveal="armed"] .mk-steps-deck__card {
+    transform: translate3d(
+      calc((var(--mk-steps-deck-i) - (var(--mk-steps-deck-n) - 1) / 2) * var(--mk-steps-deck-step) + 26px),
+      calc(((var(--mk-steps-deck-n) - 1) / 2 - var(--mk-steps-deck-i)) * var(--mk-steps-deck-step) - 26px),
+      0
+    );
+  }
+
+  /* The moment it is on screen: the frames land, then what is inside them
+     appears in the order the steps happen — rows, then the deck deals
+     front-to-back, then the face — one shot, ~1.4s, ending on the thing a
+     reader would scan. `--mk-steps-i` (the column) is the base offset so a
+     column's contents cannot arrive before its own frame. Nothing repeats, so
+     nothing ever needs a pause control (WCAG 2.2.2). */
+  [data-steps-rail][data-mk-reveal="in"] .mk-steps-item,
+  [data-steps-rail][data-mk-reveal="in"] .mk-steps-after__item {
+    animation: mk-steps-arrive 620ms var(--mk-ease) backwards;
+    animation-delay: calc(var(--mk-steps-i, 0) * 60ms);
+  }
+
+  [data-steps-rail][data-mk-reveal="in"] .mk-steps-profile__row {
+    animation: mk-steps-arrive 480ms var(--mk-ease) backwards;
+    animation-delay: calc(var(--mk-steps-i, 0) * 60ms + 320ms + var(--mk-steps-row-i, 0) * 45ms);
+  }
+
+  [data-steps-rail][data-mk-reveal="in"] .mk-steps-deck__card {
+    animation: mk-steps-deal 560ms var(--mk-ease) backwards;
+    animation-delay: calc(var(--mk-steps-i, 0) * 60ms + 420ms + (var(--mk-steps-deck-n) - 1 - var(--mk-steps-deck-i)) * 90ms);
+  }
+
+  [data-steps-rail][data-mk-reveal="in"] .mk-steps-hero-face {
+    animation: mk-steps-land 620ms var(--mk-ease) backwards;
+    animation-delay: calc(var(--mk-steps-i, 0) * 60ms + 700ms);
+  }
+}
+
+/* The deal keeps each card's resting diagonal offset as its END state — the
+   offset is composition, not motion — and starts a little further along the
+   same diagonal, so each card slides into place from where the next will sit. */
+@keyframes mk-steps-deal {
+  from {
+    opacity: 0;
+    transform: translate3d(
+      calc((var(--mk-steps-deck-i) - (var(--mk-steps-deck-n) - 1) / 2) * var(--mk-steps-deck-step) + 26px),
+      calc(((var(--mk-steps-deck-n) - 1) / 2 - var(--mk-steps-deck-i)) * var(--mk-steps-deck-step) - 26px),
+      0
+    );
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(
+      calc((var(--mk-steps-deck-i) - (var(--mk-steps-deck-n) - 1) / 2) * var(--mk-steps-deck-step)),
+      calc(((var(--mk-steps-deck-n) - 1) / 2 - var(--mk-steps-deck-i)) * var(--mk-steps-deck-step)),
+      0
+    );
+  }
+}
+
+@keyframes mk-steps-land {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 10px, 0) scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes mk-steps-arrive {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 14px, 0);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+/* ── Section 5 — the close ────────────────────────────────────────────────
+   `--mk-accent-on-deep` has no bridged Tailwind utility — it is not in the
+   `@theme inline` block `marketing.css` builds (only the `--mk-green-*`
+   compatibility ladder is). A real class here, rather than an
+   arbitrary-value utility, is not a style preference: `mkcn`'s own history
+   (`mk-cn.ts`) is a `text-` utility silently losing a cascade fight because
+   tailwind-merge could not tell two custom `text-` values belonged to the
+   same group. `text-[var(--mk-accent-on-deep)]` sitting next to `<Prose>`'s
+   own `text-mk-stone` is exactly that shape again; a bespoke class name
+   never enters tailwind-merge's grouping at all.
+
+   ⚠ AND THEN IT LOST THE CASCADE FIGHT ANYWAY, FOR THE SECOND REASON.
+   These three rules were inside `@layer components` until 2026-09-20, and a
+   LAYERED rule loses to an UNLAYERED one no matter how specific it is — that
+   is the whole point of cascade layers. Tailwind v4 emits its utilities
+   unlayered, so `<Prose>`'s `text-mk-stone` beat `.mk-close-soft` and the
+   close's body copy rendered in the light-ground secondary ink ON THE DARK
+   GROUND: measured **2.91:1**, against a 4.5 floor.
+
+   `tests/e2e/marketing.spec.ts`'s "every line of copy clears AA on the ground
+   it is drawn on" caught it. Nothing in the unit suite could — happy-dom has
+   no cascade and no compiled stylesheet, so a layer bug is invisible there by
+   construction. This is the case that justifies that e2e test existing.
+
+   So they are deliberately UNLAYERED now. Do not tidy them back into a layer:
+   the layer is exactly what broke them, and the ink that replaced the failing
+   one measures 7.63:1 on the same ground. */
+
+.mk-close-soft {
+  color: var(--mk-accent-on-deep);
+}
+
+.mk-close-link {
+  color: var(--mk-accent-on-deep);
+}
+
+.mk-close-link:hover {
+  color: var(--mk-white);
+}
+

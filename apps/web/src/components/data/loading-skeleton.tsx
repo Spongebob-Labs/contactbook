@@ -35,6 +35,22 @@ export type LoadingSkeletonVariant =
 /* Matches the gallery tile so bones and cards occupy the same box and nothing shifts on load. */
 export const CARD_ASPECT_CLASS = "aspect-[336/500]";
 
+/**
+ * The **list tile's** box, which is taller than the card's — and the two are separate constants
+ * on purpose.
+ *
+ * `CARD_ASPECT_CLASS` is the share face's 336×500 and still is: the gallery's template cells and
+ * the builder's Design-panel swatches are that shape. A tile on `/cards` is not; it opens its
+ * window to `TILE_CROP_HEIGHT` (620) so a reader sees field rows and not just the hero, and then
+ * draws its own bottom edge. See `card-thumb-tile.tsx`.
+ *
+ * ⚠ Restated as a literal rather than imported from `@/components/app`: `cn` needs the class
+ * name at build time for Tailwind to emit the rule, and a `data`-driven arbitrary value would be
+ * silently dropped. If `TILE_CROP_HEIGHT` moves, this moves with it — AC-17 is the whole point
+ * of this file, and bones at the wrong aspect shift the grid the moment the cards arrive.
+ */
+export const TILE_ASPECT_CLASS = "aspect-[336/620]";
+
 /** Sensible repeat counts, taken from the §8D.3 loading column. */
 const DEFAULT_COUNTS: Record<LoadingSkeletonVariant, number> = {
   card: 1,
@@ -65,13 +81,13 @@ export interface LoadingSkeletonProps extends Omit<ComponentPropsWithRef<"div">,
 }
 
 /** One card-shaped bone at the real aspect. */
-function CardBone({ className }: { className?: string }) {
+function CardBone({ className, aspect = CARD_ASPECT_CLASS }: { className?: string; aspect?: string }) {
   return (
     <Skeleton
       data-skeleton-card=""
       // `h-auto` matters: the primitive's block variant is `h-full`, which would win over
       // the aspect ratio and collapse the bone inside a grid row.
-      className={cn("h-auto w-full rounded-xl", CARD_ASPECT_CLASS, className)}
+      className={cn("h-auto w-full rounded-xl", aspect, className)}
     />
   );
 }
@@ -97,7 +113,8 @@ function Bones({ variant, count, columns }: Required<Pick<LoadingSkeletonProps, 
     case "card-grid":
       return (
         <div className={cn("grid gap-6", GRID_COLUMNS[columns])}>
-          <Rows count={count}>{() => <CardBone />}</Rows>
+          {/* The list tile's aspect, not the face's — see {@link TILE_ASPECT_CLASS}. */}
+          <Rows count={count}>{() => <CardBone aspect={TILE_ASPECT_CLASS} />}</Rows>
         </div>
       );
 

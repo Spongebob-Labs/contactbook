@@ -17,6 +17,14 @@
  *
  * A refresh that breaks this suite is the signal — that is the whole point.
  *
+ * ⚠ **The current snapshot was generated from `apps/api` in this repo, not from staging**, and
+ * the reason matters: the card cover pair and `GET /dashboard` are merged here but not yet
+ * deployed, so a staging capture would have declared three endpoints the client calls to be
+ * inventions. It is the same document — the operation sets were diffed and staging's 41 are
+ * present unchanged, plus exactly those three. **Refresh from staging again, with the curl
+ * above, once this API build is deployed**, and if that refresh removes any of the three, the
+ * client is ahead of the deployment and this suite is saying so correctly.
+ *
  * ## How coverage is measured
  * By reading the endpoint modules' own source and extracting the `method`/`path` pairs they
  * pass to `transport`. Deriving it from the source rather than from a hand-kept list means a
@@ -109,19 +117,20 @@ describe("API coverage", () => {
   const spec = specOperations();
   const client = clientOperations();
 
-  it("the snapshot holds the 41 operations this integration was scoped against", () => {
+  it("the snapshot holds the 44 operations this integration was scoped against", () => {
     // A guard on the guard: if the snapshot is refreshed and the count moves, every
     // assertion below is measuring a different API than the one the UI was mapped to.
     // 36 -> 38 when card-update notifications landed: /cards/{id}/audience and /notify.
     // 38 -> 39 with GET /inbound-messages, the raw inbound WhatsApp capture.
     // 39 -> 41 with the card logo pair: POST and DELETE /cards/{id}/logo.
+    // 41 -> 44 with the card cover pair (POST and DELETE /cards/{id}/cover) and GET /dashboard.
     //
     // ⚠ That one is NOT ownership-scoped — the API's own description says so, and it is tagged
     // `webhooks`. It is implemented in `endpoints/inbound-messages.ts` (`server-only`) and has
     // exactly one consumer: `app/api/inbound/connects/route.ts`, which joins it against the
     // caller's own contacts on the server. Nothing in the browser may call it directly; see
     // that route's header for why.
-    expect(spec).toHaveLength(41);
+    expect(spec).toHaveLength(44);
   });
 
   it("implements every operation in the spec", () => {

@@ -610,6 +610,19 @@
   --mk-measure-display: 24ch; /* the hero, at the display step */
   --mk-measure-head: 26ch;    /* a section head, at the heading step */
 
+  /* ⚠ ADDED 2026-09-20, FOR THE SAME REASON EVERY TOKEN ABOVE EXISTS.
+     The hero's 4-up proof row shipped two bracket literals — `max-w-[18ch]` on its title,
+     `max-w-[22ch]` on its caption — which is exactly the pattern this block was written to
+     retire, and `marketing.spec.ts`'s "no component declares its own... character measure"
+     source rule caught it the same way it would catch a fifteenth literal today. Both are
+     narrower than every step above because the proof row is a compact, centred column under
+     an icon badge, not a paragraph — a different quantity from "how long may a line of prose
+     run", the same way `display`/`head` are already their own steps rather than being forced
+     onto the body scale. The hero's proof row is the only consumer of either, checked not
+     assumed, same as `display` above. */
+  --mk-measure-xs-head: 18ch; /* a compact heading measure — the proof row's serif title */
+  --mk-measure-xs: 22ch;      /* a compact body measure — the proof row's caption beneath it */
+
   --mk-measure-tight: 46ch;   /* a caption, a panel body, a footnote */
   --mk-measure: 68ch;         /* the default body measure — mid of the 65-75ch band */
   --mk-measure-wide: 75ch;    /* the top of the band, for a lead carrying a section */
@@ -761,6 +774,8 @@
   --container-mk-page: var(--mk-page-max);
   --container-mk-measure-display: var(--mk-measure-display);
   --container-mk-measure-head: var(--mk-measure-head);
+  --container-mk-measure-xs-head: var(--mk-measure-xs-head);
+  --container-mk-measure-xs: var(--mk-measure-xs);
   --container-mk-measure-tight: var(--mk-measure-tight);
   --container-mk-measure: var(--mk-measure);
   --container-mk-measure-wide: var(--mk-measure-wide);

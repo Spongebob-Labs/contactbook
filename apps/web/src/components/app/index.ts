@@ -17,7 +17,7 @@
 export { StatRow } from "./stat-row";
 export type { StatRowProps, StatSpec } from "./stat-row";
 
-export { CardThumbTile } from "./card-thumb-tile";
+export { CardThumbTile, TILE_CROP_HEIGHT } from "./card-thumb-tile";
 export type { CardThumbTileProps } from "./card-thumb-tile";
 
 export { ContactRow } from "./contact-row";

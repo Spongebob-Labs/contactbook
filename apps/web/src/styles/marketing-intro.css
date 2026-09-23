@@ -1,0 +1,314 @@
+/* ============================================================================
+   marketing-intro — the landing page's title card. Owned by ONE component
+   (`components/marketing/intro-curtain.tsx`); read its header first, it
+   carries the argument for why this exists and what it must never become.
+
+   The same three rules the rest of this page's motion keeps:
+     - read `--mk-*` tokens, never a colour literal (both skins must work);
+     - animate transform and opacity only;
+     - keep the FINAL state as the default, with every moving rule gated
+       behind `@media (prefers-reduced-motion: no-preference)`.
+
+   ⚠ THE GATE ATTRIBUTE LIVES ON `<body>`, NOT `<html>`. `app/layout.tsx`'s
+   inline script writes it there because `<body>` is the element already
+   carrying `suppressHydrationWarning`; setting it on `<html>` logged a React
+   hydration mismatch on every load. Every selector below is keyed to that.
+
+   ⚠ THE THIRD RULE IS DOING MORE WORK HERE THAN ANYWHERE ELSE ON THE SITE.
+   Everywhere else "the final state is the default" protects a reader from a
+   missing entrance. Here it protects them from a curtain that never lifts:
+   the default is `display: none`, so a visitor with reduced motion, with CSS
+   animations unsupported, or with the gate script blocked sees the hero
+   immediately and never knows this file exists. There is no code path in
+   which the panel is shown by something other than a running animation.
+   ============================================================================ */
+
+/* ── the clock ─────────────────────────────────────────────────────────────
+   One number for the whole curtain. Every beat below is a percentage of it,
+   so retiming the intro is a single edit and the beats cannot drift out of
+   order against each other. 2200ms sits inside the client's own "2 or 3
+   seconds" and spends ~1.35s of it on the content and ~0.85s on the exit —
+   the exit is deliberately the longest single beat, because a curtain that
+   snaps away reads as a page error rather than as a reveal. */
+[data-intro-curtain] {
+  --mk-intro-dur: 2200ms;
+  /* How far the panel travels. 100% clears the viewport; the extra 72px
+     clears the wave parked below it, which would otherwise sit banded across
+     the top of the hero at the end of the lift. */
+  --mk-intro-lift: calc(-100% - 72px);
+}
+
+/* ── the default: there is no curtain ──────────────────────────────────────
+   No media query on this rule, which is the point. See the file header. */
+.mk-intro {
+  display: none;
+}
+
+/* ── the panel ─────────────────────────────────────────────────────────────
+   `position: fixed` so it covers the viewport without participating in the
+   document's own box model: a fixed element's overflow does not extend
+   `document.scrollWidth`, which is what keeps the wave hanging below it from
+   reopening the horizontal scroll `tests/e2e/marketing.spec.ts` holds this
+   page to.
+
+   `pointer-events: none` is declared here rather than inside the guard, and
+   unconditionally: in the frames where this is fully opaque it is still
+   sitting over the hero's own controls, and a title card that can swallow a
+   press on "Join the waitlist" is a conversion bug wearing an animation. */
+@media (prefers-reduced-motion: no-preference) {
+  body[data-intro="play"] .mk-intro {
+    display: flex;
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    /* ⚠ `--mk-wash`, NOT `--mk-paper`. The brief asked for "a creamish-coloured screen that is
+       actually the colour we have used to make our landing page", and `--mk-paper` is not it:
+       under `atelier` it is `#fcfaf8`, a near-white that reads as a blank page rather than as a
+       brand ground. `--mk-wash` (`#f2eae1`) is the warm cream the page's own alternating
+       sections are already painted in — `problem` and `how-it-works` both wear it — so the
+       curtain arrives in a colour the site goes on to use rather than one invented for it. */
+    background-color: var(--mk-wash);
+    animation: mk-intro-lift var(--mk-intro-dur) var(--mk-ease) both;
+  }
+
+  body[data-intro="play"] .mk-intro__inner {
+    animation: mk-intro-inner var(--mk-intro-dur) var(--mk-ease) both;
+  }
+
+  body[data-intro="play"] .mk-intro__ring--a {
+    animation: mk-intro-ring-a var(--mk-intro-dur) var(--mk-ease) both;
+  }
+
+  body[data-intro="play"] .mk-intro__ring--b {
+    animation: mk-intro-ring-b var(--mk-intro-dur) var(--mk-ease) both;
+  }
+
+  body[data-intro="play"] .mk-intro__wordmark {
+    animation: mk-intro-rise var(--mk-intro-dur) var(--mk-ease) both;
+  }
+
+  /* The per-word turn. `--mk-intro-i` is set by the component, so the cadence
+     lives here and only the ORDER lives there. 2.6% of 2200ms is ~57ms a
+     word — fast enough that a five-word line still finishes inside the
+     content beat, slow enough to read as a sequence rather than a shudder. */
+  body[data-intro="play"] .mk-intro__word {
+    animation: mk-intro-flip var(--mk-intro-dur) var(--mk-ease) both;
+    animation-delay: calc(var(--mk-intro-i, 0) * var(--mk-intro-dur) * 0.026);
+  }
+
+  body[data-intro="play"] .mk-intro__rule-fill {
+    animation: mk-intro-rule var(--mk-intro-dur) linear both;
+  }
+}
+
+/* ── the composition ───────────────────────────────────────────────────────
+   Static geometry only. Nothing in this block moves; it is what the beats
+   above move FROM and TO. */
+.mk-intro__inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 22px;
+  padding-inline: 24px;
+  text-align: center;
+  /* The vanishing point the word flip turns against. Without it `rotateX`
+     just squashes the glyphs vertically instead of turning them over. */
+  perspective: 620px;
+}
+
+.mk-intro__mark {
+  width: 76px;
+  height: 76px;
+  display: block;
+  /* Both rings are one hue at two opacities rather than two colours — see
+     `logo-mark.svg`'s own note on why a one-colour mark stays one colour. */
+  color: var(--mk-accent-tint);
+}
+
+.mk-intro__ring {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 14;
+  /* Each ring turns about the centre of the pair, not its own centre, so the
+     two arrive as one mark rather than as two independent objects. */
+  transform-origin: 128px 128px;
+}
+
+.mk-intro__ring--b {
+  opacity: 0.55;
+}
+
+.mk-intro__wordmark {
+  margin: 0;
+  font-family: var(--mk-font-sans);
+  font-size: var(--mk-text-caption);
+  font-weight: var(--mk-weight-medium);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--mk-pebble);
+}
+
+.mk-intro__line {
+  margin: 0;
+  /* Wide enough for "Never lose" and "contact." to break where the hero's own <h1> breaks
+     them, so the curtain lifts onto a headline the reader has already seen the shape of. */
+  max-width: 11ch;
+  font-family: var(--mk-font-display);
+  font-size: clamp(2rem, 1.2rem + 3.4vw, 3.5rem);
+  line-height: 1.06;
+  color: var(--mk-ink);
+}
+
+/* Each word is its own turning plane. `inline-block` is what gives `rotateX`
+   a box to turn — an inline span has no transformable box at all. */
+.mk-intro__word {
+  display: inline-block;
+  transform-origin: center center;
+  backface-visibility: hidden;
+}
+
+.mk-intro__rule {
+  display: block;
+  width: 96px;
+  height: 2px;
+  border-radius: 1px;
+  overflow: hidden;
+  background-color: color-mix(in srgb, var(--mk-ink) 10%, transparent);
+}
+
+.mk-intro__rule-fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background-color: var(--mk-accent-ink);
+  transform-origin: left center;
+  transform: scaleX(0);
+}
+
+/* The exit edge, parked immediately below the panel so the lift drags it up
+   across the screen. `preserveAspectRatio="none"` stretches one authored path
+   to any width, exactly as the card's own curve does. */
+.mk-intro__wave {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 100%;
+  height: 46px;
+  display: block;
+  /* The wave is the panel's own edge, so it takes the panel's own ground. */
+  fill: var(--mk-wash);
+}
+
+/* ── the beats ─────────────────────────────────────────────────────────────
+   ⚠ EVERY KEYFRAME BELOW DECLARES ONLY `opacity` AND `transform`, AND
+   `tests/unit/marketing-intro.test.tsx` parses this file to keep it that way.
+   A curtain is the one element on the page that is guaranteed to be animating
+   during the browser's busiest moment — first paint, font swap, image decode
+   — so anything that costs a layout or a repaint here is paid for at the
+   worst possible time. */
+
+/* The panel holds still, then leaves. 61% of 2200ms is ~1.34s of title card
+   before the lift begins. */
+@keyframes mk-intro-lift {
+  0%,
+  61% {
+    transform: translate3d(0, 0, 0);
+  }
+
+  100% {
+    transform: translate3d(0, var(--mk-intro-lift), 0);
+  }
+}
+
+/* The contents ride up slightly faster than the panel and fade as they go, so
+   the lockup clears the fold before the wave does rather than being dragged
+   off screen still legible. */
+@keyframes mk-intro-inner {
+  0%,
+  58% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+
+  82%,
+  100% {
+    opacity: 0;
+    transform: translate3d(0, -28px, 0);
+  }
+}
+
+/* The two rings arrive from opposite sides and interlock — the mark assembling
+   itself is the one beat here that means something about the product. */
+@keyframes mk-intro-ring-a {
+  0% {
+    opacity: 0;
+    transform: translateX(-46px) rotate(-22deg);
+  }
+
+  26%,
+  100% {
+    opacity: 1;
+    transform: translateX(0) rotate(0deg);
+  }
+}
+
+@keyframes mk-intro-ring-b {
+  0% {
+    opacity: 0;
+    transform: translateX(46px) rotate(22deg);
+  }
+
+  30%,
+  100% {
+    opacity: 0.55;
+    transform: translateX(0) rotate(0deg);
+  }
+}
+
+@keyframes mk-intro-rise {
+  0%,
+  12% {
+    opacity: 0;
+    transform: translate3d(0, 10px, 0);
+  }
+
+  34%,
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+/* The word turn. Held face-down through the ring beat, then over. */
+@keyframes mk-intro-flip {
+  0%,
+  20% {
+    opacity: 0;
+    transform: rotateX(-88deg);
+  }
+
+  42%,
+  100% {
+    opacity: 1;
+    transform: rotateX(0deg);
+  }
+}
+
+/* Linear, not eased: an eased fill reads as a real measurement slowing down
+   near the end, which is the "something is loading" claim this curtain is
+   careful not to make. It finishes as the lift starts. */
+@keyframes mk-intro-rule {
+  0%,
+  16% {
+    transform: scaleX(0);
+  }
+
+  61%,
+  100% {
+    transform: scaleX(1);
+  }
+}

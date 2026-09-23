@@ -1,190 +1,198 @@
 import { describe, expect, it } from "vitest";
 
+import type { DashboardResponseDto } from "@/lib/api/schema";
 import {
-  attention,
-  cardReach,
-  sharingByWeek,
-  totals,
-  type MetricCard,
-  type MetricLink,
+  readDashboardSummary,
+  readDashboardTotals,
+  toDashboardView,
 } from "@/lib/dashboard/metrics";
 
-const link = (over: Partial<MetricLink> = {}): MetricLink => ({
-  cardId: "card-1",
-  contactId: "c-1",
-  status: "ACTIVE",
-  viewCount: 0,
-  createdAt: "2026-08-24T10:00:00.000Z",
-  ...over,
+/**
+ * ⚠ **What this file used to assert, and where those assertions went.**
+ *
+ * It tested `totals()`, `sharingByWeek()`, `cardReach()` and `attention()` — four client-side
+ * reductions over `GET /cards` + `GET /contacts` + `GET /share-links` + one audience call per
+ * card. All four are gone: `GET /dashboard` computes them in a single pass, which is what makes
+ * `behind` structurally unable to exceed `peopleReached` (the live bug that motivated the
+ * endpoint — the two were reduced from different collections here and disagreed).
+ *
+ * Those rules are now asserted in the API's own suite, against the query that implements them.
+ * Re-asserting them here would mean rebuilding the reduction in the test, which is exactly the
+ * second source of truth the endpoint deleted.
+ *
+ * What is left on the client is {@link toDashboardView}: renaming, and one width-driven cap. So
+ * that is what this file tests — and, above all, that it does **no arithmetic**. Plus
+ * {@link readDashboardTotals}, which checks the counts off the wire; see the second block.
+ */
+function dto(over: Partial<DashboardResponseDto> = {}): DashboardResponseDto {
+  return {
+    totals: {
+      cards: 3,
+      contacts: 8,
+      fields: 35,
+      peopleReached: 5,
+      peopleOpened: 4,
+      totalOpens: 47,
+      neverOpened: 2,
+      behind: 1,
+    },
+    cardReach: [],
+    attention: [],
+    sharingActivity: [],
+    groups: [],
+    ...over,
+  };
+}
+
+const reachRow = (i: number) => ({
+  cardId: `c${i}`,
+  cardName: `Card ${i}`,
+  opens: i,
+  recipients: i,
 });
 
-const card = (id: string, name: string, fields = 3): MetricCard => ({
-  id,
-  name,
-  fieldIds: Array.from({ length: fields }, (_, i) => `f-${i}`),
+describe("toDashboardView", () => {
+  it("passes the totals through untouched, including behind: null", () => {
+    /* ⚠ `null` is "no cards yet, nothing to compute this from" — NOT "nobody is behind". A view
+       layer that coalesced it to 0 would report a confident all-clear to an empty account. */
+    const view = toDashboardView(dto({ totals: { ...dto().totals, behind: null } }));
+    expect(view.totals.behind).toBeNull();
+    expect(view.totals.peopleReached).toBe(5);
+    expect(view.totals.peopleOpened).toBe(4);
+    expect(view.totals.totalOpens).toBe(47);
+  });
+
+  it("keeps every weekly bucket, in the order the API sent them", () => {
+    /* The API sends 12 buckets oldest-first, INCLUDING the empty weeks — the gaps are the point,
+       or a month of silence draws as a continuous line. Nothing here may filter or re-sort. */
+    const sharingActivity = Array.from({ length: 12 }, (_, i) => ({
+      weekStart: `2026-0${i < 3 ? 7 : 8}-${String(i + 1).padStart(2, "0")}`,
+      count: i % 3 === 0 ? 0 : i,
+    }));
+    const view = toDashboardView(dto({ sharingActivity }));
+
+    expect(view.weeks).toEqual(sharingActivity);
+    expect(view.weeks.filter((w) => w.count === 0).length).toBeGreaterThan(0);
+  });
+
+  it("caps the reach chart at five bars, keeping the API's own order", () => {
+    /* The cap is a width rule and nothing else: past five bars each is too thin to compare. It
+       is applied here, at the surface with the width problem, and the API still returns every
+       card — including the zero-activity ones, which are the actionable rows. */
+    const cardReach = Array.from({ length: 9 }, (_, i) => reachRow(i));
+    const view = toDashboardView(dto({ cardReach }));
+
+    expect(view.reach).toHaveLength(5);
+    expect(view.reach.map((r) => r.cardId)).toEqual(["c0", "c1", "c2", "c3", "c4"]);
+  });
+
+  it("never truncates or re-sorts the attention queue", () => {
+    /* ⚠ The queue is the list of things to act on, so capping it would hide work — and it
+       arrives in kind-priority order, worst-first within each kind. Re-sorting here would be a
+       second answer to a question the API has already answered. */
+    const attention: DashboardResponseDto["attention"] = [
+      { kind: "no-fields", cardId: "c1", cardName: "Empty", count: 0 },
+      { kind: "behind", cardId: "c2", cardName: "Work", count: 5 },
+      { kind: "behind", cardId: "c3", cardName: "Play", count: 2 },
+      { kind: "never-opened", cardId: "c4", cardName: "Cold", count: 9 },
+      { kind: "never-shared", cardId: "c5", cardName: "New", count: 0 },
+      { kind: "never-shared", cardId: "c6", cardName: "Newer", count: 0 },
+    ];
+    const view = toDashboardView(dto({ attention }));
+
+    expect(view.attention).toEqual(attention);
+  });
+
+  it("keeps every group, including the empty ones", () => {
+    /* An empty group is a gap in every card at once — dropping it would report a profile as
+       complete precisely when it is not. */
+    const groups = [
+      { id: "g1", name: "Work", fieldCount: 4 },
+      { id: "g2", name: "Personal", fieldCount: 0 },
+    ];
+    const view = toDashboardView(dto({ groups }));
+
+    expect(view.groups).toEqual(groups);
+    expect(view.groups.some((g) => g.fieldCount === 0)).toBe(true);
+  });
 });
 
-describe("totals", () => {
-  it("counts one person once, however many cards they hold", () => {
-    /* A contact with links to three cards is one person reached, not three. Summing links
-       here is the obvious mistake and it inflates the headline number the dashboard leads on. */
-    const t = totals({
-      cards: [card("card-1", "Work"), card("card-2", "Personal")],
-      contactCount: 8,
-      fieldCount: 35,
-      links: [
-        link({ cardId: "card-1", contactId: "c-1" }),
-        link({ cardId: "card-2", contactId: "c-1" }),
-        link({ cardId: "card-1", contactId: "c-2" }),
-      ],
+/**
+ * ⚠ The wire boundary. The deployed API can lag this app's DTO — staging on 2026-09-23 sent no
+ * `peopleOpened`, `reachScore` computed `2 - undefined`, and the dial printed `NaN`. Every count
+ * is checked here, once, before the view or the score sees it, and an unreadable one is `null`:
+ * unknown, which the screen renders as unknown. Never `0`, which would be a measurement.
+ */
+describe("readDashboardTotals", () => {
+  it("passes valid totals through unchanged, keeping behind: null distinct from 0", () => {
+    const rejected: string[] = [];
+    expect(readDashboardTotals(dto().totals, rejected)).toEqual(dto().totals);
+
+    const empty = readDashboardTotals({ ...dto().totals, behind: null }, rejected);
+    const clear = readDashboardTotals({ ...dto().totals, behind: 0 }, rejected);
+    expect(empty.behind).toBeNull();
+    expect(clear.behind).toBe(0);
+    /* `behind: null` is the API's own answer ("no cards yet"), not drift — nothing to report. */
+    expect(rejected).toEqual([]);
+  });
+
+  it("reads a count the API did not send as null — never 0 — and names it", () => {
+    const staging: Record<string, unknown> = { ...dto().totals };
+    delete staging.peopleOpened;
+    const rejected: string[] = [];
+    const totals = readDashboardTotals(staging, rejected);
+
+    expect(totals.peopleOpened).toBeNull();
+    expect(totals.peopleReached).toBe(5);
+    expect(rejected).toEqual(["peopleOpened=undefined"]);
+  });
+
+  it("rejects non-numeric and non-finite counts rather than coercing them", () => {
+    const rejected: string[] = [];
+    const totals = readDashboardTotals(
+      {
+        ...dto().totals,
+        cards: "3",
+        contacts: Number.NaN,
+        fields: Number.POSITIVE_INFINITY,
+        totalOpens: null,
+        neverOpened: {},
+        behind: "0",
+      },
+      rejected,
+    );
+
+    expect(totals).toEqual({
+      cards: null,
+      contacts: null,
+      fields: null,
+      peopleReached: 5,
+      peopleOpened: 4,
+      totalOpens: null,
+      neverOpened: null,
       behind: null,
     });
-    expect(t.peopleReached).toBe(2);
+    expect(rejected).toHaveLength(6);
   });
 
-  it("excludes revoked links from reach and from opens", () => {
-    /* A revoked link 410s — that person no longer holds the card, and their past opens are
-       history rather than current reach. Counting them overstates both numbers permanently. */
-    const t = totals({
-      cards: [card("card-1", "Work")],
-      contactCount: 2,
-      fieldCount: 5,
-      links: [
-        link({ contactId: "c-1", viewCount: 4 }),
-        link({ contactId: "c-2", viewCount: 9, status: "REVOKED" }),
-      ],
-      behind: null,
-    });
-    expect(t.peopleReached).toBe(1);
-    expect(t.totalOpens).toBe(4);
+  it("reads a missing totals object as every count unknown", () => {
+    const totals = readDashboardTotals(undefined);
+    expect(Object.values(totals).every((v) => v === null)).toBe(true);
   });
 
-  it("counts never-opened active links — the actionable state", () => {
-    const t = totals({
-      cards: [card("card-1", "Work")],
-      contactCount: 3,
-      fieldCount: 5,
-      links: [
-        link({ contactId: "c-1", viewCount: 0 }),
-        link({ contactId: "c-2", viewCount: 0 }),
-        link({ contactId: "c-3", viewCount: 2 }),
-      ],
-      behind: null,
-    });
-    expect(t.neverOpened).toBe(2);
-  });
+  it("validates only the totals, and hands the rest of the response on untouched", () => {
+    const cardReach = [reachRow(1)];
+    const raw = dto({ cardReach });
+    const summary = readDashboardSummary(raw);
 
-  it("keeps `behind` null when the audience could not be read, rather than showing 0", () => {
-    /* 0 means "everyone is up to date" — a claim. `null` means "we do not know". Collapsing
-       the second into the first tells the owner nothing needs doing when it might. */
-    const t = totals({ cards: [], contactCount: 0, fieldCount: 0, links: [], behind: null });
-    expect(t.behind).toBeNull();
-  });
-});
-
-describe("sharingByWeek", () => {
-  const NOW = new Date("2026-09-02T12:00:00.000Z"); // a Wednesday
-
-  it("emits a bucket for every week, including the empty ones", () => {
-    /* ⚠ The gaps are the chart. Bucketing only weeks that have data draws a continuous line
-       across a month of silence and turns a quiet period into a busy one. */
-    const weeks = sharingByWeek([link({ createdAt: "2026-09-01T09:00:00.000Z" })], NOW, 4);
-    expect(weeks).toHaveLength(4);
-    expect(weeks.map((w) => w.count)).toEqual([0, 0, 0, 1]);
-  });
-
-  it("buckets by Monday UTC, so a Sunday and the next Monday are different weeks", () => {
-    const weeks = sharingByWeek(
-      [
-        link({ createdAt: "2026-08-30T23:00:00.000Z" }), // Sunday
-        link({ createdAt: "2026-08-31T01:00:00.000Z" }), // Monday
-      ],
-      NOW,
-      3,
+    expect(summary.cardReach).toBe(cardReach);
+    expect(summary.attention).toBe(raw.attention);
+    /* And the view built from a lagging payload carries the unknown through, not a number. */
+    const staging: Record<string, unknown> = { ...raw.totals };
+    delete staging.peopleOpened;
+    const view = toDashboardView(
+      readDashboardSummary({ ...raw, totals: staging as unknown as DashboardResponseDto["totals"] }),
     );
-    const nonZero = weeks.filter((w) => w.count > 0);
-    expect(nonZero).toHaveLength(2);
-    expect(nonZero.every((w) => w.count === 1)).toBe(true);
-  });
-
-  it("ends on the current week and runs oldest first", () => {
-    const weeks = sharingByWeek([], NOW, 3);
-    expect(weeks.at(-1)?.weekStart).toBe("2026-08-31");
-    expect(weeks.map((w) => w.weekStart)).toEqual(["2026-08-17", "2026-08-24", "2026-08-31"]);
-  });
-
-  it("ignores an unparseable timestamp instead of throwing", () => {
-    expect(() => sharingByWeek([link({ createdAt: "not-a-date" })], NOW, 2)).not.toThrow();
-  });
-});
-
-describe("cardReach", () => {
-  it("keeps never-shared cards at zero rather than dropping them", () => {
-    /* The emptiest cards are the ones worth acting on; a chart that omits them hides exactly
-       the thing the owner should notice. */
-    const reach = cardReach(
-      [card("card-1", "Work"), card("card-2", "Never sent")],
-      [link({ cardId: "card-1", viewCount: 3 })],
-    );
-    expect(reach.map((r) => r.cardName)).toEqual(["Work", "Never sent"]);
-    expect(reach[1]?.opens).toBe(0);
-  });
-
-  it("ranks by opens, breaking ties on recipients then name", () => {
-    const reach = cardReach(
-      [card("a", "Alpha"), card("b", "Beta"), card("c", "Gamma")],
-      [
-        link({ cardId: "b", contactId: "c-1", viewCount: 5 }),
-        link({ cardId: "a", contactId: "c-1", viewCount: 5 }),
-        link({ cardId: "a", contactId: "c-2", viewCount: 0 }),
-      ],
-    );
-    // Alpha and Beta both have 5 opens; Alpha has two recipients so it leads.
-    expect(reach.map((r) => r.cardName)).toEqual(["Alpha", "Beta", "Gamma"]);
-  });
-});
-
-describe("attention", () => {
-  it("reports an empty card and stops there, rather than also nagging about its reach", () => {
-    const rows = attention([{ id: "card-1", name: "Blank card", fieldIds: [] }], [], new Map());
-    expect(rows).toEqual([
-      { kind: "no-fields", cardId: "card-1", cardName: "Blank card", count: 0 },
-    ]);
-  });
-
-  it("surfaces recipients behind, worst first", () => {
-    const rows = attention(
-      [card("card-1", "Work"), card("card-2", "Personal")],
-      [
-        link({ cardId: "card-1", contactId: "c-1", viewCount: 1 }),
-        link({ cardId: "card-2", contactId: "c-2", viewCount: 1 }),
-      ],
-      new Map([
-        ["card-1", 1],
-        ["card-2", 4],
-      ]),
-    );
-    expect(rows.map((r) => [r.kind, r.cardName, r.count])).toEqual([
-      ["behind", "Personal", 4],
-      ["behind", "Work", 1],
-    ]);
-  });
-
-  it("distinguishes never-shared from shared-but-unopened", () => {
-    const rows = attention(
-      [card("card-1", "Never sent"), card("card-2", "Sent, ignored")],
-      [link({ cardId: "card-2", contactId: "c-1", viewCount: 0 })],
-      new Map(),
-    );
-    expect(rows.map((r) => r.kind)).toEqual(["never-opened", "never-shared"]);
-  });
-
-  it("says nothing about a healthy card", () => {
-    const rows = attention(
-      [card("card-1", "Work")],
-      [link({ cardId: "card-1", contactId: "c-1", viewCount: 3 })],
-      new Map([["card-1", 0]]),
-    );
-    expect(rows).toEqual([]);
+    expect(view.totals.peopleOpened).toBeNull();
   });
 });

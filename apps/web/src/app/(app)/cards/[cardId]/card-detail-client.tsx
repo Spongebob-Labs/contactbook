@@ -18,7 +18,7 @@ import { PageHeader } from "@/components/layout";
 import { Button, buttonClassName } from "@/components/primitives";
 import { DeleteCardDialog } from "@/components/share/delete-card-dialog";
 import { ExportPngButton } from "@/components/share/export-png-button";
-import { ShareSheet, useVcfDownload } from "@/components/share/share-sheet";
+import { ShareSheet } from "@/components/share/share-sheet";
 import { WalletPassBlock } from "@/components/share/wallet-pass-block";
 import { CardShares, SendToContact, type MintedLink } from "@/components/share/card-sharing";
 import { NotifyBanner } from "@/components/share/notify-recipients";
@@ -36,7 +36,6 @@ import type {
   FieldGroup,
   FixtureError,
   ProfileField,
-  ResolvedCard,
   ResolvedField,
   ScreenState,
   User,
@@ -48,10 +47,16 @@ import type {
  * ## ⚠ THE ONE ARCHITECTURAL RULE THIS FILE EXISTS TO KEEP — invariant I-5
  *
  * **`resolveCard` is called once. `buildVcf` is called once. Everything downstream is handed
- * those two values.** The renderer, the share panel's preview, the share panel's download,
- * the in-card "Save to contacts" control and the PNG export all receive the *same*
- * `ResolvedCard` reference, and the two files a user can leave this screen with are written
- * from that one object.
+ * those two values.** The renderer, the share panel and the PNG export all receive the *same*
+ * `ResolvedCard` reference, and the one file a user can leave this screen with — the PNG — is
+ * written from that object.
+ *
+ * ⚠ The `.vcf` is no longer *written* on this screen at all: the in-card "Save to contacts"
+ * was removed (see the ⚠ on `<WalletPassBlock>` below), so `buildVcf` survives here purely as
+ * E-01's gate — `vcf === null` is what "this card shares nothing" means to the empty state and
+ * to the share panel. The bytes themselves are owned by `tests/unit/build-vcf.test.ts` (§6.7
+ * and AC-22, set equality included) and the download path by `/c/{slug}`, where saving a card
+ * to your contacts is something a person actually does.
  *
  * That is not tidiness. The old build's recorded bug was that the card a user previewed and
  * the file they sent came from two separate derivations which merely usually agreed (§6.4).
@@ -77,13 +82,14 @@ import type {
  *   printed, so it must not carry a token that revoking one contact would kill.
  * · **The card.** The page either link opens, at `/c/{token}`, which the builder previews.
  *
- * Until `<WalletPassBlock>` landed, the face was painted here with no caption and no
- * explanation, so it read as an unexplained smaller drawing of the same card, and nobody
- * could tell from the UI that a Contact Book card goes in a wallet at all. Every sentence
- * that would have said so lived in doc comments (`share-face.tsx`, `template-types.ts`). The
- * block owns that copy now; the reasoning, and the five QR contract suites that constrain how
- * it may touch the face, are recorded at its head. **The face must keep rendering on this
- * route, unscaled, in normal flow — do not tab it, dialog it, lazy-mount it or scale it.**
+ * `<WalletPassBlock>` names the first of those two things and does nothing else. It once
+ * explained them at length — a lede, a sentence printing what the QR resolves to, and two
+ * wallet buttons that admitted in body copy that they install nothing — and the client read
+ * the result as clutter and "random text" on their own card (2026-09-20). What a *recipient*
+ * needs to be taught belongs on `/c/{slug}`; the owner built this card. Two words above the
+ * face is what survived, and the removal reasoning is recorded at the block's head so the
+ * copy is not reinstated a paragraph at a time. **The face must keep rendering on this route,
+ * unscaled, in normal flow — do not tab it, dialog it, lazy-mount it or scale it.**
  *
  * ## What "empty" means on this screen
  * §8D.3's card-detail row puts *not-found* where other screens put a first-run empty, and
@@ -183,7 +189,6 @@ function CardDetailScreen({
   reload: () => void;
 }) {
   const router = useRouter();
-  const { savePending, downloadVcf } = useVcfDownload();
   const { toast } = useToast();
   const [archiving, startArchive] = useTransition();
   const [deleted, setDeleted] = useState(false);
@@ -241,7 +246,13 @@ function CardDetailScreen({
    *
    * `null` is the E-01 gate: `canBuildVcf` says the card shares nothing, so `buildVcf` — which
    * throws `EmptyCardError` rather than writing the old build's 73-byte name-only file — is
-   * never called, and no control that would call it is rendered.
+   * never called.
+   *
+   * ⚠ Nothing on this screen hands these bytes to a user any more; the owner's "Save to
+   * contacts" was removed on 2026-09-20. What is left is the gate — `vcf === null` is this
+   * screen's single definition of "this card shares nothing", read by the empty state and by
+   * the share panel — and it is deliberately still `buildVcf`'s answer rather than a second
+   * `canBuildVcf` call at each site, so the two can never disagree about an edge case.
    */
   const vcf = useMemo(
     () => (resolved !== null && canBuildVcf(resolved) ? buildVcf(resolved) : null),
@@ -258,18 +269,6 @@ function CardDetailScreen({
   const rows = useMemo<readonly ResolvedField[]>(
     () => (resolved === null ? [] : [...resolved.fields, ...resolved.socialFields]),
     [resolved],
-  );
-
-  /**
-   * The in-card primary action. It receives the renderer's own `resolved` — the same
-   * reference this component memoised — and pairs it with the one `vcf` string, so the file
-   * the card offers and the file the share panel previews cannot be two different documents.
-   */
-  const onSaveToContacts = useCallback(
-    (target: ResolvedCard) => {
-      downloadVcf(target, vcf);
-    },
-    [downloadVcf, vcf],
   );
 
   const screenState = resolveDataScreenState({
@@ -431,83 +430,35 @@ function CardDetailScreen({
               /* Fluid. The one rigid object on this screen is the share face, and the rail that
                  lets it overhang a 320px viewport lives around the face itself inside
                  `<WalletPassBlock>` — not here. Scoping it to this column instead made the
-                 block's own prose 336px wide in a 296px box, so the wallet-pass copy needed a
-                 sideways nudge to be read, which is a worse bug than the one it fixed. */
+                 block's own eyebrow 336px wide in a 296px box, so the label needed a sideways
+                 nudge to be read, which is a worse bug than the one it fixed. */
               className="min-w-0 lg:sticky lg:top-8 lg:self-start"
             >
-              {/* ⚠ The face is handed to `<WalletPassBlock>` as children and is rendered by
-                  it verbatim — unscaled, unclipped, untransformed, still at 336×500. That is
+              {/* ⚠ THE FACE IS HANDED TO `<WalletPassBlock>` AS CHILDREN AND IS RENDERED BY
+                  IT VERBATIM — unscaled, unclipped, untransformed, still at 336×500. That is
                   not a stylistic preference: five contract suites decode and measure this
                   exact element on this exact route (`tests/helpers/qr-surface.ts`), and this
                   is the only surface in the product that paints it at the size every constant
-                  in `qr-geometry.ts` was derived from. The block adds copy above it and
-                  controls beneath it, in normal flow, and nothing else. */}
-              <WalletPassBlock
-                resolved={resolved}
-                /*
-                  ⚠ THE SAVE ACTION IS AN APP BUTTON AND IT IS PASSED AS `action`, NOT CHILDREN.
+                  in `qr-geometry.ts` was derived from. The block adds a two-word eyebrow above
+                  it, in normal flow, and nothing else.
 
-                  Both halves of that were bugs, and both produced the same report — *"what is
-                  this glitch onto the UI"*:
+                  ⚠ THE OWNER'S "SAVE TO CONTACTS" WAS HERE AND IS DELIBERATELY GONE, with the
+                  two wallet buttons and the block's explanatory prose. Client review,
+                  2026-09-20: *"this page is looking very cluttered. There is too much
+                  information in this, and there is random text in this."* Saving your own card
+                  into your own address book is not an action anybody takes — the control that
+                  matters is the recipient's, on `/c/{slug}`, and that one is the product's
+                  stated success metric and is untouched. The removal reasoning for the rest
+                  lives at the head of `wallet-pass-block.tsx`.
 
-                    1. **It was a `<CardActionButton surface="canvas">`.** For every deep
-                       palette `canvasActionBg` IS the palette's own ground (see
-                       `derive-palette.ts`), so on a Sapphire card this rendered a Sapphire
-                       block, one card wide, sixteen pixels below a Sapphire card. The two
-                       fused and the card's own bottom edge stopped being readable. It was
-                       never a contrast failure — `PALETTE_CONTRACT` proves that fill against
-                       the white canvas and passes; nothing measured it against the card above
-                       it. The block's other two controls were already plain `<Button>`s, so
-                       this was the only control on the canvas dressed as the card.
-                    2. **It was `children`.** `children` is rendered inside the block's
-                       `overflow-x-auto` rail, which exists to let the rigid 336px face
-                       overhang a 296px column without scrolling the document. The button went
-                       into the scroller with it and was sized by the rail instead of the
-                       block.
-
-                  `fullWidth` rather than a `w-full` wrapper: the block already owns the
-                  column's width, and the primitive has the prop.
-                */
-                action={
-                  vcf === null ? null : (
-                    <Button
-                      variant="primary"
-                      fullWidth
-                      /* ⚠ `data-card-action="save"` AND NOT A NEW HOOK. `CardActionButton`
-                         published this and its own note says why it is spelled semantically:
-                         *"`data-card-action="save"` survives a redesign that turns the primary
-                         button secondary."* Swapping the component for the app's `<Button>` is
-                         exactly that redesign, and my first pass invented
-                         `data-card-save-contacts` instead — which silently orphaned
-                         `card-detail.spec.ts`'s vCard download tests AND turned its
-                         "a zero-field card offers no save" assertion vacuous, since it counts
-                         an attribute that had stopped existing anywhere. */
-                      data-card-action="save"
-                      onClick={() => onSaveToContacts(resolved)}
-                      /* The primitive owns the in-flight state: `loading` sets `aria-busy`,
-                         swaps the label and really swallows the click (a bare `disabled` is
-                         advisory to the browser). The old call hand-rolled all three with
-                         `disabled` + `busy` + a label ternary, and `busy` is not even a prop
-                         on this component — it was silently doing nothing. */
-                      loading={savePending}
-                      loadingLabel="Saving…"
-                    >
-                      Save to contacts
-                    </Button>
-                  )
-                }
-              >
-                {/* ⚠ The face is handed to `<WalletPassBlock>` as children and is rendered by
-                    it verbatim — unscaled, unclipped, untransformed, still at 336×500. That is
-                    not a stylistic preference: five contract suites decode and measure this
-                    exact element on this exact route (`tests/helpers/qr-surface.ts`), and this
-                    is the only surface in the product that paints it at the size every constant
-                    in `qr-geometry.ts` was derived from. The block adds copy above it, the
-                    owner's action beneath it and its own controls below that, in normal flow,
-                    and nothing else.
-
-                    ⚠ NOTHING ELSE MAY BE ADDED HERE. This slot is inside the horizontal scroll
-                    rail; anything but the face belongs in `action` or in the block itself. */}
+                  ⚠ NOTHING MAY BE ADDED TO THIS SLOT. It is inside the block's horizontal
+                  scroll rail, which exists so the rigid 336px face can overhang a 296px column
+                  without scrolling the document; a control placed here is sized by the rail
+                  rather than the column and needs a sideways scroll to reach its own right
+                  edge. Anything new belongs in the block, outside that rail — and on this
+                  canvas it wears the app's chrome, never `<CardActionButton>` (see
+                  `tests/contract/card-buttons-on-canvas.test.tsx`). */}
+              <WalletPassBlock>
                 <ShareFace resolved={resolved} mode="full" />
               </WalletPassBlock>
             </div>

@@ -35,6 +35,7 @@ import type {
   CreateCardDto,
   CreateProfileFieldDto,
   CreateProfileFieldGroupDto,
+  DashboardResponseDto,
   ImportContactsDto,
   ImportContactsResponseDto,
   MeResponseDto,
@@ -393,12 +394,32 @@ export const cards = {
   /** 204, no body. `LOGO_NOT_FOUND` when there was nothing to remove — see `errors.ts`. */
   removeLogo: (cardId: string) =>
     cb<void>({ method: "DELETE", path: `/cards/${id(cardId)}/logo` }),
+
+  /**
+   * Upload or replace this card's cover photograph. Returns the whole updated card, same as the
+   * logo pair.
+   *
+   * ⚠ **JPEG/PNG/WebP, 5 MB — a quarter of the logo's cap**, because a cover is a photograph.
+   *
+   * ⚠ **The API stores the exact bytes it is sent — no server-side crop, resize or recompress.**
+   * The composition is baked in before the call (1:0.7, ≤1280px long edge) by the builder's crop
+   * dialog. A raw file straight off a picker renders a full-length photograph as a head crop.
+   */
+  uploadCover: (cardId: string, file: File) => {
+    const form = new FormData();
+    form.set("file", file);
+    return cb<CardResponseDto>({ method: "POST", path: `/cards/${id(cardId)}/cover`, form });
+  },
+  /** 204, no body. `COVER_NOT_FOUND` when there was nothing to remove. */
+  removeCover: (cardId: string) =>
+    cb<void>({ method: "DELETE", path: `/cards/${id(cardId)}/cover` }),
 };
 
 /* ── public connect (2) — anonymous, and deliberately not in `endpoints/` ───────────── */
 
 /**
- * The QR-scan "Save & connect" pair, `POST /public/links/{token}/connect/otp/{request,verify}`.
+ * The QR-scan connect endpoints — the OTP pair, `POST /public/links/{token}/connect/otp/{request,
+ * verify}`, and the zero-verification `POST /public/links/{token}/connect/send`.
  *
  * ## Why these live here and nowhere else
  * Three properties set them apart from the 41 operations above, and each one is a reason:
@@ -430,7 +451,10 @@ export interface ConnectOtpRequestResult {
   devCode?: string;
 }
 
-/** `POST …/connect/otp/verify` → 200. A second verify by the same scanner is a no-op, not an error. */
+/**
+ * `POST …/connect/otp/verify` and `POST …/connect/send` → 200. Connecting a second time is a
+ * no-op, not an error.
+ */
 export interface ConnectResult {
   connected: true;
 }
@@ -463,6 +487,25 @@ export const publicConnect = {
       path: `/public/links/${id(token)}/connect/otp/verify`,
       body: { phoneE164, code },
     }),
+  /**
+   * "Send to my phone" — one call, no OTP. Same outcome as a successful `otpVerify`: a contact on
+   * the owner's side, a live `ShareLink`, and the card link sent to this number over WhatsApp.
+   *
+   * ⚠ **The number is trusted as typed.** Nothing proves it belongs to the caller, so a mistyped
+   * number sends the owner's card to a stranger. The API logs it under its own source
+   * (`SEND_TO_PHONE`) so it is never mistaken for a verified connect, and it has **no rate
+   * limit** — there is no `OtpService.request()` step to carry one.
+   *
+   * @throws {ApiError} `SHARE_LINK_NOT_FOUND` (404) / `SHARE_LINK_REVOKED` (410) if the token is
+   * dead — checked before anything is sent; `CANNOT_CONNECT_TO_SELF` (409, the number is the card
+   * owner's own). No `OTP_*` code is reachable: this path never touches `OtpService`.
+   */
+  send: (token: string, phoneE164: string) =>
+    send<ConnectResult>({
+      method: "POST",
+      path: `/public/links/${id(token)}/connect/send`,
+      body: { phoneE164 },
+    }),
 };
 
 /* ── share-links (2) ─────────────────────────────────────────────────────────────────── */
@@ -486,4 +529,15 @@ export const templates = {
       path: `/templates/${id(templateId)}`,
       body: b,
     }),
+};
+
+/* ── dashboard (1) ───────────────────────────────────────────────────────────────────── */
+
+/**
+ * One call, server-computed. See `endpoints/dashboard.ts` for why this replaced the screen's
+ * old four-endpoints-plus-one-per-card assembly, and `DashboardResponseDto` for what each
+ * number means — in particular why `totals.behind === null` is not `0`.
+ */
+export const dashboard = {
+  get: () => cb<DashboardResponseDto>({ method: "GET", path: "/dashboard" }),
 };
