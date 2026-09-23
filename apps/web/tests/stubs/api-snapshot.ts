@@ -120,6 +120,14 @@ function cardDto(card: ContactCard, fields: readonly ProfileField[]): CardRespon
     textureScale: card.textureScale ?? null,
     /* The fixture carries the whole URL; there is no `slug` on `ContactCard`. */
     publicUrl: card.publicUrl ?? undefined,
+    /* ⚠ Explicit nulls rather than absent keys, so the stateful stub starts from a card with
+       every column the real `CardResponseDto` carries. A fixture card that simply lacked
+       `coverUrl` would let a client read `undefined` where the API always sends `null`, and the
+       difference only shows up on the one screen that renders the cover. */
+    logoUrl: card.logoUrl ?? null,
+    coverUrl: card.coverUrl ?? null,
+    headline: card.headline ?? null,
+    bio: card.bio ?? null,
     fields: card.fieldIds.flatMap((fieldId, index) => {
       const field = byId.get(fieldId);
       if (field === undefined) return [];

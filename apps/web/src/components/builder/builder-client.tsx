@@ -14,7 +14,6 @@ import {
 } from "react";
 
 import { canBuildVcf } from "@/card/build-vcf";
-import { saveLocalCardDraft, withLocalCardDraft } from "@/lib/card-local-draft";
 import { resolveCard } from "@/card/resolve-card";
 import { seedFieldIds } from "@/card/template-seed";
 import { TEMPLATE_LIST } from "@/card/templates";
@@ -230,12 +229,10 @@ export function BuilderClient({ cardId }: BuilderClientProps): ReactElement {
 
   const state = result.state;
   const data = result.data?.data ?? null;
-  /* ⚠ TEMPORARY: merges the cover, position and bio the API has no column for, so reopening the
-     builder shows what the owner set rather than three empty controls. `initialBuilderState`
-     already reads them off the card (`card.coverUrl ?? null`), so this one call is the whole
-     hydration — see `lib/card-local-draft.ts`. */
-  const loadedCard = result.data?.card ?? null;
-  const card = loadedCard === null ? null : withLocalCardDraft(loadedCard);
+  /* The cover, position and bio arrive on the card itself now — `toContactCard` reads all three
+     off `CardResponseDto`, and `initialBuilderState` seeds from them. The `withLocalCardDraft`
+     merge that used to stand here is gone with the `localStorage` shim it read from. */
+  const card = result.data?.card ?? null;
   const error = result.error;
 
   /**
@@ -328,6 +325,7 @@ function Builder({
    * header's Save button into a loading state for a request Save did not make and cannot undo.
    */
   const [logoBusy, setLogoBusy] = useState(false);
+  const [coverBusy, setCoverBusy] = useState(false);
 
   /**
    * ⚠ THE POST-SAVE NOTIFY PROMPT — the client's change of 2026-09-03.
@@ -599,6 +597,94 @@ function Builder({
   }
 
   /**
+   * The owner applied a crop.
+   *
+   * ⚠ **Two paths, decided by whether the card exists** — the same split `pickLogo` makes, and
+   * for a related but stricter reason. A logo can at least ride the multipart `POST /cards`; a
+   * cover cannot ride anything. `PATCH /cards/{id}` rejects an actual `coverUrl` string
+   * outright, and the create takes no cover part, so `POST /cards/{id}/cover` is the **only**
+   * door and it needs an id.
+   *
+   * · **A card that exists** uploads now.
+   * · **`/cards/new`** holds the composed file on the reducer and `onSave` uploads it in the
+   *   step straight after the create returns an id.
+   *
+   * The preview updates before either path runs, from the composed data URL, so the card wears
+   * the new photograph while the request is in flight rather than only after it.
+   *
+   * ⚠ `file` is the **composed** crop, not the file the owner picked off disk — the API stores
+   * exactly the bytes it is sent and performs no crop of its own. See `cover-picker.tsx`.
+   */
+  function pickCover(file: File, previewUrl: string) {
+    dispatch({ kind: "cover-pending", file, previewUrl });
+
+    const cardId = state.cardId;
+    if (cardId === null) return;
+
+    /* Read before the request, not inside the catch: by then `state` may be a later render's,
+       and `cover-pending` deliberately did not touch `coverUrl`, so this is still the last
+       thing the server confirmed. */
+    const previous = state.coverUrl;
+
+    setCoverBusy(true);
+    void (async () => {
+      try {
+        /* Returns the whole card, so the URL comes from the API rather than being guessed. No
+           remove-first: `POST .../cover` replaces atomically, and a remove that succeeded
+           before an upload that failed would leave the hero bare. */
+        const updated = await cardsApi.uploadCover(cardId, file);
+        dispatch({ kind: "cover-saved", coverUrl: updated.coverUrl ?? null });
+        toast({ title: "Cover updated" });
+        router.refresh();
+      } catch (thrown) {
+        const shown = toScreenError(thrown);
+        toast({ title: shown.title, description: shown.detail, tone: "danger" });
+        /* ⚠ Put the card back on the cover the server still has. Leaving the optimistic preview
+           up would be the card claiming a photograph that is not on it — and the owner would
+           share it and find the old one on the page a recipient opens. */
+        dispatch({ kind: "cover-saved", coverUrl: previous });
+      } finally {
+        setCoverBusy(false);
+      }
+    })();
+  }
+
+  /**
+   * Remove the cover.
+   *
+   * On an unsaved card there is nothing to call — the bytes have never left the browser, so
+   * dropping the pending pair *is* the removal. On a card that exists, `DELETE .../cover` is the
+   * whole operation. (`PATCH` with `coverUrl: null` is documented as identical; the dedicated
+   * route is used because it says what it does, and because Save must never send that key —
+   * a blind `coverUrl: null` on every Save would delete the cover on every rename.)
+   */
+  function removeCover() {
+    const cardId = state.cardId;
+    if (cardId === null) {
+      dispatch({ kind: "cover-pending", file: null, previewUrl: null });
+      return;
+    }
+
+    const previous = state.coverUrl;
+    dispatch({ kind: "cover-saved", coverUrl: null });
+
+    setCoverBusy(true);
+    void (async () => {
+      try {
+        await cardsApi.removeCover(cardId);
+        toast({ title: "Cover removed" });
+        router.refresh();
+      } catch (thrown) {
+        const shown = toScreenError(thrown);
+        toast({ title: shown.title, description: shown.detail, tone: "danger" });
+        dispatch({ kind: "cover-saved", coverUrl: previous });
+      } finally {
+        setCoverBusy(false);
+      }
+    })();
+  }
+
+  /**
    * Tick or untick one field — **and persist it immediately.**
    *
    * ⚠ `PUT /cards/{id}/fields` **replaces** the whole curated set, so what goes out is the complete
@@ -678,6 +764,12 @@ function Builder({
               // The design the owner has been looking at in the preview, from the same state the
               // preview renders from — so a card is created wearing what they built.
               ...toAppearanceDto(state),
+              /* ⚠ **Empty becomes `null`, not `""`.** `""` is a value the column would store and
+                 every reader would then have to re-trim; `null` is the one spelling of "not set"
+                 the renderers already collapse the slot for. `coverUrl` is deliberately absent —
+                 the create takes no cover, and it is uploaded below once there is an id. */
+              headline: state.headline.trim() === "" ? null : state.headline.trim(),
+              bio: state.bio.trim() === "" ? null : state.bio.trim(),
             },
             /**
              * ⚠ **The logo rides the create, and that is the only way it can.**
@@ -699,15 +791,24 @@ function Builder({
               fields: toCardFieldEntries(state.fieldIds),
             });
           }
-          /* ⚠ **The three UI-only slots, held locally — see `card-local-draft.ts`.**
-             They cannot go in `POST /cards` because no column exists for them, and this is the
-             first moment there is a card id to key them to. Delete this line the day the API
-             carries them. */
-          saveLocalCardDraft(created.id, {
-            coverUrl: state.coverPreviewUrl,
-            headline: state.headline,
-            bio: state.bio,
-          });
+          /* ⚠ **The cover is a second request, always** — unlike the logo, which rides the
+             multipart create. `POST /cards` has no cover part and `PATCH` rejects a URL string,
+             so `POST /cards/{id}/cover` is the only door and this is the first moment there is
+             an id to address. `headline` and `bio` already went out on the create above.
+
+             A failure here is reported but does not fail the save: the card exists, it is
+             wearing everything else the owner chose, and destroying it to tidy up a cover would
+             lose real work. The owner lands on a real card and can retry the cover from the
+             panel — which is exactly the state `pickCover`'s existing-card path handles. */
+          if (state.coverFile !== null) {
+            try {
+              const withCover = await cardsApi.uploadCover(created.id, state.coverFile);
+              dispatch({ kind: "cover-saved", coverUrl: withCover.coverUrl ?? null });
+            } catch (thrown) {
+              const shown = toScreenError(thrown);
+              toast({ title: shown.title, description: shown.detail, tone: "danger" });
+            }
+          }
           dispatch({ kind: "save" });
           /* ⚠ Swap the object URL for the server's own, now that there is one. Without this the
              preview keeps rendering from a `blob:` URL that is revoked on unmount and means
@@ -725,6 +826,16 @@ function Builder({
           name: state.name.trim(),
           kind: toApiCardKind(state.cardType),
           ...toAppearanceDto(state),
+          /* Cleared becomes `null`, which is how a PATCH unmakes a choice — an omitted key would
+             leave the old position or bio in place and the owner would watch their deletion come
+             back on the next read.
+
+             ⚠ **`coverUrl` is deliberately NOT here**, and this is the one field that must never
+             be added to a blanket save. `PATCH` accepts exactly one value for it — `null` — so
+             sending it unconditionally would delete the owner's cover every time they renamed
+             the card. The cover is written by its own upload, and removed by its own DELETE. */
+          headline: state.headline.trim() === "" ? null : state.headline.trim(),
+          bio: state.bio.trim() === "" ? null : state.bio.trim(),
         });
         // ⚠ Replaces the whole set — everything to keep is sent, not just what changed.
         await cardsApi.setFields(state.cardId, { fields: toCardFieldEntries(state.fieldIds) });
@@ -735,14 +846,9 @@ function Builder({
           await profileApi.updateField(edit.fieldId, { label: edit.label, value: edit.value });
         }
 
-        /* The same three slots on the update path — see the note on the create path above. */
-        if (state.cardId !== null) {
-          saveLocalCardDraft(state.cardId, {
-            coverUrl: state.coverPreviewUrl,
-            headline: state.headline,
-            bio: state.bio,
-          });
-        }
+        /* No cover write here: on a card that exists the crop uploaded the moment it was
+           applied (`pickCover`), so by now the server already holds it and `state.coverFile` is
+           null. Save commits the text and the design; the photograph is not Save's to carry. */
         dispatch({ kind: "save" });
         const edited = values.length;
         toast({
@@ -1004,8 +1110,15 @@ function Builder({
                        cannot leave a custom colour rendering behind a ticked cell. React batches
                        both into one render, so the preview never shows the intermediate state.
                        A dedicated action would add a third way to write the same two columns. */
-                    coverUrl={state.coverPreviewUrl}
-                    onCover={(previewUrl) => dispatch({ kind: "cover", previewUrl })}
+                    /* The composed crop while one is pending, else the URL the server holds —
+                       the same precedence `builderCard` applies, so the panel's thumbnail and
+                       the preview pane cannot show two different covers. */
+                    coverUrl={state.coverPreviewUrl ?? state.coverUrl}
+                    coverBusy={coverBusy}
+                    onCover={(picked) => {
+                      if (picked === null) removeCover();
+                      else pickCover(picked.file, picked.previewUrl);
+                    }}
                     headline={state.headline}
                     onHeadline={(headline) => dispatch({ kind: "headline", headline })}
                     bio={state.bio}

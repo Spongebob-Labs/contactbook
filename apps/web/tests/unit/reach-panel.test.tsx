@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { renderWithProviders, screen, within } from "../helpers/render";
 
 import { ReachPanel } from "@/components/dashboard/reach-panel";
+import type { DashboardResponseDto } from "@/lib/api/schema";
 import type { DashboardTotals } from "@/lib/dashboard/metrics";
 import { reachScore } from "@/lib/dashboard/reach-score";
 
@@ -11,23 +12,43 @@ const TOTALS: DashboardTotals = {
   contacts: 2,
   fields: 11,
   peopleReached: 2,
+  peopleOpened: 2,
   totalOpens: 20,
   neverOpened: 0,
   behind: 3,
 };
 
+/**
+ * An account as `GET /dashboard` returns it — the shape `reachScore` now consumes.
+ *
+ * ⚠ States its totals rather than reducing a link list into them: that reduction is the API's,
+ * computed in one pass so the client cannot hold a divergent copy. See `reach-score.test.ts`.
+ */
+function dto(
+  totals: DashboardTotals,
+  cards: ReadonlyArray<{ id: string; name: string }>,
+): DashboardResponseDto {
+  return {
+    totals,
+    cardReach: cards.map((c) => ({
+      cardId: c.id,
+      cardName: c.name,
+      opens: 0,
+      recipients: 0,
+    })),
+    attention: [],
+    sharingActivity: [],
+    groups: [],
+  };
+}
+
 /** The live account on 2026-09-19 — the same case the score module pins. */
-const LIVE = reachScore({
-  cards: [
-    { id: "c1", name: "My Card", fieldIds: Array.from({ length: 11 }, (_, i) => `f${i}`) },
-    { id: "c2", name: "Untitled card", fieldIds: Array.from({ length: 11 }, (_, i) => `g${i}`) },
-  ],
-  links: [
-    { cardId: "c1", contactId: "p1", status: "ACTIVE", viewCount: 12, createdAt: "2026-09-01" },
-    { cardId: "c2", contactId: "p2", status: "ACTIVE", viewCount: 8, createdAt: "2026-09-01" },
-  ],
-  behind: 3,
-});
+const LIVE = reachScore(
+  dto(TOTALS, [
+    { id: "c1", name: "My Card" },
+    { id: "c2", name: "Untitled card" },
+  ]),
+);
 
 describe("ReachPanel", () => {
   it("draws the score once, as a labelled figure rather than loose SVG text", () => {
@@ -95,7 +116,12 @@ describe("ReachPanel", () => {
    * played — so the dial draws no arc and the panel invites rather than grades.
    */
   it("invites a new owner instead of grading them zero", () => {
-    const empty = reachScore({ cards: [], links: [], behind: null });
+    const empty = reachScore(
+      dto(
+        { ...TOTALS, cards: 0, contacts: 0, peopleReached: 0, peopleOpened: 0, totalOpens: 0, behind: null },
+        [],
+      ),
+    );
     renderWithProviders(
       <ReachPanel
         score={empty}
@@ -112,13 +138,11 @@ describe("ReachPanel", () => {
   });
 
   it("congratulates rather than nags when nothing is outstanding", () => {
-    const perfect = reachScore({
-      cards: [{ id: "c1", name: "My Card", fieldIds: ["f1"] }],
-      links: [
-        { cardId: "c1", contactId: "p1", status: "ACTIVE", viewCount: 3, createdAt: "2026-09-01" },
-      ],
-      behind: 0,
-    });
+    const perfect = reachScore(
+      dto({ ...TOTALS, cards: 1, peopleReached: 1, peopleOpened: 1, behind: 0 }, [
+        { id: "c1", name: "My Card" },
+      ]),
+    );
 
     renderWithProviders(<ReachPanel score={perfect} totals={{ ...TOTALS, behind: 0 }} />);
 

@@ -93,6 +93,13 @@ export class DashboardService {
     const behindByCard = new Map<string, number>();
     const neverOpenedByCard = new Map<string, number>();
     const reachedContacts = new Set<string>();
+    // DISTINCT contacts who have opened at least one link — the people-shaped
+    // counterpart to neverOpened, which counts LINKS. Both are needed and they
+    // are not derivable from each other: one person may hold three links and
+    // have opened only one. Accumulated in this same loop, and from this same
+    // ACTIVE-only row set, for the reason the block comment above gives —
+    // peopleOpened must never be able to exceed peopleReached.
+    const openedContacts = new Set<string>();
     const behindContacts = new Set<string>();
     let totalOpens = 0;
     let neverOpened = 0;
@@ -108,6 +115,8 @@ export class DashboardService {
         link.cardId,
         (opensByCard.get(link.cardId) ?? 0) + link.viewCount,
       );
+
+      if (link.viewCount > 0) openedContacts.add(link.contactId);
 
       if (link.viewCount === 0) {
         neverOpened += 1;
@@ -136,6 +145,18 @@ export class DashboardService {
 
     // ── attention — kind-priority order (no-fields, behind, never-opened,
     // never-shared), worst (highest count) first within each kind.
+    //
+    // ⚠ A card with NO FIELDS yields exactly ONE row, and the three reach
+    // kinds below all skip it. An empty card is never-shared and
+    // never-opened by construction — it has nothing to share — so without
+    // this it appears two or three times in one queue, each row telling the
+    // owner to fix a different symptom of the same cause. "Add fields" is
+    // the only instruction that helps; "share it" on a card that shares
+    // nothing is advice to send somebody a blank page. Caught by
+    // dashboard.service.spec.ts, which asserts the queue's exact shape.
+    const hasFields = (id: string) =>
+      (cardById.get(id)?._count.fields ?? 0) > 0;
+
     const noFields = cards
       .filter((c) => c._count.fields === 0)
       .map(
@@ -148,7 +169,7 @@ export class DashboardService {
       );
 
     const behind = cards
-      .filter((c) => (behindByCard.get(c.id) ?? 0) > 0)
+      .filter((c) => hasFields(c.id) && (behindByCard.get(c.id) ?? 0) > 0)
       .map(
         (c): AttentionItemDto => ({
           kind: 'behind',
@@ -160,7 +181,7 @@ export class DashboardService {
       .sort((a, b) => b.count - a.count);
 
     const neverOpenedList = cards
-      .filter((c) => (neverOpenedByCard.get(c.id) ?? 0) > 0)
+      .filter((c) => hasFields(c.id) && (neverOpenedByCard.get(c.id) ?? 0) > 0)
       .map(
         (c): AttentionItemDto => ({
           kind: 'never-opened',
@@ -172,7 +193,7 @@ export class DashboardService {
       .sort((a, b) => b.count - a.count);
 
     const neverShared = cards
-      .filter((c) => (recipientsByCard.get(c.id) ?? 0) === 0)
+      .filter((c) => hasFields(c.id) && (recipientsByCard.get(c.id) ?? 0) === 0)
       .map(
         (c): AttentionItemDto => ({
           kind: 'never-shared',
@@ -236,6 +257,7 @@ export class DashboardService {
         contacts: contactsCount,
         fields: fieldsCount,
         peopleReached: reachedContacts.size,
+        peopleOpened: openedContacts.size,
         totalOpens,
         neverOpened,
         // null, never 0, when there's nothing to compute "behind" from at

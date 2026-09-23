@@ -19,6 +19,17 @@ export class DashboardTotalsDto {
   peopleReached!: number;
 
   @ApiProperty({
+    example: 8,
+    description:
+      'DISTINCT contacts who have opened at least one ACTIVE link. The ' +
+      'people-shaped counterpart to neverOpened, which counts LINKS — one ' +
+      'person may hold three links and have opened only one, so neither is ' +
+      'derivable from the other. Computed from the same single pass as ' +
+      'peopleReached, so it can never exceed it.',
+  })
+  peopleOpened!: number;
+
+  @ApiProperty({
     example: 47,
     description:
       'viewCount summed over ACTIVE links only — a revoked link’s opens are history.',

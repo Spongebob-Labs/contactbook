@@ -7,12 +7,6 @@ import { useCallback, useMemo, useState, useTransition } from "react";
 import { buildVcf, canBuildVcf } from "@/card/build-vcf";
 import { ShareFace } from "@/card/share-face";
 import { resolveCard } from "@/card/resolve-card";
-/* ⚠ TEMPORARY: merges the cover, position and bio the API has no column for. Delete the
-   import and the call together the day it does — see `lib/card-local-draft.ts`. */
-import { withLocalCardDraft } from "@/lib/card-local-draft";
-/* ⚠ TEMPORARY, and owner-facing ONLY — never on a surface a recipient can open. See the
-   module note in `lib/card-demo-fill.ts`. */
-import { withDemoFill } from "@/lib/card-demo-fill";
 import { CardTypeChip, FieldCountMeter, FieldList } from "@/components/app";
 import {
   ErrorPanel,
@@ -243,7 +237,7 @@ function CardDetailScreen({
            revocable token. It now reads `card.publicUrl` — the card's own one-to-many link —
            so the symbol is stable no matter who has been sent the card. A per-recipient link
            still exists and still matters; it just belongs to the send flow, not to the QR. */
-        : resolveCard(withDemoFill(withLocalCardDraft(card)), data.user, data.groups, data.fields),
+        : resolveCard(card, data.user, data.groups, data.fields),
     [card, data],
   );
 

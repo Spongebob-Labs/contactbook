@@ -3,7 +3,7 @@
   "paths": {
     "/api/v1/auth/otp/request": {
       "post": {
-        "description": "Always 202 on a well-formed number \u2014 this never reveals whether an account already exists for that phone. Rate-limited per phone: a 60s cooldown between requests, and a 5-per-hour cap (see OTP_COOLDOWN / OTP_RATE_LIMITED below).",
+        "description": "Always 202 on a well-formed number — this never reveals whether an account already exists for that phone. Rate-limited per phone: a 60s cooldown between requests, and a 5-per-hour cap (see OTP_COOLDOWN / OTP_RATE_LIMITED below).",
         "operationId": "AuthController_requestOtp_v1",
         "parameters": [],
         "requestBody": {
@@ -46,7 +46,7 @@
     },
     "/api/v1/auth/otp/verify": {
       "post": {
-        "description": "Creates the User on first-ever verification for a phone number (passwordless signup and login are the same operation). On success, sets httpOnly cb_access_token and cb_refresh_token cookies AND returns the access token in the body \u2014 every endpoint accepts either the cookie or an Authorization: Bearer header, so a non-browser client can authenticate purely off this response with no cookie jar at all.",
+        "description": "Creates the User on first-ever verification for a phone number (passwordless signup and login are the same operation). On success, sets httpOnly cb_access_token and cb_refresh_token cookies AND returns the access token in the body — every endpoint accepts either the cookie or an Authorization: Bearer header, so a non-browser client can authenticate purely off this response with no cookie jar at all.",
         "operationId": "AuthController_verifyOtp_v1",
         "parameters": [],
         "requestBody": {
@@ -71,7 +71,7 @@
             }
           },
           "404": {
-            "description": "OTP_NOT_FOUND \u2014 no active (unexpired, unconsumed) code for this number.",
+            "description": "OTP_NOT_FOUND — no active (unexpired, unconsumed) code for this number.",
             "content": {
               "application/json": {
                 "schema": {
@@ -81,7 +81,7 @@
             }
           },
           "409": {
-            "description": "OTP_INVALID (wrong code) or OTP_ATTEMPTS_EXCEEDED (5 wrong guesses \u2014 even the correct code is now rejected; request a new one).",
+            "description": "OTP_INVALID (wrong code) or OTP_ATTEMPTS_EXCEEDED (5 wrong guesses — even the correct code is now rejected; request a new one).",
             "content": {
               "application/json": {
                 "schema": {
@@ -99,7 +99,7 @@
     },
     "/api/v1/auth/refresh": {
       "post": {
-        "description": "Body is optional and normally omitted \u2014 the refresh token is read from the cb_refresh_token cookie. Reusing an already-rotated token revokes the whole token family (REFRESH_REUSE_DETECTED), not just the presented token \u2014 this is the reuse-of-a-stolen-token detection. Returns a fresh access token in the body, same as /auth/otp/verify.",
+        "description": "Body is optional and normally omitted — the refresh token is read from the cb_refresh_token cookie. Reusing an already-rotated token revokes the whole token family (REFRESH_REUSE_DETECTED), not just the presented token — this is the reuse-of-a-stolen-token detection. Returns a fresh access token in the body, same as /auth/otp/verify.",
         "operationId": "AuthController_refresh_v1",
         "parameters": [],
         "responses": {
@@ -155,7 +155,7 @@
     },
     "/api/v1/auth/me": {
       "post": {
-        "description": "Accepts the access token either as the cb_access_token cookie or an Authorization: Bearer header. Returns only the token's identity claims \u2014 id and phoneE164. For the owner's actual profile data (name, email, onboarding status, fields), use GET /profile/me instead; auth stays scoped to \"who is this token for\", not \"what do we know about them\".",
+        "description": "Accepts the access token either as the cb_access_token cookie or an Authorization: Bearer header. Returns only the token's identity claims — id and phoneE164. For the owner's actual profile data (name, email, onboarding status, fields), use GET /profile/me instead; auth stays scoped to \"who is this token for\", not \"what do we know about them\".",
         "operationId": "AuthController_me_v1",
         "parameters": [],
         "responses": {
@@ -170,7 +170,7 @@
             }
           },
           "401": {
-            "description": "UNAUTHENTICATED \u2014 missing, invalid, or expired token.",
+            "description": "UNAUTHENTICATED — missing, invalid, or expired token.",
             "content": {
               "application/json": {
                 "schema": {
@@ -196,7 +196,7 @@
     },
     "/api/v1/profile/me": {
       "get": {
-        "description": "identity + personal + work[] + business[] + socials[] + financial.* \u2014 the same shape POST /profile/onboarding accepts and returns. This is the read model for a profile screen; GET /profile/fields is the flat list used by the field editor.",
+        "description": "identity + personal + work[] + business[] + socials[] + financial.* — the same shape POST /profile/onboarding accepts and returns. This is the read model for a profile screen; GET /profile/fields is the flat list used by the field editor.",
         "operationId": "ProfileController_getMe_v1",
         "parameters": [],
         "responses": {
@@ -227,7 +227,7 @@
     },
     "/api/v1/profile/onboarding": {
       "post": {
-        "description": "One-shot \u2014 409 if onboarding has already been completed. Only identity (firstName, lastName, primaryEmail) is required; every other section is optional and can be filled in later through the field and group endpoints instead. Do not send primaryPhone (it is your OTP-verified number, not a new input) or profilePhoto (use POST /profile/photo separately) \u2014 both are rejected as unknown properties by the request validator.",
+        "description": "One-shot — 409 if onboarding has already been completed. Only identity (firstName, lastName, primaryEmail) is required; every other section is optional and can be filled in later through the field and group endpoints instead. Do not send primaryPhone (it is your OTP-verified number, not a new input) or profilePhoto (use POST /profile/photo separately) — both are rejected as unknown properties by the request validator.",
         "operationId": "ProfileController_completeOnboarding_v1",
         "parameters": [],
         "requestBody": {
@@ -348,7 +348,7 @@
         ]
       },
       "post": {
-        "description": "BANK_ACCOUNT, DIGITAL_WALLET, and CRYPTO_WALLET values are encrypted at rest automatically \u2014 nothing to opt into. PHOTO cannot be created here; use POST /profile/photo.",
+        "description": "BANK_ACCOUNT, DIGITAL_WALLET, and CRYPTO_WALLET values are encrypted at rest automatically — nothing to opt into. PHOTO cannot be created here; use POST /profile/photo.",
         "operationId": "ProfileController_create_v1",
         "parameters": [],
         "requestBody": {
@@ -446,7 +446,7 @@
         ]
       },
       "patch": {
-        "description": "type is immutable \u2014 delete and recreate the field to change it.",
+        "description": "type is immutable — delete and recreate the field to change it.",
         "operationId": "ProfileController_update_v1",
         "parameters": [
           {
@@ -514,7 +514,7 @@
         ]
       },
       "delete": {
-        "description": "Soft delete \u2014 the field is archived, not hard-deleted, so any card history that referenced it stays displayable. Removing a PHOTO field also deletes its GCS object.",
+        "description": "Soft delete — the field is archived, not hard-deleted, so any card history that referenced it stays displayable. Removing a PHOTO field also deletes its GCS object.",
         "operationId": "ProfileController_remove_v1",
         "parameters": [
           {
@@ -601,7 +601,7 @@
     },
     "/api/v1/profile/groups": {
       "get": {
-        "description": "Each group includes its own fields, already ordered \u2014 a job with its phone/email/title nested together, not a flat list you have to regroup client-side.",
+        "description": "Each group includes its own fields, already ordered — a job with its phone/email/title nested together, not a flat list you have to regroup client-side.",
         "operationId": "ProfileController_listGroups_v1",
         "parameters": [
           {
@@ -658,7 +658,7 @@
         ]
       },
       "post": {
-        "description": "One instance of a repeatable thing \u2014 a specific job, business, bank account, or social profile. Add fields into it afterward via POST /profile/fields with this group's id.",
+        "description": "One instance of a repeatable thing — a specific job, business, bank account, or social profile. Add fields into it afterward via POST /profile/fields with this group's id.",
         "operationId": "ProfileController_createGroup_v1",
         "parameters": [],
         "requestBody": {
@@ -756,7 +756,7 @@
         ]
       },
       "delete": {
-        "description": "Archives the group AND every field in it \u2014 removing a job takes its phone/email/title with it, not just the job label.",
+        "description": "Archives the group AND every field in it — removing a job takes its phone/email/title with it, not just the job label.",
         "operationId": "ProfileController_removeGroup_v1",
         "parameters": [
           {
@@ -941,7 +941,7 @@
         ]
       },
       "post": {
-        "description": "Upserts on (you, phoneE164) \u2014 calling this again for a number already in your registry updates displayName/notes rather than erroring. For adding many at once (e.g. a device address book), use POST /contacts/import instead.",
+        "description": "Upserts on (you, phoneE164) — calling this again for a number already in your registry updates displayName/notes rather than erroring. For adding many at once (e.g. a device address book), use POST /contacts/import instead.",
         "operationId": "ContactsController_upsert_v1",
         "parameters": [],
         "requestBody": {
@@ -1029,7 +1029,7 @@
         ]
       },
       "patch": {
-        "description": "phoneE164 is not editable here \u2014 it is the identity a contact is matched by.",
+        "description": "phoneE164 is not editable here — it is the identity a contact is matched by.",
         "operationId": "ContactsController_update_v1",
         "parameters": [
           {
@@ -1081,7 +1081,7 @@
             "access-token": []
           }
         ],
-        "summary": "Update a contact\u2019s display name or notes",
+        "summary": "Update a contact’s display name or notes",
         "tags": [
           "contacts"
         ]
@@ -1089,7 +1089,7 @@
     },
     "/api/v1/contacts/import": {
       "post": {
-        "description": "The expected way contacts actually enter the registry \u2014 hand over an address book export in one call instead of one POST /contacts per person. Each entry upserts the same way POST /contacts does; newly-created rows are tagged source=IMPORTED.",
+        "description": "The expected way contacts actually enter the registry — hand over an address book export in one call instead of one POST /contacts per person. Each entry upserts the same way POST /contacts does; newly-created rows are tagged source=IMPORTED.",
         "operationId": "ContactsController_import_v1",
         "parameters": [],
         "requestBody": {
@@ -1173,7 +1173,7 @@
         ]
       },
       "post": {
-        "description": "Starts with no fields \u2014 add them with PUT /cards/:id/fields. multipart/form-data, not JSON: the same call optionally accepts a logo file (field name `file`) alongside the card fields below, since a file and a JSON body cannot be mixed in one request. Omit `file` for a card with no logo \u2014 everything else works exactly the same. JPEG, PNG, or WebP, up to 20 MB; a card can also get (or replace) a logo later via POST /cards/:id/logo.",
+        "description": "Starts with no fields — add them with PUT /cards/:id/fields. multipart/form-data, not JSON: the same call optionally accepts a logo file (field name `file`) alongside the card fields below, since a file and a JSON body cannot be mixed in one request. Omit `file` for a card with no logo — everything else works exactly the same. JPEG, PNG, or WebP, up to 20 MB; a card can also get (or replace) a logo later via POST /cards/:id/logo.",
         "operationId": "CardsController_create_v1",
         "parameters": [],
         "requestBody": {
@@ -1232,7 +1232,7 @@
                   "file": {
                     "type": "string",
                     "format": "binary",
-                    "description": "Optional logo \u2014 omit for no logo."
+                    "description": "Optional logo — omit for no logo."
                   }
                 }
               }
@@ -1287,7 +1287,7 @@
     },
     "/api/v1/cards/{id}": {
       "get": {
-        "description": "Includes its curated field list, resolved and decrypted \u2014 the same view an edit screen would render.",
+        "description": "Includes its curated field list, resolved and decrypted — the same view an edit screen would render.",
         "operationId": "CardsController_getOne_v1",
         "parameters": [
           {
@@ -1335,6 +1335,7 @@
         ]
       },
       "patch": {
+        "description": "Any subset of the fields below. Omitted = leave alone; explicit `null` (on every nullable field) clears it back to unset. `coverUrl` is the one exception in the other direction — the only value it ever accepts is `null`, to remove the cover; a real cover can only be set via POST /cards/:id/cover.",
         "operationId": "CardsController_update_v1",
         "parameters": [
           {
@@ -1386,13 +1387,13 @@
             "access-token": []
           }
         ],
-        "summary": "Rename or recategorize a card",
+        "summary": "Rename, recategorize, or restyle a card",
         "tags": [
           "cards"
         ]
       },
       "delete": {
-        "description": "Also revokes every active ShareLink on this card \u2014 recipients get a 410, not a silently-still-working link.",
+        "description": "Also revokes every active ShareLink on this card — recipients get a 410, not a silently-still-working link.",
         "operationId": "CardsController_archive_v1",
         "parameters": [
           {
@@ -1526,7 +1527,7 @@
             "access-token": []
           }
         ],
-        "summary": "Upload or replace this card\u2019s logo",
+        "summary": "Upload or replace this card’s logo",
         "tags": [
           "cards"
         ]
@@ -1566,7 +1567,147 @@
             "access-token": []
           }
         ],
-        "summary": "Remove this card\u2019s logo",
+        "summary": "Remove this card’s logo",
+        "tags": [
+          "cards"
+        ]
+      }
+    },
+    "/api/v1/cards/{id}/cover": {
+      "post": {
+        "description": "JPEG, PNG, or WebP, up to 5 MB. Replacing an existing cover deletes the old one from storage. The image is stored and served exactly as sent — the client is expected to have already cropped it to the card's aperture (1:0.7). No server-side re-crop, re-fit, or re-compress happens.",
+        "operationId": "CardsController_uploadCover_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CardResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "CARD_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COVER_STORAGE_NOT_CONFIGURED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "COVER_TOO_LARGE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "COVER_TYPE_UNSUPPORTED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cb_access_token": []
+          },
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Upload or replace this card’s cover photo",
+        "tags": [
+          "cards"
+        ]
+      },
+      "delete": {
+        "description": "Same effect as PATCH /cards/:id with { \"coverUrl\": null } — either works.",
+        "operationId": "CardsController_removeCover_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed."
+          },
+          "404": {
+            "description": "CARD_NOT_FOUND or COVER_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cb_access_token": []
+          },
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Remove this card’s cover photo",
         "tags": [
           "cards"
         ]
@@ -1574,7 +1715,7 @@
     },
     "/api/v1/cards/{id}/fields": {
       "put": {
-        "description": "All-or-nothing: every fieldId must be one of your own, non-archived, non-PHOTO ProfileFields, or nothing changes. This REPLACES the whole set \u2014 send everything you want kept, not just what changed.",
+        "description": "All-or-nothing: every fieldId must be one of your own, non-archived, non-PHOTO ProfileFields, or nothing changes. This REPLACES the whole set — send everything you want kept, not just what changed.",
         "operationId": "CardsController_setFields_v1",
         "parameters": [
           {
@@ -1636,7 +1777,7 @@
             "access-token": []
           }
         ],
-        "summary": "Replace this card\u2019s curated field set",
+        "summary": "Replace this card’s curated field set",
         "tags": [
           "cards"
         ]
@@ -1644,7 +1785,7 @@
     },
     "/api/v1/cards/{id}/share": {
       "post": {
-        "description": "Mints (or reuses \u2014 see architecture invariant #1) the ShareLink for this (card, contact) pair and enqueues a WhatsApp send via the outbox. The send only actually goes out once a CARD_SHARE WhatsAppTemplate is registered and approved (POST /templates) \u2014 until then it fails cleanly with CARD_SHARE_TEMPLATE_NOT_CONFIGURED, but the returned url is real and live regardless, so copying it manually always works. Calling this again on an already-active link is a no-op on the messaging side \u2014 nothing re-sends.",
+        "description": "Mints (or reuses — see architecture invariant #1) the ShareLink for this (card, contact) pair and enqueues a WhatsApp send via the outbox. The send only actually goes out once a CARD_SHARE WhatsAppTemplate is registered and approved (POST /templates) — until then it fails cleanly with CARD_SHARE_TEMPLATE_NOT_CONFIGURED, but the returned url is real and live regardless, so copying it manually always works. Calling this again on an already-active link is a no-op on the messaging side — nothing re-sends.",
         "operationId": "CardsController_share_v1",
         "parameters": [
           {
@@ -1704,7 +1845,7 @@
     },
     "/api/v1/cards/{id}/audience": {
       "get": {
-        "description": "Active ShareLinks only \u2014 a revoked or never-shared contact has no link to notify. versionsBehind is currentVersion minus the version each recipient was last told about, via either the initial share or a previous notify.",
+        "description": "Active ShareLinks only — a revoked or never-shared contact has no link to notify. versionsBehind is currentVersion minus the version each recipient was last told about, via either the initial share or a previous notify.",
         "operationId": "CardsController_getAudience_v1",
         "parameters": [
           {
@@ -1754,7 +1895,7 @@
     },
     "/api/v1/cards/{id}/notify": {
       "post": {
-        "description": "The message carries no field-level diff \u2014 just a pointer at the live link. Each shareLinkId must be an ACTIVE link on this card. Fails cleanly with CARD_UPDATE_TEMPLATE_NOT_CONFIGURED until a CARD_UPDATE WhatsAppTemplate is registered and approved (POST /templates). Re-notifying the same recipient about a version already notified is a no-op, not a duplicate send.",
+        "description": "The message carries no field-level diff — just a pointer at the live link. Each shareLinkId must be an ACTIVE link on this card. Fails cleanly with CARD_UPDATE_TEMPLATE_NOT_CONFIGURED until a CARD_UPDATE WhatsAppTemplate is registered and approved (POST /templates). Re-notifying the same recipient about a version already notified is a no-op, not a duplicate send.",
         "operationId": "CardsController_notify_v1",
         "parameters": [
           {
@@ -1850,7 +1991,7 @@
     },
     "/api/v1/share-links/{id}": {
       "patch": {
-        "description": "Restoring reuses the same token \u2014 see POST /cards/:id/share for why a link is never re-minted.",
+        "description": "Restoring reuses the same token — see POST /cards/:id/share for why a link is never re-minted.",
         "operationId": "ShareLinksController_updateStatus_v1",
         "parameters": [
           {
@@ -1955,7 +2096,7 @@
         ]
       },
       "post": {
-        "description": "Records a template that already exists in Twilio \u2014 this does not create anything in Twilio itself. Create the template in Twilio Console/Content API first, submit it for WhatsApp approval, then register its contentSid here.",
+        "description": "Records a template that already exists in Twilio — this does not create anything in Twilio itself. Create the template in Twilio Console/Content API first, submit it for WhatsApp approval, then register its contentSid here.",
         "operationId": "WhatsAppTemplateController_create_v1",
         "parameters": [],
         "requestBody": {
@@ -2006,7 +2147,7 @@
     },
     "/api/v1/templates/{id}": {
       "patch": {
-        "description": "Nothing here checks Twilio for you \u2014 set approvalStatus after confirming in Twilio Console. The (currently unbuilt) reconciler cron will do this automatically later.",
+        "description": "Nothing here checks Twilio for you — set approvalStatus after confirming in Twilio Console. The (currently unbuilt) reconciler cron will do this automatically later.",
         "operationId": "WhatsAppTemplateController_update_v1",
         "parameters": [
           {
@@ -2058,7 +2199,7 @@
             "access-token": []
           }
         ],
-        "summary": "Update a template\u2019s approval status or active flag",
+        "summary": "Update a template’s approval status or active flag",
         "tags": [
           "whatsapp-templates"
         ]
@@ -2066,7 +2207,7 @@
     },
     "/api/v1/inbound-messages": {
       "get": {
-        "description": "One row per (fromPhoneE164, toPhoneE164) pair, ever \u2014 a real WhatsApp message, a QR-scan \"Save & connect\", and an owner-initiated card share all land here, distinguished by `source`. A second event of the same kind between a pair already on file produces no new row. No ownership scoping (`resolvedOwnerId` narrows QR_SCAN_CONNECT/CARD_SHARE rows, but this endpoint itself returns everyone's). Newest first, capped at 500 rows per call.",
+        "description": "One row per (fromPhoneE164, toPhoneE164) pair, ever — a real WhatsApp message, a QR-scan \"Save & connect\", and an owner-initiated card share all land here, distinguished by `source`. A second event of the same kind between a pair already on file produces no new row. No ownership scoping (`resolvedOwnerId` narrows QR_SCAN_CONNECT/CARD_SHARE rows, but this endpoint itself returns everyone's). Newest first, capped at 500 rows per call.",
         "operationId": "InboundMessagesController_list_v1",
         "parameters": [
           {
@@ -2083,7 +2224,7 @@
             "name": "source",
             "required": false,
             "in": "query",
-            "description": "Only rows of this kind \u2014 a real message, a QR-scan connect, or a card share.",
+            "description": "Only rows of this kind — a real message, a QR-scan connect, or a card share.",
             "schema": {
               "type": "string",
               "enum": [
@@ -2132,11 +2273,42 @@
           "webhooks"
         ]
       }
+    },
+    "/api/v1/dashboard": {
+      "get": {
+        "description": "Replaces the client-side assembly of GET /cards + GET /contacts + GET /share-links + one GET /cards/:id/audience per card (an N+1 on every load). Every count here is computed from the caller's own non-archived cards and their ACTIVE ShareLinks only — see DashboardResponseDto for the exact contract each field follows.",
+        "operationId": "DashboardController_get_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cb_access_token": []
+          },
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Everything the dashboard screen needs, in one call",
+        "tags": [
+          "dashboard"
+        ]
+      }
     }
   },
   "info": {
     "title": "ContactBook API",
-    "description": "Every error response uses one envelope: {statusCode, code, message, requestId, details?}. Branch on `code`, not on `message` \u2014 see docs/architecture/lld.md \u00a73.",
+    "description": "Every error response uses one envelope: {statusCode, code, message, requestId, details?}. Branch on `code`, not on `message` — see docs/architecture/lld.md §3.",
     "version": "1.0",
     "contact": {}
   },
@@ -2197,7 +2369,7 @@
           "code": {
             "type": "string",
             "example": "OTP_INVALID",
-            "description": "Stable, machine-readable \u2014 branch on this, not on `message`."
+            "description": "Stable, machine-readable — branch on this, not on `message`."
           },
           "message": {
             "type": "string",
@@ -2206,7 +2378,7 @@
           "requestId": {
             "type": "string",
             "example": "3f9c1b7e-4a2d-4b8e-9c1a-1b2c3d4e5f6a",
-            "description": "Matches the X-Request-Id response header \u2014 hand this to support to find the exact log line."
+            "description": "Matches the X-Request-Id response header — hand this to support to find the exact log line."
           },
           "details": {
             "type": "object",
@@ -2250,7 +2422,7 @@
           "accessToken": {
             "type": "string",
             "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-            "description": "Same token as the cb_access_token cookie, returned here too so non-browser clients (mobile apps, scripts, Postman) can use it directly as an Authorization: Bearer header instead of relying on cookies. 15-minute lifetime. The refresh token is deliberately NOT included here \u2014 it is long-lived (30 days) and stays httpOnly-cookie-only to limit its exposure to XSS; only the short-lived access token trades that protection for portability."
+            "description": "Same token as the cb_access_token cookie, returned here too so non-browser clients (mobile apps, scripts, Postman) can use it directly as an Authorization: Bearer header instead of relying on cookies. 15-minute lifetime. The refresh token is deliberately NOT included here — it is long-lived (30 days) and stays httpOnly-cookie-only to limit its exposure to XSS; only the short-lived access token trades that protection for portability."
           }
         },
         "required": [
@@ -2264,7 +2436,7 @@
           "accessToken": {
             "type": "string",
             "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-            "description": "A freshly issued access token \u2014 see VerifyOtpResponseDto for why only this one is returned."
+            "description": "A freshly issued access token — see VerifyOtpResponseDto for why only this one is returned."
           }
         },
         "required": [
@@ -2316,7 +2488,7 @@
           "primaryPhone": {
             "type": "string",
             "example": "+919347243575",
-            "description": "The OTP-verified phone \u2014 never independently editable."
+            "description": "The OTP-verified phone — never independently editable."
           },
           "primaryEmail": {
             "type": "object",
@@ -2391,7 +2563,7 @@
           "value": {
             "type": "string",
             "example": "+14155550142",
-            "description": "Always the plaintext value \u2014 decrypted server-side for financial types before this response is built. Never logged: see common/logging/redact.ts."
+            "description": "Always the plaintext value — decrypted server-side for financial types before this response is built. Never logged: see common/logging/redact.ts."
           },
           "position": {
             "type": "number",
@@ -2502,7 +2674,7 @@
             }
           },
           "financial": {
-            "description": "Bank accounts, digital wallets, and crypto wallets \u2014 all category FINANCIAL, distinguished by which FieldTypes their fields use.",
+            "description": "Bank accounts, digital wallets, and crypto wallets — all category FINANCIAL, distinguished by which FieldTypes their fields use.",
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ProfileFieldGroupResponseDto"
@@ -2691,7 +2863,7 @@
           "accountNumber": {
             "type": "string",
             "example": "1234567890123456",
-            "description": "Encrypted at rest automatically \u2014 see field-encryption.util.ts."
+            "description": "Encrypted at rest automatically — see field-encryption.util.ts."
           },
           "ifsc": {
             "type": "string",
@@ -2840,7 +3012,7 @@
             }
           },
           "financial": {
-            "description": "Bank accounts, digital wallets, and crypto wallets \u2014 all category FINANCIAL, distinguished by which FieldTypes their fields use.",
+            "description": "Bank accounts, digital wallets, and crypto wallets — all category FINANCIAL, distinguished by which FieldTypes their fields use.",
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ProfileFieldGroupResponseDto"
@@ -2899,7 +3071,7 @@
               "CUSTOM"
             ],
             "example": "PHONE",
-            "description": "PHOTO cannot be created here \u2014 use POST /profile/photo instead."
+            "description": "PHOTO cannot be created here — use POST /profile/photo instead."
           },
           "label": {
             "type": "string",
@@ -2919,7 +3091,7 @@
           "groupId": {
             "type": "string",
             "example": "b7e1c2a3-...",
-            "description": "Attaches this field to one instance of a repeatable thing (a specific job, bank account, etc). Must belong to you \u2014 the id of a group belonging to another user is rejected, not silently ignored. Omit for a \"loose\" field like a personal phone number."
+            "description": "Attaches this field to one instance of a repeatable thing (a specific job, bank account, etc). Must belong to you — the id of a group belonging to another user is rejected, not silently ignored. Omit for a \"loose\" field like a personal phone number."
           }
         },
         "required": [
@@ -2970,7 +3142,7 @@
               "b2c1...",
               "a4f0..."
             ],
-            "description": "Field ids in the new display order. Every id must belong to the caller \u2014 ids belonging to another user are rejected, not silently skipped.",
+            "description": "Field ids in the new display order. Every id must belong to the caller — ids belonging to another user are rejected, not silently skipped.",
             "type": "array",
             "items": {
               "type": "string"
@@ -3111,7 +3283,7 @@
             "type": "string",
             "example": "Met at DevFest, potential investor",
             "maxLength": 2000,
-            "description": "Private to you \u2014 never shown to the contact."
+            "description": "Private to you — never shown to the contact."
           }
         },
         "required": [
@@ -3141,7 +3313,7 @@
         "type": "object",
         "properties": {
           "contacts": {
-            "description": "Typically the caller\u2019s device address book, handed over however the client sourced it \u2014 this endpoint doesn\u2019t care whether that was a native Contacts API, a CSV, or a manual multi-add.",
+            "description": "Typically the caller’s device address book, handed over however the client sourced it — this endpoint doesn’t care whether that was a native Contacts API, a CSV, or a manual multi-add.",
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ImportContactEntryDto"
@@ -3163,7 +3335,7 @@
             }
           },
           "updated": {
-            "description": "Phone numbers already in your registry \u2014 displayName was refreshed from the import if provided.",
+            "description": "Phone numbers already in your registry — displayName was refreshed from the import if provided.",
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ContactResponseDto"
@@ -3240,12 +3412,12 @@
           "label": {
             "type": "string",
             "example": "Reach me here",
-            "description": "labelOverride if set on this card, otherwise the field\u2019s own label."
+            "description": "labelOverride if set on this card, otherwise the field’s own label."
           },
           "value": {
             "type": "string",
             "example": "+14155550142",
-            "description": "Decrypted plaintext for financial types, same as the field editor \u2014 this is your own view of what you are about to share."
+            "description": "Decrypted plaintext for financial types, same as the field editor — this is your own view of what you are about to share."
           },
           "visible": {
             "type": "boolean",
@@ -3290,19 +3462,35 @@
           "publicUrl": {
             "type": "string",
             "example": "https://cards.contactbook.app/c/4f8Kq2mR7xJp1sN0vLtQ9a",
-            "description": "This card\u2019s own public URL \u2014 what its QR code encodes. Independent of any recipient: it exists before the card has ever been shared with anyone, and revoking one recipient\u2019s link never affects it. Resolves through the same public endpoint as a per-recipient share link."
+            "description": "This card’s own public URL — what its QR code encodes. Independent of any recipient: it exists before the card has ever been shared with anyone, and revoking one recipient’s link never affects it. Resolves through the same public endpoint as a per-recipient share link."
           },
           "logoUrl": {
             "type": "object",
             "nullable": true,
             "example": "https://storage.googleapis.com/.../card-logos/.../logo.jpg",
-            "description": "Set only via POST /cards/:id/logo \u2014 never accepted on create/update. NULL until the owner uploads one."
+            "description": "Set only via POST /cards/:id/logo — never accepted on create/update. NULL until the owner uploads one."
           },
-          "templateId": {
+          "coverUrl": {
             "type": "object",
             "nullable": true,
+            "example": "https://storage.googleapis.com/.../card-covers/.../cover.jpg",
+            "description": "Set only via POST /cards/:id/cover — never a raw string on create/update (PATCH accepts only an explicit `null` to remove it). Already cropped by the client to the card's aperture; served verbatim, never re-cropped server-side. NULL until the owner uploads one."
+          },
+          "headline": {
+            "type": "object",
+            "nullable": true,
+            "example": "Head of Partnerships",
+            "description": "Printed under the name — overrides the profile job title on this card. NULL means not set."
+          },
+          "bio": {
+            "type": "object",
+            "nullable": true,
+            "example": "Connecting people, ideas and opportunities."
+          },
+          "templateId": {
+            "type": "string",
             "example": "meridian",
-            "description": "NULL means the owner never chose one."
+            "description": "Never null — defaults to \"meridian\" when never chosen."
           },
           "paletteId": {
             "type": "object",
@@ -3318,12 +3506,14 @@
           "finish": {
             "type": "object",
             "nullable": true,
-            "example": "matte"
+            "example": "gradient",
+            "description": "Defaults to \"gradient\" when never chosen; still nullable via PATCH."
           },
           "texture": {
             "type": "object",
             "nullable": true,
-            "example": "none"
+            "example": "none",
+            "description": "Defaults to \"none\" when never chosen; still nullable via PATCH."
           },
           "texturePresence": {
             "type": "object",
@@ -3333,7 +3523,7 @@
           "textureScale": {
             "type": "object",
             "nullable": true,
-            "example": "1x"
+            "example": "fine"
           },
           "fields": {
             "type": "array",
@@ -3357,6 +3547,7 @@
           "name",
           "kind",
           "publicUrl",
+          "templateId",
           "fields",
           "createdAt",
           "updatedAt"
@@ -3385,7 +3576,8 @@
               "meridian",
               "marigold"
             ],
-            "example": "meridian"
+            "example": "meridian",
+            "description": "Not nullable — every card always has a template."
           },
           "paletteId": {
             "type": "string",
@@ -3398,38 +3590,81 @@
               "amber",
               "clay",
               "pistachio",
-              "periwinkle"
+              "periwinkle",
+              "mint",
+              "ivory"
             ],
-            "example": "sapphire"
+            "example": "sapphire",
+            "nullable": true,
+            "description": "null clears it (falls back to the template default)."
           },
           "groundHex": {
-            "type": "string",
+            "type": "object",
             "example": "#1B4F72",
-            "description": "Free colour, #RRGGBB. Overrides paletteId when set."
+            "nullable": true,
+            "description": "Free colour, #RRGGBB. Overrides paletteId when set. null clears it."
           },
           "finish": {
             "type": "string",
-            "example": "matte",
-            "maxLength": 40,
-            "description": "Surface finish. FE-owned value set, not yet enumerated here."
+            "enum": [
+              "flat",
+              "gradient",
+              "mesh"
+            ],
+            "example": "gradient",
+            "nullable": true,
+            "description": "null clears it (falls back to the \"gradient\" default)."
           },
           "texture": {
             "type": "string",
+            "enum": [
+              "none",
+              "grain",
+              "grid",
+              "dots",
+              "topo"
+            ],
             "example": "none",
-            "maxLength": 40,
-            "description": "Texture motif, \"none\" included. FE-owned value set, not yet enumerated here."
+            "nullable": true,
+            "description": "null clears it (falls back to the \"none\" default)."
           },
           "texturePresence": {
             "type": "string",
+            "enum": [
+              "subtle",
+              "medium",
+              "strong"
+            ],
             "example": "subtle",
-            "maxLength": 40,
-            "description": "How strongly the texture reads. FE-owned value set, not yet enumerated here."
+            "nullable": true
           },
           "textureScale": {
             "type": "string",
-            "example": "1x",
-            "maxLength": 40,
-            "description": "Multiplier on the texture tile. FE-owned value set, not yet enumerated here."
+            "enum": [
+              "fine",
+              "regular",
+              "large"
+            ],
+            "example": "fine",
+            "nullable": true
+          },
+          "headline": {
+            "type": "object",
+            "example": "Head of Partnerships",
+            "maxLength": 80,
+            "nullable": true,
+            "description": "Printed under the name — overrides the profile job title on this card. null clears it."
+          },
+          "bio": {
+            "type": "object",
+            "example": "Connecting people, ideas and opportunities.",
+            "maxLength": 280,
+            "nullable": true
+          },
+          "coverUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "The ONLY accepted value is literal null, to remove the cover — same effect as DELETE /cards/:id/cover. A real cover can only ever be set by uploading one via POST /cards/:id/cover, never as a string here."
           }
         }
       },
@@ -3439,18 +3674,18 @@
           "fieldId": {
             "type": "string",
             "example": "b7e1c2a3-1234-4f5a-8b6c-7d8e9f0a1b2c",
-            "description": "Must be one of your own ProfileField ids \u2014 a field belonging to another user is rejected, not silently skipped."
+            "description": "Must be one of your own ProfileField ids — a field belonging to another user is rejected, not silently skipped."
           },
           "visible": {
             "type": "boolean",
             "default": true,
-            "description": "Soft-hide without losing this field\u2019s position or label override."
+            "description": "Soft-hide without losing this field’s position or label override."
           },
           "labelOverride": {
             "type": "string",
             "example": "Reach me here",
             "maxLength": 80,
-            "description": "Shown instead of the field\u2019s own label, on this card only."
+            "description": "Shown instead of the field’s own label, on this card only."
           }
         },
         "required": [
@@ -3461,7 +3696,7 @@
         "type": "object",
         "properties": {
           "fields": {
-            "description": "The full curated set, in display order \u2014 this REPLACES whatever the card currently has, it does not merge.",
+            "description": "The full curated set, in display order — this REPLACES whatever the card currently has, it does not merge.",
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/CardFieldEntryDto"
@@ -3478,7 +3713,7 @@
           "contactId": {
             "type": "string",
             "example": "b7e1c2a3-1234-4f5a-8b6c-7d8e9f0a1b2c",
-            "description": "Must be one of your own Contact ids \u2014 add it first via POST /contacts or POST /contacts/import. A contact belonging to another user is rejected, not silently ignored."
+            "description": "Must be one of your own Contact ids — add it first via POST /contacts or POST /contacts/import. A contact belonging to another user is rejected, not silently ignored."
           }
         },
         "required": [
@@ -3495,7 +3730,7 @@
           "url": {
             "type": "string",
             "example": "https://cards.contactbook.app/c/4f8Kq2mR7xJp1sN0vLtQ9a",
-            "description": "What actually goes in the WhatsApp message. Resolves live \u2014 never a snapshot."
+            "description": "What actually goes in the WhatsApp message. Resolves live — never a snapshot."
           },
           "cardId": {
             "type": "string",
@@ -3590,7 +3825,7 @@
           "versionsBehind": {
             "type": "number",
             "example": 1,
-            "description": "card.currentVersion minus lastNotifiedVersion \u2014 0 means fully caught up."
+            "description": "card.currentVersion minus lastNotifiedVersion — 0 means fully caught up."
           },
           "viewCount": {
             "type": "number",
@@ -3618,7 +3853,7 @@
             "example": 2
           },
           "recipients": {
-            "description": "Active ShareLinks only \u2014 a revoked or never-shared contact has no link to notify.",
+            "description": "Active ShareLinks only — a revoked or never-shared contact has no link to notify.",
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/AudienceRecipientDto"
@@ -3637,7 +3872,7 @@
             "example": [
               "9c1a1b2c-3d4e-4f5a-8b6c-7d8e9f0a1b2c"
             ],
-            "description": "ShareLink ids to notify \u2014 from GET /cards/:id/audience. Each must be an ACTIVE link on this card; anything else is rejected, not silently skipped.",
+            "description": "ShareLink ids to notify — from GET /cards/:id/audience. Each must be an ACTIVE link on this card; anything else is rejected, not silently skipped.",
             "type": "array",
             "items": {
               "type": "string"
@@ -3665,7 +3900,7 @@
               "ENQUEUED"
             ],
             "example": "ENQUEUED",
-            "description": "The send is queued, not confirmed delivered \u2014 it fails cleanly with CARD_UPDATE_TEMPLATE_NOT_CONFIGURED until a CARD_UPDATE WhatsAppTemplate is approved."
+            "description": "The send is queued, not confirmed delivered — it fails cleanly with CARD_UPDATE_TEMPLATE_NOT_CONFIGURED until a CARD_UPDATE WhatsAppTemplate is approved."
           }
         },
         "required": [
@@ -3684,7 +3919,7 @@
               "REVOKED"
             ],
             "example": "REVOKED",
-            "description": "REVOKED immediately 410s the public link. Setting ACTIVE again restores the same token \u2014 it is never regenerated."
+            "description": "REVOKED immediately 410s the public link. Setting ACTIVE again restores the same token — it is never regenerated."
           }
         },
         "required": [
@@ -3782,7 +4017,7 @@
             "type": "string",
             "example": "card_share_initial_en",
             "maxLength": 80,
-            "description": "Your own semantic name \u2014 what the app looks up templates by, not Twilio\u2019s id."
+            "description": "Your own semantic name — what the app looks up templates by, not Twilio’s id."
           },
           "purpose": {
             "type": "string",
@@ -3806,7 +4041,7 @@
           "bodyPreview": {
             "type": "string",
             "example": "Hi! {{1}} shared their ContactBook card with you. Tap below to view their latest contact details.",
-            "description": "Mirror of the approved body text, for humans reading the registry \u2014 not sent to Twilio.",
+            "description": "Mirror of the approved body text, for humans reading the registry — not sent to Twilio.",
             "maxLength": 1024
           },
           "buttonLabel": {
@@ -3820,7 +4055,7 @@
               "1": "ownerName",
               "2": "shareToken"
             },
-            "description": "Documents what each numbered Twilio variable means, in the order the template body/button use them. Not validated against Twilio \u2014 this is our own record for whoever builds the send call."
+            "description": "Documents what each numbered Twilio variable means, in the order the template body/button use them. Not validated against Twilio — this is our own record for whoever builds the send call."
           },
           "approvalStatus": {
             "type": "string",
@@ -3831,7 +4066,7 @@
               "UNKNOWN"
             ],
             "default": "UNKNOWN",
-            "description": "Set this to APPROVED only after confirming in Twilio Console \u2014 nothing here checks Twilio for you yet."
+            "description": "Set this to APPROVED only after confirming in Twilio Console — nothing here checks Twilio for you yet."
           }
         },
         "required": [
@@ -3854,11 +4089,11 @@
               "UNKNOWN"
             ],
             "example": "APPROVED",
-            "description": "Set after checking Twilio Console \u2014 nothing here verifies against Twilio yet."
+            "description": "Set after checking Twilio Console — nothing here verifies against Twilio yet."
           },
           "rejectionReason": {
             "type": "string",
-            "example": "Body text exceeded WhatsApp\u2019s 1024-char limit",
+            "example": "Body text exceeded WhatsApp’s 1024-char limit",
             "maxLength": 500
           },
           "isActive": {
@@ -3898,7 +4133,7 @@
           "fromPhoneE164": {
             "type": "string",
             "example": "+919876543210",
-            "description": "Whoever initiated contact \u2014 the message sender, the QR scanner, or the card owner (for a CARD_SHARE row)."
+            "description": "Whoever initiated contact — the message sender, the QR scanner, or the card owner (for a CARD_SHARE row)."
           },
           "toPhoneE164": {
             "type": "string",
@@ -3920,7 +4155,7 @@
             "type": "object",
             "nullable": true,
             "example": "3f1c2b3a-4d5e-4f6a-8b9c-0d1e2f3a4b5c",
-            "description": "The ContactBook User this row resolves to, if any. Always set for QR_SCAN_CONNECT and CARD_SHARE (both know exactly which owner this is about). Always null for WHATSAPP_MESSAGE today \u2014 no scan-code-in-message resolution exists yet."
+            "description": "The ContactBook User this row resolves to, if any. Always set for QR_SCAN_CONNECT and CARD_SHARE (both know exactly which owner this is about). Always null for WHATSAPP_MESSAGE today — no scan-code-in-message resolution exists yet."
           },
           "receivedAt": {
             "format": "date-time",
@@ -3935,6 +4170,209 @@
           "fromPhoneE164",
           "toPhoneE164",
           "receivedAt"
+        ]
+      },
+      "DashboardTotalsDto": {
+        "type": "object",
+        "properties": {
+          "cards": {
+            "type": "number",
+            "example": 9,
+            "description": "Non-archived cards."
+          },
+          "contacts": {
+            "type": "number",
+            "example": 8
+          },
+          "fields": {
+            "type": "number",
+            "example": 35,
+            "description": "Non-archived ProfileFields."
+          },
+          "peopleReached": {
+            "type": "number",
+            "example": 12,
+            "description": "DISTINCT contacts holding at least one ACTIVE ShareLink — not the contact count, and not the link count. One person holding three cards is one person."
+          },
+          "peopleOpened": {
+            "type": "number",
+            "example": 8,
+            "description": "DISTINCT contacts who have opened at least one ACTIVE link. The people-shaped counterpart to neverOpened, which counts LINKS — one person may hold three links and have opened only one, so neither is derivable from the other. Computed from the same single pass as peopleReached, so it can never exceed it."
+          },
+          "totalOpens": {
+            "type": "number",
+            "example": 47,
+            "description": "viewCount summed over ACTIVE links only — a revoked link’s opens are history."
+          },
+          "neverOpened": {
+            "type": "number",
+            "example": 3,
+            "description": "ACTIVE links with viewCount = 0."
+          },
+          "behind": {
+            "type": "object",
+            "nullable": true,
+            "example": 5,
+            "description": "DISTINCT contacts behind on at least one ACTIVE card — always a subset of, never greater than, peopleReached. null (never 0) when there is nothing to compute this from — e.g. no cards yet. Rendered differently on purpose: \"we don't know\" is not the same claim as \"nobody is behind.\""
+          }
+        },
+        "required": [
+          "cards",
+          "contacts",
+          "fields",
+          "peopleReached",
+          "peopleOpened",
+          "totalOpens",
+          "neverOpened"
+        ]
+      },
+      "CardReachItemDto": {
+        "type": "object",
+        "properties": {
+          "cardId": {
+            "type": "string",
+            "example": "9c1a1b2c-3d4e-4f5a-8b6c-7d8e9f0a1b2c"
+          },
+          "cardName": {
+            "type": "string",
+            "example": "Work"
+          },
+          "opens": {
+            "type": "number",
+            "example": 12,
+            "description": "Summed viewCount across this card’s ACTIVE links."
+          },
+          "recipients": {
+            "type": "number",
+            "example": 3,
+            "description": "ACTIVE links on this card."
+          }
+        },
+        "required": [
+          "cardId",
+          "cardName",
+          "opens",
+          "recipients"
+        ]
+      },
+      "AttentionItemDto": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "no-fields",
+              "behind",
+              "never-opened",
+              "never-shared"
+            ],
+            "example": "behind"
+          },
+          "cardId": {
+            "type": "string",
+            "example": "9c1a1b2c-3d4e-4f5a-8b6c-7d8e9f0a1b2c"
+          },
+          "cardName": {
+            "type": "string",
+            "example": "Work"
+          },
+          "count": {
+            "type": "number",
+            "example": 2,
+            "description": "Meaning depends on kind: recipients behind (behind), recipients who never opened (never-opened), or 0 as a fixed marker for the binary kinds (no-fields, never-shared)."
+          }
+        },
+        "required": [
+          "kind",
+          "cardId",
+          "cardName",
+          "count"
+        ]
+      },
+      "SharingActivityBucketDto": {
+        "type": "object",
+        "properties": {
+          "weekStart": {
+            "type": "string",
+            "example": "2026-06-29",
+            "description": "Monday (UTC) of this bucket’s week."
+          },
+          "count": {
+            "type": "number",
+            "example": 0,
+            "description": "ShareLinks CREATED in this week, across all this owner’s cards, regardless of current status. This measures link creation, not opens — see the card-appearance spec §4.3 for why an opens-over-time chart doesn’t exist yet."
+          }
+        },
+        "required": [
+          "weekStart",
+          "count"
+        ]
+      },
+      "DashboardGroupDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "b7e1c2a3-1234-4f5a-8b6c-7d8e9f0a1b2c"
+          },
+          "name": {
+            "type": "string",
+            "example": "Work",
+            "description": "The group’s own tag, or a title-cased fallback of its category when untagged."
+          },
+          "fieldCount": {
+            "type": "number",
+            "example": 4,
+            "description": "Non-archived fields in this group. Empty groups are included, not filtered out."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "fieldCount"
+        ]
+      },
+      "DashboardResponseDto": {
+        "type": "object",
+        "properties": {
+          "totals": {
+            "$ref": "#/components/schemas/DashboardTotalsDto"
+          },
+          "cardReach": {
+            "description": "One row per non-archived card, including cards with zero opens/recipients.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CardReachItemDto"
+            }
+          },
+          "attention": {
+            "description": "Grouped by kind in priority order (no-fields, behind, never-opened, never-shared), worst (highest count) first within each kind.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AttentionItemDto"
+            }
+          },
+          "sharingActivity": {
+            "description": "12 weekly buckets, oldest first, ending with the current week.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SharingActivityBucketDto"
+            }
+          },
+          "groups": {
+            "description": "Every non-archived group, including empty ones.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DashboardGroupDto"
+            }
+          }
+        },
+        "required": [
+          "totals",
+          "cardReach",
+          "attention",
+          "sharingActivity",
+          "groups"
         ]
       }
     }

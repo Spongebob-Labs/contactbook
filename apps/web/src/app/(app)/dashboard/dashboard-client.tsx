@@ -14,20 +14,14 @@ import {
 } from "@/components/data";
 import { fetchDashboardData } from "@/lib/api/browser-loaders";
 import { useApiResource } from "@/lib/use-api";
-import { attention, cardReach, sharingByWeek, totals } from "@/lib/dashboard/metrics";
-import type {
-  Attention,
-  CardReach,
-  DashboardTotals,
-  WeekBucket,
-} from "@/lib/dashboard/metrics";
+import { toDashboardView } from "@/lib/dashboard/metrics";
+import type { DashboardView } from "@/lib/dashboard/metrics";
 import { reachScore, type ReachScore } from "@/lib/dashboard/reach-score";
 import { ActivityChart } from "@/components/dashboard/activity-chart";
 import { ReachBars } from "@/components/dashboard/reach-bars";
 import { ReachPanel } from "@/components/dashboard/reach-panel";
 import { AttentionList } from "@/components/dashboard/attention-list";
-import { ProfileStrength, type ProfileGroupSummary } from "@/components/dashboard/profile-strength";
-import type { ContactCard } from "@/types/domain";
+import { ProfileStrength } from "@/components/dashboard/profile-strength";
 
 /**
  * `/dashboard` — the owner's landing surface (spec §8D.3 dashboard row, §4.4 step 1,
@@ -91,9 +85,8 @@ const GRID_CLASS =
 /** What `fetchDashboardData` returns — named so `readDashboard` is not typed against a loader. */
 type DashboardApiData = Awaited<ReturnType<typeof fetchDashboardData>>;
 
-interface DashboardData {
-  totals: DashboardTotals;
-  /** The headline. Derived here with everything else so the panel re-computes nothing. */
+interface DashboardData extends DashboardView {
+  /** The headline. Derived from the same response, so the panel re-computes nothing. */
   score: ReachScore;
   /**
    * `cardId` → the colour that card actually wears.
@@ -101,46 +94,35 @@ interface DashboardData {
    * Derived once here and handed down, rather than each chart looking a card up for itself: the
    * bars and the attention rows must agree about what colour a card is, and two independent
    * lookups is two chances to drift.
+   *
+   * ⚠ The only thing on this screen that comes from `GET /cards` rather than `GET /dashboard`,
+   * and it carries no number — see `fetchDashboardData`. It can legitimately be empty, when the
+   * card read failed; both charts treat `palettes` as optional and fall back to a neutral rule.
    */
   palettes: ReadonlyMap<string, TemplatePalette>;
-  weeks: readonly WeekBucket[];
-  reach: readonly CardReach[];
-  attention: readonly Attention[];
-  /** Every profile group with its field count — what `<ProfileStrength>` reads. */
-  groups: readonly ProfileGroupSummary[];
-  cards: readonly ContactCard[];
+  /** Whether the owner has any cards at all — this screen's own emptiness verdict. */
+  hasCards: boolean;
 }
 
 /**
- * Everything the success surface renders, derived once.
+ * Everything the success surface renders.
+ *
+ * ⚠ **Renaming, not arithmetic.** Every count, bucket and queue row arrives computed by
+ * `GET /dashboard`; this reshapes the response into the components' vocabulary and derives the
+ * score from it. Re-summing or re-sorting anything here would put back the second source of
+ * truth that `GET /dashboard` exists to delete — see `metrics.ts`.
  *
  * Memoised on the loaded data itself — which the resource hook keeps referentially stable
  * between loads — and never on the result wrapper, which is a fresh object every render.
  */
 function readDashboard(db: DashboardApiData): DashboardData {
-  const metricCards = db.cards.map((card) => ({
-    id: card.id,
-    name: card.name,
-    fieldIds: card.fieldIds,
-  }));
-
   return {
-    cards: db.cards,
-    score: reachScore({ cards: metricCards, links: db.links, behind: db.behind }),
+    ...toDashboardView(db.summary),
+    /* ⚠ The RAW response, not the view: `toDashboardView` caps `cardReach` at five rows for
+       chart width, and the "ready" lever has to count every card the owner has. */
+    score: reachScore(db.summary),
     palettes: cardPalettes(db.cards),
-    totals: totals({
-      cards: metricCards,
-      contactCount: db.contacts.length,
-      fieldCount: db.fields.length,
-      links: db.links,
-      behind: db.behind,
-    }),
-    weeks: sharingByWeek(db.links, new Date()),
-    reach: cardReach(metricCards, db.links),
-    attention: attention(metricCards, db.links, db.behindByCardId),
-    /* ⚠ Every group, including the empty ones — they are the whole point. A summary that
-       dropped them would report a profile as complete precisely when it is not. */
-    groups: db.groups.map((g) => ({ id: g.id, name: g.name, fieldCount: g.fieldIds.length })),
+    hasCards: db.summary.totals.cards > 0,
   };
 }
 
@@ -218,11 +200,16 @@ export function DashboardSkeleton(): ReactElement {
 
 export function DashboardClient(): ReactElement {
   const router = useRouter();
-  /* ⚠ `GET /cards` + `/contacts` + `/share-links` + the profile reads + one `/audience` per
-     card — all visible in the Network tab. This screen ran on `useFixture` until now, which
-     meant it reported the fixture set's 9 cards, 8 contacts and 35 fields to every owner and
-     drew a card whose link pointed at `card.example`. Numbers on a dashboard are read as
-     facts about the reader's own data; inventing them is worse than showing nothing. */
+  /* ⚠ **Two requests, and only one of them carries a number.** `GET /dashboard` computes every
+     count, bucket and queue row server-side; `GET /cards` rides alongside purely so the charts
+     can colour each bar by the palette its card wears. Both visible in the Network tab.
+
+     This screen ran on `useFixture` once, which meant it reported the fixture set's 9 cards, 8
+     contacts and 35 fields to every owner and drew a card whose link pointed at `card.example`.
+     It then ran on a client-side reduction of four endpoints plus one `/audience` per card,
+     which was real data but let `behind` exceed `peopleReached` — two reductions over different
+     collections. Numbers on a dashboard are read as facts about the reader's own data: inventing
+     them is worse than showing nothing, and deriving them twice is how they come to disagree. */
   const { state, data, error } = useApiResource(fetchDashboardData);
 
   const dashboard = useMemo(() => (data === null ? null : readDashboard(data)), [data]);
@@ -230,7 +217,7 @@ export function DashboardClient(): ReactElement {
   const screenState = resolveDataScreenState({
     state,
     // E-09's condition, and this screen's own verdict — never `state === 'empty'`.
-    isEmpty: dashboard === null || dashboard.cards.length === 0,
+    isEmpty: dashboard === null || !dashboard.hasCards,
     // No `isFiltered`: there is no filter and no search on this screen (§8D.3).
   });
 

@@ -1,6 +1,6 @@
 import { BUILDER_NEW_CARD_NAME } from "@/components/builder/builder-reducer";
 
-import type { MetricCard, MetricLink } from "./metrics";
+import type { DashboardResponseDto } from "@/lib/api/schema";
 
 /**
  * THE REACH SCORE — one number for "is this card doing its job", and the actions that raise it.
@@ -17,7 +17,7 @@ import type { MetricCard, MetricLink } from "./metrics";
  * queue. The score is defined as the sum of the levers, never computed separately — see
  * {@link ReachScore.score} for why that direction matters.
  *
- * ## ⚠ Every input is already computed. Nothing here is invented.
+ * ## ⚠ Every input is already computed — **by the API**. Nothing here is invented.
  *
  * `metrics.ts` opens with a warning that bears repeating: `ShareLink` carries a counter and two
  * bookends, **not a log**, so opens-over-time is not computable and must not be drawn. The same
@@ -25,15 +25,19 @@ import type { MetricCard, MetricLink } from "./metrics";
  * none of them measures anything the API knows. A score made of invented numbers is worse than
  * no score, because it looks like measurement.
  *
- * The three levers below are ratios over data `totals()` and `attention()` already derive.
+ * The three levers below are ratios over fields of `GET /dashboard` — `totals.peopleReached`,
+ * `totals.peopleOpened`, `totals.behind`, and the cards named in `cardReach`/`attention`. This
+ * module reads the **raw response** rather than the trimmed view, because `toDashboardView` caps
+ * `cardReach` at five rows for chart width and the "ready" lever must count every card.
  *
  * ## ⚠ THE RULE THAT SHAPES EVERYTHING: UNKNOWN IS NOT ZERO
  *
  * Two of the three levers can be unmeasurable, and the difference between "you scored badly"
  * and "there is nothing to score yet" is the whole credibility of the number:
  *
- * - `behind` is `null` when the audience endpoint is unavailable — `browser-loaders.ts` is
- *   explicit that this stays `null` "rather than collapsing to a confident 0".
+ * - `behind` is `null` when there is nothing to compute it from — an account with no cards at
+ *   all. The API is explicit that this is never `0`, which would mean "checked, nobody's
+ *   behind".
  * - An owner who has never shared a card has **0 of 0** links opened. Scoring that as 0/40 tells
  *   someone with a perfectly good card that they are failing at something they have not done.
  *
@@ -120,69 +124,88 @@ function distribute(ids: readonly LeverId[]): Record<string, number> {
   return out;
 }
 
-/** A card counts as ready when it would actually be worth receiving. */
-function isReady(card: MetricCard): boolean {
-  /* Two separate failures, and both are real. A card with no fields shares nothing — §11 E-01's
-     whole subject. A card still called "Untitled card" has been abandoned mid-build, which the
-     builder's own comments record as a shipped defect ("card after card still called Untitled
-     card"). Trimmed and compared case-insensitively so "untitled card " does not sneak past. */
-  if (card.fieldIds.length === 0) return false;
-  return card.name.trim().toLowerCase() !== BUILDER_NEW_CARD_NAME.toLowerCase();
+/**
+ * How many cards would actually be worth receiving.
+ *
+ * ⚠ Read off `cardReach` and `attention` rather than off a card list, because those are what
+ * `GET /dashboard` returns — and `cardReach` carries **one row per non-archived card**,
+ * including the zero-activity ones, so it is a complete roster and not just the active cards.
+ *
+ * Two separate failures, and both are real. A card with no fields shares nothing — the API
+ * reports exactly those as `attention.kind === "no-fields"`, so that judgement is the server's
+ * and is not re-derived here. A card still called "Untitled card" has been abandoned mid-build,
+ * which the builder's own comments record as a shipped defect ("card after card still called
+ * Untitled card"); that one is a naming rule the API has no opinion about, so it stays here.
+ * Trimmed and compared case-insensitively so "untitled card " does not sneak past.
+ */
+function readyCardCount(dto: DashboardResponseDto): number {
+  const empty = new Set(
+    dto.attention.filter((row) => row.kind === "no-fields").map((row) => row.cardId),
+  );
+  return dto.cardReach.filter(
+    (card) =>
+      !empty.has(card.cardId) &&
+      card.cardName.trim().toLowerCase() !== BUILDER_NEW_CARD_NAME.toLowerCase(),
+  ).length;
 }
 
-export function reachScore(input: {
-  cards: readonly MetricCard[];
-  links: readonly MetricLink[];
-  /** Recipients on a stale version of any card. `null` means "not known", never "none". */
-  behind: number | null;
-}): ReachScore {
-  const active = input.links.filter((l) => l.status === "ACTIVE");
-
+/**
+ * @param dto the **raw** `GET /dashboard` response — not `toDashboardView`'s output, whose
+ *   `reach` is capped at five rows for chart width. Scoring off a truncated roster would rate an
+ *   owner with nine cards as though they had five.
+ */
+export function reachScore(dto: DashboardResponseDto): ReachScore {
   /* ── Lever 1 — opened, measured in PEOPLE rather than links ───────────────────────────
      One person holding links to three cards is one person reached, which is how
-     `totals().peopleReached` already counts them. Measuring this lever in links instead would
-     let a single enthusiastic recipient with several cards outweigh three silent ones, and the
-     panel would print a people-count beside a link-derived rate that disagrees with it. */
-  const reachedPeople = new Set(active.map((l) => l.contactId));
-  const openedPeople = new Set(active.filter((l) => l.viewCount > 0).map((l) => l.contactId));
+     `totals.peopleReached` counts them. Measuring this lever in links instead would let a single
+     enthusiastic recipient with several cards outweigh three silent ones, and the panel would
+     print a people-count beside a link-derived rate that disagrees with it.
+
+     ⚠ This is why the score reads `peopleOpened` and **not** `neverOpened`: the latter counts
+     LINKS, and one person may hold three and have opened one. Neither is derivable from the
+     other, which is why the API returns both. */
+  const reachedCount = dto.totals.peopleReached;
+  const openedCount = dto.totals.peopleOpened;
 
   /* ── Lever 2 — told ───────────────────────────────────────────────────────────────────
-     ⚠ `behind` is clamped into range, and that is not defensive padding: the live data has
-     `behind: 3` against `peopleReached: 2` — three people behind on cards only two people hold.
-     One of those numbers is wrong upstream. Until it is fixed, an unclamped subtraction prints
-     "-1 people up to date" on the owner's dashboard, so the clamp holds the floor at 0 and the
-     lever simply reads as fully incomplete. */
-  const reachedCount = reachedPeople.size;
-  const behindCount = input.behind === null ? 0 : Math.min(Math.max(input.behind, 0), reachedCount);
-  const toldMeasurable = input.behind !== null && reachedCount > 0;
+     ⚠ The clamp stays, although the bug that forced it is fixed. Live data used to carry
+     `behind: 3` against `peopleReached: 2` — three people behind on cards only two people hold —
+     because the two were reduced from different client-side collections. `GET /dashboard`
+     computes both from one pass, so `behind` can no longer exceed `peopleReached`. The clamp
+     costs nothing and keeps a future upstream regression from printing "-1 people up to date" on
+     an owner's dashboard rather than merely being wrong in a log. */
+  const behind = dto.totals.behind;
+  const behindCount = behind === null ? 0 : Math.min(Math.max(behind, 0), reachedCount);
+  const toldMeasurable = behind !== null && reachedCount > 0;
 
   /* ── Lever 3 — ready ──────────────────────────────────────────────────────────────────
      The only lever an owner with no links can move, and therefore the only thing a brand new
      account is rated on. */
-  const readyCards = input.cards.filter(isReady).length;
+  const readyCards = readyCardCount(dto);
+  const cardCount = dto.totals.cards;
 
   const raw: Record<
     LeverId,
     { done: number; total: number; outstanding: number; measurable: boolean }
   > = {
     opened: {
-      done: openedPeople.size,
+      done: openedCount,
       total: reachedCount,
-      outstanding: reachedCount - openedPeople.size,
+      outstanding: reachedCount - openedCount,
       measurable: reachedCount > 0,
     },
     told: {
       done: reachedCount - behindCount,
       total: reachedCount,
       /* The UNCLAMPED backlog — what the owner must actually notify. See `outstanding`. */
-      outstanding: Math.max(input.behind ?? 0, 0),
+      outstanding: Math.max(behind ?? 0, 0),
       measurable: toldMeasurable,
     },
     ready: {
       done: readyCards,
-      total: input.cards.length,
-      outstanding: input.cards.length - readyCards,
-      measurable: input.cards.length > 0,
+      total: cardCount,
+      outstanding: cardCount - readyCards,
+      measurable: cardCount > 0,
     },
   };
 

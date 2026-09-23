@@ -6,8 +6,7 @@ import { useState, type ReactElement } from "react";
 import { Button } from "@/components/primitives";
 import { cards as cardsApi, profile as profileApi } from "@/lib/api/browser";
 import { toCardFieldEntries } from "@/lib/api/map";
-import { saveLocalCardDraft } from "@/lib/card-local-draft";
-import { imageToDataUrl } from "@/lib/image-to-data-url";
+import { dataUrlToFile, imageToDataUrl } from "@/lib/image-to-data-url";
 
 /** ⚠ Development utility — see the route's own note. Delete with it. */
 
@@ -49,10 +48,18 @@ export function SeedDemoCard(): ReactElement {
             that is the only way it can be set at creation (see `cards.ts`). */
       const logo = await fileFrom(LOGO_SRC, "logo.png");
       const created = await cardsApi.create(
-        { name: CARD_NAME, paletteId: "ivory", templateId: "meridian", finish: "gradient" },
+        {
+          name: CARD_NAME,
+          paletteId: "ivory",
+          templateId: "meridian",
+          finish: "gradient",
+          /* Real columns, so they ride the create. Only the cover cannot — see step 4. */
+          headline: HEADLINE,
+          bio: BIO,
+        },
         logo,
       );
-      say(`Created "${CARD_NAME}" with a logo.`);
+      say(`Created "${CARD_NAME}" with a logo, position and bio.`);
 
       /* 3 — tick all of them onto it. */
       await cardsApi.setFields(created.id, {
@@ -60,12 +67,17 @@ export function SeedDemoCard(): ReactElement {
       });
       say(`Shared all ${fields.length} fields on the card.`);
 
-      /* 4 — the three the API has no column for, into the local store. ⚠ This is the part that
-            does not travel: it is this browser only, until the backend carries them. */
-      const cover = await fileFrom(COVER_SRC, "cover.png");
-      const { dataUrl, bytes } = await imageToDataUrl(cover);
-      saveLocalCardDraft(created.id, { coverUrl: dataUrl, headline: HEADLINE, bio: BIO });
-      say(`Set the cover (${Math.round(bytes / 1024)}KB), position and bio — this browser only.`);
+      /* 4 — the cover, which is always its own call: `POST /cards` carries no cover part and
+            `PATCH` rejects a URL string, so the upload is the only door and it needs the id.
+
+            Downscaled first, exactly as the builder's picker does, so the seeded card carries
+            bytes the same shape a real owner's would — the API stores what it is sent and
+            resizes nothing, so seeding a full-resolution portrait here would put a card in the
+            fixture set that no real flow can produce. */
+      const source = await fileFrom(COVER_SRC, "cover.png");
+      const { dataUrl, bytes } = await imageToDataUrl(source);
+      await cardsApi.uploadCover(created.id, dataUrlToFile(dataUrl, "cover.jpg"));
+      say(`Uploaded the cover (${Math.round(bytes / 1024)}KB).`);
 
       router.push(`/cards/${created.id}`);
     } catch (thrown) {

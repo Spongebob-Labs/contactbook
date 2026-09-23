@@ -30,17 +30,26 @@
  * (an order that has changed between versions), and it means editing a fixture does not need
  * the stub restarted.
  *
- * ## ⚠ Reads are real. Writes are accepted and NOT persisted.
+ * ## ⚠ Reads are real. Writes are persisted ONLY for a spec that opts in.
  *
- * Every `GET` below answers from the snapshot, so a screen renders exactly what the fixtures
- * say. Mutations answer `200`/`201` with a plausible echo so that pressing Save does not
- * explode — but nothing is stored, and a second `GET` returns the original fixture.
+ * By default every `GET` answers from the snapshot and every mutation answers `200`/`201` with
+ * a plausible echo that is **not stored** — exactly as this stub has always behaved, and what
+ * all 22 existing spec files still get.
  *
- * That boundary is drawn on purpose rather than out of laziness. A stub with half-real state is
- * the worst of both: a spec that asserts "add a field, reload, it is still there" would pass
- * against fake persistence and prove nothing about the API contract. Suites that need a
- * round-trip should either drive the real API or wait for this stub to grow a real store —
- * which is a deliberate next step, not something to fake convincingly.
+ * A spec that needs a genuine round trip opts in by signing in with its own `sub`:
+ *
+ *     await signIn(context, baseURL, { sub: statefulSub("cover-upload") });
+ *
+ * That hands it a private, mutable copy of the fixture world — see `state.mjs`, which explains
+ * why the isolation is per-`sub` (this one process serves three viewport projects running
+ * `fullyParallel`, so a shared store would be a race) and, more importantly, what a pass against
+ * it does and does not prove.
+ *
+ * The old blanket refusal to store anything was right for what this stub was then, and its own
+ * note called a real store "a deliberate next step, not something to fake convincingly". The
+ * card-appearance work is the case that forced it: the entire point of giving `coverUrl`,
+ * `headline`, `bio` and the design axes real columns is that they **survive a reload**, and a
+ * stub that discards the `PATCH` renders identically whether the client is right or broken.
  *
  * ⚠ **No authentication is checked, and that is not an oversight.** `proxy.ts` decides whether
  * a request may proceed by looking for a `cb_at` cookie and reading its `exp` — it never
@@ -51,6 +60,16 @@
 import { createServer } from "node:http";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+
+import {
+  Rejected,
+  cardPatch,
+  coverDataUrl,
+  dashboard,
+  filePart,
+  formFields,
+  partitionFor,
+} from "./state.mjs";
 
 const PORT = Number(process.env.STUB_API_PORT ?? 8788);
 const SNAPSHOT = resolve(process.cwd(), "tests/.tmp/api-fixtures.json");
@@ -101,15 +120,23 @@ const notFound = (res, code, message) => json(res, 404, { code, message });
 const STUB_LOGO_URL =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
 
-/** Read and discard a request body, so a POST/PATCH/PUT does not hang the socket. */
+/**
+ * Read the whole request body, so a POST/PATCH/PUT does not hang the socket.
+ *
+ * ⚠ **Collects Buffers and concatenates once, rather than `raw += chunk`.** The old string
+ * accumulation decoded every chunk as UTF-8, which corrupts any byte above 0x7F — i.e. most of a
+ * JPEG. That did not matter while no route read an uploaded file's contents; the cover endpoint
+ * echoes the bytes back so a spec can prove the image that reaches the card is the one the crop
+ * dialog produced, and that assertion is worthless if this function mangles them.
+ *
+ * Callers that want text call `.toString("utf8")` themselves — JSON bodies are unaffected.
+ */
 function drain(req) {
   return new Promise((done) => {
-    let raw = "";
-    req.on("data", (chunk) => {
-      raw += chunk;
-    });
-    req.on("end", () => done(raw));
-    req.on("error", () => done(raw));
+    const chunks = [];
+    req.on("data", (chunk) => chunks.push(chunk));
+    req.on("end", () => done(Buffer.concat(chunks)));
+    req.on("error", () => done(Buffer.concat(chunks)));
   });
 }
 
@@ -119,9 +146,10 @@ const server = createServer(async (req, res) => {
   const path = url.pathname.replace(/^\/api\/v1/, "").replace(/\/+$/, "") || "/";
   const method = req.method ?? "GET";
 
-  /* `drain` returns what it read. It used to be discarded, because nothing routed on a request
-     body — the connect flow below is the first thing that does. */
-  const rawBody = method === "GET" ? "" : await drain(req);
+  /* `drain` returns what it read, as bytes. `rawBody` is the text view for the JSON routes;
+     `rawBytes` is what the multipart parser needs — see the ⚠ on `drain`. */
+  const rawBytes = method === "GET" ? Buffer.alloc(0) : await drain(req);
+  const rawBody = rawBytes.toString("utf8");
 
   /* ── the public card link, unchanged from the original stub ───────────────────────────
      `n{count}` renders a card carrying exactly that many fields, so a spec can address "the
@@ -238,6 +266,29 @@ const server = createServer(async (req, res) => {
         `check that playwright.config.ts still declares globalSetup, and that the stub was ` +
         `launched from apps/web.`,
     });
+  }
+
+  /* ── the STATEFUL surface — only for a spec that opted in ─────────────────────────────
+     `partitionFor` returns null for every other caller, and everything below is skipped, so
+     the 22 existing spec files see exactly the stateless stub they always did. See `state.mjs`
+     for why isolation is keyed on the token's `sub` and what a pass here proves. */
+  const store = partitionFor(req.headers.authorization, db);
+  if (store !== null) {
+    try {
+      const answer = await stateful({ store, db, path, method, rawBody, rawBytes, req });
+      if (answer !== undefined) {
+        if (answer.status === 204) {
+          res.statusCode = 204;
+          return res.end();
+        }
+        return json(res, answer.status, answer.body);
+      }
+    } catch (thrown) {
+      if (thrown instanceof Rejected) return json(res, thrown.status, thrown.body);
+      throw thrown;
+    }
+    /* Fell through: a route this partition does not override. The stateless handlers below
+       answer it from the snapshot, which is correct for every read the store does not own. */
   }
 
   /* ── the authenticated surface ────────────────────────────────────────────────────────── */
@@ -357,6 +408,231 @@ const server = createServer(async (req, res) => {
      than reporting an empty screen. */
   return notFound(res, "STUB_ROUTE_UNHANDLED", `The e2e stub has no handler for ${method} ${path}.`);
 });
+
+
+/**
+ * Every route whose result depends on what this partition has already written.
+ *
+ * Returns `{status, body}` to answer, or `undefined` to fall through to the stateless handlers.
+ * Throws {@link Rejected} to answer with the API's own error envelope.
+ *
+ * ⚠ **Order matters exactly as it does below**: `/cards/:id/cover` and `/cards/:id/logo` are
+ * matched before the bare `/cards/:id`, or its `([^/]+)$` pattern swallows them.
+ */
+async function stateful({ store, db, path, method, rawBody, rawBytes, req }) {
+  const body = () => {
+    try {
+      return rawBody.length > 0 ? JSON.parse(rawBody) : {};
+    } catch {
+      return {};
+    }
+  };
+  const find = (id) => store.cards.find((c) => c.id === id);
+  const stamp = (card) => {
+    card.updatedAt = new Date().toISOString();
+    return card;
+  };
+  const cardNotFound = () =>
+    new Rejected(404, "CARD_NOT_FOUND", "This card does not exist.");
+
+  if (path === "/dashboard" && method === "GET") {
+    return { status: 200, body: dashboard(store, db) };
+  }
+
+  if (path === "/cards" && method === "GET") return { status: 200, body: store.cards };
+  if (path === "/share-links" && method === "GET") return { status: 200, body: store.shareLinks };
+
+  if (path === "/cards" && method === "POST") {
+    /* ⚠ `multipart/form-data`, always — the create grew a `file` part so a card can be born
+       wearing its logo. Its other properties therefore arrive as form fields, i.e. as strings. */
+    const fields = formFields(rawBytes, req.headers["content-type"]);
+    const logo = filePart(rawBytes, req.headers["content-type"]);
+    store.seq += 1;
+    const id = `card_stateful_${store.seq}`;
+    const created = {
+      id,
+      name: fields.name ?? "Untitled card",
+      kind: fields.kind ?? "CUSTOM",
+      templateId: fields.templateId ?? "meridian",
+      paletteId: fields.paletteId ?? null,
+      groundHex: fields.groundHex ?? null,
+      finish: fields.finish ?? "gradient",
+      texture: fields.texture ?? "none",
+      texturePresence: fields.texturePresence ?? null,
+      textureScale: fields.textureScale ?? null,
+      /* ⚠ `headline` and `bio` ride the create; a cover never can — it has no part on this
+         endpoint and `PATCH` rejects a URL, so it is always `POST /cards/:id/cover` afterwards. */
+      headline: fields.headline ?? null,
+      bio: fields.bio ?? null,
+      coverUrl: null,
+      logoUrl: logo === null ? null : STUB_LOGO_URL,
+      publicUrl: `http://localhost:3100/c/${id}`,
+      currentVersion: 1,
+      fields: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    store.cards.push(created);
+    return { status: 201, body: created };
+  }
+
+  const cover = /^\/cards\/([^/]+)\/cover$/.exec(path);
+  if (cover !== null) {
+    const card = find(cover[1]);
+    if (card === undefined) throw cardNotFound();
+
+    if (method === "POST") {
+      /* Validates type and the 5MB cap, then echoes the ACTUAL bytes back as a data URL — so a
+         spec can assert the image the card renders is the one the crop dialog produced. */
+      card.coverUrl = coverDataUrl(filePart(rawBytes, req.headers["content-type"]));
+      return { status: 200, body: stamp(card) };
+    }
+    if (method === "DELETE") {
+      if (card.coverUrl === null) {
+        throw new Rejected(404, "COVER_NOT_FOUND", "This card has no cover to remove.");
+      }
+      card.coverUrl = null;
+      stamp(card);
+      return { status: 204 };
+    }
+  }
+
+  const logo = /^\/cards\/([^/]+)\/logo$/.exec(path);
+  if (logo !== null) {
+    const card = find(logo[1]);
+    if (card === undefined) throw cardNotFound();
+    if (method === "POST") {
+      card.logoUrl = STUB_LOGO_URL;
+      return { status: 200, body: stamp(card) };
+    }
+    if (method === "DELETE") {
+      if (card.logoUrl === null) {
+        throw new Rejected(404, "LOGO_NOT_FOUND", "This card has no logo to remove.");
+      }
+      card.logoUrl = null;
+      stamp(card);
+      return { status: 204 };
+    }
+  }
+
+  const fieldsRoute = /^\/cards\/([^/]+)\/fields$/.exec(path);
+  if (fieldsRoute !== null && method === "PUT") {
+    const card = find(fieldsRoute[1]);
+    if (card === undefined) throw cardNotFound();
+    /* ⚠ REPLACES the whole curated set — not a merge. A client that sent only what changed
+       would silently strip the rest, and this is where that shows up. */
+    const entries = body().fields ?? [];
+    card.fields = entries.flatMap((entry, position) => {
+      const field = db.fields.find((f) => f.id === entry.fieldId);
+      if (field === undefined) return [];
+      return [
+        {
+          fieldId: field.id,
+          category: field.category,
+          type: field.type,
+          label: entry.labelOverride ?? field.label,
+          value: field.value,
+          visible: entry.visible !== false,
+          position,
+        },
+      ];
+    });
+    /* Bumped only by a field-set change, never by an appearance PATCH — a palette swap is not
+       something a recipient can perceive as "the card changed". */
+    card.currentVersion += 1;
+    return { status: 200, body: stamp(card) };
+  }
+
+  const share = /^\/cards\/([^/]+)\/share$/.exec(path);
+  if (share !== null && method === "POST") {
+    const card = find(share[1]);
+    if (card === undefined) throw cardNotFound();
+    const contactId = body().contactId;
+    const contact = db.contacts.find((c) => c.id === contactId);
+    if (contact === undefined) {
+      throw new Rejected(404, "CONTACT_NOT_FOUND", "This contact does not exist.");
+    }
+    /* ⚠ Idempotent per (card, contact) — the same token comes back rather than a second link.
+       A double tap on Send must not mint two links, and the dashboard must not count one
+       person twice. */
+    const existing = store.shareLinks.find(
+      (l) => l.cardId === card.id && l.contactId === contactId,
+    );
+    if (existing !== undefined) return { status: 201, body: existing };
+
+    store.seq += 1;
+    const link = {
+      id: `link_stateful_${store.seq}`,
+      cardId: card.id,
+      contactId,
+      token: `tok${store.seq}`,
+      url: `http://localhost:3100/c/tok${store.seq}`,
+      status: "ACTIVE",
+      viewCount: 0,
+      firstViewedAt: null,
+      lastViewedAt: null,
+      lastNotifiedVersion: card.currentVersion,
+      createdAt: new Date().toISOString(),
+    };
+    store.shareLinks.push(link);
+    return { status: 201, body: link };
+  }
+
+  const audience = /^\/cards\/([^/]+)\/audience$/.exec(path);
+  if (audience !== null && method === "GET") {
+    const card = find(audience[1]);
+    if (card === undefined) throw cardNotFound();
+    return {
+      status: 200,
+      body: {
+        currentVersion: card.currentVersion,
+        recipients: store.shareLinks
+          .filter((l) => l.cardId === card.id && l.status === "ACTIVE")
+          .map((l) => {
+            const contact = db.contacts.find((c) => c.id === l.contactId);
+            return {
+              shareLinkId: l.id,
+              contactId: l.contactId,
+              contactDisplayName: contact?.displayName ?? null,
+              contactPhoneE164: contact?.phoneE164 ?? "+910000000000",
+              lastNotifiedVersion: l.lastNotifiedVersion,
+              versionsBehind: Math.max(card.currentVersion - (l.lastNotifiedVersion ?? 0), 0),
+              viewCount: l.viewCount,
+              lastViewedAt: l.lastViewedAt,
+            };
+          }),
+      },
+    };
+  }
+
+  const one = /^\/cards\/([^/]+)$/.exec(path);
+  if (one !== null) {
+    const card = find(one[1]);
+    if (card === undefined) throw cardNotFound();
+
+    if (method === "GET") return { status: 200, body: card };
+    if (method === "PATCH") {
+      /* ⚠ The whole contract in one line: `cardPatch` validates the closed sets and the length
+         caps, enforces that `coverUrl` may only ever be null, and — crucially — returns ONLY
+         the keys the request actually carried, so an omitted field is left alone and an explicit
+         null clears it. Merging a defaulted object here would erase every column the client did
+         not mention. */
+      Object.assign(card, cardPatch(body()));
+      return { status: 200, body: stamp(card) };
+    }
+    if (method === "DELETE") {
+      store.cards = store.cards.filter((c) => c.id !== card.id);
+      /* Archiving a card revokes every active link on it — recipients get a 410 rather than a
+         link that quietly still works. */
+      for (const link of store.shareLinks) {
+        if (link.cardId === card.id) link.status = "REVOKED";
+      }
+      return { status: 204 };
+    }
+  }
+
+  return undefined;
+}
 
 server.listen(PORT, () => {
   process.stdout.write(`e2e api stub listening on ${PORT}\n`);

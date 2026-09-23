@@ -1,206 +1,100 @@
 /**
- * Everything the dashboard shows, derived from what the API actually returns.
+ * The dashboard's view types — **and nothing that computes one.**
  *
- * ## Why this is a pure module and not logic inside the screen
- * Every number here is an assertion about the owner's data, and a wrong one is invisible — a
- * count that is quietly off by the revoked links nobody filtered reads exactly like a correct
- * one. Pure functions over plain inputs are testable without rendering anything, so each claim
- * gets a test that names the trap it avoids.
+ * ## ⚠ Every number on this screen comes from `GET /dashboard`
  *
- * ## ⚠ What the API cannot tell us, and therefore what is NOT here
- * `ShareLink` carries `viewCount`, `firstViewedAt` and `lastViewedAt` — **a counter and two
- * bookends, not a log**. There is no per-view record, so "opens over time" is not computable and
- * must not be drawn: any such chart would be invented. What IS a real time series is when links
- * were *created* (`createdAt`), which is the sharing-activity chart.
+ * This module used to derive all of them: totals, weekly buckets, per-card reach and the
+ * attention queue, reduced on the client from `GET /cards` + `GET /contacts` +
+ * `GET /share-links` + one `GET /cards/{id}/audience` per card. That is gone, and the reason is
+ * not the request count.
  *
- * If opens-over-time is ever wanted, it needs a new API — a `LinkEvent` table, which
- * `schema.prisma` already lists as not yet built.
+ * `peopleReached` and `behind` were reduced from two different collections here, so a contact
+ * behind on two cards was counted once in one and twice in the other — `behind` could exceed
+ * `peopleReached`, which is not a state that can exist. The API now computes both from one pass
+ * over one ACTIVE-link query, which rules that out structurally instead of by keeping two
+ * client-side filters in step forever.
+ *
+ * **So nothing here may reduce, re-sort or re-bucket a response.** Re-deriving one number would
+ * put the second source of truth straight back. What remains is the vocabulary the components
+ * are written against, plus {@link toDashboardView}, which renames wire shapes into it and
+ * applies the one presentational rule the API deliberately leaves to the client.
+ *
+ * ## ⚠ What the API still cannot tell us
+ * `ShareLink` carries `viewCount` and two bookends — **a counter, not a log**. There is no
+ * per-view record (`LinkEvent` does not exist), so "opens over time" is not computable and must
+ * not be drawn: `sharingActivity` counts links *created*, and the chart has to say so. Any
+ * opens-per-week chart would be invented.
  */
 
-import type { ContactShare } from "@/types/domain";
+import type {
+  AttentionItemDto,
+  CardReachItemDto,
+  DashboardResponseDto,
+  DashboardTotalsDto,
+  SharingActivityBucketDto,
+} from "@/lib/api/schema";
 
-/** A share link as these metrics need it — the subset every caller already has. */
-export interface MetricLink {
-  cardId: string;
-  contactId: string;
-  status: ContactShare["status"];
-  viewCount: number;
-  createdAt: string;
-}
+/**
+ * The totals, as the panel reads them.
+ *
+ * A straight alias of the wire shape rather than a mapped copy: a second structure would be a
+ * second place for a field to go stale, and there is no presentational difference to justify it.
+ * In particular `behind: number | null` keeps its wire meaning — **`null` is "no cards yet, so
+ * nothing to compute this from", never "nobody is behind"** — and `<ReachPanel>` renders the two
+ * differently.
+ */
+export type DashboardTotals = DashboardTotalsDto;
 
-export interface MetricCard {
+/** One weekly bucket. ⚠ `count` is links **created** that week, never opens — see the ⚠ above. */
+export type WeekBucket = SharingActivityBucketDto;
+
+export type CardReach = CardReachItemDto;
+
+export type Attention = AttentionItemDto;
+
+/** Every profile group with its field count — what `<ProfileStrength>` reads. */
+export interface ProfileGroupSummary {
   id: string;
   name: string;
-  fieldIds: readonly string[];
-}
-
-export interface DashboardTotals {
-  cards: number;
-  contacts: number;
-  fields: number;
-  /** Distinct people holding an ACTIVE link. Not the contact count — most contacts hold none. */
-  peopleReached: number;
-  /** Summed across ACTIVE links only; a revoked link's opens are history, not reach. */
-  totalOpens: number;
-  /** ACTIVE links never opened. The actionable one: a card sent that nobody looked at. */
-  neverOpened: number;
-  /** Recipients on a card version older than its current one. `null` when audience is unavailable. */
-  behind: number | null;
-}
-
-export function totals(input: {
-  cards: readonly MetricCard[];
-  contactCount: number;
   fieldCount: number;
-  links: readonly MetricLink[];
-  behind: number | null;
-}): DashboardTotals {
-  const active = input.links.filter((l) => l.status === "ACTIVE");
+}
+
+export interface DashboardView {
+  totals: DashboardTotals;
+  weeks: readonly WeekBucket[];
+  reach: readonly CardReach[];
+  attention: readonly Attention[];
+  groups: readonly ProfileGroupSummary[];
+}
+
+/**
+ * How many cards the reach chart draws.
+ *
+ * ⚠ The API returns **every** non-archived card, including the zero-activity ones, and that is
+ * correct — a card nobody has opened is the most actionable row, not one to hide. The cap is
+ * purely about how many bars fit before each is too thin to compare, so it is applied here, at
+ * the surface that has the width problem, and nowhere else. The attention queue is **not**
+ * capped: it is the list of things to act on, and truncating it would hide work.
+ */
+const REACH_ROWS = 5;
+
+/**
+ * The response, in the components' own vocabulary.
+ *
+ * ⚠ **Renaming and one deliberate truncation — no arithmetic, and no re-sorting.** `attention`
+ * arrives in kind-priority order, worst-first within each kind, and `sharingActivity` arrives
+ * oldest-first and Monday-aligned. Sorting either again here would be a second answer to a
+ * question the API has already answered, and the one nobody updates when the other changes.
+ *
+ * `cardReach` is likewise returned in the API's order; only its length is trimmed, for the
+ * width reason {@link REACH_ROWS} gives.
+ */
+export function toDashboardView(dto: DashboardResponseDto): DashboardView {
   return {
-    cards: input.cards.length,
-    contacts: input.contactCount,
-    fields: input.fieldCount,
-    /* A contact can hold links to several cards; they are still one person reached. */
-    peopleReached: new Set(active.map((l) => l.contactId)).size,
-    totalOpens: active.reduce((sum, l) => sum + l.viewCount, 0),
-    neverOpened: active.filter((l) => l.viewCount === 0).length,
-    behind: input.behind,
+    totals: dto.totals,
+    weeks: dto.sharingActivity,
+    reach: dto.cardReach.slice(0, REACH_ROWS),
+    attention: dto.attention,
+    groups: dto.groups,
   };
-}
-
-/* ── the two charts ──────────────────────────────────────────────────────────────────── */
-
-export interface WeekBucket {
-  /** ISO date of that week's Monday — the bucket key, and what the axis labels format. */
-  weekStart: string;
-  count: number;
-}
-
-/** Monday 00:00 UTC of the week containing `iso`. UTC throughout, so a bucket never shifts. */
-function weekStartOf(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const day = (d.getUTCDay() + 6) % 7; // Monday = 0
-  const monday = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - day);
-  return new Date(monday).toISOString().slice(0, 10);
-}
-
-/**
- * Links minted per week, oldest first, **including the empty weeks**.
- *
- * ⚠ The gaps are the point. Bucketing only the weeks that happen to have data draws a
- * continuous line over a month of silence and turns a quiet period into a busy one — the axis
- * has to be time, not "weeks that had activity".
- */
-export function sharingByWeek(
-  links: readonly MetricLink[],
-  now: Date,
-  weeks = 12,
-): readonly WeekBucket[] {
-  const counts = new Map<string, number>();
-  for (const link of links) {
-    const key = weekStartOf(link.createdAt);
-    if (key !== "") counts.set(key, (counts.get(key) ?? 0) + 1);
-  }
-
-  const thisMonday = weekStartOf(now.toISOString());
-  const out: WeekBucket[] = [];
-  for (let i = weeks - 1; i >= 0; i -= 1) {
-    const d = new Date(thisMonday);
-    d.setUTCDate(d.getUTCDate() - i * 7);
-    const key = d.toISOString().slice(0, 10);
-    out.push({ weekStart: key, count: counts.get(key) ?? 0 });
-  }
-  return out;
-}
-
-export interface CardReach {
-  cardId: string;
-  cardName: string;
-  opens: number;
-  recipients: number;
-}
-
-/**
- * Cards ranked by opens, then by recipients, then by name.
- *
- * Cards with no links are included at zero rather than dropped: "this card has never been
- * shared" is a thing the owner needs to see, and a chart that silently omits it hides the
- * emptiest cards — the exact ones worth acting on.
- */
-export function cardReach(
-  cards: readonly MetricCard[],
-  links: readonly MetricLink[],
-  limit = 5,
-): readonly CardReach[] {
-  const active = links.filter((l) => l.status === "ACTIVE");
-  return cards
-    .map((card) => {
-      const mine = active.filter((l) => l.cardId === card.id);
-      return {
-        cardId: card.id,
-        cardName: card.name,
-        opens: mine.reduce((sum, l) => sum + l.viewCount, 0),
-        recipients: mine.length,
-      };
-    })
-    .sort(
-      (a, b) =>
-        b.opens - a.opens || b.recipients - a.recipients || a.cardName.localeCompare(b.cardName),
-    )
-    .slice(0, limit);
-}
-
-/* ── the "needs attention" list ──────────────────────────────────────────────────────── */
-
-export interface Attention {
-  kind: "behind" | "never-opened" | "no-fields" | "never-shared";
-  cardId: string;
-  cardName: string;
-  count: number;
-}
-
-/**
- * What the owner should actually do something about, worst first.
- *
- * This replaces the "Recent contacts" list that used to sit here. A reverse-chronological list of
- * names answers no question — the owner already knows who they added. These four states each
- * have an action attached, which is what earns a row on a dashboard.
- */
-export function attention(
-  cards: readonly MetricCard[],
-  links: readonly MetricLink[],
-  behindByCardId: ReadonlyMap<string, number>,
-): readonly Attention[] {
-  const active = links.filter((l) => l.status === "ACTIVE");
-  const out: Attention[] = [];
-
-  for (const card of cards) {
-    const mine = active.filter((l) => l.cardId === card.id);
-    const behind = behindByCardId.get(card.id) ?? 0;
-
-    if (card.fieldIds.length === 0) {
-      out.push({ kind: "no-fields", cardId: card.id, cardName: card.name, count: 0 });
-      continue; // An empty card's reach problems are downstream of it being empty.
-    }
-    if (behind > 0) {
-      out.push({ kind: "behind", cardId: card.id, cardName: card.name, count: behind });
-    }
-    if (mine.length === 0) {
-      out.push({ kind: "never-shared", cardId: card.id, cardName: card.name, count: 0 });
-    } else {
-      const unopened = mine.filter((l) => l.viewCount === 0).length;
-      if (unopened > 0) {
-        out.push({ kind: "never-opened", cardId: card.id, cardName: card.name, count: unopened });
-      }
-    }
-  }
-
-  const rank: Record<Attention["kind"], number> = {
-    "no-fields": 0,
-    behind: 1,
-    "never-opened": 2,
-    "never-shared": 3,
-  };
-  return out.sort((a, b) => rank[a.kind] - rank[b.kind] || b.count - a.count);
 }

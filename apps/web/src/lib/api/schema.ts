@@ -572,6 +572,30 @@ export interface CardResponseDto extends CardAppearanceDto {
    * why `toContactCard` coalesces both to the domain's single "no logo".
    */
   logoUrl?: string | null;
+  /**
+   * The photograph behind the card's hero, as a fully-qualified storage URL. `null` — or
+   * absent — means the owner never uploaded one.
+   *
+   * ⚠ **Read-only on this DTO, for a stricter reason than `logoUrl`.** `PATCH /cards/{id}`
+   * accepts exactly one value for `coverUrl` — literal `null`, to remove it — and rejects any
+   * actual URL string with a 400. A real cover can only ever arrive through
+   * `POST /cards/{id}/cover`. That is why {@link UpdateCardDto} types it `null` rather than
+   * `string | null`: the narrow type makes the rejected case unrepresentable here instead of
+   * discovered at runtime.
+   *
+   * ⚠ **The API stores and serves exactly the bytes it is sent** — no server-side crop, resize
+   * or recompress. The composition is baked in by the crop dialog before upload (1:0.7, ≤1280px
+   * long edge). Pointing the uploader at a raw file picker would render a full-length photograph
+   * as a head crop, which is the exact bug the cover feature exists to fix.
+   */
+  coverUrl?: string | null;
+  /**
+   * The position line printed under the name — **overrides the profile job title on this card
+   * only**. Plain text, ≤ 80 characters, not derived from a `ProfileField`.
+   */
+  headline?: string | null;
+  /** One or two lines under the headline. Plain text, ≤ 280 characters server-side. */
+  bio?: string | null;
   fields: CardFieldResponseDto[];
   createdAt: string;
   updatedAt: string;
@@ -597,11 +621,33 @@ export interface CardResponseDto extends CardAppearanceDto {
 export interface CreateCardDto extends CardAppearanceDto {
   name: string;
   kind?: ApiCardKind;
+  /** ≤ 80 chars. Omitted rather than sent empty — see `toCreateCardForm`. */
+  headline?: string | null;
+  /** ≤ 280 chars server-side; the builder holds a tighter 240 for composition reasons. */
+  bio?: string | null;
+  /* ⚠ No `coverUrl`. A cover cannot ride the create at all — unlike the logo, which can. It is
+     always a second call, `POST /cards/{id}/cover`, once there is an id to address. */
 }
 
 export interface UpdateCardDto extends CardAppearanceDto {
   name?: string;
   kind?: ApiCardKind;
+  /** ≤ 80 chars. `null` clears it and the card falls back to the profile job title. */
+  headline?: string | null;
+  /** ≤ 280 chars. `null` clears it and the bio slot collapses. */
+  bio?: string | null;
+  /**
+   * ⚠ **`null` is the only value this accepts, and the type says so.** Sending an actual URL
+   * string is a `400` — a real cover comes from `POST /cards/{id}/cover` and nowhere else.
+   * Typed `null` rather than `string | null` so the compiler refuses the rejected call instead
+   * of the server refusing it after a round trip.
+   *
+   * ⚠ Omitted vs `null` is load-bearing here exactly as it is for the seven design axes: an
+   * omitted key leaves the stored cover alone, `null` removes it. It is therefore **not** part
+   * of `toAppearanceDto`'s always-send-everything set — a Save that blindly sent `coverUrl:
+   * null` would delete the owner's cover every time they renamed the card.
+   */
+  coverUrl?: null;
 }
 
 /* ── card-update notifications ───────────────────────────────────────────────────────── */
@@ -726,4 +772,122 @@ export interface UpdateWhatsAppTemplateDto {
   approvalStatus?: ApiTemplateApproval;
   rejectionReason?: string;
   isActive?: boolean;
+}
+
+/* ── dashboard ───────────────────────────────────────────────────────────────────────── */
+
+/**
+ * `GET /dashboard` — **everything the dashboard screen needs, server-computed, in one call.**
+ *
+ * ## What it replaces, and why that matters beyond request count
+ * The screen used to assemble itself: `GET /cards` + `GET /contacts` + `GET /share-links` +
+ * one `GET /cards/{id}/audience` **per card**. That is an N+1 on every load, but the real
+ * defect was arithmetic. `peopleReached` and `behind` were reduced from two different
+ * collections on the client, so a contact behind on two cards was counted once in one aggregate
+ * and twice in the other — `behind` could exceed `peopleReached`, which is not a state that can
+ * exist. Both now come from one server-side pass over the same rows, and the API's own tests
+ * reproduce that exact scenario.
+ *
+ * ⚠ **Nothing on this screen may be derived client-side any more.** Every number below is the
+ * API's answer. Re-deriving one here would reintroduce precisely the two-sources-of-truth bug
+ * this endpoint exists to delete.
+ */
+export interface DashboardTotalsDto {
+  /** Non-archived cards. */
+  cards: number;
+  contacts: number;
+  /** Non-archived profile fields. */
+  fields: number;
+  /**
+   * DISTINCT contacts holding an ACTIVE link — **a headcount, not a link count**. One person
+   * holding three of your cards is one person reached.
+   */
+  peopleReached: number;
+  /**
+   * DISTINCT contacts who have opened at least one ACTIVE link.
+   *
+   * ⚠ **The people-shaped counterpart to `neverOpened`, which counts LINKS** — and neither is
+   * derivable from the other, because one person may hold three links and have opened one. The
+   * reach score's "opened" lever is measured in people (a single enthusiastic recipient holding
+   * several cards must not outweigh three silent ones), so it reads this and not `neverOpened`.
+   *
+   * Computed from the same single pass as `peopleReached`, so it can never exceed it.
+   */
+  peopleOpened: number;
+  /** `viewCount` summed across ACTIVE links only. A revoked link's opens are history. */
+  totalOpens: number;
+  /** ACTIVE links with `viewCount = 0`. The actionable one: sent, and never looked at. */
+  neverOpened: number;
+  /**
+   * DISTINCT contacts behind on at least one card.
+   *
+   * ⚠ **`null` means "nothing to compute this from" (no cards yet) — it is NOT `0`.** `0` is
+   * "checked, and nobody is behind". Collapsing the two reports a confident all-clear to an
+   * owner whose account is simply empty. The UI must render them differently; see
+   * `<ReachPanel>`.
+   *
+   * Guaranteed `≤ peopleReached`, because both are computed from the same query.
+   */
+  behind: number | null;
+}
+
+/** One row of the by-card reach chart. */
+export interface CardReachItemDto {
+  cardId: string;
+  cardName: string;
+  /** Summed `viewCount` across this card's ACTIVE links. */
+  opens: number;
+  /** ACTIVE links on this card. */
+  recipients: number;
+}
+
+/**
+ * One row of the "needs attention" queue.
+ *
+ * ⚠ Already ordered by the API: kind-priority first (`no-fields` → `behind` → `never-opened` →
+ * `never-shared`), then worst-first within each kind. **Do not re-sort.** A second ordering on
+ * the client is a second answer to the same question, and the one nobody updates.
+ */
+export interface AttentionItemDto {
+  kind: "no-fields" | "behind" | "never-opened" | "never-shared";
+  cardId: string;
+  cardName: string;
+  /** ⚠ A fixed `0` marker for `no-fields`/`never-shared` — those kinds have nothing to count. */
+  count: number;
+}
+
+/**
+ * One weekly bucket of the activity chart. 12 of them, oldest first, Monday-aligned UTC,
+ * **including the empty weeks** — the gaps are the point, or a month of silence draws as a
+ * continuous line.
+ */
+export interface SharingActivityBucketDto {
+  /** ISO date of that week's Monday, e.g. `"2026-06-29"`. */
+  weekStart: string;
+  /**
+   * ⚠ **ShareLinks CREATED that week — not opens.** There is no per-view log (`LinkEvent` does
+   * not exist), so an "opens over time" chart would be fabricated. The axis label has to say
+   * "shared", and does.
+   */
+  count: number;
+}
+
+/** One profile field group. Every group is returned, **including the empty ones**. */
+export interface DashboardGroupDto {
+  id: string;
+  /**
+   * Never `null`/empty: an untagged group falls back to a title-cased category server-side
+   * (`"WORK"` → `"Work"`), so nothing here needs a client-side placeholder.
+   */
+  name: string;
+  fieldCount: number;
+}
+
+export interface DashboardResponseDto {
+  totals: DashboardTotalsDto;
+  /** One row per non-archived card, **including zero-activity ones** — those are the actionable rows. */
+  cardReach: CardReachItemDto[];
+  attention: AttentionItemDto[];
+  sharingActivity: SharingActivityBucketDto[];
+  groups: DashboardGroupDto[];
 }

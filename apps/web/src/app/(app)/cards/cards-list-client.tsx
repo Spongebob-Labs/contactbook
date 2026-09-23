@@ -5,12 +5,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState, type ReactElement } from "react";
 
 import { resolveCard } from "@/card/resolve-card";
-/* ⚠ TEMPORARY: merges the cover, position and bio the API has no column for. Delete the
-   import and the call together the day it does — see `lib/card-local-draft.ts`. */
-import { withLocalCardDraft } from "@/lib/card-local-draft";
-/* ⚠ TEMPORARY, and owner-facing ONLY — never on a surface a recipient can open. See the
-   module note in `lib/card-demo-fill.ts`. */
-import { withDemoFill } from "@/lib/card-demo-fill";
 import { CARD_TYPE_LABELS, CardThumbTile } from "@/components/app";
 import {
   EmptyFilteredState,
@@ -198,7 +192,7 @@ const CARD_TYPE_ORDER: readonly CardType[] = ["BUSINESS", "PERSONAL", "PAYMENT",
 function resolveAll(data: CardsData): ResolvedCard[] {
   return [...data.cards]
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-    .map((card) => resolveCard(withDemoFill(withLocalCardDraft(card)), data.user, data.groups, data.fields));
+    .map((card) => resolveCard(card, data.user, data.groups, data.fields));
 }
 
 /**

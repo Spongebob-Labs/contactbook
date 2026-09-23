@@ -12,7 +12,7 @@
  * that need an argument return a memoisable closure the caller wraps in `useCallback`.
  */
 
-import { auth, cards, contacts, profile, shareLinks } from "@/lib/api/browser";
+import { auth, cards, contacts, dashboard, profile, shareLinks } from "@/lib/api/browser";
 import type { AudienceRecipientDto } from "@/lib/api/schema";
 import { isApiError } from "@/lib/api/errors";
 import {
@@ -216,56 +216,55 @@ function authMe() {
 /* ── dashboard ───────────────────────────────────────────────────────────────────────── */
 
 /**
- * Everything the dashboard reads — from the API, and only from the API.
+ * Everything the dashboard reads — **one call, and every number computed by the API**.
  *
- * ⚠ This screen used to run entirely on `useFixture`, so it reported the fixture set's 9 cards,
- * 8 contacts and 35 fields to every owner regardless of their real data, and rendered a card
- * whose link pointed at `card.example`. Numbers on a dashboard are read as facts; inventing them
- * is worse than showing nothing.
+ * ## ⚠ What this replaced, and why it is one function call now
  *
- * The audience reads are per-card and therefore N calls. They are `allSettled` and strictly
- * optional: a card whose audience fails contributes nothing rather than failing the screen, and
- * `behind` stays `null` — "we do not know" — rather than collapsing to a confident 0.
+ * This used to be `GET /profile/me` + `/auth/me` + `/profile/fields` + `/profile/groups` +
+ * `GET /cards` + `GET /contacts` + `GET /share-links` + **one `GET /cards/{id}/audience` per
+ * card** — an N+1 that grew with the owner's account, then reduced on the client into totals,
+ * two charts and a queue.
+ *
+ * The request count was the smaller problem. The real one was arithmetic: `peopleReached` and
+ * `behind` were reduced from two different collections, so a contact behind on two cards was
+ * counted once in one aggregate and twice in the other, and `behind` could exceed
+ * `peopleReached` — a state that cannot exist. `GET /dashboard` computes both from a single pass
+ * over one ACTIVE-link query, which rules that out structurally rather than by matching two
+ * client-side filters and hoping they stay matched.
+ *
+ * ## ⚠ Nothing here may be re-derived on the client
+ *
+ * The response is returned as it arrives. Recomputing any of it — re-sorting `attention`,
+ * re-bucketing `sharingActivity`, re-summing `totals` — would reintroduce exactly the
+ * two-sources-of-truth defect this endpoint exists to delete. `lib/dashboard/metrics.ts` is now
+ * types and an adapter only, and `reach-score.ts` reads these totals rather than raw links.
+ *
+ * ## Why `GET /cards` is still here, and what it is emphatically NOT for
+ *
+ * ⚠ **It contributes no number to this screen.** `GET /dashboard` carries counts and names but
+ * no appearance, and the charts colour every bar and every queue row by the palette its card
+ * actually wears — that is how a reader matches a row to the card they know. So the card list is
+ * read purely for `templateId`/`paletteId`/`groundHex`, mapped to palettes by `cardPalettes()`,
+ * and nothing else on this screen may read it.
+ *
+ * The two run concurrently, so this is two rows in the Network tab rather than the four-plus-one-
+ * per-card it replaced — and if the card read fails the screen still renders, because `palettes`
+ * is optional on both charts and falls back to a neutral rule.
  */
 export async function fetchDashboardData() {
-  const [{ user, groups, fields }, cardDtos, contactDtos, linkDtos] = await Promise.all([
-    fetchProfileData(),
-    cards.list(),
-    contacts.list().catch(() => []),
-    shareLinks.list().catch(() => []),
+  const [summary, cardDtos] = await Promise.all([
+    dashboard.get(),
+    /* Appearance only — and non-fatal. A failure here costs the bars their colour, not the
+       dashboard its numbers, so it must not take the screen down with it. */
+    cards.list().catch(() => []),
   ]);
 
-  const mappedCards = cardDtos.map((dto) => toContactCard(dto, user.id));
-
-  const settled = await Promise.allSettled(
-    mappedCards.map(async (card) => ({ cardId: card.id, audience: await cards.audience(card.id) })),
-  );
-  const behindByCardId = new Map<string, number>();
-  let anyAudience = false;
-  for (const result of settled) {
-    if (result.status !== "fulfilled") continue;
-    anyAudience = true;
-    behindByCardId.set(
-      result.value.cardId,
-      result.value.audience.recipients.filter((r) => r.versionsBehind > 0).length,
-    );
-  }
-
   return {
-    user,
-    groups,
-    fields,
-    cards: mappedCards,
-    contacts: contactDtos.map((c) => toContact(c, user.id)),
-    links: linkDtos.map((l) => ({
-      cardId: l.cardId,
-      contactId: l.contactId,
-      status: l.status,
-      viewCount: l.viewCount,
-      createdAt: l.createdAt,
-    })),
-    behindByCardId,
-    /* `null`, not 0, when every audience call failed — see the note above. */
-    behind: anyAudience ? [...behindByCardId.values()].reduce((a, b) => a + b, 0) : null,
+    summary,
+    /* `toContactCard` needs a user id only to stamp `userId` on the domain object, which nothing
+       on this screen reads — the palette is derived from the card's own design axes. A second
+       `POST /auth/me` purely to fill a field no reader touches would be a request spent on
+       nothing. */
+    cards: cardDtos.map((dto) => toContactCard(dto, "")),
   };
 }

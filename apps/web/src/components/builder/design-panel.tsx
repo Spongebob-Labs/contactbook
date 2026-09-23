@@ -101,9 +101,15 @@ export interface DesignPanelProps {
   /** A curated look — palette and finish at once, clearing any custom colour. */
   onLook: (look: CardLook) => void;
 
-  /* ── The three UI-only slots. Not persisted — see the ⚠ on `ContactCard`. ──────────────── */
+  /* ── The cover, the position and the bio. All three persist — real `Card` columns. ─────── */
   coverUrl: string | null;
-  onCover: (previewUrl: string | null) => void;
+  /** True while the cover upload or removal is in flight. */
+  coverBusy: boolean;
+  /**
+   * The composed crop: bytes to upload and the string to preview with until the server answers.
+   * `null` is the removal — the same one-callback shape this row has always had.
+   */
+  onCover: (picked: { file: File; previewUrl: string } | null) => void;
   headline: string;
   onHeadline: (headline: string) => void;
   bio: string;
@@ -145,6 +151,7 @@ export function DesignPanel({
   onScale,
   onLook,
   coverUrl,
+  coverBusy,
   onCover,
   headline,
   onHeadline,
@@ -189,15 +196,16 @@ export function DesignPanel({
 
         <PanelRow
           label="Cover"
-          /* ⚠ The hint says "not saved yet" out loud. There is no column for this, so a reload
-             drops it — and a control that silently forgets is worse than one that admits it. */
-          hint="The photo behind the hero. Not saved yet — it will reset on reload."
+          /* The "not saved yet" warning that stood here is gone with the limitation it described:
+             `Card.coverUrl` is a real column and the crop uploads the moment it is applied. */
+          hint="The photo behind the hero. Uploaded when you apply the crop."
           value={coverUrl === null ? "None" : "Added"}
           id="cover"
         >
           <CoverPicker
             coverUrl={coverUrl}
-            onPick={(previewUrl) => onCover(previewUrl)}
+            busy={coverBusy}
+            onPick={(file, previewUrl) => onCover({ file, previewUrl })}
             onRemove={() => onCover(null)}
           />
         </PanelRow>

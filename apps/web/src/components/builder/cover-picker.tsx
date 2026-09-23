@@ -6,38 +6,44 @@ import { COVER_RATIO } from "@/card/card-page";
 import { ImageCropDialog } from "@/components/builder/image-crop-dialog";
 
 import { Button } from "@/components/primitives/button";
-import { imageToDataUrl } from "@/lib/image-to-data-url";
+import { dataUrlToFile, imageToDataUrl } from "@/lib/image-to-data-url";
 
 /**
  * THE COVER PICKER — the photograph behind the card's hero.
  *
- * ## ⚠ NOTHING HERE IS PERSISTED, AND THE CONTROL SAYS SO
+ * ## ⚠ THE COVER IS PERSISTED NOW, THROUGH AN UPLOAD — NOT THROUGH SAVE
  *
- * The API has no `coverUrl` column. This picker mints an object URL, the reducer holds it, the
- * preview draws it, and a reload loses it. That is a real limitation and the owner is told
- * about it in the row's own hint rather than discovering it — a control that silently forgets
- * is worse than one that is honestly labelled "not saved yet".
+ * `Card.coverUrl` is a real column, written by `POST /cards/{id}/cover` and by nothing else:
+ * `PATCH /cards/{id}` rejects any actual URL string and accepts only `null`, to remove one. So
+ * this component is shaped like `LogoPicker` — it hands the composed bytes up and the builder
+ * uploads them immediately, exactly as the logo does, rather than letting Save carry them.
  *
- * See the ⚠ block on `ContactCard` for exactly what the backend has to add. When it lands, this
- * component gains the logo's upload/`busy` pair and loses the warning; its markup does not
- * otherwise change, which is why it is shaped like `LogoPicker` already.
+ * The warning this row used to carry ("not saved yet") is gone with the limitation it described.
  *
- * ## ⚠ A DATA URL, NOT AN OBJECT URL — and that is what makes the cover survive a reload
+ * ## ⚠ THE CROP IS BAKED IN BEFORE THE UPLOAD, AND THE API DEPENDS ON IT
  *
- * It minted `URL.createObjectURL`, which is a handle into this document's memory: it dies with
- * the tab. The cover is held in `localStorage` until the API grows a column
- * (`card-local-draft.ts`), so it has to be the bytes themselves — an object URL would persist a
- * string that is already broken on the next load.
+ * The API performs **no** server-side crop, resize or recompress — it stores and serves exactly
+ * the bytes it is sent. So the file that goes up is the one the crop dialog composed (1:0.7
+ * aperture, ≤1280px long edge), never the original the owner picked. Wiring this straight to a
+ * raw file picker would render a full-length photograph as a head crop on the card, the builder
+ * preview and the public page at once — the exact bug the cover feature exists to fix.
  *
- * `imageToDataUrl` downscales to a 1280px long edge first, which is both what keeps a phone
- * photograph inside the ~5MB origin budget and the right size for a cover that renders at most
- * 508 CSS px wide. Nothing to revoke any more, so the lifetime bookkeeping this file used to
- * carry is gone with it.
+ * `imageToDataUrl` downscales to 1280px *first*, so the dialog composes against a bounded bitmap
+ * and the result lands well inside the endpoint's 5MB cap. `dataUrlToFile` turns the composed
+ * string into the request body; the same string is what the preview paints, so what the owner
+ * approves and what a recipient downloads cannot diverge.
  */
 export interface CoverPickerProps {
-  /** The object URL currently in state, or `null`. */
+  /** The cover currently on the card — the server's URL, or a crop composed this session. */
   coverUrl: string | null;
-  onPick: (previewUrl: string) => void;
+  /** True while an upload or a removal is in flight, so the control reports it. */
+  busy?: boolean;
+  /**
+   * The composed crop: the bytes to upload, and the string to preview. Both, because the
+   * builder needs the file for `POST .../cover` and the reducer needs the data URL to draw with
+   * until the server answers.
+   */
+  onPick: (file: File, previewUrl: string) => void;
   onRemove: () => void;
 }
 
@@ -54,7 +60,12 @@ const COVER_ASPECT = 1 / COVER_RATIO.photo;
 /** Longest edge of the baked cover. 1280 matches what `imageToDataUrl` already downscales to. */
 const COVER_MAX_EDGE = 1280;
 
-export function CoverPicker({ coverUrl, onPick, onRemove }: CoverPickerProps): ReactElement {
+export function CoverPicker({
+  coverUrl,
+  busy: uploading = false,
+  onPick,
+  onRemove,
+}: CoverPickerProps): ReactElement {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -101,8 +112,10 @@ export function CoverPicker({ coverUrl, onPick, onRemove }: CoverPickerProps): R
         <Button
           variant="secondary"
           data-cover-upload=""
-          loading={busy}
-          loadingLabel="Reading…"
+          /* Both waits, one affordance: decoding the chosen file, then the upload of the crop.
+             The owner does not distinguish them and neither should the control. */
+          loading={busy || uploading}
+          loadingLabel={busy ? "Reading…" : "Uploading…"}
           onClick={() => inputRef.current?.click()}
         >
           {coverUrl === null ? "Add cover" : "Replace"}
@@ -122,7 +135,12 @@ export function CoverPicker({ coverUrl, onPick, onRemove }: CoverPickerProps): R
             >
               Adjust
             </Button>
-            <Button variant="text-link" data-cover-remove="" onClick={onRemove}>
+            <Button
+              variant="text-link"
+              data-cover-remove=""
+              disabled={uploading}
+              onClick={onRemove}
+            >
               Remove
             </Button>
           </>
@@ -140,7 +158,10 @@ export function CoverPicker({ coverUrl, onPick, onRemove }: CoverPickerProps): R
         maxEdge={COVER_MAX_EDGE}
         title="Position your cover"
         onApply={(dataUrl) => {
-          onPick(dataUrl);
+          /* ⚠ The COMPOSED bytes, never the original file — see the ⚠ in the module note. The
+             extension matches the encoding `imageToDataUrl`/the dialog actually produce (JPEG),
+             so the name the API stores does not contradict the content type it is sent. */
+          onPick(dataUrlToFile(dataUrl, "cover.jpg"), dataUrl);
           setCropping(null);
         }}
       />

@@ -35,6 +35,7 @@ import type {
   CreateCardDto,
   CreateProfileFieldDto,
   CreateProfileFieldGroupDto,
+  DashboardResponseDto,
   ImportContactsDto,
   ImportContactsResponseDto,
   MeResponseDto,
@@ -393,6 +394,25 @@ export const cards = {
   /** 204, no body. `LOGO_NOT_FOUND` when there was nothing to remove — see `errors.ts`. */
   removeLogo: (cardId: string) =>
     cb<void>({ method: "DELETE", path: `/cards/${id(cardId)}/logo` }),
+
+  /**
+   * Upload or replace this card's cover photograph. Returns the whole updated card, same as the
+   * logo pair.
+   *
+   * ⚠ **JPEG/PNG/WebP, 5 MB — a quarter of the logo's cap**, because a cover is a photograph.
+   *
+   * ⚠ **The API stores the exact bytes it is sent — no server-side crop, resize or recompress.**
+   * The composition is baked in before the call (1:0.7, ≤1280px long edge) by the builder's crop
+   * dialog. A raw file straight off a picker renders a full-length photograph as a head crop.
+   */
+  uploadCover: (cardId: string, file: File) => {
+    const form = new FormData();
+    form.set("file", file);
+    return cb<CardResponseDto>({ method: "POST", path: `/cards/${id(cardId)}/cover`, form });
+  },
+  /** 204, no body. `COVER_NOT_FOUND` when there was nothing to remove. */
+  removeCover: (cardId: string) =>
+    cb<void>({ method: "DELETE", path: `/cards/${id(cardId)}/cover` }),
 };
 
 /* ── public connect (2) — anonymous, and deliberately not in `endpoints/` ───────────── */
@@ -486,4 +506,15 @@ export const templates = {
       path: `/templates/${id(templateId)}`,
       body: b,
     }),
+};
+
+/* ── dashboard (1) ───────────────────────────────────────────────────────────────────── */
+
+/**
+ * One call, server-computed. See `endpoints/dashboard.ts` for why this replaced the screen's
+ * old four-endpoints-plus-one-per-card assembly, and `DashboardResponseDto` for what each
+ * number means — in particular why `totals.behind === null` is not `0`.
+ */
+export const dashboard = {
+  get: () => cb<DashboardResponseDto>({ method: "GET", path: "/dashboard" }),
 };
