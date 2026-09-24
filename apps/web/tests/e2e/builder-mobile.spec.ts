@@ -152,11 +152,15 @@ test.describe("on a phone", () => {
   });
 
   /**
-   * ⚠ The cue sits in the **bottom-right corner**, and this asserts why: centred, it landed on
-   * the card's own centred type and covered the middle of the role line. Every card page centres
-   * its identity block, so the corner is the one spot with no text beneath it.
+   * ⚠ The cue sits **outside the frame** on a phone — in the caption row under it — and this
+   * asserts both halves of why.
+   *
+   * It was centred first, and covered the middle of the role line. Then it moved to the
+   * frame's bottom-right corner, and this test (which only checked TEXT glyphs) passed while
+   * the cue sat on the full-width "Send to Phone" button: a button's fill and arrow are not
+   * text. On a ~250px window no corner is empty, so the cue must not overlap the frame at all.
    */
-  test("the cue covers none of the card's text", async ({ page }, testInfo) => {
+  test("the cue covers none of the card — not its text, and not the frame", async ({ page }, testInfo) => {
     test.skip(viewportOf(testInfo.project.name) >= 1024, DESKTOP_REASON);
     await openBuilder(page);
 
@@ -166,6 +170,10 @@ test.describe("on a phone", () => {
       if (cue === null || frame === null) return ["no cue or frame"];
       const c = cue.getBoundingClientRect();
       const hits: string[] = [];
+      const f = frame.getBoundingClientRect();
+      if (c.left < f.right && c.right > f.left && c.top < f.bottom && c.bottom > f.top) {
+        hits.push(`the frame itself (cue ${Math.round(c.top)}-${Math.round(c.bottom)}, frame ends ${Math.round(f.bottom)})`);
+      }
       /* ⚠ Per-LINE glyph boxes, via a Range — not the element's own rect.
          A centred paragraph that wraps has a full-width bounding box while its glyphs sit in
          the middle of each line, so an element-rect test reports the corner as covered on

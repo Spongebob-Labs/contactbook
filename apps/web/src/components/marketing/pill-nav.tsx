@@ -95,9 +95,17 @@ export function PillNav() {
       data-pill-nav=""
       data-elevation="1"
       className={mkcn(
-        "fixed inset-x-2 top-3 z-50 mx-auto flex max-w-mk-page items-center gap-2",
-        "rounded-mk-pill border border-mk-hairline bg-mk-white px-2 py-2",
-        "md:inset-x-6 md:top-4 md:gap-6 md:px-4",
+        /* NOTE — BELOW `md` THIS IS A BAR, NOT A PILL — 2026-09-24.
+           The floating pill left a 12px gap above it and open corners beside it, and on a phone
+           everything scrolled through that gap: the hero's own "Join the waitlist" poked out
+           above the nav, the phone frame showed around its rounded ends, and the strip behind it
+           was the layout's `mk-paper` while the hero under it was `mk-white` — a band of the wrong
+           colour across the top of every page. A solid, full-width bar exactly as tall as
+           `<main>`'s top padding (`h-16` ↔ `pt-16` in the layout) leaves no gap and no strip.
+           Everything from `md` up is the pill exactly as it was. */
+        "fixed inset-x-0 top-0 z-50 mx-auto flex h-16 max-w-mk-page items-center gap-2",
+        "border-b border-mk-hairline bg-mk-white px-4",
+        "md:inset-x-6 md:top-4 md:h-auto md:gap-6 md:rounded-mk-pill md:border md:px-4 md:py-2",
       )}
     >
       {/*

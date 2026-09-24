@@ -110,7 +110,9 @@ export default function MarketingLayout({ children }: LayoutProps<"/">) {
         <SkinSwitch />
       </Suspense>
       <PillNav />
-      <main id="main" className="flex-1 pt-20">
+      {/* `pt-16` on a phone is the mobile bar's own `h-16` — see `pill-nav.tsx`. Any other number
+          leaves a strip of `mk-paper` between the bar and the first section. */}
+      <main id="main" className="flex-1 pt-16 md:pt-20">
         {children}
       </main>
       <SiteFooter />
