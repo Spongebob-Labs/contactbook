@@ -1,0 +1,40 @@
+name: Web CI
+
+# The API has had CI since day one (deploy.yml). The web app had none, so a failing web test could
+# merge — and one did: tests/unit/api-browser-routing.test.ts failed on refac-new-build after
+# PR #97, because a squash merge dropped the revert of the `/contacts` bypass, and nothing ran it.
+# The bypass then shipped to Vercel and took the Contacts screen down.
+#
+# Branch protection on refac-new-build should require the `test` job below, or this only reports.
+on:
+  pull_request:
+    paths:
+      - "apps/web/**"
+      - "packages/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/web-ci.yml"
+  push:
+    branches: [main, refac-new-build]
+    paths:
+      - "apps/web/**"
+      - "packages/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/web-ci.yml"
+
+concurrency:
+  group: web-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter web typecheck
+      - run: pnpm --filter web test
