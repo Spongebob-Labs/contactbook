@@ -224,7 +224,7 @@ export function BuilderPreview({ resolved }: BuilderPreviewProps): ReactElement 
         {edges.overflowing ? (
           <button
             type="button"
-            data-preview-scroll-nudge={edges.atEnd ? "up" : "down"}
+            data-preview-scroll-nudge-desktop={edges.atEnd ? "up" : "down"}
             aria-label={
               edges.atEnd
                 ? "Scroll the preview back to the top of the card"
@@ -237,7 +237,11 @@ export function BuilderPreview({ resolved }: BuilderPreviewProps): ReactElement 
                  Studio" on the fixture card, trading one unreadable thing for another. Every
                  card page centres its identity block and left-aligns its rows, so the
                  bottom-RIGHT is the one spot with no text under it at any field count. */
-              "absolute bottom-2 right-2 z-10 flex h-9 w-9 items-center " +
+              /* ⚠ `lg` and up only. On a phone the frame is a ~250px window and this corner is
+                 wherever the card happens to be — the full-width "Send to Phone" button, or a
+                 field row's own right-hand chevron — so below `lg` the nudge lives in the
+                 caption row under the frame instead (`MobileNudge`, below). */
+              "absolute bottom-2 right-2 z-10 flex h-9 w-9 items-center max-lg:hidden " +
               "justify-center rounded-full border border-line bg-surface text-ink " +
               "shadow-[var(--elevation-2)] transition-opacity duration-[var(--dur-fast)]"
             }
@@ -251,12 +255,43 @@ export function BuilderPreview({ resolved }: BuilderPreviewProps): ReactElement 
         ) : null}
       </div>
 
-      <p
-        data-builder-preview-summary=""
-        className="w-full shrink-0 truncate text-center text-xs text-ink-4"
-      >
-        {`${resolved.cardName} · ${resolved.palette.name}`}
-      </p>
+      {/* The caption row. Below `lg` it is also where the scroll nudge sits — outside the frame,
+          so it can never cover the card — which is why it is as tall as the button there and
+          the caption reserves `px-11` either side to stay centred and clear of it. From `lg` up
+          it is the bare caption it always was. */}
+      <div className="relative flex w-full shrink-0 items-center justify-center max-lg:min-h-9">
+        <p
+          data-builder-preview-summary=""
+          className="w-full truncate text-center text-xs text-ink-4 max-lg:px-11"
+        >
+          {`${resolved.cardName} · ${resolved.palette.name}`}
+        </p>
+        {edges.overflowing ? (
+          <button
+            type="button"
+            /* The phone copy carries the canonical hook — `builder-mobile.spec.ts` is its only
+               consumer, and phones are the only place it renders. */
+            data-preview-scroll-nudge={edges.atEnd ? "up" : "down"}
+            aria-label={
+              edges.atEnd
+                ? "Scroll the preview back to the top of the card"
+                : "Scroll the preview down to see the rest of the card"
+            }
+            onClick={() => nudge(edges.atEnd ? "up" : "down")}
+            className={
+              "absolute right-0 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center " +
+              "justify-center rounded-full border border-line bg-surface text-ink " +
+              "shadow-[var(--elevation-2)] lg:hidden"
+            }
+          >
+            {edges.atEnd ? (
+              <ChevronUp aria-hidden="true" size={18} strokeWidth={1.75} />
+            ) : (
+              <ChevronDown aria-hidden="true" size={18} strokeWidth={1.75} />
+            )}
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }

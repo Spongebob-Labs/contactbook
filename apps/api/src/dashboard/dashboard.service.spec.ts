@@ -22,7 +22,9 @@ import type { PrismaService } from '../prisma/prisma.service';
  *
  * Hand-rolled rather than a mocking framework: the service makes exactly six reads and each one
  * is named below, so a change in what it queries shows up as an obviously-missing stub rather
- * than as an inscrutable `undefined`.
+ * than as an inscrutable `undefined`. Each returns `Promise.resolve(...)` rather than being
+ * `async`: the API's lint enforces `require-await`, and an `async` stub with nothing to await
+ * failed CI and skipped the staging deploy on 2026-09-23.
  */
 interface Rows {
   cards?: Array<{

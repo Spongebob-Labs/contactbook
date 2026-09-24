@@ -607,6 +607,12 @@ async function stateful({ store, db, path, method, rawBody, rawBytes, req }) {
       contactId,
       token: `tok${store.seq}`,
       url: `http://localhost:3100/c/tok${store.seq}`,
+      /* ⚠ The recipient and card are echoed on the link, exactly as the API's toResponseDto does.
+         Omitting them made the share dialog throw formatting an undefined number — a stub gap,
+         since the real response always carries all three. */
+      cardName: card.name,
+      contactPhoneE164: contact.phoneE164,
+      contactDisplayName: contact.displayName ?? null,
       status: "ACTIVE",
       viewCount: 0,
       firstViewedAt: null,

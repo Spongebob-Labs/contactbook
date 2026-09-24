@@ -349,10 +349,18 @@ export function Hero() {
              flush with its top edge — the frame's own top and bottom are unchanged (measured:
              146px→147px and 886px→887px at 1440, both within rounding), so the section's total
              height does not grow by switching this keyword. */
-          "grid grid-cols-1 items-start gap-10 lg:grid-cols-12 lg:gap-10",
+          "grid grid-cols-1 items-start lg:grid-cols-12 lg:gap-10",
         )}
       >
-        <div className="lg:col-span-7">
+        {/* NOTE — `max-lg:contents` — BELOW `lg` THIS COLUMN DISSOLVES INTO THE GRID, 2026-09-24.
+            Stacked, the phone came after all four proof tiles, so a phone visitor read two
+            screens of type before seeing the product at all. Dissolving the column makes its
+            children grid items, which lets `order` put the phone straight after the buttons
+            (`max-lg:order-1`) and the tiles after the phone (`max-lg:order-2`). The grid has no
+            row gap below `lg` for the same reason — the children keep the margins they already
+            had, so the type's own rhythm is unchanged. From `lg` up this is the 7-column type
+            column exactly as before. */}
+        <div className="max-lg:contents lg:col-span-7">
           {/*
             ⚠ THIS IS A KICKER OVER A HEADLINE, WHICH `type.tsx`'S `Eyebrow` DOCUMENTS AS BANNED
             — READ WITH THAT CONTEXT, NOT AS AN OVERSIGHT.
@@ -456,7 +464,12 @@ export function Hero() {
               </Prose>
             </Arrival>
 
-            <Arrival index={2} className="mt-9 flex flex-wrap items-center gap-3 md:mt-11 md:gap-4">
+            <Arrival
+              index={2}
+              /* Stacked full-width on a phone: two buttons of different widths, one under the
+                 other, read as a layout that ran out of room rather than a pair. */
+              className="mt-9 flex flex-wrap items-center gap-3 max-sm:flex-col max-sm:items-stretch md:mt-11 md:gap-4"
+            >
               {/* ⚠ THE FILL IS `--mk-accent-deep`, NOT `variant="dark"`'S OWN `--mk-ink`.
                   Both are near-black; `--mk-accent-deep` (`--mk-green-deep`) is the one sampled
                   from the reference's own CTA (`#0D1C25` under atelier — see
@@ -538,7 +551,7 @@ export function Hero() {
           */}
           <ul
             data-hero-proof=""
-            className="mt-10 grid grid-cols-2 gap-x-6 gap-y-10 lg:mt-14 lg:grid-cols-4 lg:gap-8"
+            className="mt-10 grid grid-cols-2 gap-x-6 gap-y-10 max-lg:order-2 lg:mt-14 lg:grid-cols-4 lg:gap-8"
             style={{ ["--mk-arrive-offset" as string]: "900ms" }}
           >
             {hero.proof.map((item, i) => {
@@ -655,7 +668,7 @@ export function Hero() {
           of its last. `lg:col-span-5` is untouched, so the type column still takes the wider
           seven.
         */}
-        <div className="-mx-6 flex justify-center [--mk-phone-zoom:0.8] md:mx-0 lg:order-first lg:col-span-5">
+        <div className="-mx-6 flex justify-center [--mk-phone-zoom:0.8] max-lg:order-1 max-lg:mt-12 md:mx-0 lg:order-first lg:col-span-5">
           {/* ⚠ `screenTint` is the CARD's paper, not the screen's. The screen fades its own
               bottom edge out so the clip cannot sever a row of icons against the bezel, and a
               fade ending in `--mk-white` would be a pale band across this cream card — see

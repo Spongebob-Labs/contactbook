@@ -97,10 +97,13 @@ export class ShareLinksService {
     const ownerName =
       [owner.firstName, owner.lastName].filter(Boolean).join(' ') || 'Someone';
 
+    // forceNotify: an owner pressing Send for someone who already holds the
+    // card means "send it to them again" — see ensureActiveLinkAndNotify.
     const result = await this.ensureActiveLinkAndNotify(
       card,
       contact,
       ownerName,
+      { forceNotify: true },
     );
     await this.logCardShareConnection(owner, contact);
     return result;
@@ -166,29 +169,37 @@ export class ShareLinksService {
    * messaging side, just re-returns the existing link — UNLESS `forceNotify`
    * is set.
    *
-   * `forceNotify` exists for exactly one caller: card-connect.service.ts's
-   * "Send to my phone" path. That button's entire promise, repeated on
-   * screen every time it's tapped, is "we're sending this to your WhatsApp
-   * right now" — not "the first time you tap this." Silently no-op'ing a
-   * second tap (already-ACTIVE link, no new message) makes that promise a
-   * lie with no visible error, which is exactly what staging's logs showed:
-   * every connect/send call in a 2-hour window hit this early return and
-   * enqueued nothing, because the same test number had already connected
-   * before. The OTP-verify and owner-initiated share() callers deliberately
-   * keep the old no-resend behavior — repeat-notifying there really would be
-   * spam — so `forceNotify` defaults to false and is opt-in per call site.
+   * `forceNotify` has two callers, and both are an explicit "send it now":
+   *
+   *  - card-connect.service.ts's "Send to my phone" path. That button's whole
+   *    promise, repeated on screen every time it's tapped, is "we're sending
+   *    this to your WhatsApp right now" — not "the first time you tap this."
+   *    Staging's logs showed every connect/send in a 2-hour window hitting the
+   *    early return and enqueueing nothing, because the number had connected
+   *    once before.
+   *  - share(), the owner's own Send. An owner picking someone who already
+   *    holds the card and pressing Send means "send it to them again"; the
+   *    dialog used to report "Link created" while nothing went out, so the
+   *    owner could never re-send to anyone (product call, 2026-09-24).
+   *
+   * The OTP-verify connect keeps the no-resend default: verifying a second
+   * time is a safe no-op, not a request for another message. Either way the
+   * link is never duplicated — a re-send reuses the same row and token.
    */
   async ensureActiveLinkAndNotify(
     card: { id: string; currentVersion: number; name: string },
     contact: { id: string; phoneE164: string; displayName: string | null },
     ownerName: string,
-    opts?: { forceNotify?: boolean },
+    // forceNotify: when this (card, contact) link is already ACTIVE, send the
+    // card-share message again (same link, same token) instead of returning
+    // silently. Off by default; see the doc comment above for its two callers.
+    options: { forceNotify?: boolean } = {},
   ): Promise<ShareLinkResponseDto> {
     const existing = await this.prisma.shareLink.findUnique({
       where: { cardId_contactId: { cardId: card.id, contactId: contact.id } },
     });
 
-    if (existing && existing.status === 'ACTIVE' && !opts?.forceNotify) {
+    if (existing && existing.status === 'ACTIVE' && !options.forceNotify) {
       return this.toResponseDto({
         ...existing,
         card: { name: card.name },
@@ -210,17 +221,25 @@ export class ShareLinksService {
       // compare against. null should mean "this link has never told anyone
       // anything," a state that isn't reachable once a link is actually live.
       const linkRow = existing
-        ? // Re-sharing a revoked link is how an owner un-revokes it for someone
-          // — explicit intent to give them access again, restoring the SAME
-          // token rather than minting a new one.
-          await tx.shareLink.update({
-            where: { id: existing.id },
-            data: {
-              status: 'ACTIVE',
-              revokedAt: null,
-              lastNotifiedVersion: card.currentVersion,
-            },
-          })
+        ? existing.status === 'ACTIVE'
+          ? // A re-send to someone who already holds the card: same link, same
+            // token — never a second one. They are about to receive a message
+            // pointing at live data, so they are caught up as of now.
+            await tx.shareLink.update({
+              where: { id: existing.id },
+              data: { lastNotifiedVersion: card.currentVersion },
+            })
+          : // Re-sharing a revoked link is how an owner un-revokes it for
+            // someone — explicit intent to give them access again, restoring
+            // the SAME token rather than minting a new one.
+            await tx.shareLink.update({
+              where: { id: existing.id },
+              data: {
+                status: 'ACTIVE',
+                revokedAt: null,
+                lastNotifiedVersion: card.currentVersion,
+              },
+            })
         : await tx.shareLink.create({
             data: {
               token: generateShareToken(),
@@ -254,6 +273,7 @@ export class ShareLinksService {
       shareLinkId: link.id,
       cardId: card.id,
       contactId: contact.id,
+      resent: existing?.status === 'ACTIVE',
     });
 
     return this.toResponseDto({

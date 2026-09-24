@@ -1,4 +1,5 @@
 import { readdirSync, readFileSync } from "node:fs";
+import { formatPhoneDisplay } from "@/lib/format";
 import { join, resolve as resolvePath } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -504,7 +505,9 @@ describe("ContactRow (§8D.3)", () => {
     );
 
     const row = document.querySelector("[data-contact-row]") as HTMLElement;
-    expect(within(row).getByRole("link")).toHaveTextContent(unnamed.phoneE164);
+    /* Formatted, as `contactLabel` now writes it — the raw E.164 heading sat above a formatted
+       "Number" row for the same person, the same number in two spellings. */
+    expect(within(row).getByRole("link")).toHaveTextContent(formatPhoneDisplay(unnamed.phoneE164));
     expect(row.querySelector("[data-contact-phone]")).toBeNull();
   });
 

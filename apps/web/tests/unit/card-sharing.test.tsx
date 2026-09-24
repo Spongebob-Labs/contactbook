@@ -1,9 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { renderWithProviders, screen, userEvent, waitFor } from "../helpers/render";
 import { ToastProvider } from "@/components/overlay/toast";
 import { SendToContact, type MintedLink } from "@/components/share/card-sharing";
 import { ApiError } from "@/lib/api/errors";
+import { toContact } from "@/lib/api/map";
 import type { ContactResponseDto, ShareLinkResponseDto } from "@/lib/api/schema";
 import type { Contact } from "@/types/domain";
 
@@ -58,14 +59,16 @@ const LINK: ShareLinkResponseDto = {
   createdAt: "2026-08-23T18:00:00.000Z",
 };
 
-function renderSend(options: { contacts?: readonly Contact[] } = {}) {
+function renderSend(
+  options: { contacts?: readonly Contact[]; alreadySentTo?: ReadonlySet<string> } = {},
+) {
   const onShared = vi.fn<(minted: MintedLink) => void>();
   renderWithProviders(
     <ToastProvider>
       <SendToContact
         cardId="card-1"
         contacts={options.contacts ?? []}
-        alreadySentTo={new Set()}
+        alreadySentTo={options.alreadySentTo ?? new Set()}
         onShared={onShared}
       />
     </ToastProvider>,
@@ -206,5 +209,92 @@ describe("the failure that is not a failure", () => {
     // No link to show, so nothing is claimed — the panel must not publish a URL it never got.
     await waitFor(() => expect(share).toHaveBeenCalled());
     expect(onShared).not.toHaveBeenCalled();
+  });
+});
+
+/* ── the contact picker ──────────────────────────────────────────────────────────────── */
+
+describe("picking a contact", () => {
+  /* Radix Select reaches for pointer capture and `scrollIntoView`, which happy-dom does not
+     implement. Stubbed here, in the one block that opens a select, rather than in the global
+     setup where they would mask a real gap for every other suite. */
+  beforeAll(() => {
+    Element.prototype.hasPointerCapture ??= () => false;
+    Element.prototype.releasePointerCapture ??= () => undefined;
+    Element.prototype.scrollIntoView ??= () => undefined;
+  });
+
+  const UNNAMED: ContactResponseDto = {
+    ...CONTACT,
+    id: "5d2c9e1f-0000-4a5b-8c6d-000000000001",
+    phoneE164: "+447979080009",
+    displayName: null,
+  };
+  const registry = [toContact(CONTACT, "owner-1"), toContact(UNNAMED, "owner-1")];
+
+  async function openPicker(): Promise<HTMLElement[]> {
+    await userEvent.click(screen.getByRole("combobox", { name: /contact/i }));
+    return screen.findAllByRole("option");
+  }
+
+  /**
+   * ⚠ The reported bug: every unnamed contact read "+447979080009 · +44 7979 080009" — the raw
+   * number standing in for a name, then the formatted number after it.
+   */
+  it("writes an unnamed contact's number once, formatted, and a named one as name · number", async () => {
+    renderSend({ contacts: registry });
+
+    const labels = (await openPicker()).map((option) => option.textContent ?? "");
+
+    expect(labels).toContain("Priya · +91 98200 00000");
+    const unnamed = labels.find((label) => label.includes("7979"));
+    expect(unnamed).toBe("+44 7979 080009");
+    expect(labels.join(" ")).not.toContain("+447979080009");
+  });
+
+  it("never marks a row as already sent", async () => {
+    renderSend({ contacts: registry, alreadySentTo: new Set([CONTACT.id, UNNAMED.id]) });
+
+    const labels = (await openPicker()).map((option) => option.textContent ?? "");
+    expect(labels.join(" ")).not.toMatch(/already/i);
+  });
+
+  it("offers someone who already holds the card a Send again, and sends it", async () => {
+    const onShared = renderSend({ contacts: registry, alreadySentTo: new Set([CONTACT.id]) });
+
+    await openPicker();
+    await userEvent.click(screen.getByRole("option", { name: /priya/i }));
+
+    const button = screen.getByRole("button", { name: /send again/i });
+    expect(button).toBeEnabled();
+    expect(screen.queryByText(/already have this card/i)).not.toBeInTheDocument();
+
+    await userEvent.click(button);
+
+    await waitFor(() => expect(share).toHaveBeenCalledWith("card-1", { contactId: CONTACT.id }));
+    // A re-send reuses the link, so the toast must not claim one was created.
+    expect(await screen.findByText("Sent to Priya again")).toBeInTheDocument();
+    expect(screen.queryByText(/link created/i)).not.toBeInTheDocument();
+    expect(onShared).toHaveBeenCalledTimes(1);
+  });
+
+  it("can send to the same person again and again", async () => {
+    renderSend({ contacts: registry, alreadySentTo: new Set([CONTACT.id]) });
+
+    for (let i = 0; i < 3; i += 1) {
+      await openPicker();
+      await userEvent.click(screen.getByRole("option", { name: /priya/i }));
+      await userEvent.click(screen.getByRole("button", { name: /send again/i }));
+      await waitFor(() => expect(share).toHaveBeenCalledTimes(i + 1));
+    }
+  });
+
+  it("still says Create link for someone who does not have the card yet", async () => {
+    renderSend({ contacts: registry, alreadySentTo: new Set([CONTACT.id]) });
+
+    await openPicker();
+    await userEvent.click(screen.getByRole("option", { name: /7979/ }));
+
+    expect(screen.getByRole("button", { name: /create link/i })).toBeEnabled();
   });
 });

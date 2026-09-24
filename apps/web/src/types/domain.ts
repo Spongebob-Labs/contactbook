@@ -7,6 +7,7 @@
  * Types only. This module imports *from* `@/card/template-types` and is never imported by it.
  */
 
+import { formatPhoneDisplay } from "@/lib/format";
 import type { CardSurface, ResolvedSurface } from "@/card/card-surface";
 import type { PaletteId, TemplatePalette } from "@/card/template-palettes";
 import type { CardTemplate, TemplateId } from "@/card/template-types";
@@ -400,10 +401,15 @@ export type CardShareRow = ContactShare & {
  * `displayName` is nullable and an import routinely brings numbers without one, so every surface
  * needs the same fallback — and a blank cell where a name should be reads as a broken row. The
  * number is the honest answer, because it is the only thing that is always there.
+ *
+ * ⚠ **Formatted, not raw** (2026-09-24). The fallback used to be the bare E.164 string, so an
+ * unnamed contact was headed "+919900000004" on the list and in their own detail page, directly
+ * above a "Number" row reading "+91 99000 00004" — the same number in two spellings. QR-scan
+ * contacts arrive with no name at all, so on a real account this was most of the list.
  */
 export function contactLabel(contact: Pick<Contact, "displayName" | "phoneE164">): string {
   const name = contact.displayName?.trim() ?? "";
-  return name.length > 0 ? name : contact.phoneE164;
+  return name.length > 0 ? name : formatPhoneDisplay(contact.phoneE164);
 }
 
 /* ── §5.3a Derived shapes — avatar and bio are DERIVED, not owned ───────────────────── */

@@ -46,7 +46,12 @@ export function PageHeader({
         className,
       )}
     >
-      <div className="min-w-0 flex-1">
+      {/* ⚠ `flex-[1_1_16rem]`, not `flex-1`. `flex-1` is a basis of 0, so the row never counted
+          as full and never wrapped — on a phone the title was crushed to ~20px beside the
+          actions and its subtitle ran out underneath them ("Updated / 1 / Janu / 202" with the
+          Edit button on top). A real basis means the actions drop to their own row when both
+          cannot fit, and sit beside the title exactly as before wherever they can. */}
+      <div className="min-w-0 flex-[1_1_16rem]">
         {overline ? (
           <p
             data-page-header-overline=""
@@ -68,7 +73,9 @@ export function PageHeader({
       {actions ? (
         <div
           data-page-header-actions=""
-          className="ms-auto flex flex-wrap items-center gap-3"
+          /* Left-aligned once wrapped onto its own row on a phone — a right-aligned row of
+             buttons under a left-aligned title reads as a layout that ran out of room. */
+          className="flex flex-wrap items-center gap-3 max-sm:ms-0 sm:ms-auto"
         >
           {actions}
         </div>
