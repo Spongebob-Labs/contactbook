@@ -163,18 +163,32 @@ export class ShareLinksService {
    * ACTIVE ShareLink exists and enqueues the card-share WhatsApp send when
    * there's something new to notify about. Idempotent exactly like share()
    * used to be inline: re-calling on an already-ACTIVE link is a no-op on the
-   * messaging side, just re-returns the existing link.
+   * messaging side, just re-returns the existing link — UNLESS `forceNotify`
+   * is set.
+   *
+   * `forceNotify` exists for exactly one caller: card-connect.service.ts's
+   * "Send to my phone" path. That button's entire promise, repeated on
+   * screen every time it's tapped, is "we're sending this to your WhatsApp
+   * right now" — not "the first time you tap this." Silently no-op'ing a
+   * second tap (already-ACTIVE link, no new message) makes that promise a
+   * lie with no visible error, which is exactly what staging's logs showed:
+   * every connect/send call in a 2-hour window hit this early return and
+   * enqueued nothing, because the same test number had already connected
+   * before. The OTP-verify and owner-initiated share() callers deliberately
+   * keep the old no-resend behavior — repeat-notifying there really would be
+   * spam — so `forceNotify` defaults to false and is opt-in per call site.
    */
   async ensureActiveLinkAndNotify(
     card: { id: string; currentVersion: number; name: string },
     contact: { id: string; phoneE164: string; displayName: string | null },
     ownerName: string,
+    opts?: { forceNotify?: boolean },
   ): Promise<ShareLinkResponseDto> {
     const existing = await this.prisma.shareLink.findUnique({
       where: { cardId_contactId: { cardId: card.id, contactId: contact.id } },
     });
 
-    if (existing && existing.status === 'ACTIVE') {
+    if (existing && existing.status === 'ACTIVE' && !opts?.forceNotify) {
       return this.toResponseDto({
         ...existing,
         card: { name: card.name },

@@ -107,7 +107,13 @@ export class CardConnectService {
       [card.user.firstName, card.user.lastName].filter(Boolean).join(' ') ||
       'Someone';
 
-    await this.shareLinks.ensureActiveLinkAndNotify(card, contact, ownerName);
+    // SEND_TO_PHONE forces a fresh notify even on an already-ACTIVE link —
+    // see ensureActiveLinkAndNotify's doc comment. QR_SCAN_CONNECT keeps the
+    // default no-resend behavior: verifying twice is a safe no-op there, not
+    // a repeat of an explicit "send it to me now" action.
+    await this.shareLinks.ensureActiveLinkAndNotify(card, contact, ownerName, {
+      forceNotify: source === 'SEND_TO_PHONE',
+    });
 
     // Not folded into the ShareLink/outbox transaction above — this log is
     // an observational record, not the outbox-in-transaction guarantee
