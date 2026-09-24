@@ -10,6 +10,7 @@ import { ApiExcludeController } from '@nestjs/swagger';
 import { CardConnectService } from './card-connect.service';
 import { ConnectOtpRequestDto } from './dto/connect-otp-request.dto';
 import { ConnectOtpVerifyDto } from './dto/connect-otp-verify.dto';
+import { ConnectSendDto } from './dto/connect-send.dto';
 
 /**
  * The QR-scan "Save & connect" flow — same posture as public-links.controller.ts:
@@ -45,5 +46,18 @@ export class CardConnectController {
     @Body() dto: ConnectOtpVerifyDto,
   ) {
     return this.cardConnect.verifyAndConnect(token, dto.phoneE164, dto.code);
+  }
+
+  /**
+   * "Send to my phone" — no OTP round trip. Typed number is trusted as-is
+   * and the card goes out over WhatsApp immediately. See
+   * CardConnectService's class doc comment for why this is a deliberate,
+   * distinct path from otp/verify rather than a shortcut through it.
+   */
+  @Post('send')
+  @HttpCode(200)
+  @Header('Cache-Control', 'no-store')
+  async send(@Param('token') token: string, @Body() dto: ConnectSendDto) {
+    return this.cardConnect.connectViaSend(token, dto.phoneE164);
   }
 }

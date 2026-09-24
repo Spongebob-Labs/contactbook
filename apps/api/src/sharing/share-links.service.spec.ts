@@ -14,13 +14,12 @@ import type { TaskEnqueuer } from '../outbox/task-enqueuer';
  * An owner pressing Send for someone who already held the card got their existing link back and
  * no message: the function returned early for any ACTIVE link. The dialog said "Link created" and
  * nothing arrived, so from the owner's side the card could not be sent to anyone twice. The
- * owner's share now passes `resendIfActive`.
+ * owner's share now passes `forceNotify`, as "Send to my phone" does.
  *
  * ## The case that must NOT change
- * The QR-connect paths call the same function without the flag. `/connect/send` has no rate
- * limit, so the early return is the only thing stopping one number being messaged on every
- * repeated call — "connecting twice is a safe no-op" is also its documented contract. The
- * default-off case is asserted as carefully as the new one.
+ * The OTP-verify connect calls the same function without the flag: verifying twice is a safe
+ * no-op, not a request for a second message. The default-off case is asserted as carefully as
+ * the forced one.
  */
 
 const CARD = { id: 'card-1', currentVersion: 4, name: 'Work' };
@@ -129,7 +128,7 @@ describe('ShareLinksService.ensureActiveLinkAndNotify', () => {
       CONTACT,
       'Vansh',
       {
-        resendIfActive: true,
+        forceNotify: true,
       },
     );
 
@@ -150,7 +149,7 @@ describe('ShareLinksService.ensureActiveLinkAndNotify', () => {
 
     for (let i = 0; i < 3; i += 1) {
       await h.service.ensureActiveLinkAndNotify(CARD, CONTACT, 'Vansh', {
-        resendIfActive: true,
+        forceNotify: true,
       });
     }
 
@@ -159,7 +158,7 @@ describe('ShareLinksService.ensureActiveLinkAndNotify', () => {
     expect(new Set(h.enqueued.map((e) => e.dedupeKey)).size).toBe(3);
   });
 
-  it('stays silent for an active link when the caller did not ask to re-send (the QR-connect paths)', async () => {
+  it('stays silent for an active link when the caller did not ask to re-send (the OTP-verify connect)', async () => {
     const h = harness(row());
 
     const result = await h.service.ensureActiveLinkAndNotify(
@@ -175,7 +174,7 @@ describe('ShareLinksService.ensureActiveLinkAndNotify', () => {
   });
 
   it('restores a revoked link and sends it, with or without the flag', async () => {
-    for (const options of [undefined, { resendIfActive: true }]) {
+    for (const options of [undefined, { forceNotify: true }]) {
       const h = harness(row({ status: 'REVOKED', revokedAt: new Date() }));
 
       await h.service.ensureActiveLinkAndNotify(
@@ -194,7 +193,7 @@ describe('ShareLinksService.ensureActiveLinkAndNotify', () => {
     const h = harness(null);
 
     await h.service.ensureActiveLinkAndNotify(CARD, CONTACT, 'Vansh', {
-      resendIfActive: true,
+      forceNotify: true,
     });
 
     expect(h.creates).toHaveLength(1);
