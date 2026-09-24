@@ -606,19 +606,23 @@ test("the browser never requests the unscoped inbound endpoint", async ({ page }
 });
 
 /**
- * The feature itself: a contact who has written to us is marked, one who has not is not, and
- * the strangers are reduced to a count with no numbers attached.
+ * Every row names its source from `GET /contacts` itself — never a dash — and the *Messaged you*
+ * column is gone. Strangers who wrote in are still reduced to a count with no numbers attached.
  */
-test("marks the contacts who have messaged you, and counts the ones you don't have", async ({
+test("shows every contact's source, and counts the senders you don't have", async ({
   page,
-}) => {
+}, testInfo) => {
   await gotoReady(page, CONTACTS);
 
-  const marked = page.locator("[data-contact-messaged-count]");
-  await expect(marked, "no contact was marked as having messaged you").not.toHaveCount(0);
+  const view = visibleView(page, testInfo.project.name);
+  await expect(page.getByRole("columnheader", { name: "Messaged you" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Messaged you/ })).toHaveCount(0);
+  await expect(page.locator("[data-contact-messaged-count]")).toHaveCount(0);
 
-  /* The stub seeds two messages from the first fixture contact. */
-  await expect(marked.first()).toHaveAttribute("data-contact-messaged-count", "2");
+  /* One source badge per row: the column has an answer for everybody. */
+  const rows = rowsIn(page, testInfo.project.name);
+  await expect(rows).not.toHaveCount(0);
+  await expect(view.locator("[data-contact-source-label]")).toHaveCount(await rows.count());
 
   /* ⚠ And the stranger is a COUNT ONLY. The stub seeds `+919000000001`, which is not in the
      fixture registry — it stands for another user's contact. Its number must not be anywhere
@@ -634,14 +638,13 @@ test("marks the contacts who have messaged you, and counts the ones you don't ha
 });
 
 /**
- * The QR-scan half: a contact who scanned one of **your** cards is marked, on its own column,
- * separately from anyone who merely messaged you.
+ * The QR-scan metric: a contact who scanned one of **your** cards carries the scan count under
+ * their source badge.
  *
- * The two are different events — a `QR_SCAN_CONNECT` row involves no WhatsApp message at all —
- * so a single "inbound activity" column would tell the owner to go looking for a conversation
- * that does not exist.
+ * The stub seeds two *messages* and one *scan* from the same contact, so a count of `1` here also
+ * proves messages are not being counted as scans.
  */
-test("marks the contacts who scanned your card, separately from who messaged you", async ({
+test("marks the contacts who scanned your card, and never counts a message as a scan", async ({
   page,
 }) => {
   await gotoReady(page, CONTACTS);
@@ -651,13 +654,6 @@ test("marks the contacts who scanned your card, separately from who messaged you
 
   /* The fixture seeds exactly one scan of THIS user's card from the first contact. */
   await expect(scanned.first()).toHaveAttribute("data-contact-scanned-count", "1");
-
-  /* Both columns are populated for that same contact, and they are not the same number — which
-     is what proves a scan is not being double-counted as a message, or vice versa. */
-  await expect(page.locator("[data-contact-messaged-count]").first()).toHaveAttribute(
-    "data-contact-messaged-count",
-    "2",
-  );
 
   // The filter chip is offered, because there is something for it to match.
   await expect(page.getByText("Scanned your card", { exact: false }).first()).toBeVisible();
