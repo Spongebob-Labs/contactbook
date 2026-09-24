@@ -97,19 +97,13 @@ export class ShareLinksService {
     const ownerName =
       [owner.firstName, owner.lastName].filter(Boolean).join(' ') || 'Someone';
 
-    // ⚠ resendIfActive is the owner's share ONLY. An owner pressing Send for
-    // someone who already holds the card means "send it to them again", and
-    // silently returning the existing link without a message was the bug
-    // (the dialog said "Link created" and nothing arrived). The QR-connect
-    // callers must NOT pass it: /connect/send has no rate limit, so the early
-    // return below is the only thing stopping one number being WhatsApped on
-    // every repeated call. Here the caller is authenticated and re-sending to
-    // their own contact is the intent.
+    // forceNotify: an owner pressing Send for someone who already holds the
+    // card means "send it to them again" — see ensureActiveLinkAndNotify.
     const result = await this.ensureActiveLinkAndNotify(
       card,
       contact,
       ownerName,
-      { resendIfActive: true },
+      { forceNotify: true },
     );
     await this.logCardShareConnection(owner, contact);
     return result;
@@ -172,23 +166,40 @@ export class ShareLinksService {
    * ACTIVE ShareLink exists and enqueues the card-share WhatsApp send when
    * there's something new to notify about. Idempotent exactly like share()
    * used to be inline: re-calling on an already-ACTIVE link is a no-op on the
-   * messaging side, just re-returns the existing link.
+   * messaging side, just re-returns the existing link — UNLESS `forceNotify`
+   * is set.
+   *
+   * `forceNotify` has two callers, and both are an explicit "send it now":
+   *
+   *  - card-connect.service.ts's "Send to my phone" path. That button's whole
+   *    promise, repeated on screen every time it's tapped, is "we're sending
+   *    this to your WhatsApp right now" — not "the first time you tap this."
+   *    Staging's logs showed every connect/send in a 2-hour window hitting the
+   *    early return and enqueueing nothing, because the number had connected
+   *    once before.
+   *  - share(), the owner's own Send. An owner picking someone who already
+   *    holds the card and pressing Send means "send it to them again"; the
+   *    dialog used to report "Link created" while nothing went out, so the
+   *    owner could never re-send to anyone (product call, 2026-09-24).
+   *
+   * The OTP-verify connect keeps the no-resend default: verifying a second
+   * time is a safe no-op, not a request for another message. Either way the
+   * link is never duplicated — a re-send reuses the same row and token.
    */
   async ensureActiveLinkAndNotify(
     card: { id: string; currentVersion: number; name: string },
     contact: { id: string; phoneE164: string; displayName: string | null },
     ownerName: string,
-    // resendIfActive: when this (card, contact) link is already ACTIVE, send
-    // the card-share message again (same link, same token) instead of
-    // returning silently. Off by default — see the call in share() for why
-    // only the owner-initiated path turns it on.
-    options: { resendIfActive?: boolean } = {},
+    // forceNotify: when this (card, contact) link is already ACTIVE, send the
+    // card-share message again (same link, same token) instead of returning
+    // silently. Off by default; see the doc comment above for its two callers.
+    options: { forceNotify?: boolean } = {},
   ): Promise<ShareLinkResponseDto> {
     const existing = await this.prisma.shareLink.findUnique({
       where: { cardId_contactId: { cardId: card.id, contactId: contact.id } },
     });
 
-    if (existing && existing.status === 'ACTIVE' && !options.resendIfActive) {
+    if (existing && existing.status === 'ACTIVE' && !options.forceNotify) {
       return this.toResponseDto({
         ...existing,
         card: { name: card.name },
