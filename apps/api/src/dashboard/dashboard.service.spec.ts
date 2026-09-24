@@ -51,25 +51,30 @@ interface Rows {
 function service(rows: Rows): DashboardService {
   let shareLinkCall = 0;
   const prisma = {
-    card: { findMany: async () => rows.cards ?? [] },
-    contact: { count: async () => rows.contacts ?? 0 },
-    profileField: { count: async () => rows.fields ?? 0 },
-    profileFieldGroup: { findMany: async () => rows.groups ?? [] },
+    card: { findMany: () => Promise.resolve(rows.cards ?? []) },
+    contact: { count: () => Promise.resolve(rows.contacts ?? 0) },
+    profileField: { count: () => Promise.resolve(rows.fields ?? 0) },
+    profileFieldGroup: { findMany: () => Promise.resolve(rows.groups ?? []) },
     shareLink: {
       /* ⚠ Called TWICE, and the two are different queries: first every ACTIVE link (the one pass
          every people-shaped total comes from), then every link created inside the 12-week window
          regardless of status — because a link that was shared and later revoked was still
          shared that week. Returning the same rows to both would hide a mix-up between them. */
-      findMany: async () => {
+      findMany: () => {
         shareLinkCall += 1;
-        return shareLinkCall === 1 ? (rows.links ?? []) : (rows.activity ?? []);
+        return Promise.resolve(
+          shareLinkCall === 1 ? (rows.links ?? []) : (rows.activity ?? []),
+        );
       },
     },
   };
   return new DashboardService(prisma as unknown as PrismaService);
 }
 
-const card = (id: string, over: Partial<{ name: string; version: number; fields: number }> = {}) => ({
+const card = (
+  id: string,
+  over: Partial<{ name: string; version: number; fields: number }> = {},
+) => ({
   id,
   name: over.name ?? id,
   currentVersion: over.version ?? 1,
@@ -130,7 +135,9 @@ describe('DashboardService', () => {
 
       expect(result.totals.peopleReached).toBe(2);
       expect(result.totals.behind).toBe(2);
-      expect(result.totals.behind!).toBeLessThanOrEqual(result.totals.peopleReached);
+      expect(result.totals.behind!).toBeLessThanOrEqual(
+        result.totals.peopleReached,
+      );
     });
 
     it('holds peopleOpened at or below peopleReached', async () => {
@@ -142,7 +149,9 @@ describe('DashboardService', () => {
         ],
       }).getDashboard('u1');
 
-      expect(result.totals.peopleOpened).toBeLessThanOrEqual(result.totals.peopleReached);
+      expect(result.totals.peopleOpened).toBeLessThanOrEqual(
+        result.totals.peopleReached,
+      );
       expect(result.totals.peopleOpened).toBe(1);
     });
 
@@ -155,7 +164,9 @@ describe('DashboardService', () => {
       const empty = await service({ cards: [] }).getDashboard('u1');
       expect(empty.totals.behind).toBeNull();
 
-      const hasCards = await service({ cards: [card('c1')] }).getDashboard('u1');
+      const hasCards = await service({ cards: [card('c1')] }).getDashboard(
+        'u1',
+      );
       expect(hasCards.totals.behind).toBe(0);
     });
   });
@@ -204,13 +215,18 @@ describe('DashboardService', () => {
       ]);
       expect(result.attention[0]).toMatchObject({ cardId: 'empty', count: 0 });
       expect(result.attention[1]).toMatchObject({ cardId: 'stale', count: 2 });
-      expect(result.attention.at(-1)).toMatchObject({ cardId: 'unshared', count: 0 });
+      expect(result.attention.at(-1)).toMatchObject({
+        cardId: 'unshared',
+        count: 0,
+      });
     });
 
     it('does not also report an empty card as never shared', async () => {
       /* An empty card's reach problems are downstream of it being empty — two rows for one card
          would have the owner fix the same thing twice. */
-      const result = await service({ cards: [card('empty', { fields: 0 })] }).getDashboard('u1');
+      const result = await service({
+        cards: [card('empty', { fields: 0 })],
+      }).getDashboard('u1');
 
       expect(result.attention).toHaveLength(1);
       expect(result.attention[0].kind).toBe('no-fields');
@@ -229,9 +245,13 @@ describe('DashboardService', () => {
 
       expect(result.sharingActivity).toHaveLength(12);
       expect(result.sharingActivity.at(-1)!.count).toBe(2);
-      expect(result.sharingActivity.filter((b) => b.count === 0)).toHaveLength(11);
+      expect(result.sharingActivity.filter((b) => b.count === 0)).toHaveLength(
+        11,
+      );
 
-      const days = result.sharingActivity.map((b) => new Date(b.weekStart).getUTCDay());
+      const days = result.sharingActivity.map((b) =>
+        new Date(b.weekStart).getUTCDay(),
+      );
       expect(new Set(days)).toEqual(new Set([1])); // every bucket starts on a Monday
 
       const ordered = [...result.sharingActivity].sort((a, b) =>
