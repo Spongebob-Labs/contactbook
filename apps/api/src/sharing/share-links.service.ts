@@ -97,10 +97,19 @@ export class ShareLinksService {
     const ownerName =
       [owner.firstName, owner.lastName].filter(Boolean).join(' ') || 'Someone';
 
+    // ⚠ resendIfActive is the owner's share ONLY. An owner pressing Send for
+    // someone who already holds the card means "send it to them again", and
+    // silently returning the existing link without a message was the bug
+    // (the dialog said "Link created" and nothing arrived). The QR-connect
+    // callers must NOT pass it: /connect/send has no rate limit, so the early
+    // return below is the only thing stopping one number being WhatsApped on
+    // every repeated call. Here the caller is authenticated and re-sending to
+    // their own contact is the intent.
     const result = await this.ensureActiveLinkAndNotify(
       card,
       contact,
       ownerName,
+      { resendIfActive: true },
     );
     await this.logCardShareConnection(owner, contact);
     return result;
@@ -169,12 +178,17 @@ export class ShareLinksService {
     card: { id: string; currentVersion: number; name: string },
     contact: { id: string; phoneE164: string; displayName: string | null },
     ownerName: string,
+    // resendIfActive: when this (card, contact) link is already ACTIVE, send
+    // the card-share message again (same link, same token) instead of
+    // returning silently. Off by default — see the call in share() for why
+    // only the owner-initiated path turns it on.
+    options: { resendIfActive?: boolean } = {},
   ): Promise<ShareLinkResponseDto> {
     const existing = await this.prisma.shareLink.findUnique({
       where: { cardId_contactId: { cardId: card.id, contactId: contact.id } },
     });
 
-    if (existing && existing.status === 'ACTIVE') {
+    if (existing && existing.status === 'ACTIVE' && !options.resendIfActive) {
       return this.toResponseDto({
         ...existing,
         card: { name: card.name },
@@ -196,17 +210,25 @@ export class ShareLinksService {
       // compare against. null should mean "this link has never told anyone
       // anything," a state that isn't reachable once a link is actually live.
       const linkRow = existing
-        ? // Re-sharing a revoked link is how an owner un-revokes it for someone
-          // — explicit intent to give them access again, restoring the SAME
-          // token rather than minting a new one.
-          await tx.shareLink.update({
-            where: { id: existing.id },
-            data: {
-              status: 'ACTIVE',
-              revokedAt: null,
-              lastNotifiedVersion: card.currentVersion,
-            },
-          })
+        ? existing.status === 'ACTIVE'
+          ? // A re-send to someone who already holds the card: same link, same
+            // token — never a second one. They are about to receive a message
+            // pointing at live data, so they are caught up as of now.
+            await tx.shareLink.update({
+              where: { id: existing.id },
+              data: { lastNotifiedVersion: card.currentVersion },
+            })
+          : // Re-sharing a revoked link is how an owner un-revokes it for
+            // someone — explicit intent to give them access again, restoring
+            // the SAME token rather than minting a new one.
+            await tx.shareLink.update({
+              where: { id: existing.id },
+              data: {
+                status: 'ACTIVE',
+                revokedAt: null,
+                lastNotifiedVersion: card.currentVersion,
+              },
+            })
         : await tx.shareLink.create({
             data: {
               token: generateShareToken(),
@@ -240,6 +262,7 @@ export class ShareLinksService {
       shareLinkId: link.id,
       cardId: card.id,
       contactId: contact.id,
+      resent: existing?.status === 'ACTIVE',
     });
 
     return this.toResponseDto({

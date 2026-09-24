@@ -14,7 +14,6 @@ import type { ShareLinkResponseDto } from "@/lib/api/schema";
 import { normaliseE164 } from "@/lib/contacts-parse";
 import { formatLongDate, formatPhoneDisplay } from "@/lib/format";
 import {
-  contactLabel,
   type CardShareRow,
   type Contact,
 } from "@/types/domain";
@@ -66,7 +65,7 @@ export interface MintedLink {
   /** Live, resolvable, and the same string the QR will encode once this is handed upward. */
   url: string;
   contactId: string;
-  /** The recipient's name if they have one, else their number — `contactLabel`'s rule. */
+  /** The recipient's name if they have one, else their formatted number — `recipientName`. */
   recipientLabel: string;
   recipientPhoneE164: string;
   /**
@@ -76,15 +75,26 @@ export interface MintedLink {
   templateMissing: boolean;
 }
 
+/**
+ * How this dialog names a person: their name, or — when the registry has none — their number,
+ * **formatted and written once**.
+ *
+ * ⚠ Not `contactLabel` (types/domain). That falls back to the raw E.164 string, and the picker then
+ * appended the formatted number after it, so every unnamed contact read
+ * "+447979080009 · +44 7979 080009" — the same number twice and no name. Contacts that arrive
+ * from a QR scan have no name at all, so this was most of a real registry.
+ */
+function recipientName(displayName: string | null, phoneE164: string): string {
+  const name = displayName?.trim() ?? "";
+  return name.length > 0 ? name : formatPhoneDisplay(phoneE164);
+}
+
 function mintedFrom(link: ShareLinkResponseDto, templateMissing: boolean): MintedLink {
   return {
     shareLinkId: link.id,
     url: link.url,
     contactId: link.contactId,
-    recipientLabel: contactLabel({
-      displayName: link.contactDisplayName,
-      phoneE164: link.contactPhoneE164,
-    }),
+    recipientLabel: recipientName(link.contactDisplayName, link.contactPhoneE164),
     recipientPhoneE164: link.contactPhoneE164,
     templateMissing,
   };
@@ -129,6 +139,10 @@ export function SendToContact({ cardId, contacts, alreadySentTo, onShared }: Sen
   const selected = contacts.find((contact) => contact.id === contactId) ?? null;
   const optedOut = selected !== null && selected.optedOutAt !== null;
   const ready = target === "pick" ? contactId.length > 0 : phone.trim().length > 0;
+  /* The picked contact already holds this card, so the click sends it to them again — same link,
+     fresh WhatsApp message — rather than creating anything. Only knowable in the picker; a number
+     typed under "Someone new" is resolved after the upsert, in `submit`. */
+  const resend = target === "pick" && selected !== null && alreadySentTo.has(selected.id);
 
   function submit() {
     setPhoneError(null);
@@ -163,7 +177,17 @@ export function SendToContact({ cardId, contacts, alreadySentTo, onShared }: Sen
         const link = await cardsApi.share(cardId, { contactId: recipientId });
         const minted = mintedFrom(link, false);
 
-        toast({ title: `Link created for ${minted.recipientLabel}` });
+        /* A re-send reuses the same link and queues a fresh WhatsApp message, so "Link created"
+           would be untrue. "On its way", not "delivered": the message goes out through the
+           outbox, after this response. */
+        toast(
+          alreadySentTo.has(recipientId)
+            ? {
+                title: `Sent to ${minted.recipientLabel} again`,
+                description: "Same link as before. It's on its way over WhatsApp.",
+              }
+            : { title: `Link created for ${minted.recipientLabel}` },
+        );
         reset();
         onShared(minted);
       } catch (thrown) {
@@ -235,15 +259,21 @@ export function SendToContact({ cardId, contacts, alreadySentTo, onShared }: Sen
             onValueChange={setContactId}
             items={contacts.map((contact) => ({
               value: contact.id,
-              // The number is in the label because two people can share a name and a registry is
-              // addressed by number — picking the wrong row sends a card to a stranger.
-              label: `${contactLabel(contact)} · ${formatPhoneDisplay(contact.phoneE164)}${
-                alreadySentTo.has(contact.id) ? " · already sent" : ""
-              }`,
+              /* The number is in the label because two people can share a name and a registry is
+                 addressed by number — picking the wrong row sends a card to a stranger. Written
+                 once: an unnamed contact is just their number (see `recipientName`).
+
+                 ⚠ No "already sent" marker. It read as a status that blocked the row, and
+                 sending again is an ordinary action now — the button says "Send again" once
+                 such a row is picked, which is the one place the difference matters. */
+              label:
+                contact.displayName !== null && contact.displayName.trim().length > 0
+                  ? `${contact.displayName.trim()} · ${formatPhoneDisplay(contact.phoneE164)}`
+                  : formatPhoneDisplay(contact.phoneE164),
             }))}
             fieldClassName="min-w-0 flex-1"
           />
-          <SendButton pending={pending} ready={ready} onClick={submit} />
+          <SendButton pending={pending} ready={ready} resend={resend} onClick={submit} />
         </div>
       ) : (
         <div className="flex flex-col gap-3">
@@ -291,12 +321,6 @@ export function SendToContact({ cardId, contacts, alreadySentTo, onShared }: Sen
         </p>
       ) : null}
 
-      {selected !== null && alreadySentTo.has(selected.id) ? (
-        <p data-send-already="" className="text-sm text-ink-3">
-          They already have this card. Sending again reuses the same link rather than making a
-          second one.
-        </p>
-      ) : null}
     </div>
   );
 }
@@ -304,22 +328,26 @@ export function SendToContact({ cardId, contacts, alreadySentTo, onShared }: Sen
 function SendButton({
   pending,
   ready,
+  resend = false,
   onClick,
 }: {
   pending: boolean;
   ready: boolean;
+  /** The recipient already holds this card: the click re-sends it rather than creating a link. */
+  resend?: boolean;
   onClick: () => void;
 }) {
   return (
     <Button
       data-send-card=""
+      data-send-mode={resend ? "resend" : "create"}
       disabled={!ready}
       disabledReason="Name who this card is for."
       loading={pending}
-      loadingLabel="Creating…"
+      loadingLabel={resend ? "Sending…" : "Creating…"}
       onClick={onClick}
     >
-      Create link
+      {resend ? "Send again" : "Create link"}
     </Button>
   );
 }

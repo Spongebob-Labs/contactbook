@@ -15,6 +15,7 @@
 import { auth, cards, contacts, dashboard, profile, shareLinks } from "@/lib/api/browser";
 import type { AudienceRecipientDto } from "@/lib/api/schema";
 import { isApiError } from "@/lib/api/errors";
+import { formatPhoneDisplay } from "@/lib/format";
 import {
   groupSharesByContact,
   toContact,
@@ -25,7 +26,6 @@ import {
 } from "@/lib/api/map";
 import { readDashboardSummary } from "@/lib/dashboard/metrics";
 import {
-  contactLabel,
   type CardShareRow,
   type Contact,
   type ContactCard,
@@ -154,10 +154,15 @@ export function fetchCardDetail(cardId: string) {
     let shares: CardShareRow[] = [];
     try {
       const byId = new Map(registry.map((c) => [c.id, c]));
-      /** The registry's name for a contact, else whatever the API called them, else the number. */
+      /**
+       * The registry's name for a contact, else whatever the API called them, else the number —
+       * formatted, the same rule the share dialog's picker uses. The raw E.164 fallback put
+       * "+447979080009" in the recipients list directly under a picker showing
+       * "+44 7979 080009" for the same person.
+       */
       const labelFor = (contactId: string, displayName: string | null, phone: string): string => {
-        const contact = byId.get(contactId);
-        return contact !== undefined ? contactLabel(contact) : (displayName ?? phone);
+        const name = (byId.get(contactId)?.displayName ?? displayName)?.trim() ?? "";
+        return name.length > 0 ? name : formatPhoneDisplay(phone);
       };
 
       const rows = (await shareLinks.list())
