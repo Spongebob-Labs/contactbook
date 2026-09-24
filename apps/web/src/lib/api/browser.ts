@@ -22,7 +22,7 @@
  */
 
 import { ApiError, narrowCode, parseErrorEnvelope } from "@/lib/api/errors";
-import { browserApiBase, isDirectMode, publicApiBaseUrl } from "@/lib/api/mode";
+import { browserApiBase, isDirectMode } from "@/lib/api/mode";
 import { clearAccessToken, readAccessToken, writeAccessToken } from "@/lib/api/token-store";
 import type {
   AudienceResponseDto,
@@ -114,10 +114,7 @@ async function cb<T>(call: Call): Promise<T> {
 }
 
 async function send<T>({ method, path, body, form, query }: Call): Promise<T> {
-  const isContactsApi = path.startsWith("/contacts");
-  const direct = isDirectMode() || isContactsApi;
-  const apiBase = direct ? `${publicApiBaseUrl()}/api/v1` : browserApiBase();
-  const url = new URL(`${apiBase}${path}`, window.location.origin);
+  const url = new URL(`${browserApiBase()}${path}`, window.location.origin);
   if (query !== undefined) {
     for (const [key, value] of Object.entries(query)) {
       if (value === undefined) continue;
@@ -129,8 +126,10 @@ async function send<T>({ method, path, body, form, query }: Call): Promise<T> {
   // Not set for FormData: the browser has to write its own multipart boundary.
   if (body !== undefined) headers["Content-Type"] = "application/json";
 
+  const direct = isDirectMode();
   if (direct) {
-    // Direct API mode carries the credential directly as Authorization: Bearer <token>.
+    // Direct mode carries the credential itself. In proxy mode the header is attached
+    // server-side and must never be set here — the browser has no token to set.
     const token = readAccessToken();
     if (token !== null) headers.Authorization = `Bearer ${token}`;
   }
@@ -141,7 +140,8 @@ async function send<T>({ method, path, body, form, query }: Call): Promise<T> {
       method,
       headers,
       body: form ?? (body === undefined ? undefined : JSON.stringify(body)),
-      // Direct API calls send bearer header rather than relying on same-origin session cookies.
+      // Proxy mode rides our first-party session cookie. Direct mode sends no cookies at all —
+      // they would be cross-site, and the bearer header is what authenticates instead.
       credentials: direct ? "omit" : "same-origin",
       cache: "no-store",
     });
