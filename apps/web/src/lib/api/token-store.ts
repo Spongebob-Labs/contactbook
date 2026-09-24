@@ -23,10 +23,7 @@ const KEY = "cb.accessToken";
 /** Never throws: private browsing and hardened settings can make storage unavailable. */
 export function readAccessToken(): string | null {
   try {
-    const fromStorage = window.sessionStorage.getItem(KEY);
-    if (fromStorage) return fromStorage;
-    const match = document.cookie.match(/(?:^|; )\s*(?:cb_at|cb_access_token)\s*=\s*([^;]+)/);
-    return match ? decodeURIComponent(match[1]) : null;
+    return window.sessionStorage.getItem(KEY);
   } catch {
     return null;
   }

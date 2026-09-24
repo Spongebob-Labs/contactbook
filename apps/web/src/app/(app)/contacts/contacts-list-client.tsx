@@ -86,21 +86,6 @@ const KNOWN_SOURCES: ReadonlySet<string> = new Set<string>(SOURCE_ORDER);
 const OPTED_OUT_FILTER = "OPTED_OUT";
 
 /**
- * ⚠ **"Messaged you" — the inbound half of this screen, and the loop this file's own header
- * says was lost.**
- *
- * That header records that `/contacts` used to be *"a list of inbound leads, with columns for
- * the card they scanned"*, and that the columns became *number* and *cards sent* because the
- * API had no source for the inbound side. `GET /inbound-messages` is now that source.
- *
- * ⚠ It answers **"this person has written to you"**, and only that — a QR-scan connect is a
- * separate event under {@link SCANNED_FILTER}, because a scan involves no message at all.
- * Counting the two together was this screen's first cut, and it invited the owner to go
- * looking for a conversation that does not exist.
- */
-const MESSAGED_FILTER = "MESSAGED_YOU";
-
-/**
  * ⚠ **"Scanned your card" — and note what it does and does not claim.**
  *
  * This file's header records that `/contacts` was once *"a list of inbound leads, with columns
@@ -132,9 +117,8 @@ function matchesFilters(
   if (selected.length === 0) return true;
   return selected.some((id) => {
     if (id === OPTED_OUT_FILTER) return contact.optedOutAt !== null;
-    /* Both read a count, not the slot's existence: a slot is created for any inbound activity,
-       so `!== undefined` would make "Messaged you" match somebody who only ever scanned. */
-    if (id === MESSAGED_FILTER) return (connects[contact.id]?.messageCount ?? 0) > 0;
+    /* A count, not the slot's existence: a slot is created for any inbound activity, so
+       `!== undefined` would match somebody who only ever messaged. */
     if (id === SCANNED_FILTER) return (connects[contact.id]?.scanCount ?? 0) > 0;
     return contact.source === id;
   });
@@ -183,7 +167,7 @@ export function ContactsListSkeleton(): ReactElement {
   );
 }
 
-/* ── the table (Name · Number · Cards sent · Added) ───────────────────────────────── */
+/* ── the table (Name · Number · Cards sent · Source · Added) ──────────────────────── */
 
 /**
  * `DataTable` renders **both** a real `<table>` (≥768px) and a stacked `<ul>` (≤767px) and hides
@@ -244,81 +228,50 @@ function contactColumns(
     },
     {
       /**
-       * ⚠ **"Scanned your card" — one of yours, never a named one.** See {@link SCANNED_FILTER}
-       * for why the heading stops there: the row proves the scan and its owner, not the card.
+       * ⚠ **Read from `GET /contacts` itself — every row has an answer.**
        *
-       * The em-dash for "never" is the same device the *Cards sent* column uses, with the same
-       * screen-reader sentence beside it — a bare "—" announces as nothing at all.
+       * This used to be two columns, *Scanned your card* and *Messaged you*, both fed only by
+       * `/api/inbound/connects`. The inbound log is sparse — a contact whose scan predates it,
+       * or who was added by hand, has no row there — so on a real account both columns were a
+       * wall of dashes while the contact's own `source` said `QR_SCAN` the whole time.
+       *
+       * `source` is always present, so the badge is never empty, and it uses the same labels as
+       * the filter chips above the table. The inbound scan count is layered on top when it
+       * exists — it is a metric, not the column's only evidence. *Messaged you* was removed.
        */
-      id: "scanned",
-      header: "Scanned your card",
+      id: "source",
+      header: "Source",
       align: "end",
       cell: (contact) => {
         const scans = connects[contact.id]?.scanCount ?? 0;
         const lastScanAt = connects[contact.id]?.lastScanAt ?? null;
-        /* Both conditions, not just the count: a count above zero with no date would render an
-           empty `<time>`, and the types allow that combination even though the route does not
-           produce it. */
-        if (scans === 0 || lastScanAt === null) {
-          return (
-            <span data-contact-scanned={contact.id} className="text-ink-3">
-              <span aria-hidden="true">—</span>
-              <span className="sr-only">Has not scanned your card</span>
-            </span>
-          );
-        }
         return (
           <span
-            data-contact-scanned={contact.id}
-            data-contact-scanned-count={scans}
-            className="inline-flex items-baseline gap-2"
+            data-contact-source-label={contact.id}
+            data-contact-source-value={contact.source}
+            // End-aligned in the table column; start-aligned in the ≤767px list, beside its label.
+            className="inline-flex flex-col items-start gap-1 md:items-end"
           >
-            <time dateTime={lastScanAt} className="text-ink tabular-nums">
-              {formatLongDate(lastScanAt)}
-            </time>
-            <span className="sr-only">
-              {scans === 1
-                ? "Scanned one of your cards on this date"
-                : `Scanned one of your cards ${scans} times, most recently on this date`}
-            </span>
-          </span>
-        );
-      },
-    },
-    {
-      /**
-       * ⚠ **A real WhatsApp message, and never a scan.** See {@link MESSAGED_FILTER}: the two
-       * are separate columns because a scan sends no message, so a date here means there is a
-       * conversation to open and a date under *Scanned your card* means there is not.
-       */
-      id: "messaged",
-      header: "Messaged you",
-      align: "end",
-      cell: (contact) => {
-        const messages = connects[contact.id]?.messageCount ?? 0;
-        const lastMessageAt = connects[contact.id]?.lastMessageAt ?? null;
-        if (messages === 0 || lastMessageAt === null) {
-          return (
-            <span data-contact-messaged={contact.id} className="text-ink-3">
-              <span aria-hidden="true">—</span>
-              <span className="sr-only">Has not messaged you</span>
-            </span>
-          );
-        }
-        return (
-          <span
-            data-contact-messaged={contact.id}
-            data-contact-messaged-count={messages}
-            className="inline-flex items-baseline gap-2"
-          >
-            <time dateTime={lastMessageAt} className="text-ink tabular-nums">
-              {formatLongDate(lastMessageAt)}
-            </time>
-            <span className="sr-only">
-              {messages === 1
-                ? "1 message received, most recently on this date"
-                : `${messages} messages received, most recently on this date`}
-            </span>
+            <Badge tone={contact.source === "QR_SCAN" ? "accent" : "neutral"}>
+              {SOURCE_LABELS[contact.source]}
+            </Badge>
+            {/* Both conditions, not just the count: a count with no date would render an empty
+                `<time>`, and the types allow that combination even though the route does not. */}
+            {scans > 0 && lastScanAt !== null ? (
+              <span
+                data-contact-scanned={contact.id}
+                data-contact-scanned-count={scans}
+                className="text-sm text-ink-3 tabular-nums"
+              >
+                {scans === 1 ? "Scanned" : `Scanned ${scans}×`} ·{" "}
+                <time dateTime={lastScanAt}>{formatLongDate(lastScanAt)}</time>
+                <span className="sr-only">
+                  {scans === 1
+                    ? ", one of your cards, on this date"
+                    : `, one of your cards, ${scans} times, most recently on this date`}
+                </span>
+              </span>
+            ) : null}
           </span>
         );
       },
@@ -527,7 +480,7 @@ function ContactsListScreen({
         (value) =>
           KNOWN_SOURCES.has(value) ||
           value === OPTED_OUT_FILTER ||
-          value === MESSAGED_FILTER,
+          value === SCANNED_FILTER,
       ),
   );
 
@@ -598,15 +551,10 @@ function ContactsListScreen({
     if (optedOut > 0) {
       options.push({ id: OPTED_OUT_FILTER, label: "Opted out", count: optedOut });
     }
-    /* Same rule as above: offered only when it would match something. A "Messaged you 0" chip
-       is a control that can only ever return nothing. */
+    /* Same rule as above: offered only when it would match something. */
     const scanned = contacts.filter((c) => (connects[c.id]?.scanCount ?? 0) > 0).length;
     if (scanned > 0) {
       options.push({ id: SCANNED_FILTER, label: "Scanned your card", count: scanned });
-    }
-    const messaged = contacts.filter((c) => (connects[c.id]?.messageCount ?? 0) > 0).length;
-    if (messaged > 0) {
-      options.push({ id: MESSAGED_FILTER, label: "Messaged you", count: messaged });
     }
     return options;
   }, [connects, contacts]);
