@@ -24,7 +24,13 @@ const base = z.object({
 
   JWT_ACCESS_SECRET: z.string().min(32).optional(),
   JWT_REFRESH_SECRET: z.string().min(32).optional(),
-  JWT_ACCESS_TTL: z.string().default('15m'),
+  // Bumped from 15m to 7d 2026-09-25: the original short TTL forced a silent
+  // refresh (or, on a client that doesn't retry 401s, a real re-login) far
+  // more often than intended. Deploy.yml's staging environment doesn't set
+  // JWT_ACCESS_TTL as a secret, so staging/production run on this default —
+  // changing it here is the actual way to change it there, not a GitHub
+  // secret update.
+  JWT_ACCESS_TTL: z.string().default('7d'),
   JWT_REFRESH_TTL: z.string().default('30d'),
 
   // 32 bytes, base64. Guarded at boot rather than at first decrypt.
