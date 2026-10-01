@@ -294,7 +294,7 @@ export function ProfileFieldRow({
               }
               overline="Delete field"
               title={`Delete ${field.label}?`}
-              detail="This removes the field from your profile. A card is a filter over your profile, so every card that maps it loses it too."
+              detail="This removes the field from your profile and from every card that shows it."
               consequence={cardsUsingConsequence(cardNames)}
               confirmLabel="Delete field"
               tone="destructive"

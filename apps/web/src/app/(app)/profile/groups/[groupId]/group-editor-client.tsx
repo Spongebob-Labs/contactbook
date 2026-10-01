@@ -330,7 +330,6 @@ function GroupEditorScreen({
         <EmptyState
           overline="Nothing here yet"
           title={`No fields in ${group.name} yet`}
-          description="Add one and every card builder can tick it on straight away. A card is a filter over these fields, not a copy of them."
         >
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <AddFieldDialog group={group} variant="primary" onAdd={addField} />
@@ -394,7 +393,6 @@ function GroupEditorScreen({
       <PageHeader
         overline="Field group"
         title={title}
-        subtitle="Reorder, edit and delete the fields in this group. Deleting one says how many cards use it first."
         actions={
           group === null || renaming ? null : (
             <>
@@ -443,7 +441,6 @@ function GroupEditorScreen({
             label="Group name"
             value={nameDraft}
             error={nameError}
-            hint="This is the heading this group shows on your profile — a job, a business, or an account."
             onChange={(event) => setNameDraft(event.target.value)}
             fieldClassName="min-w-0 flex-1"
           />

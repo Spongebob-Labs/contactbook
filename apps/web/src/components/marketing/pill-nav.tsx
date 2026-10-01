@@ -1,14 +1,32 @@
+import Image from "next/image";
 import Link from "next/link";
 
 import { mkcn } from "./mk-cn";
 import { MkButtonLink } from "./type";
 
 /**
+ * NOTE — THE WORDMARK IS THE LOGO NOW, 2026-09-28. The client: *"Logo: replace two-word 'Contact
+ * Book' banner with revised logo (top left, links to homepage)."* The text wordmark set in the
+ * display face is gone; the gold and brown lockup takes its place.
+ *
+ * The nav uses `contactbook-logo-nav.png` — the lockup with its tagline removed, because "NEVER
+ * LOSE CONTACT" at nav height is a line of 5px capitals, which is noise rather than a tagline.
+ * The footer uses the full lockup, where there is room for it to be read.
+ *
+ * `BRAND_NAME` is the image's alt text and therefore the link's accessible name — one word,
+ * the way the logo spells it. The footer and the chrome's tests read it from here.
+ */
+export const BRAND_NAME = "ContactBook";
+
+/** The tagline-free lockup's intrinsic size. The rendered height is set by class. */
+const NAV_LOGO = { src: "/brand/contactbook-logo-nav.png", width: 408, height: 81 } as const;
+
+/**
  * The floating pill bar — the most visible single component in the build, and the one place
  * in `src/components/marketing/**` that leaves the flat plane.
  *
  * The shape is design.md's: a rounded bar of pure white floating over the paper ground,
- * wordmark left and two controls right — a ghost "Log in" and a dark filled waitlist button.
+ * logo left and two controls right — a ghost "Log in" and a dark filled "Create your card".
  * The three section links that used to sit between them were removed on 2026-09-20; see
  * `SECTION_LINKS` below.
  *
@@ -66,12 +84,11 @@ import { MkButtonLink } from "./type";
    bland nav bar."*
 
    It held three: `/#how-it-works`, `/templates` (labelled "Example cards") and `/corporate`.
-   The bar is now the wordmark, Log in, and the waitlist — the one thing the page is asking for.
+   The bar is now the logo, Log in, and "Create your card" — the one thing the page is asking for.
 
-   NOTE - THE ROUTES STILL EXIST AND ARE STILL REACHABLE. Only the nav entries are gone.
-   `/corporate` is the one page with real depth behind it and the hero's secondary control still
-   points at it; the footer still links `/templates`. Deleting those routes was NOT asked for and
-   would take the hero's second CTA down with it.
+   NOTE - THE ROUTES STILL EXIST. Only the nav entries are gone. The footer still links
+   `/templates`. `/corporate` and `/waitlist` stay on disk, but since 2026-09-28 nothing on the
+   homepage or this chrome links to either (the client asked for both to come off the page).
 
    Kept as an empty list rather than deleted along with the `<ul>` below, because this bar has
    twice had a nav entry orphaned by a section cut (`#faq`, then `#cards`) and the next hand to
@@ -109,29 +126,32 @@ export function PillNav() {
       )}
     >
       {/*
-        The wordmark is the one place in the chrome that uses the display face. It is a
-        name, not a label, and setting it in the display face is what tells a visitor within
-        one glance that this is a wordmark rather than a nav item.
+        The logo, top left, home. See `BRAND_NAME` above for why it is an image now.
 
-        NOTE: That face used to be Fraunces, and the sentence here used to read "the same company
-        but not the same room" — a serif wordmark on the marketing site and a grotesque one in
-        the product. It is Space Grotesk on both now: the rooms are still separate (different
-        ground, different scale, different palette layer) but the NAME is the one thing that
-        must not change between them, and a name set in two typefaces is two names.
+        NOTE — THE HEIGHT IS THE 360px BUDGET, NOT A TASTE CALL. Below `md` the bar holds the
+        logo, "Log in" and "Create your card" in 328px of content box; at 20px tall the lockup is
+        ~101px wide, which leaves the two controls their full tap targets. It returns to 28px at
+        `md`, where the pill has room. `preload` because it is above the fold on every marketing
+        page (it replaced `priority`, deprecated in Next 16).
+
+        Under 360px even that does not fit, so the same image is cropped to its CB mark
+        (`object-cover` + `object-left` on a 24px-wide box) — one file, no second request.
       */}
       <Link
         href="/"
         className={mkcn(
-          // NOTE — Two steps, not one. 24px "Contact Book" in the display face is ~155px wide and is
-          // what pushed the bar past 360px on its own. The 18px step is still the display face
-          // and still a name rather than a label — it is the same wordmark, set smaller on a
-          // small screen, which is what every wordmark does.
-          "shrink-0 whitespace-nowrap rounded-mk-control px-1 md:px-2",
-          "font-mk-display text-mk-subheading text-mk-ink md:text-mk-heading-sm",
-          "transition-colors duration-[var(--dur-fast)] hover:text-mk-sapphire-ink",
+          "flex shrink-0 items-center rounded-mk-control px-1 py-1 md:px-2",
+          "transition-opacity duration-[var(--dur-fast)] hover:opacity-80",
         )}
       >
-        Contact Book
+        <Image
+          src={NAV_LOGO.src}
+          width={NAV_LOGO.width}
+          height={NAV_LOGO.height}
+          alt={BRAND_NAME}
+          preload
+          className="h-5 w-auto max-[359px]:w-6 max-[359px]:object-cover max-[359px]:object-left md:h-7"
+        />
       </Link>
 
       {/*
@@ -164,13 +184,13 @@ export function PillNav() {
         <MkButtonLink href="/signin/phone" variant="ghost" className="px-2.5 md:px-4">
           Log in
         </MkButtonLink>
-        {/* The brief's own nav control. It was "Get started" → `/signup/first-name`, which is
-            the right control for a launched product and the wrong one for a pre-launch site:
-            the page's whole ask is the waitlist, and a nav that sends people somewhere else is
-            a nav competing with its own page. Sign-in stays, quietly, because there is a real
-            app behind this and existing users need a door. */}
-        <MkButtonLink href="/waitlist" variant="dark" className="px-3 md:px-5">
-          Join the waitlist
+        {/* NOTE — 2026-09-28: was "Join the waitlist" → `/waitlist`, removed on the client's
+            word ("join the waitlist copy … need removing"). The product is open, so the bar's
+            one filled control is the front door the hero and the close also use. Phone sign-in
+            is sign-up and log-in at once, which is why both controls share a destination; "Log
+            in" stays so a returning user does not have to read "Create" as their way back. */}
+        <MkButtonLink href="/signin/phone" variant="dark" className="px-3 md:px-5">
+          Create your card
         </MkButtonLink>
       </div>
     </nav>

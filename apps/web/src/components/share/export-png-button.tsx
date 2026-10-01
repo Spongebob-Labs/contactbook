@@ -1,15 +1,21 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { isExportFailedError, type ExportFailureReason } from "@/card/errors";
 import { exportCardPng, exportFileName, isExportInFlight } from "@/card/export-card-png";
-import { Button } from "@/components/primitives/button";
+import { Button, type ButtonVariant } from "@/components/primitives/button";
 import { useToast } from "@/components/overlay";
 import type { ResolvedCard } from "@/types/domain";
 
 /**
- * "Export PNG" on `/cards/[cardId]` — spec §6.8, §6.9, §11 E-43 / E-44, plan T22.
+ * "Save QR to phone" on `/cards/[cardId]` — spec §6.8, §6.9, §11 E-43 / E-44, plan T22.
+ *
+ * ⚠ This was "Export PNG" in the page header. Client review 2026-09-28 asked for the wallet
+ * pass to be usable today, and no pass endpoint exists yet — so the one thing that *does* put
+ * the card and its QR on a phone now is this image. It moved into the wallet row and is labelled
+ * for what a person does with it. The file is the same: `exportCardPng` rasterises the share
+ * face, QR included, from the screen's one `ResolvedCard` (I-5).
  *
  * ## The handler, and why its shape is the whole contract
  * T15 designed `exportCardPng` so that a *careless* caller still cannot download two files.
@@ -43,7 +49,7 @@ import type { ResolvedCard } from "@/types/domain";
  */
 
 /** The toast title. One sentence, no error code, no jargon (§6.10). */
-export const EXPORT_FAILED_TITLE = "We couldn't export that card";
+export const EXPORT_FAILED_TITLE = "We couldn't save that image";
 
 /** §6.8's three reasons, each with copy that says what to do next (§11 E-44). */
 export const EXPORT_RETRY_COPY: Record<ExportFailureReason, string> = {
@@ -60,10 +66,20 @@ const REVOKE_AFTER_MS = 30_000;
 export interface ExportPngButtonProps {
   /** The one `ResolvedCard` the preview, the `.vcf` and the PNG all share (I-5). */
   resolved: ResolvedCard;
+  /** What the control says. The file is the same whatever it is called. */
+  label?: ReactNode;
+  loadingLabel?: string;
+  variant?: ButtonVariant;
   className?: string;
 }
 
-export function ExportPngButton({ resolved, className }: ExportPngButtonProps) {
+export function ExportPngButton({
+  resolved,
+  label = "Save QR to phone",
+  loadingLabel = "Saving…",
+  variant = "secondary",
+  className,
+}: ExportPngButtonProps) {
   const { toast } = useToast();
   const [busy, setBusy] = useState(false);
 
@@ -146,17 +162,16 @@ export function ExportPngButton({ resolved, className }: ExportPngButtonProps) {
 
   return (
     <Button
-      variant="secondary"
-      data-card-detail-action="export"
+      variant={variant}
       data-export-png=""
       loading={busy}
-      loadingLabel="Exporting…"
+      loadingLabel={loadingLabel}
       className={className}
       onClick={() => {
         void run();
       }}
     >
-      Export PNG
+      {label}
     </Button>
   );
 }

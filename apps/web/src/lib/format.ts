@@ -37,11 +37,20 @@ export function clampText(value: string, max: number): string {
  * Deliberately small: an unknown country returns the E.164 ungrouped rather than inventing
  * a grouping that would be wrong in that country.
  */
-const DIALLING_PLANS: readonly { readonly code: string; readonly groups: readonly number[] }[] = [
+const DIALLING_PLANS: readonly {
+  readonly code: string;
+  /** Only numbers whose national part starts with this use the row. */
+  readonly nationalPrefix?: string;
+  readonly groups: readonly number[];
+}[] = [
   { code: "+971", groups: [2, 3, 4] },
+  // UAE fixed lines are one digit shorter than mobiles: `4` is Dubai, then 3-4.
+  { code: "+971", groups: [1, 3, 4] },
   { code: "+91", groups: [5, 5] },
   { code: "+65", groups: [4, 4] },
   { code: "+61", groups: [3, 3, 3] },
+  // London's `020` is written 20 xxxx xxxx; the 4-6 row below is the mobile/other shape.
+  { code: "+44", nationalPrefix: "20", groups: [2, 4, 4] },
   { code: "+44", groups: [4, 6] },
   { code: "+1", groups: [3, 3, 4] },
 ];
@@ -56,14 +65,18 @@ export function toE164(raw: string): string {
 
 export function formatPhoneDisplay(raw: string): string {
   const e164 = toE164(raw);
-  const plan = DIALLING_PLANS.find((candidate) => e164.startsWith(candidate.code));
+  // A country can have more than one shape (UK London vs. mobile, UAE fixed vs. mobile). The
+  // first row whose prefix AND digit count both fit wins; a number no row fits is shown
+  // ungrouped — forcing it into a plan it contradicts would be wrong, not just ugly.
+  const plan = DIALLING_PLANS.find((candidate) => {
+    if (!e164.startsWith(candidate.code)) return false;
+    const national = e164.slice(candidate.code.length);
+    const expected = candidate.groups.reduce((sum, size) => sum + size, 0);
+    return national.length === expected && national.startsWith(candidate.nationalPrefix ?? "");
+  });
   if (plan === undefined) return e164;
 
   const national = e164.slice(plan.code.length);
-  const expected = plan.groups.reduce((sum, size) => sum + size, 0);
-  // A digit count that contradicts the plan means our assumption about the number is wrong.
-  // Showing it ungrouped is honest; forcing it into the plan is not.
-  if (national.length !== expected) return e164;
 
   let cursor = 0;
   const parts = plan.groups.map((size) => {

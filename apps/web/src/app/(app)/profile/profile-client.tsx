@@ -1,63 +1,108 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useEffect, useReducer, useState, useSyncExternalStore, useTransition } from "react";
+import * as TabsPrimitive from "@radix-ui/react-tabs";
+import { useSearchParams } from "next/navigation";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+  useTransition,
+  type ReactElement,
+} from "react";
 
+import { heroBio, splitHeroFields } from "@/card/card-page-rows";
+import { resolveCard } from "@/card/resolve-card";
+import { builderInitialState, type BuilderAction } from "@/components/builder/builder-reducer";
+import { DesignPanel } from "@/components/builder/design-panel";
+import { PanelHead } from "@/components/builder/panel-head";
+import { childBirthdayLabel, CHILD_LABEL, type ChildEntry } from "@/components/builder/field-suggestions";
 import {
   ErrorPanel,
-  LoadingSkeleton,
   ScreenStateRoot,
   resolveDataScreenState,
 } from "@/components/data";
-import { PageHeader } from "@/components/layout";
+import { PageHeader, SplitView } from "@/components/layout";
 import { useToast } from "@/components/overlay";
 import { Skeleton } from "@/components/primitives/skeleton";
-import { AddFieldDialog, type NewFieldDraft } from "@/components/profile/add-field-dialog";
-import { FieldGroupSection } from "@/components/profile/field-group-section";
-import { ProfileFieldRow } from "@/components/profile/field-row";
+import type { NewFieldDraft } from "@/components/profile/add-field-dialog";
+import { isAlwaysMasked } from "@/components/profile/field-types";
 import { IdentityBlock } from "@/components/profile/identity-block";
-import { profile as api } from "@/lib/api/browser";
-import { fetchProfileData } from "@/lib/api/browser-loaders";
+import { useCardDesign } from "@/components/profile/use-card-design";
+import { useCardFieldSync, type CardSyncStatus } from "@/components/profile/use-card-field-sync";
+import type { RowCardToggle } from "@/components/profile/workspace-field-row";
+import {
+  carryOverFieldIds,
+  cardFieldPayload,
+  groupIdForCreate,
+  isLocalFieldId,
+  workGroupTag,
+  workspaceSections,
+} from "@/components/profile/workspace-model";
+import { WorkspaceCardIntro } from "@/components/profile/workspace-card-intro";
+import { WorkspacePreview } from "@/components/profile/workspace-preview";
+import { WorkspaceSection, type NewFieldInput } from "@/components/profile/workspace-section";
+import { WorkspaceSharePanel } from "@/components/profile/workspace-share-panel";
+import {
+  WorkspaceTabList,
+  useWorkspacePanel,
+  type WorkspacePanelId,
+} from "@/components/profile/workspace-tabs";
+import { cards as cardsApi, profile as api } from "@/lib/api/browser";
+import { fetchCardsData } from "@/lib/api/browser-loaders";
+import { toAppearanceDto } from "@/lib/api/card-appearance";
 import { toScreenError } from "@/lib/api/errors";
-import { categoryOfSyntheticGroup, isSyntheticGroupId } from "@/lib/api/map";
+import { isSyntheticGroupId, syntheticGroupId, toApiCardKind, toContactCard } from "@/lib/api/map";
+import type { ApiFieldCategory } from "@/lib/api/schema";
+import { cn } from "@/lib/cn";
 import { useApiResource } from "@/lib/use-api";
-import { Button } from "@/components/primitives/button";
-import { Input } from "@/components/primitives/input";
-import { Select } from "@/components/primitives/select";
-import { API_GROUP_CATEGORIES, type ApiGroupCategory } from "@/lib/api/schema";
-import type { FieldGroup, FixtureError, ProfileField, ScreenState, User } from "@/types/domain";
+import type {
+  ContactCard,
+  FieldCategory,
+  FieldGroup,
+  FixtureError,
+  ProfileField,
+  ResolvedCard,
+  ScreenState,
+  User,
+} from "@/types/domain";
 
 /**
- * `/profile` — the screen where the product's data actually lives (spec §6.1 R-16, §8D.3,
- * §4.5, §5.3, §11 E-08).
+ * `/profile` — **Profile & Cards**, one workspace.
  *
- * ## Why this screen matters more than its size suggests
- * §5.3: **a card owns no data; a card is a filter over `ProfileField`s.** A card's own content is
- * a name, a type and a template — everything a scanner receives comes from here.
+ * Client, 2026-09-28: *"Profile and Cards feel like duplicate, disconnected sections; merge them.
+ * Left side acts as profile/field builder, right side shows the card being built live. Fields
+ * already saved carry over to new cards automatically."*
  *
- * ## What changed when the API arrived
- * The data is real, and so are the edits. Three consequences worth stating up front:
+ * ## The shape
  *
- * · **Reads and writes both happen from the browser**, through the same-origin proxy at
- *   `/api/cb/*`. Every one is a row in the Network tab whose response body is exactly what Swagger
- *   returns — that visibility is the requirement this replaced a server-side fetch to satisfy.
- * · **`?state=` survives, and now means something narrower.** It is a *review override*, not the
- *   data source: `success` is the real profile, and `loading`/`error`/`offline` still render their
- *   surfaces on demand because a healthy server cannot be asked to produce them. 122 e2e URLs
- *   depend on that. See `@/lib/screen-data`.
- * · **The draft is an echo, not the truth.** Every mutation dispatches locally *and* calls a
- *   Server Action. On success the action revalidates and `router.refresh()` replaces the echo
- *   with the server's record — which matters most for an added field, whose local id is
- *   temporary. On failure the echo is discarded the same way, and the reason is toasted.
+ * `SplitView`, the builder's own geometry: three panels on the left — **Fields, Design, Share** —
+ * and on the right a card switcher over the live `<BuilderPreview>` of the selected card. Every
+ * filled row carries a switch for "on this card"; flipping it changes the preview in the same
+ * frame and is written with `PUT /cards/{id}/fields` a moment later (`useCardFieldSync`).
  *
- * ## Two controls that are honestly read-only
- * Not omissions — missing endpoints, recorded as ask #6 in `docs/INTEGRATION.md`:
+ * ⚠ **Design and Share are panels here, not links away** (client, 2026-09-30: *"There should be
+ * no redirection"*). They used to open `/cards/{id}/edit?panel=design` and `/cards/{id}`. Now the
+ * Design panel edits the selected card in place and writes itself (`useCardDesign`, the builder's
+ * own reducer), and the Share panel sends, links and lists recipients for it. The card on the
+ * right never moves. The open panel is `?panel=`, recorded the same way as `?card=`.
  *
- * · **Identity.** There is no `PATCH` for a name or an email. `POST /profile/onboarding` sets
- *   them once and is one-shot, so the edit button is not rendered.
- * · **Sensitive.** There is no `isSensitive` column. The flag is derived from field type, so
- *   payment values are always masked and nothing else can be. The switch says so rather than
- *   moving and reverting on reload.
+ * ## The rules it keeps
+ *
+ * · **The selected card is in the URL** as `?card=`, written with `history.replaceState`. A Next
+ *   navigation would re-run the route and remount the workspace, dropping a half-typed edit.
+ * · **Blank rows are client-side only.** The API rejects an empty value, so a suggestion is drawn
+ *   until a field answers it and the field is created on the first non-empty save.
+ * · **A new card starts with every filled-in field on it** (`carryOverFieldIds`): create, then
+ *   one `PUT` with the lot. The two calls are not atomic; if the second fails the card exists
+ *   empty and the owner can switch fields on by hand.
+ * · **A field added here goes onto the selected card too**, so the preview answers the edit.
+ * · **The draft is an echo.** Every write is shown locally, sent, and then the profile is
+ *   re-read, which replaces the echo with what the server stored — or removes it if the write
+ *   was refused.
+ * · `coverUrl` is never sent from here, and `phoneE164` is never an input.
  */
 
 /* ── The data this screen renders ─────────────────────────────────────────────────────── */
@@ -68,11 +113,13 @@ export interface ProfileData {
   fields: ProfileField[];
 }
 
+/** The profile plus the cards that filter it. */
+export interface WorkspaceData extends ProfileData {
+  cards: ContactCard[];
+}
+
 /**
  * §11 E-08: an empty profile is **the groups, with no fields** — not zero groups.
- *
- * A screen showing nothing would be wrong twice over: wrong about the data, and offering the
- * owner no way to start. Each section keeps its own "No fields in {group} yet" + Add field.
  */
 export function emptyProfileData(real: ProfileData): ProfileData {
   return {
@@ -80,6 +127,11 @@ export function emptyProfileData(real: ProfileData): ProfileData {
     groups: real.groups.map((group) => ({ ...group, fieldIds: [] })),
     fields: [],
   };
+}
+
+/** `?state=empty` on the workspace: the cards stay, the profile has nothing in it. */
+export function emptyWorkspaceData(real: WorkspaceData): WorkspaceData {
+  return { ...emptyProfileData(real), cards: real.cards };
 }
 
 /* ── The local echo ───────────────────────────────────────────────────────────────────── */
@@ -92,9 +144,8 @@ export interface ProfileDraft {
   /**
    * Monotonic, so a locally-added field gets a stable id without `crypto.randomUUID()`.
    *
-   * ⚠ These ids are **local only** and must never reach the API — a reorder that sent one would
-   * be rejected wholesale as not-yours (403 `PROFILE_FIELD_NOT_OWNED`). `reseed` replaces them
-   * with the server's real ids as soon as the refresh lands.
+   * ⚠ These ids are **local only** and must never reach the API. `reseed` replaces them with
+   * the server's real ids as soon as the refresh lands.
    */
   nextLocalId: number;
 }
@@ -106,7 +157,9 @@ export type ProfileDraftAction =
   | { kind: "add-field"; groupId: string; draft: NewFieldDraft }
   | { kind: "delete-field"; fieldId: string }
   | { kind: "move-field"; groupId: string; fieldId: string; direction: -1 | 1 }
-  | { kind: "rename-group"; groupId: string; name: string };
+  | { kind: "rename-group"; groupId: string; name: string }
+  /** Adds a group to echo into when the profile has none of that category yet. */
+  | { kind: "ensure-group"; group: FieldGroup };
 
 export function initProfileDraft(data: ProfileData | null): ProfileDraft {
   if (data === null) return { user: null, groups: [], fields: [], nextLocalId: 1 };
@@ -185,8 +238,7 @@ export function profileDraftReducer(
 
     case "delete-field":
       // §11 E-40 is the other half of this: a card whose `fieldIds` still names a deleted field
-      // must drop it into `droppedFieldIds` rather than render a ghost row. The API agrees by
-      // archiving rather than erasing, so card history stays displayable.
+      // must drop it into `droppedFieldIds` rather than render a ghost row.
       return {
         ...state,
         fields: state.fields.filter((field) => field.id !== action.fieldId),
@@ -213,6 +265,11 @@ export function profileDraftReducer(
           group.id === action.groupId ? { ...group, name: action.name } : group,
         ),
       };
+
+    case "ensure-group":
+      return state.groups.some((group) => group.id === action.group.id)
+        ? state
+        : { ...state, groups: [...state.groups, { ...action.group, fieldIds: [] }] };
   }
 }
 
@@ -245,8 +302,7 @@ export function cardNamesUsing(cards: readonly CardUsage[], fieldId: string): st
  * The whole profile's field ids, in display order.
  *
  * `position` is global rather than per-group upstream, so a move inside one section has to be
- * sent as the complete order — see `reorderFieldsAction`. Groups are already in render order and
- * each holds its own ordered ids, so concatenating them *is* the display order.
+ * sent as the complete order — see `reorderFieldsAction`.
  */
 export function globalFieldOrder(draft: Pick<ProfileDraft, "groups" | "fields">): string[] {
   const ids: string[] = [];
@@ -256,155 +312,118 @@ export function globalFieldOrder(draft: Pick<ProfileDraft, "groups" | "fields">)
   return ids;
 }
 
-/** Why the sensitive switch cannot move. Read by both profile screens. */
+/** Why the sensitive switch cannot move. Read by the group editor. */
 export const SENSITIVE_READ_ONLY_REASON =
-  "Set by the field's type — payment details are always masked.";
-
-/** Why the identity block has no edit button. */
-export const IDENTITY_READ_ONLY_REASON =
-  "Your name and email are set when you sign up, and your number is how you sign in.";
-
-/* ── Adding a group ───────────────────────────────────────────────────────────────────── */
-
-/** What each group category is called when the owner is choosing one. */
-const GROUP_CATEGORY_LABELS: Readonly<Record<ApiGroupCategory, string>> = {
-  WORK: "Job",
-  BUSINESS: "Business",
-  SOCIAL: "Social profile",
-  FINANCIAL: "Payment account",
-};
-
-/**
- * Add one instance of a repeatable thing — another job, another bank account.
- *
- * ## Why this control is new
- * There was nothing to create before: a group *was* a category, one per `FieldCategory`, seeded
- * and fixed (§5.5). The API's group is an instance, and `POST /profile/groups` exists because a
- * person can hold two jobs. Without this control four of the API's group categories would be
- * reachable only for groups that already happened to exist.
- *
- * Only the four categories the API allows a group in are offered — `IDENTITY`, `PERSONAL` and
- * `CUSTOM` fields are ungrouped upstream, and their sections on this screen are synthetic.
- */
-function AddGroupRow({
-  open,
-  onOpenChange,
-  onCreate,
-}: {
-  open: boolean;
-  onOpenChange: (next: boolean) => void;
-  onCreate: (category: ApiGroupCategory, name: string) => void;
-}) {
-  const [category, setCategory] = useState<ApiGroupCategory>("WORK");
-  const [name, setName] = useState("");
-  const [error, setError] = useState<string | null>(null);
-
-  if (!open) {
-    return (
-      <div className="border-b border-line py-4">
-        <Button variant="text-link" data-add-group-open="" onClick={() => onOpenChange(true)}>
-          Add a job, business, social profile or account
-        </Button>
-      </div>
-    );
-  }
-
-  return (
-    <form
-      data-add-group-form=""
-      className="flex flex-col gap-3 border-b border-line py-6 sm:flex-row sm:items-end"
-      onSubmit={(event) => {
-        event.preventDefault();
-        const trimmed = name.trim();
-        if (trimmed.length === 0) {
-          setError("Give it a name — it becomes the heading on your profile.");
-          return;
-        }
-        setError(null);
-        onCreate(category, trimmed);
-        setName("");
-      }}
-    >
-      <Select
-        label="Kind"
-        value={category}
-        onValueChange={(next) => setCategory(next as ApiGroupCategory)}
-        items={API_GROUP_CATEGORIES.map((value) => ({
-          value,
-          label: GROUP_CATEGORY_LABELS[value],
-        }))}
-        fieldClassName="sm:w-48 sm:shrink-0"
-      />
-      <Input
-        label="Name"
-        value={name}
-        error={error}
-        placeholder="Kestrel Telecom"
-        onChange={(event) => setName(event.target.value)}
-        fieldClassName="min-w-0 flex-1"
-      />
-      <div className="flex shrink-0 items-center gap-2">
-        <Button type="submit">Add</Button>
-        <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>
-          Cancel
-        </Button>
-      </div>
-    </form>
-  );
-}
-
-/* ── "Collapsed by default on mobile" (§8D.3), without lying about `aria-expanded` ───── */
-
-const COMPACT_QUERY = "(max-width: 767px)";
-
-function subscribeCompact(onStoreChange: () => void): () => void {
-  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
-    return () => {};
-  }
-  const query = window.matchMedia(COMPACT_QUERY);
-  query.addEventListener("change", onStoreChange);
-  return () => query.removeEventListener("change", onStoreChange);
-}
-
-function readCompact(): boolean {
-  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
-  return window.matchMedia(COMPACT_QUERY).matches;
-}
-
-/**
- * The server has no viewport, so it renders the desktop default (expanded) and the client
- * corrects it during hydration. A CSS-only `hidden md:block` would avoid the correction and get
- * `aria-expanded` wrong at one of the two widths, which is the entire accessible contract of a
- * disclosure — so the attribute wins and the one-frame correction is the price.
- */
-function readCompactOnServer(): boolean {
-  return false;
-}
+  "Set by the field's type. Payment details are always masked.";
 
 /* ── The screen ───────────────────────────────────────────────────────────────────────── */
+
+/** `?card=` — which card the preview shows. */
+export const CARD_PARAM = "card";
+
+/** The workspace split: fields fluid on the left, the preview column on the right. */
+const SPLIT_CLASS = cn(
+  /* `grid-cols-1` is `minmax(0, 1fr)`: without it the phone's single implicit column sizes to
+     the card row's full width and pushes the whole preview off the right edge. */
+  "grid-cols-1 gap-3",
+  "lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-6 xl:grid-cols-[minmax(0,1fr)_380px] xl:gap-8",
+);
+
+/**
+ * The bio the card page actually prints. `resolveCard` may compose "{role} at {company}", and the
+ * page drops that when it only repeats the two lines above it — so the Bio row asks the page's own
+ * rule, or it would claim a bio the card beside it is not showing.
+ */
+function printedBio(resolved: ResolvedCard): string | null {
+  const hero = splitHeroFields(resolved.fields, resolved.bio);
+  return heroBio(resolved.bio, resolved.headline, hero.org);
+}
+
+/** The disclosure key for the Fields panel's Position & bio section. */
+const CARD_INTRO_SECTION = "card-intro";
+
+/** The one surface every panel sits on, so switching tab never moves the frame. */
+const PANEL_SURFACE =
+  "flex flex-col rounded-xl border border-line bg-canvas shadow-[var(--elevation-1)]";
+
+/** A logo or cover chosen in this session, ahead of the re-read that confirms it. */
+interface CardMedia {
+  logoUrl?: string | null;
+  coverUrl?: string | null;
+}
+
+const NO_MEDIA: Readonly<Record<string, CardMedia>> = {};
+
+/** What the one status line says when two writers are saving the same card. */
+const STATUS_RANK: Record<CardSyncStatus, number> = {
+  idle: 0,
+  saved: 1,
+  pending: 2,
+  saving: 3,
+  error: 4,
+};
+
+export function worstStatus(a: CardSyncStatus, b: CardSyncStatus): CardSyncStatus {
+  return STATUS_RANK[a] >= STATUS_RANK[b] ? a : b;
+}
+
+/** Design and Share need a card. With none yet, say where the one control that makes one is. */
+function NoCardYet({ action }: { action: "design" | "share" }): ReactElement {
+  return (
+    <div data-workspace-no-card="" className={cn(PANEL_SURFACE, "items-start gap-2 p-6 sm:p-8")}>
+      <h2 className="text-h3 text-ink">No card yet</h2>
+      <p className="max-w-[48ch] text-sm text-ink-3">
+        {action === "design"
+          ? "Create a card with New card, then choose how it looks here."
+          : "Create a card with New card, then send it from here."}
+      </p>
+    </div>
+  );
+}
 
 /** Layout-matched bones for `page.tsx`'s `<Suspense>` fallback and for `loading.tsx`. */
 export function ProfileSkeleton() {
   return (
-    <div className="pb-16">
-      <div className="flex flex-wrap items-end gap-x-6 gap-y-4 border-b border-line pb-6">
-        <Skeleton className="h-10 w-44 rounded-sm" />
+    <div className="flex flex-col pb-16">
+      <div className="border-b border-line pb-6">
+        <Skeleton className="h-8 w-52 rounded-sm" />
       </div>
-      <div className="pt-8">
-        <LoadingSkeleton variant="groups" count={3} label="Loading your profile" />
-      </div>
+      <WorkspaceBones />
+    </div>
+  );
+}
+
+/** The split's bones, under a header that is already on screen. */
+function WorkspaceBones() {
+  return (
+    <div data-workspace-bones="" className={cn("grid items-start pt-4 lg:pt-6", SPLIT_CLASS)}>
+        <div className="flex flex-col gap-4 rounded-xl border border-line p-5 max-lg:order-2">
+          <div className="flex items-center gap-4">
+            <Skeleton className="size-16 rounded-full" />
+            <div className="flex flex-1 flex-col gap-2">
+              <Skeleton className="h-6 w-48 rounded-sm" />
+              <Skeleton className="h-4 w-32 rounded-xs" />
+            </div>
+          </div>
+          {[0, 1, 2, 3].map((index) => (
+            <Skeleton key={index} className="h-14 w-full rounded-md" />
+          ))}
+        </div>
+        <div className="flex flex-col items-center gap-3">
+          <Skeleton className="h-9 w-full rounded-full" />
+          <Skeleton className="h-[var(--builder-preview-h)] w-full max-w-[320px] rounded-[26px] lg:h-[480px]" />
+        </div>
     </div>
   );
 }
 
 export function ProfileClient() {
-  // `GET /profile/me`, `POST /auth/me`, `GET /profile/fields`, `GET /profile/groups` — four rows
-  // in the Network tab, on this screen, every load.
-  const result = useApiResource(fetchProfileData, emptyProfileData);
+  // `GET /profile/me`, `POST /auth/me`, `GET /profile/fields`, `GET /profile/groups` and
+  // `GET /cards` — five rows in the Network tab, on this screen, every load.
+  const result = useApiResource(fetchCardsData, emptyWorkspaceData);
   return (
-    <ProfileScreen
-      // Re-mounts when the `?state=` override changes which profile is in play, so a review URL
-      // flipped from `success` to `empty` does not keep editing fields that are no longer shown.
+    <Workspace
+      // Re-mounts when the `?state=` override changes which profile is in play.
       key={result.state}
       state={result.state}
       data={result.data}
@@ -414,50 +433,285 @@ export function ProfileClient() {
   );
 }
 
-function ProfileScreen({
+function Workspace({
   state,
   data,
   error,
   reload,
 }: {
   state: ScreenState;
-  data: ProfileData | null;
+  data: WorkspaceData | null;
   error: FixtureError | null;
   reload: () => void;
 }) {
-  const router = useRouter();
   const { toast } = useToast();
+  const searchParams = useSearchParams();
   const [draft, dispatch] = useReducer(profileDraftReducer, data, initProfileDraft);
   const [, startTransition] = useTransition();
-  // Separate from the general transition so the photo button reports busy on its own, rather
-  // than every control on the screen going pending because a field was edited.
   const [photoBusy, startPhotoTransition] = useTransition();
-  const [addingGroup, setAddingGroup] = useState(false);
+  const [logoBusy, setLogoBusy] = useState(false);
+  const [coverBusy, setCoverBusy] = useState(false);
+  const [creatingCard, setCreatingCard] = useState(false);
 
-  // `data` is a fresh object on every server render, so this fires after each `router.refresh()`
-  // and replaces the local echo with what the API actually stored — including reverting a change
-  // the server rejected.
+  // `data` is a fresh object after every re-read, so this replaces the local echo with what the
+  // API actually stored — including reverting a change the server rejected.
   useEffect(() => {
     dispatch({ kind: "reseed", data });
   }, [data]);
 
   /**
-   * ⚠ AC-33. The revealed set lives here and **only** here: plain component state, no browser
-   * storage, no context above the route, no URL parameter. Navigating away unmounts this
-   * component and the set goes with it, which is precisely §7.3's "a toggle that resets on
-   * navigation" — implemented by not keeping it, rather than by remembering to clear it.
+   * ⚠ AC-33. The revealed set lives here and only here: component state, nothing persisted.
+   * Navigating away unmounts it, which is §7.3's "a toggle that resets on navigation".
    */
   const [revealed, setRevealed] = useState<ReadonlySet<string>>(() => new Set<string>());
-
   const [openOverrides, setOpenOverrides] = useState<Record<string, boolean>>({});
-  const compact = useSyncExternalStore(subscribeCompact, readCompact, readCompactOnServer);
+  /** The field last switched on, so the preview can bring its row into view. */
+  const [spotlight, setSpotlight] = useState<{ fieldId: string; nonce: number } | null>(null);
+
+  /* Cards: the API's own order, which is stable under edits, plus a card created a moment ago
+     that the re-read has not returned yet. */
+  const [createdCards, setCreatedCards] = useState<readonly ContactCard[]>([]);
+  const cards = useMemo(() => {
+    const listed = data?.cards ?? [];
+    const known = new Set(listed.map((card) => card.id));
+    return [...listed, ...createdCards.filter((card) => !known.has(card.id))];
+  }, [data, createdCards]);
+
+  const [selectedId, setSelectedId] = useState<string | null>(() => searchParams.get(CARD_PARAM));
+  const selected = cards.find((card) => card.id === selectedId) ?? cards[0] ?? null;
+
+  const select = useCallback((cardId: string) => {
+    setSelectedId(cardId);
+    /* `replaceState`, never `router.replace` — see the module note. Guarded for happy-dom. */
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set(CARD_PARAM, cardId);
+      window.history.replaceState(window.history.state, "", url);
+    } catch {
+      /* The selection still changed; only the record of it did not. */
+    }
+  }, []);
+
+  const showError = useCallback(
+    (thrown: unknown) => {
+      const shown = toScreenError(thrown);
+      toast({ title: shown.title, description: shown.detail, tone: "danger" });
+    },
+    [toast],
+  );
+
+  const sync = useCardFieldSync({ fields: draft.fields, onError: showError });
+  const design = useCardDesign({ onError: showError });
+  const { panel, setPanel } = useWorkspacePanel();
+
+  /**
+   * A logo or cover picked a moment ago, shown on the card while it uploads and until the re-read
+   * brings the server's copy. Scoped to the `data` it was set against, so the next re-read retires
+   * it without an effect — and a stale preview can never outlive the answer it was waiting for.
+   */
+  const [media, setMedia] = useState<{
+    for: WorkspaceData | null;
+    byCard: Readonly<Record<string, CardMedia>>;
+  }>({ for: null, byCard: {} });
+  const dataRef = useRef(data);
+  useEffect(() => {
+    dataRef.current = data;
+  }, [data]);
+  const mediaNow = media.for === data ? media.byCard : NO_MEDIA;
+  const overrideMedia = useCallback((cardId: string, patch: CardMedia) => {
+    setMedia((current) => {
+      const base = current.for === dataRef.current ? current.byCard : NO_MEDIA;
+      return {
+        for: dataRef.current,
+        byCard: { ...base, [cardId]: { ...base[cardId], ...patch } },
+      };
+    });
+  }, []);
+  const dropMedia = useCallback((cardId: string, key: keyof CardMedia) => {
+    setMedia((current) => {
+      const entry = current.byCard[cardId];
+      if (entry === undefined) return current;
+      const { [key]: _dropped, ...rest } = entry;
+      void _dropped;
+      return { ...current, byCard: { ...current.byCard, [cardId]: rest } };
+    });
+  }, []);
+
+  /* Object URLs for a picked logo, released when the workspace goes. */
+  const objectUrls = useRef<string[]>([]);
+  useEffect(
+    () => () => {
+      for (const url of objectUrls.current) URL.revokeObjectURL(url);
+      objectUrls.current = [];
+    },
+    [],
+  );
+
+  /** The card as the owner sees it right now: the server's, plus design edits, plus uploads. */
+  const present = useCallback(
+    (card: ContactCard): ContactCard => {
+      const designed = design.apply(card);
+      const picked = mediaNow[card.id];
+      if (picked === undefined) return designed;
+      return {
+        ...designed,
+        ...(picked.logoUrl === undefined ? {} : { logoUrl: picked.logoUrl }),
+        ...(picked.coverUrl === undefined ? {} : { coverUrl: picked.coverUrl }),
+      };
+    },
+    [design, mediaNow],
+  );
+  const shown = selected === null ? null : present(selected);
+
+  const categoryByGroup = useMemo(
+    () => new Map(draft.groups.map((group) => [group.id, group.category] as const)),
+    [draft.groups],
+  );
+  const categoryOf = useCallback(
+    (field: ProfileField): FieldCategory => categoryByGroup.get(field.groupId) ?? "CUSTOM",
+    [categoryByGroup],
+  );
+
+  const sections = useMemo(
+    () => workspaceSections(draft.groups, draft.fields),
+    [draft.groups, draft.fields],
+  );
+
+  const selectedIds = selected === null ? null : sync.fieldIdsFor(selected);
+  const resolved = useMemo(() => {
+    if (shown === null || selectedIds === null || draft.user === null) return null;
+    return resolveCard({ ...shown, fieldIds: [...selectedIds] }, draft.user, draft.groups, draft.fields);
+  }, [shown, selectedIds, draft.user, draft.groups, draft.fields]);
 
   const screenState = resolveDataScreenState({
     state,
     isEmpty: draft.fields.length === 0,
-    // §8D.3 records the filtered-empty cell for this screen as n/a: no search, no filter.
     isFiltered: false,
   });
+
+  /* ── writes ───────────────────────────────────────────────────────────────────────── */
+
+  /** Echo locally, call the API, then re-read either way so the server has the last word. */
+  function mutate(run: () => Promise<unknown>) {
+    startTransition(async () => {
+      try {
+        await run();
+      } catch (thrown) {
+        showError(thrown);
+      }
+      reload();
+    });
+  }
+
+  /** The group a new field is echoed into: a real one of that category if there is one. */
+  function echoGroupFor(category: ApiFieldCategory): FieldGroup {
+    const existing =
+      draft.groups.find((group) => group.category === category && !isSyntheticGroupId(group.id)) ??
+      draft.groups.find((group) => group.category === category);
+    if (existing !== undefined) return existing;
+    return {
+      id: syntheticGroupId(category),
+      userId: draft.user?.id ?? "",
+      category,
+      name: category,
+      fieldIds: [],
+    };
+  }
+
+  function companyName(): string | undefined {
+    return draft.fields.find(
+      (field) => field.type === "COMPANY" && categoryOf(field) === "WORK" && field.value.trim() !== "",
+    )?.value;
+  }
+
+  /** Create one field upstream; resolves to its real id. WORK gets a group on first use. */
+  async function createUpstream(input: NewFieldInput): Promise<string> {
+    let groupId = groupIdForCreate(input.category, draft.groups);
+    if (input.category === "WORK" && groupId === undefined) {
+      const company = input.type === "COMPANY" ? input.value : companyName();
+      const group = await api.createGroup({ category: "WORK", tag: workGroupTag(company) });
+      groupId = group.id;
+    }
+    const created = await api.createField({
+      category: input.category,
+      type: input.type,
+      label: input.label.trim(),
+      value: input.value.trim(),
+      ...(groupId === undefined ? {} : { groupId }),
+    });
+    return created.id;
+  }
+
+  function echoCreate(input: NewFieldInput) {
+    const group = echoGroupFor(input.category);
+    dispatch({ kind: "ensure-group", group });
+    dispatch({
+      kind: "add-field",
+      groupId: group.id,
+      draft: {
+        type: input.type,
+        label: input.label.trim(),
+        value: input.value.trim(),
+        isSensitive: isAlwaysMasked(input.type),
+      },
+    });
+  }
+
+  function createField(input: NewFieldInput) {
+    echoCreate(input);
+    const card = selected;
+    mutate(async () => {
+      const id = await createUpstream(input);
+      if (card !== null) sync.tickCreated(card, id);
+    });
+  }
+
+  function editField(field: ProfileField, patch: { label: string; value: string }) {
+    if (isLocalFieldId(field.id)) return;
+    dispatch({ kind: "edit-field", fieldId: field.id, label: patch.label, value: patch.value });
+    mutate(() => api.updateField(field.id, { label: patch.label.trim(), value: patch.value.trim() }));
+  }
+
+  function addChild(name: string, birthday: string) {
+    const nameInput: NewFieldInput = { category: "PERSONAL", type: "RELATION", label: CHILD_LABEL, value: name };
+    const birthdayInput: NewFieldInput | null =
+      birthday.trim() === ""
+        ? null
+        : { category: "PERSONAL", type: "DATE", label: childBirthdayLabel(name), value: birthday };
+    echoCreate(nameInput);
+    if (birthdayInput !== null) echoCreate(birthdayInput);
+    const card = selected;
+    mutate(async () => {
+      const nameId = await createUpstream(nameInput);
+      if (card !== null) sync.tickCreated(card, nameId);
+      if (birthdayInput !== null) {
+        const birthdayId = await createUpstream(birthdayInput);
+        if (card !== null) sync.tickCreated(card, birthdayId);
+      }
+    });
+  }
+
+  /** A child's birthday is stored under their name, so a rename carries it along. */
+  function renameChild(child: ChildEntry, name: string) {
+    const trimmed = name.trim();
+    if (trimmed === "" || trimmed === child.name.value.trim()) return;
+    const birthday = child.birthday;
+    dispatch({ kind: "edit-field", fieldId: child.name.id, label: child.name.label, value: trimmed });
+    if (birthday !== null) {
+      dispatch({
+        kind: "edit-field",
+        fieldId: birthday.id,
+        label: childBirthdayLabel(trimmed),
+        value: birthday.value,
+      });
+    }
+    mutate(async () => {
+      await api.updateField(child.name.id, { label: child.name.label, value: trimmed });
+      if (birthday !== null) {
+        await api.updateField(birthday.id, { label: childBirthdayLabel(trimmed), value: birthday.value });
+      }
+    });
+  }
 
   function toggleReveal(fieldId: string) {
     setRevealed((current) => {
@@ -468,96 +722,157 @@ function ProfileScreen({
     });
   }
 
-  /**
-   * Run a mutation: echo it locally, send it, then let the server have the last word.
-   *
-   * `router.refresh()` runs on **both** paths. On success it swaps a temporary local id for the
-   * real one; on failure it discards the echo, which is what makes a rejected edit disappear
-   * instead of lingering as a change that was never saved.
-   */
-  /**
-   * Run a mutation: echo it locally, call the API from the browser, then re-read.
-   *
-   * `reload()` runs on **both** paths. On success it swaps a temporary local id for the real one;
-   * on failure it discards the echo, which is what makes a rejected edit disappear instead of
-   * lingering as a change that was never saved.
-   *
-   * The call itself is a visible request. So is the re-read.
-   */
-  function mutate<T>(run: () => Promise<T>, onOk?: (data: T) => void) {
-    startTransition(async () => {
-      try {
-        const data = await run();
-        onOk?.(data);
-      } catch (thrown) {
-        const shown = toScreenError(thrown);
-        toast({ title: shown.title, description: shown.detail, tone: "danger" });
-      }
-      reload();
-    });
+  function cardToggle(field: ProfileField): RowCardToggle | null {
+    if (selected === null || selectedIds === null || isLocalFieldId(field.id)) return null;
+    if (field.value.trim() === "") return null;
+    return {
+      cardName: selected.name,
+      on: selectedIds.includes(field.id),
+      onChange: (next) => {
+        sync.toggle(selected, field.id, next);
+        if (next) setSpotlight((current) => ({ fieldId: field.id, nonce: (current?.nonce ?? 0) + 1 }));
+      },
+    };
   }
 
-  /** The photo's own runner. Same shape as `mutate`, its own pending flag. */
-  function mutatePhoto<T>(run: () => Promise<T>, onOk?: () => void) {
+  function uploadPhoto(file: File) {
     startPhotoTransition(async () => {
       try {
-        await run();
-        onOk?.();
+        await api.uploadPhoto(file);
       } catch (thrown) {
-        const shown = toScreenError(thrown);
-        toast({ title: shown.title, description: shown.detail, tone: "danger" });
+        showError(thrown);
       }
       reload();
     });
   }
 
-  function addField(group: FieldGroup, newField: NewFieldDraft) {
-    dispatch({ kind: "add-field", groupId: group.id, draft: newField });
-    setOpenOverrides((current) => ({ ...current, [group.id]: true }));
-
-    /* ⚠ A synthetic section has no group upstream — `map.ts` invented it to hold ungrouped
-       PERSONAL / IDENTITY / CUSTOM fields. Sending its id as a real `groupId` would 404, so it
-       becomes "ungrouped, in this category" instead. This is the one place that decision is made
-       on the client. */
-    const synthetic = categoryOfSyntheticGroup(group.id);
-
-    mutate(
-      () =>
-        api.createField({
-          category: synthetic ?? group.category,
-          type: newField.type,
-          label: newField.label.trim(),
-          value: newField.value.trim(),
-          groupId: synthetic === null ? group.id : undefined,
-        }),
-      () => toast({ title: `Added ${newField.label} to ${group.name}` }),
-    );
+  function removePhoto() {
+    startPhotoTransition(async () => {
+      try {
+        await api.deletePhoto();
+      } catch (thrown) {
+        showError(thrown);
+      }
+      reload();
+    });
   }
 
-  function editField(field: ProfileField, patch: { label: string; value: string }) {
-    dispatch({ kind: "edit-field", fieldId: field.id, label: patch.label, value: patch.value });
-    mutate(
-      () => api.updateField(field.id, { label: patch.label.trim(), value: patch.value.trim() }),
-      () => toast({ title: `Updated ${patch.label}` }),
-    );
+  /**
+   * The company logo is the card's — there is no profile-level logo upstream. The Work section and
+   * the Design panel both write it, through here, so the two can never show different marks.
+   */
+  function pickLogo(card: ContactCard, file: File) {
+    const previewUrl = URL.createObjectURL(file);
+    objectUrls.current.push(previewUrl);
+    overrideMedia(card.id, { logoUrl: previewUrl });
+    setLogoBusy(true);
+    void (async () => {
+      try {
+        const updated = await cardsApi.uploadLogo(card.id, file);
+        overrideMedia(card.id, { logoUrl: updated.logoUrl ?? null });
+      } catch (thrown) {
+        /* Back to the logo the server still has: a card claiming a mark it does not carry is
+           one the owner would go on to share. */
+        dropMedia(card.id, "logoUrl");
+        showError(thrown);
+      } finally {
+        setLogoBusy(false);
+        reload();
+      }
+    })();
   }
+
+  function removeLogo(card: ContactCard) {
+    overrideMedia(card.id, { logoUrl: null });
+    setLogoBusy(true);
+    void (async () => {
+      try {
+        await cardsApi.removeLogo(card.id);
+      } catch (thrown) {
+        dropMedia(card.id, "logoUrl");
+        showError(thrown);
+      } finally {
+        setLogoBusy(false);
+        reload();
+      }
+    })();
+  }
+
+  /**
+   * The cover is its own upload, never part of the design `PATCH` — that endpoint accepts only
+   * `null` for it. `picked === null` is the removal.
+   */
+  function writeCover(card: ContactCard, picked: { file: File; previewUrl: string } | null) {
+    overrideMedia(card.id, { coverUrl: picked === null ? null : picked.previewUrl });
+    setCoverBusy(true);
+    void (async () => {
+      try {
+        if (picked === null) {
+          await cardsApi.removeCover(card.id);
+        } else {
+          const updated = await cardsApi.uploadCover(card.id, picked.file);
+          overrideMedia(card.id, { coverUrl: updated.coverUrl ?? null });
+        }
+      } catch (thrown) {
+        dropMedia(card.id, "coverUrl");
+        showError(thrown);
+      } finally {
+        setCoverBusy(false);
+        reload();
+      }
+    })();
+  }
+
+  /**
+   * New card: create it with the builder's default design, then put every filled-in field on it.
+   * Resolves `true` once the card exists, even if the field write failed — the card is real and
+   * the owner can switch fields on by hand.
+   */
+  async function createCard(name: string): Promise<boolean> {
+    if (draft.user === null) return false;
+    setCreatingCard(true);
+    try {
+      const base = builderInitialState({ card: null, userId: draft.user.id, seed: [] });
+      const dto = await cardsApi.create({
+        name,
+        kind: toApiCardKind(base.cardType),
+        ...toAppearanceDto(base),
+        headline: null,
+        bio: null,
+      });
+      let card = toContactCard(dto, draft.user.id);
+      const ids = carryOverFieldIds(draft.fields);
+      if (ids.length > 0) {
+        try {
+          const withFields = await cardsApi.setFields(dto.id, {
+            fields: cardFieldPayload(ids, draft.fields),
+          });
+          card = toContactCard(withFields, draft.user.id);
+        } catch (thrown) {
+          showError(thrown);
+        }
+      }
+      setCreatedCards((current) => [...current, card]);
+      select(card.id);
+      reload();
+      return true;
+    } catch (thrown) {
+      showError(thrown);
+      return false;
+    } finally {
+      setCreatingCard(false);
+    }
+  }
+
+  /* ── render ───────────────────────────────────────────────────────────────────────── */
 
   let body;
   if (screenState === "loading") {
-    body = (
-      <div className="pt-8">
-        <LoadingSkeleton variant="groups" count={3} label="Loading your profile" />
-      </div>
-    );
+    body = <WorkspaceBones />;
   } else if (screenState === "error" || screenState === "offline") {
     body = (
       <div className="pt-12">
-        <ErrorPanel
-          error={error}
-          onRetry={reload}
-          homeHref="/dashboard"
-          homeLabel="Go to dashboard"
-        />
+        <ErrorPanel error={error} onRetry={reload} homeHref="/dashboard" homeLabel="Go to dashboard" />
       </div>
     );
   } else if (draft.user === null) {
@@ -574,100 +889,189 @@ function ProfileScreen({
       </div>
     );
   } else {
+    const user = draft.user;
+    const designState = selected === null ? null : design.stateFor(selected);
+    const designDispatch = (action: BuilderAction) => {
+      if (selected !== null) design.dispatch(selected, action);
+    };
     body = (
-      <>
-        <div className="pt-8">
-          <IdentityBlock
-            user={draft.user}
-            fieldCount={draft.fields.length}
-            groupCount={draft.groups.length}
-            readOnlyReason={IDENTITY_READ_ONLY_REASON}
-            photoBusy={photoBusy}
-            onUploadPhoto={(file) => {
-              mutatePhoto(
-                () => api.uploadPhoto(file),
-                () => toast({ title: "Photo updated" }),
-              );
-            }}
-            onRemovePhoto={() =>
-              mutatePhoto(
-                () => api.deletePhoto(),
-                () => toast({ title: "Photo removed" }),
-              )
+      <SplitView
+        pinnedSide="right"
+        pinnedLabel="Card preview"
+        contentLabel="Your fields"
+        className={cn("pt-4 lg:pt-6", SPLIT_CLASS)}
+        pinnedClassName={cn(
+          "min-w-0 max-h-none overflow-visible border-b border-line pb-3 pt-2",
+          "lg:max-h-[calc(100svh-var(--space-16))] lg:overflow-y-auto lg:border-b-0 lg:pb-0 lg:pt-0",
+        )}
+        pinned={
+          <WorkspacePreview
+            cards={cards.map((card) => ({ id: card.id, name: present(card).name }))}
+            selectedId={selected?.id ?? null}
+            onSelect={select}
+            onCreate={createCard}
+            creating={creatingCard}
+            resolved={resolved}
+            syncStatus={
+              selected === null
+                ? "idle"
+                : worstStatus(sync.statusFor(selected.id), design.statusFor(selected.id))
             }
+            onRetrySync={() => {
+              if (selected === null) return;
+              if (sync.statusFor(selected.id) === "error") sync.retry(selected.id);
+              if (design.statusFor(selected.id) === "error") design.retry(selected.id);
+            }}
+            spotlight={spotlight}
           />
-        </div>
+        }
+      >
+        <TabsPrimitive.Root
+          value={panel}
+          onValueChange={(value) => setPanel(value as WorkspacePanelId)}
+          activationMode="automatic"
+          className="flex min-w-0 flex-col gap-3 lg:gap-4"
+        >
+          <WorkspaceTabList />
 
-        <AddGroupRow
-          open={addingGroup}
-          onOpenChange={setAddingGroup}
-          onCreate={(category, name) =>
-            mutate(
-              () => api.createGroup({ category, tag: name }),
-              () => {
-                toast({ title: `Added ${name}` });
-                setAddingGroup(false);
-              },
-            )
-          }
-        />
+          <TabsPrimitive.Content value="fields" data-workspace-panel="fields" className="outline-none">
+            <div data-workspace-fields="" className={PANEL_SURFACE}>
+              <div className="flex flex-col gap-4 p-4 sm:p-5">
+                <IdentityBlock
+                  user={user}
+                  photoBusy={photoBusy}
+                  onUploadPhoto={uploadPhoto}
+                  onRemovePhoto={removePhoto}
+                />
+                <p data-workspace-intro="" className="text-sm text-ink-2">
+                  Complete the fields below.
+                </p>
+              </div>
 
-        <div data-field-groups="">
-          {draft.groups.map((group) => {
-            const groupFields = fieldsOfGroup(draft, group);
-            const open = openOverrides[group.id] ?? !compact;
+              {/* The two lines printed under the name — first, because that is where they sit on
+                  the card. They are the selected card's own, so they follow the switcher. */}
+              {shown === null || designState === null || resolved === null ? null : (
+                <WorkspaceCardIntro
+                  cardName={shown.name}
+                  headline={designState.headline}
+                  bio={designState.bio}
+                  fallbackHeadline={resolved.headline}
+                  fallbackBio={printedBio(resolved)}
+                  open={openOverrides[CARD_INTRO_SECTION] ?? true}
+                  onOpenChange={(next) =>
+                    setOpenOverrides((current) => ({ ...current, [CARD_INTRO_SECTION]: next }))
+                  }
+                  onHeadline={(headline) => designDispatch({ kind: "headline", headline })}
+                  onBio={(bio) => designDispatch({ kind: "bio", bio })}
+                />
+              )}
 
-            return (
-              <FieldGroupSection
-                key={group.id}
-                group={group}
-                fieldCount={groupFields.length}
-                open={open}
-                onOpenChange={(next) =>
-                  setOpenOverrides((current) => ({ ...current, [group.id]: next }))
-                }
-                // A synthetic section has no record upstream, so there is nothing to open an
-                // editor onto — reorder, rename and delete all address a real group id.
-                editorHref={
-                  isSyntheticGroupId(group.id) ? undefined : `/profile/groups/${group.id}`
-                }
-                addSlot={
-                  <AddFieldDialog
-                    group={group}
-                    variant={groupFields.length === 0 ? "primary" : "secondary"}
-                    onAdd={(newField) => addField(group, newField)}
-                  />
-                }
-              >
-                <ul data-field-rows={group.id} className="flex flex-col">
-                  {groupFields.map((field) => (
-                    <ProfileFieldRow
-                      key={field.id}
-                      field={field}
-                      category={group.category}
-                      revealed={revealed.has(field.id)}
-                      onToggleReveal={() => toggleReveal(field.id)}
-                      onEdit={(patch) => editField(field, patch)}
-                      // Disabled — see SENSITIVE_READ_ONLY_REASON. The callback cannot fire.
-                      onToggleSensitive={() => {}}
-                      sensitiveReadOnlyReason={SENSITIVE_READ_ONLY_REASON}
-                    />
-                  ))}
-                </ul>
-              </FieldGroupSection>
-            );
-          })}
-        </div>
-      </>
+              {sections.map((model) => (
+                <WorkspaceSection
+                  key={model.section.id}
+                  model={model}
+                  open={openOverrides[model.section.id] ?? model.section.defaultOpen}
+                  onOpenChange={(next) =>
+                    setOpenOverrides((current) => ({ ...current, [model.section.id]: next }))
+                  }
+                  categoryOf={categoryOf}
+                  revealed={revealed}
+                  onToggleReveal={toggleReveal}
+                  cardToggle={cardToggle}
+                  onEdit={editField}
+                  onCreate={createField}
+                  onAddChild={addChild}
+                  onRenameChild={renameChild}
+                  logo={
+                    selected === null || shown === null
+                      ? null
+                      : {
+                          cardName: shown.name,
+                          logoUrl: shown.logoUrl ?? null,
+                          busy: logoBusy,
+                          onPick: (file) => pickLogo(selected, file),
+                          onRemove: () => removeLogo(selected),
+                        }
+                  }
+                />
+              ))}
+            </div>
+          </TabsPrimitive.Content>
+
+          <TabsPrimitive.Content value="design" data-workspace-panel="design" className="outline-none">
+            {selected === null || shown === null || designState === null || resolved === null ? (
+              <NoCardYet action="design" />
+            ) : (
+              <div className={cn(PANEL_SURFACE, "gap-6 p-5 sm:p-6 lg:p-7")}>
+                <PanelHead
+                  section="Design"
+                  name={designState.name}
+                  onRename={(name) => designDispatch({ kind: "rename", name })}
+                  intro="How this card looks to everyone who opens it. Changes save as you make them."
+                />
+                <DesignPanel
+                  logoUrl={shown.logoUrl ?? null}
+                  logoBusy={logoBusy}
+                  onPickLogo={(file) => pickLogo(selected, file)}
+                  onRemoveLogo={() => removeLogo(selected)}
+                  paletteId={designState.paletteId}
+                  groundHex={designState.groundHex}
+                  finish={designState.finish}
+                  texture={designState.texture}
+                  texturePresence={designState.texturePresence}
+                  textureScale={designState.textureScale}
+                  /* I-5: the palette off the workspace's one resolution, never a second lookup. */
+                  palette={resolved.palette}
+                  onPreset={(paletteId) => designDispatch({ kind: "palette", paletteId })}
+                  onGround={(hex) => designDispatch({ kind: "ground", hex })}
+                  onFinish={(finish) => designDispatch({ kind: "finish", finish })}
+                  onTexture={(texture) => designDispatch({ kind: "texture", texture })}
+                  onPresence={(texturePresence) =>
+                    designDispatch({ kind: "presence", texturePresence })
+                  }
+                  onScale={(textureScale) => designDispatch({ kind: "scale", textureScale })}
+                  onLook={(look) => {
+                    /* The builder's two transitions: `palette` clears a custom colour first. */
+                    designDispatch({ kind: "palette", paletteId: look.paletteId });
+                    designDispatch({ kind: "finish", finish: look.finish });
+                  }}
+                  coverUrl={shown.coverUrl ?? null}
+                  coverBusy={coverBusy}
+                  onCover={(picked) => writeCover(selected, picked)}
+                />
+              </div>
+            )}
+          </TabsPrimitive.Content>
+
+          <TabsPrimitive.Content value="share" data-workspace-panel="share" className="outline-none">
+            {selected === null || designState === null || resolved === null ? (
+              <NoCardYet action="share" />
+            ) : (
+              <div className={cn(PANEL_SURFACE, "gap-8 p-5 sm:p-6 lg:p-7")}>
+                <PanelHead
+                  section="Share"
+                  name={designState.name}
+                  onRename={(name) => designDispatch({ kind: "rename", name })}
+                  intro="Send it to someone's WhatsApp, or share the link. Edits you make later reach them on their own."
+                />
+                <WorkspaceSharePanel
+                  key={selected.id}
+                  cardId={selected.id}
+                  userId={user.id}
+                  resolved={resolved}
+                  onAddFields={() => setPanel("fields")}
+                />
+              </div>
+            )}
+          </TabsPrimitive.Content>
+        </TabsPrimitive.Root>
+      </SplitView>
     );
   }
 
   return (
-    <ScreenStateRoot state={screenState} as="section" aria-label="Profile" className="pb-16">
-      <PageHeader
-        title="Profile"
-        subtitle="Every card is a filter over these fields. Edit one here and every card that maps it changes."
-      />
+    <ScreenStateRoot state={screenState} as="section" aria-label="Profile and cards" className="pb-16">
+      <PageHeader title="Profile & Cards" />
       {body}
     </ScreenStateRoot>
   );

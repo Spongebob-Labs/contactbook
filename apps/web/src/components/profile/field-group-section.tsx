@@ -126,7 +126,6 @@ export function FieldGroupSection({
               headingLevel={3}
               overline="Nothing here yet"
               title={`No fields in ${group.name} yet`}
-              description="Add one and it becomes available to tick in every card you build — a card is a filter over these fields, not a copy of them."
             >
               <div className="mt-3 flex flex-wrap items-center gap-3">{addSlot}</div>
             </EmptyState>

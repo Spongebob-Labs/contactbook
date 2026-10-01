@@ -38,10 +38,13 @@ test.beforeEach(async ({ context, baseURL }) => {
  * identical from the outside otherwise.
  *
  * ## What this file owns
- * · **the wallet pass** — the share face is presented as a named object, at its exact design
- *   size, with nothing painted over its QR and no inert chrome around it. See the section
- *   below; the reasoning lives at the head of
- *   `src/components/share/wallet-pass-block.tsx`.
+ * · **the share-first layout (client review 2026-09-28)** — the card with its QR first, then
+ *   "Send this card" to a phone number, then the card link with Copy, then Wallet, then who it
+ *   was sent to; the field list behind a closed disclosure; no template name, no field-count
+ *   meter, and one share UI (the header's Share focuses the phone field — there is no dialog).
+ * · **the face** — at its exact design size, with nothing painted over its QR, and the wallet
+ *   controls outside its rail. The reasoning lives at the head of
+ *   `src/components/share/wallet-pass-block.tsx` and `wallet-actions.tsx`.
  * · **E-36** — an id that does not resolve lands on the dedicated not-found panel, never an
  *   empty state and never a raw 404.
  * · **E-43** — two fast taps on Export produce exactly one download and a busy control.
@@ -114,51 +117,91 @@ test("renders the card's own template in the product's single typeface", async (
   expect(family.toLowerCase()).toContain("geist");
 });
 
-test("renders the metadata block and the four actions (§8D.3)", async ({ page }) => {
+test("renders three header actions and no template name or field-count meter", async ({
+  page,
+}) => {
   await gotoReady(page, CARD);
 
   await expect(page.getByRole("heading", { level: 1, name: "Work" })).toBeVisible();
-  await expect(page.locator('[data-card-meta] [data-card-type="BUSINESS"]')).toHaveCount(1);
-  await expect(page.locator("[data-card-meta-template]")).toContainText("Meridian");
-  await expect(page.locator("[data-field-count-meter]")).toHaveAttribute("data-field-count", "5");
-  await expect(page.locator("[data-field-count-meter]")).toHaveAttribute(
-    "data-field-count-state",
-    "sharing",
-  );
 
-  // Edit · Share · Export PNG · Delete, and the Edit affordance is a link, not a button.
-  await expect(page.locator("[data-card-detail-action]")).toHaveCount(4);
+  /* Client review 2026-09-28: *"'Meridian field count' label is confusing and should be
+     removed."* Both halves of it are gone from this page, not restyled. */
+  await expect(page.locator("[data-card-meta]")).toHaveCount(0);
+  await expect(page.locator("[data-card-meta-template]")).toHaveCount(0);
+  await expect(page.locator("[data-field-count-meter]")).toHaveCount(0);
+  await expect(page.locator("main")).not.toContainText("Meridian");
+  await expect(page.locator("main")).not.toContainText(/field count/i);
+
+  // Share · Edit · Delete. Export PNG became "Save QR to phone" in the wallet row.
+  await expect(page.locator("[data-card-detail-action]")).toHaveCount(3);
   await expect(page.locator('[data-card-detail-action="edit"]')).toHaveAttribute(
     "href",
     "/cards/card_minimal_demo/edit",
   );
   await expect(page.locator('[data-card-detail-action="share"]')).toBeVisible();
-  await expect(page.locator('[data-card-detail-action="export"]')).toBeVisible();
   await expect(page.locator('[data-card-detail-action="delete"]')).toBeVisible();
+  await expect(page.locator('[data-card-detail-action="export"]')).toHaveCount(0);
 });
 
-test("stacks card-first on mobile and pins the card beside the detail on desktop", async ({
+test("the header's Share focuses the phone field instead of opening a dialog", async ({
+  page,
+}) => {
+  await gotoReady(page, CARD);
+
+  await page.locator('[data-card-detail-action="share"]').click();
+
+  await expect(page.locator("[data-send-phone]")).toBeFocused();
+  // One share UI: no second copy of it in a modal.
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.locator("[data-share-sheet]")).toHaveCount(0);
+});
+
+test("puts the card first, then send, link, wallet and recipients — in two columns on desktop", async ({
   page,
 }, testInfo) => {
   const viewport = PROJECT_VIEWPORT[testInfo.project.name];
   await gotoReady(page, CARD);
 
-  const card = page.locator("[data-card-detail-preview]");
-  const detail = page.locator("[data-card-detail-body]");
-
-  const cardBox = await card.boundingBox();
-  const detailBox = await detail.boundingBox();
-  expect(cardBox).not.toBeNull();
-  expect(detailBox).not.toBeNull();
-  if (cardBox === null || detailBox === null) return;
+  /* Measured on the blocks themselves: below lg the two column wrappers are `display: contents`
+     and have no box of their own. */
+  const box = async (selector: string) => {
+    const found = await page.locator(selector).first().boundingBox();
+    expect(found, `${selector} has no box`).not.toBeNull();
+    return found!;
+  };
+  const face = await box("[data-card-detail-face]");
+  const send = await box("[data-send-to-phone]");
+  const link = await box("[data-card-link]");
+  const wallet = await box("[data-wallet-actions]");
+  const sentTo = await box("#card-shares-heading");
 
   if (viewport >= 1024) {
-    // Two columns: the card is to the left of the detail column.
-    expect(cardBox.x + cardBox.width).toBeLessThanOrEqual(detailBox.x + 1);
+    // The card and its wallet row on the left, everything else to their right.
+    expect(face.x + face.width).toBeLessThanOrEqual(send.x + 1);
+    expect(wallet.y).toBeGreaterThan(face.y);
+    expect(wallet.x + wallet.width).toBeLessThanOrEqual(send.x + 1);
+    expect(send.y).toBeLessThan(link.y);
+    expect(link.y).toBeLessThan(sentTo.y);
   } else {
-    // Stacked, card first (§8D.3).
-    expect(cardBox.y).toBeLessThan(detailBox.y);
+    // One column, in the order the client asked for: card, send, link, wallet, recipients.
+    expect(face.y).toBeLessThan(send.y);
+    expect(send.y).toBeLessThan(link.y);
+    expect(link.y).toBeLessThan(wallet.y);
+    expect(wallet.y).toBeLessThan(sentTo.y);
   }
+});
+
+test("keeps the fields behind a closed 'What's on this card' disclosure", async ({ page }) => {
+  await gotoReady(page, CARD);
+
+  const disclosure = page.locator("[data-card-fields]");
+  await expect(disclosure).toHaveCount(1);
+  // Closed by default: the page is for sharing, not for reading the fields again.
+  await expect(disclosure).not.toHaveAttribute("open", /.*/);
+  await expect(page.locator("[data-field-list]")).toBeHidden();
+
+  await page.locator("[data-card-fields-toggle]").click();
+  await expect(page.locator("[data-field-list]")).toBeVisible();
 });
 
 /* ── AC-22 / the field list ───────────────────────────────────────────────────────── */
@@ -247,14 +290,26 @@ test("masks financial values and offers no reveal control (AC-33)", async ({ pag
  * in `tests/unit/build-vcf.test.ts` and on the public card.
  */
 
-test("the share sheet publishes the same link the QR encodes", async ({ page }) => {
+test("the card link block publishes the card's own link, with Copy beside it", async ({
+  page,
+  context,
+}) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await gotoReady(page, CARD);
 
-  await page.locator('[data-card-detail-action="share"]').click();
+  const field = page.locator("[data-card-link] [data-link-field-value]");
+  const url = await field.inputValue();
+  expect(url).toMatch(/\/c\/.+/);
+  // One string, everywhere it is offered: the field, "Open card" and the WhatsApp message.
+  await expect(page.locator("[data-card-link-open]")).toHaveAttribute("href", url);
+  const whatsapp = await page.locator("[data-share-whatsapp-any]").getAttribute("href");
+  expect(new URL(whatsapp ?? "").searchParams.get("text")).toContain(url);
 
-  const link = page.locator("[data-share-link]");
-  await expect(link).toContainText("/c/prya-hq");
-  await expect(link.locator("a")).toHaveAttribute("href", "/c/prya-hq");
+  const copy = page.locator("[data-card-link] [data-copy-link]");
+  await copy.click();
+  await expect(copy).toHaveAttribute("data-copied", "true");
+  await expect(copy).toContainText("Copied");
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(url);
 });
 
 /**
@@ -265,94 +320,74 @@ test("the share sheet publishes the same link the QR encodes", async ({ page }) 
  * shares plenty is used deliberately: on an empty card the controls were always absent, so
  * only a full card can tell "removed" apart from "gated".
  */
-test("the share sheet offers a link and no file at all (§4.2)", async ({ page }) => {
+test("the page offers a link and no vCard at all (§4.2)", async ({ page }) => {
   await gotoReady(page, CARD);
-
-  await page.locator('[data-card-detail-action="share"]').click();
-  await expect(page.locator("[data-share-sheet]")).toBeVisible();
 
   await expect(page.locator("[data-vcf-preview]")).toHaveCount(0);
   await expect(page.locator("[data-share-download]")).toHaveCount(0);
 
-  const dialog = page.getByRole("dialog");
-  await expect(dialog).not.toContainText("BEGIN:VCARD");
-  await expect(dialog).not.toContainText(/what people receive/i);
-  await expect(dialog).not.toContainText(/\.vcf/i);
+  const main = page.locator("main");
+  await expect(main).not.toContainText("BEGIN:VCARD");
+  await expect(main).not.toContainText(/what people receive/i);
+  await expect(main).not.toContainText(/\.vcf/i);
 
   // The link, and the ways to send it, are what is left.
-  await expect(page.locator("[data-share-link]")).toBeVisible();
+  await expect(page.locator("[data-card-link]")).toBeVisible();
+  await expect(page.locator("[data-send-to-phone]")).toBeVisible();
 });
 
 /* ── the wallet pass ──────────────────────────────────────────────────────────────── */
 
 /**
- * **The pass, and the chrome that is deliberately no longer around it.**
+ * **The card with its QR, and the wallet row beneath it.**
  *
- * The share face is a *wallet pass*: it goes in a phone's wallet, you bring it up, and someone
- * scans it. Its QR encodes `qrPayload` — the card's own public `/c/{token}` — so the symbol is
- * a shortcut to the link and not a second artefact.
+ * The share face is the card in its own palette with the QR someone scans; its QR encodes
+ * `qrPayload`, the card's own public `/c/{token}`. History, briefly: the two "Add to Wallet"
+ * buttons were removed on 2026-09-20 because they did nothing but apologise for themselves, and
+ * came back on 2026-09-28 because the client asked for them to be *"functional and visible"*.
+ * They are now wired to the intended pass endpoints behind `NEXT_PUBLIC_WALLET_PASSES`, visibly
+ * disabled with one line of explanation while it is unset, beside a "Save QR to phone" that
+ * works today (`wallet-actions.tsx`).
  *
- * ⚠ **The block used to say all of that on screen, and the client asked for it back off.**
- * Review of 2026-09-20, on this page: *"this page is looking very cluttered. There is too much
- * information in this, and there is random text in this… this looks very unprofessional."*
- * Removed, and each has a guard below so it does not return a paragraph at a time:
- *
- * · **"Add to Apple Wallet" / "Add to Google Wallet"** and the line under them that read
- *   *"Neither button installs anything yet."* §3.1 means this build can sign no `.pkpass`, so
- *   both controls existed only to raise a toast explaining that they do nothing. Stating that
- *   up front was the honest version of shipping them; not shipping them is better than either,
- *   and the client was explicit — *"I don't want this thing to be visible in any of the
- *   places."* The three tests that drove those buttons (the §3.1 no-`.pkpass` sweep and the
- *   Google twin) are deleted with them; a control that does not exist cannot be pressed, and
- *   an assertion that it refuses honestly would be an assertion about nothing.
- * · **The lede and the QR note.** The URL they printed is already on this screen once, as a
- *   real link, in the metadata block — which is what made the second copy read as random text.
- * · **"Save to contacts."** See the block comment above the share-sheet section.
- *
- * What is asserted instead is that the block is now a name and a card, and that the two
- * constraints which were never about decoration still hold:
+ * What is asserted, and never about decoration:
  *
  * · the face stays **unscaled at 336 × 500 with no transformed ancestor**, because
- *   `qr-geometry|plate|overlap|occlusion|scannability.spec.ts` all measure it on this route
- *   and every constant in `qr-geometry.ts` was derived at that width;
- * · **nothing in the block overlaps the plate.** `qr-overlap.spec.ts` owns that claim across
- *   all eight templates; this is the local guard, so a careless edit to the block fails in the
- *   file that made it rather than in a suite nobody expected to touch.
+ *   `qr-geometry|plate|overlap|occlusion|scannability.spec.ts` all measure it on this route;
+ * · **nothing in the face's block overlaps the plate**, and the wallet controls live outside it.
  */
 
-test("presents the face as a named pass, with no inert chrome around it", async ({ page }) => {
+test("shows the card with its QR, and a wallet row outside the face's rail", async ({ page }) => {
   await gotoReady(page, CARD);
 
   const block = page.locator("[data-wallet-pass]");
   await expect(block).toHaveCount(1);
-
-  /* The name arrives *before* the object it names — it is above the face in the DOM — and it
-     is all that is left of the copy: two words, in the same overline rhythm as "Fields" and
-     "Sent to" in the column beside it. */
-  const caption = block.locator("[data-wallet-pass-caption]");
-  await expect(caption).toHaveText("Wallet pass");
-
-  // The pass itself, inside the block that names it.
   await expect(block.locator('[data-card-root][data-render-mode="full"]')).toHaveCount(1);
 
-  /* ⚠ The removal, asserted rather than trusted. A full card is used deliberately: on an empty
-     card some of these were always absent, so only a card that shares plenty can tell
-     "removed" apart from "gated". */
-  await expect(page.locator("[data-wallet-add]")).toHaveCount(0);
-  await expect(page.locator("[data-wallet-pass-status]")).toHaveCount(0);
-  await expect(page.locator("[data-wallet-qr-note]")).toHaveCount(0);
-  await expect(block).not.toContainText(/add it to your phone's wallet/i);
-  await expect(block).not.toContainText(/scanning the qr/i);
-  await expect(block).not.toContainText(/installs anything/i);
+  /* ⚠ 2026-09-28: no "Wallet pass" eyebrow. The client read it as a mechanism rather than
+     their card — *"show the card with QR code, not just the pass"*. */
+  await expect(block.locator("[data-wallet-pass-caption]")).toHaveCount(0);
 
-  /* ⚠ AND THE OWNER'S SAVE, which is the one assertion here that is not vacuous by
-     construction: `data-card-action="save"` is alive and asserted elsewhere — it is the
-     recipient's control on `/c/{slug}`, the product's stated success metric. What must not
-     exist is a copy of it on the owner's own card. */
+  /* *"'Add to Wallet' must be functional and visible."* Both buttons are visible. Without
+     `NEXT_PUBLIC_WALLET_PASSES` they are disabled and one line says why, and the control that
+     works today — the QR image — sits beside them. */
+  const wallet = page.locator("[data-wallet-actions]");
+  await expect(wallet.locator('[data-wallet-add="apple"]')).toBeVisible();
+  await expect(wallet.locator('[data-wallet-add="google"]')).toBeVisible();
+  if ((await wallet.getAttribute("data-wallet-enabled")) === "false") {
+    await expect(wallet.locator('[data-wallet-add="apple"]')).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    await expect(wallet.locator("[data-wallet-off-note]")).toBeVisible();
+  }
+  await expect(wallet.locator("[data-export-png]")).toBeVisible();
+
+  // Outside the face's rail, never inside the block that wraps the card.
+  await expect(block.locator("[data-wallet-actions], button, a")).toHaveCount(0);
+
+  /* ⚠ The owner's own "Save to contacts" must not come back: `data-card-action="save"` is the
+     recipient's control on `/c/{slug}`, not a copy on the owner's card. */
   await expect(page.locator('[data-card-action="save"]')).toHaveCount(0);
-
-  // Nothing moved into the header to replace it, either: Edit · Share · Export PNG · Delete.
-  await expect(page.locator("[data-card-detail-action]")).toHaveCount(4);
 });
 
 test("the wallet block leaves the pass unscaled at 336 x 500 (the five QR suites)", async ({
@@ -447,7 +482,7 @@ test("a zero-field card still has a pass and a link", async ({ page }) => {
      opens. Its href rather than its text, and `/c/` rather than a pinned slug: the token is
      minted per environment, so a literal would be asserting about the fixture and not about
      the product. */
-  await expect(page.locator("[data-card-meta-link] a")).toHaveAttribute("href", /\/c\/.+/);
+  await expect(page.locator("[data-card-link-open]")).toHaveAttribute("href", /\/c\/.+/);
 });
 
 /* ── E-01 / AC-36: the card that shares nothing ───────────────────────────────────── */
@@ -458,28 +493,16 @@ test("a zero-field card offers no .vcf at all and says why (E-01, AC-36)", async
 
   await gotoReady(page, EMPTY_CARD);
 
-  await expect(page.locator("[data-field-count-meter]")).toHaveAttribute("data-field-count", "0");
-  await expect(page.locator("[data-field-count-meter]")).toHaveAttribute(
-    "data-field-count-state",
-    "empty",
-  );
-
   // The card still renders name-only, so the consequence is visible rather than hidden.
   await expect(page.locator('[data-card-root][data-render-mode="full"]')).toHaveCount(1);
-  /* ⚠ A `[data-card-action="save"]` count used to sit here as "an empty card offers no save".
-     It says nothing now: no card offers one on this route, empty or not, so the assertion
-     would pass for a reason that has nothing to do with E-01. The one guard that still means
-     something — the owner's save must not come back at all — is in the wallet-pass section,
-     stated once, on a card that shares plenty. */
 
-  await page.locator('[data-card-detail-action="share"]').click();
-  await expect(page.locator("[data-share-sheet]")).toBeVisible();
-
-  // The panel says why rather than showing a share that looks complete. `Add fields` is the
-  // only control it offers besides Close — E-01's action, not a disabled button that exists
-  // solely to refuse.
+  /* The consequence, in the send block, before the owner sends — and the fix one tap away. The
+     meter that used to say this is gone from the page (2026-09-28). */
   await expect(page.locator("[data-share-empty-note]")).toBeVisible();
-  await expect(page.locator("[data-share-add-fields]")).toBeVisible();
+  await expect(page.locator("[data-share-add-fields]")).toHaveAttribute(
+    "href",
+    "/cards/card_empty_demo/edit",
+  );
 
   // Nothing threw: `buildVcf` was never called.
   expect(errors).toEqual([]);
@@ -495,7 +518,7 @@ test("tapping Export twice quickly downloads exactly one file (E-43)", async ({ 
     downloads.push(download.suggestedFilename());
   });
 
-  const button = page.locator('[data-card-detail-action="export"]');
+  const button = page.locator("[data-export-png]");
 
   // Record the busy state as it happens rather than polling for it afterwards: a fast
   // raster could clear `aria-busy` between the click and the first poll, and a busy flag
@@ -540,7 +563,8 @@ test("tapping Export twice quickly downloads exactly one file (E-43)", async ({ 
     .poll(() => downloads.length, { timeout: 20_000, message: "waiting for the one export" })
     .toBe(1);
 
-  expect(downloads).toEqual(["contact-book-prya-hq.png"]);
+  // `exportFileName` is the card's NAME, slugged — "Work" here.
+  expect(downloads).toEqual(["contact-book-work.png"]);
 
   // The control announced itself busy while the first raster ran (E-43).
   const sawBusy = await page.evaluate(
@@ -593,13 +617,13 @@ test("a failed export shows a retry toast and always clears the spinner (E-44)",
   await gotoReady(page, CARD);
   await breakFontLoading(page);
 
-  const button = page.locator('[data-card-detail-action="export"]');
+  const button = page.locator("[data-export-png]");
   await button.click();
 
   const toast = page.locator("[data-overlay-toast]");
   await expect(toast).toBeVisible();
   await expect(toast).toHaveAttribute("data-tone", "danger");
-  await expect(toast).toContainText("We couldn't export that card");
+  await expect(toast).toContainText("We couldn't save that image");
   await expect(toast.getByRole("button", { name: "Try again" })).toBeVisible();
 
   // The whole point of E-44: the control comes back, it does not spin forever.
@@ -627,7 +651,11 @@ test("the delete dialog is destructive, states the consequence, and confirms inl
   await expect(dialog).toBeVisible();
   await expect(dialog).toContainText("Delete");
   // E-41's slot, used here for a card's blast radius: the link stops working, in words.
-  await expect(dialog.locator("[data-confirm-consequence]")).toContainText("/c/prya-hq");
+  /* The blast radius is the people holding a link (archiving revokes every one), so the line
+     names them — or says nobody's link stops working. It used to print the card's URL. */
+  await expect(dialog.locator("[data-confirm-consequence]")).toContainText(
+    /links? stop (working|opening)/,
+  );
 
   const confirm = dialog.getByRole("button", { name: "Delete card" });
   await expect(confirm).toHaveAttribute("data-variant", "destructive");
@@ -661,21 +689,6 @@ test("Escape closes the delete dialog and returns focus to the trigger (E-50)", 
   // The card is still here: Escape cancels, it does not confirm.
   await expect(page.locator("[data-card-root]")).toHaveCount(1);
   await expect(page.locator("[data-card-deleted]")).toHaveCount(0);
-});
-
-test("Escape closes the share sheet and returns focus to its trigger (E-50)", async ({
-  page,
-}) => {
-  await gotoReady(page, CARD);
-
-  const trigger = page.locator('[data-card-detail-action="share"]');
-  await trigger.click();
-  await expect(page.locator("[data-share-sheet]")).toBeVisible();
-
-  await page.keyboard.press("Escape");
-
-  await expect(page.locator("[data-share-sheet]")).toHaveCount(0);
-  await expect(trigger).toBeFocused();
 });
 
 /* ── E-36: an id that does not resolve ────────────────────────────────────────────── */
@@ -737,10 +750,7 @@ for (const state of STATE_QUERIES) {
       // empties the profile the card filters (E-08), so the same card resolves to zero
       // fields and the `.vcf` becomes unreachable.
       await expect(page.locator('[data-card-root][data-render-mode="full"]')).toHaveCount(1);
-      await expect(page.locator("[data-field-count-meter]")).toHaveAttribute(
-        "data-field-count",
-        "0",
-      );
+      await expect(page.locator("[data-share-empty-note]")).toBeVisible();
     }
     if (state === "success") {
       await expect(page.locator("[data-field-list]")).toHaveCount(1);

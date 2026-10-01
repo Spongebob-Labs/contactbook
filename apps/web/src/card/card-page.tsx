@@ -144,6 +144,9 @@ import "@/styles/card.css";
  * `"Made with Contact Book"` — two suites assert the string, and the attribution has to survive
  * as text whether or not the mark loads. The mark is a SIBLING, never a child. See
  * {@link MadeWithCredit}.
+ *
+ * `[data-card-edit="cover" | "headline" | "bio"]` exist only when a caller passes `edit` (the
+ * `/welcome` walkthrough). No other surface renders them. See {@link CardPageEditSlots}.
  */
 
 export interface CardPageProps {
@@ -175,6 +178,36 @@ export interface CardPageProps {
    * this pass's own arithmetic (see {@link COVER_RATIO}'s dated note).
    */
   showCredit?: boolean;
+  /**
+   * Editing controls drawn ON the card, one region at a time — the first-run walkthrough at
+   * `/welcome`, where the owner taps the part of the card they want to change instead of
+   * looking for its row in a panel.
+   *
+   * ⚠ **Absent on every other caller, and absent renders exactly what this component rendered
+   * before the prop existed** — `tests/unit/card-page-edit.test.tsx` holds that. The component
+   * stays stateless either way: the caller owns every button, input and request, and a key here
+   * only says where that node goes. See {@link CardPageEditSlots}.
+   */
+  edit?: CardPageEditSlots;
+}
+
+/**
+ * Where `CardPageProps.edit` puts a caller's controls. Each key is optional and independent.
+ *
+ *   · `cover`    — laid over the cover, above the photograph and clear of the curve. While it is
+ *                  present an EMPTY cover holds the photo aperture ({@link COVER_RATIO}`.photo`)
+ *                  instead of the short flat band, so the owner sees the shape a photograph will
+ *                  fill — the same aperture the crop dialog composes into.
+ *   · `headline` — takes the position line's place, and renders even when the card has none.
+ *   · `bio`      — takes the bio's place, same.
+ *
+ * `headline` and `bio` sit in a wrapper carrying that line's own margin, face, size and ink, so
+ * an input written with `font: inherit; color: inherit` lands where the text it edits sits.
+ */
+export interface CardPageEditSlots {
+  cover?: ReactNode;
+  headline?: ReactNode;
+  bio?: ReactNode;
 }
 
 /* ── measurements ───────────────────────────────────────────────────────────── */
@@ -232,6 +265,19 @@ const BADGE = 64;
  * of the nine palettes. The asset here has its white dissolved to alpha along each ink's own
  * blend ray, so the anti-aliased edges survive and the mark sits on whatever paper the card is
  * printed on.
+ *
+ * ⚠ **Recoloured from the brand teal to Atelier's gold and brown (2026-09-27)**, so the card's
+ * signature matches the app it came from. Ink by ink, every pixel's alpha kept, so the edges are
+ * the un-matte's own:
+ *
+ *     CB mark     #5CB8A8 → #AF8141  gold    3.23:1 on the palest sheet (Ivory's #FAF6EE)
+ *     wordmark    #6C8E89 → #4A3A2A  brown  10.10:1
+ *     tagline     #5CB8A8 → #816544  `--ink-3`, the dashboard's caption ink — 5.02:1
+ *     B's shadow  #6C8E89 → #6B5842  alpha rescaled so the emboss is exactly as deep as before
+ *
+ * The gold sits between the chrome's muted ladder (`#C1A88A`/`#A48157`, hue 33°) and Ivory's
+ * richer `#A87F33`: the chrome's own `#A48157` read as brown on the sheet, not gold. A new
+ * ink goes in the same way — re-solve against the teal original in git, never against this file.
  */
 const CREDIT_LOGO_SRC = "/brand/contactbook-logo.png";
 
@@ -518,6 +564,7 @@ export function CardPage({
   actions,
   className,
   showCredit = true,
+  edit,
 }: CardPageProps): ReactElement {
   const { template } = resolved;
   const palette = resolved.palette;
@@ -568,7 +615,16 @@ export function CardPage({
       className={className}
       style={root}
     >
-      <CardCover resolved={resolved} surface={surface} palette={palette} />
+      <CardCover
+        resolved={resolved}
+        /* An editable cover holds the photo aperture whether or not a photo is on it yet — see
+           `CardPageEditSlots.cover`. Without `edit.cover` this is `surface`, untouched. */
+        surface={
+          edit?.cover === undefined ? surface : { ...surface, coverRatio: COVER_RATIO.photo }
+        }
+        palette={palette}
+        editSlot={edit?.cover}
+      />
 
       <div
         data-card-sheet=""
@@ -653,7 +709,13 @@ export function CardPage({
               field, and reading it here would ignore what the owner typed in the builder.
               `splitHeroFields` still consumes the JOB_TITLE either way, so a card with a typed
               headline does not also list its profile title as a row. */}
-          <IdentityBlock resolved={resolved} bio={bio} org={hero.org} role={resolved.headline} />
+          <IdentityBlock
+            resolved={resolved}
+            bio={bio}
+            org={hero.org}
+            role={resolved.headline}
+            edit={edit}
+          />
 
           {/* Rendered bare. The actions component supplies its own `[data-card-actions]`
               container and its own count: whether there are two controls, one, or none depends
@@ -702,10 +764,13 @@ function CardCover({
   resolved,
   surface,
   palette,
+  editSlot,
 }: {
   resolved: ResolvedCard;
   surface: CardPageSurface;
   palette: ResolvedCard["palette"];
+  /** `CardPageEditSlots.cover`. `undefined` adds nothing to the DOM. */
+  editSlot?: ReactNode;
 }): ReactElement {
   const photo = resolved.cover.kind === "photo" ? resolved.cover : null;
 
@@ -788,6 +853,22 @@ function CardCover({
             }}
           />
         </>
+      )}
+
+      {editSlot === undefined ? null : (
+        <div
+          data-card-edit="cover"
+          style={{
+            position: "absolute",
+            /* ⚠ Stops `CURVE_H` short of the bottom. The wave is drawn by the SHEET, above this
+               box, over the cover's last `CURVE_H` pixels — a control reaching into that strip
+               would be half under paper and half tappable, and the badge sits there too. */
+            inset: `0 0 ${CURVE_H}px 0`,
+            display: "flex",
+          }}
+        >
+          {editSlot}
+        </div>
       )}
     </div>
   );
@@ -907,11 +988,14 @@ function IdentityBlock({
   bio,
   org,
   role,
+  edit,
 }: {
   resolved: ResolvedCard;
   bio: string | null;
   org: string | null;
   role: string | null;
+  /** `CardPageProps.edit`. Only its `headline` and `bio` keys are read here. */
+  edit?: CardPageEditSlots;
 }): ReactElement {
   return (
     <header
@@ -977,7 +1061,23 @@ function IdentityBlock({
         {resolved.fullName}
       </h1>
 
-      {role === null ? null : (
+      {edit?.headline !== undefined ? (
+        <div
+          data-card-edit="headline"
+          style={{
+            /* The position line's own margin, size and ink — see `CardPageEditSlots`. */
+            margin: `${SPACE.nameToRole}px 0 0`,
+            fontSize: "var(--text-base)",
+            color: "var(--cb-sheet-ink-soft)",
+            width: "100%",
+            minWidth: 0,
+            display: "flex",
+            justifyContent: "center",
+          }}
+        >
+          {edit.headline}
+        </div>
+      ) : role === null ? null : (
         <p
           data-card-role=""
           style={{
@@ -991,7 +1091,26 @@ function IdentityBlock({
         </p>
       )}
 
-      {bio === null ? null : (
+      {edit?.bio !== undefined ? (
+        <div
+          data-card-edit="bio"
+          style={{
+            /* The bio's own face, size, leading, ink, margin and measure. */
+            fontFamily: "var(--font-serif), var(--font-sans)",
+            fontSize: "var(--text-lg)",
+            lineHeight: 1.42,
+            color: "var(--cb-sheet-ink-soft)",
+            margin: `${SPACE.roleToBio}px 0 0`,
+            width: "100%",
+            maxWidth: "32ch",
+            minWidth: 0,
+            display: "flex",
+            justifyContent: "center",
+          }}
+        >
+          {edit.bio}
+        </div>
+      ) : bio === null ? null : (
         <p
           data-card-bio=""
           style={{

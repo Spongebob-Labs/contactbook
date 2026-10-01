@@ -99,7 +99,7 @@ export const BUILDER_SECTIONS: readonly BuilderSectionDef[] = [
          is verbatim the caption on this panel's own Background row a hundred pixels below it.
          The same words twice on one screen make neither copy the authority, and the row's copy
          is the one sitting beside the control it describes. */
-      "The colour this card wears, and how it is painted.",
+      "Colour, finish and texture.",
     icon: Palette,
   },
 ];

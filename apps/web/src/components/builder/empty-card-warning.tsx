@@ -38,7 +38,7 @@ import { cn } from "@/lib/cn";
  */
 
 /** §11 E-01's sentence, verbatim, and the one place it is written. */
-export const EMPTY_CARD_WARNING_TEXT = `This card maps 0 fields. ${EMPTY_CARD_NOTE}`;
+export const EMPTY_CARD_WARNING_TEXT = `No fields on this card. ${EMPTY_CARD_NOTE}`;
 
 /**
  * Why Save is unavailable, wired to the button through `aria-describedby`.
@@ -47,7 +47,7 @@ export const EMPTY_CARD_WARNING_TEXT = `This card maps 0 fields. ${EMPTY_CARD_NO
  * codes, no jargon.
  */
 export const EMPTY_CARD_SAVE_REASON =
-  "You can't save a card that maps no fields — tick at least one field first.";
+  "Tick at least one field to save this card.";
 
 /**
  * ⚠ **A button, not a link to `/profile`.**

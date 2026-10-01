@@ -286,7 +286,7 @@ export function ImageCropDialog({
       open={open}
       onOpenChange={onOpenChange}
       title={title}
-      description={description ?? "Drag to move, and use the slider to zoom. What you see inside the frame is what the card shows."}
+      description={description ?? "Drag to move. Use the slider to zoom."}
       size="lg"
       footer={
         <div className="flex flex-wrap items-center justify-end gap-2">

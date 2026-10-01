@@ -41,7 +41,15 @@ import {
  * has already created their account and minted a session, so arriving there without one means
  * something went wrong and the answer is to start at the phone screen.
  */
-const PROTECTED_PREFIXES = ["/dashboard", "/cards", "/contacts", "/profile", "/signup"] as const;
+const PROTECTED_PREFIXES = [
+  "/dashboard",
+  "/cards",
+  "/contacts",
+  "/profile",
+  "/share",
+  "/signup",
+  "/welcome",
+] as const;
 
 /** Signing in again is pointless when a session already exists — these bounce to the app. */
 const SIGN_IN_PREFIX = "/signin";

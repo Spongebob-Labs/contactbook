@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { renderWithProviders, screen, within } from "../helpers/render";
+import { cleanup, renderWithProviders, screen, within } from "../helpers/render";
 
 import { ReachPanel } from "@/components/dashboard/reach-panel";
 import type { DashboardResponseDto } from "@/lib/api/schema";
@@ -103,19 +103,33 @@ describe("ReachPanel", () => {
     expect(done).toHaveTextContent("40 pts");
   });
 
-  it("keeps every count that the five tiles used to carry", () => {
+  /**
+   * Cards and Contacts left the strip on 2026-09-28: the summary tiles at the top of the
+   * dashboard lead with them, and a count printed twice on one screen invites the reader to
+   * reconcile the two.
+   */
+  it("carries the two reach counts, and not the counts the summary tiles lead with", () => {
     renderWithProviders(<ReachPanel score={LIVE} totals={TOTALS} />);
 
-    const strip = document.querySelector("[data-reach-counts]")!;
+    const strip = document.querySelector("[data-reach-counts]") as HTMLElement;
     for (const [label, value] of [
-      ["Cards", "2"],
       ["People reached", "2"],
       ["Opens", "20"],
-      ["Contacts", "2"],
     ]) {
-      const term = within(strip as HTMLElement).getByText(label);
+      const term = within(strip).getByText(label);
       expect(term.parentElement).toHaveTextContent(value);
     }
+    expect(within(strip).queryByText("Cards")).toBeNull();
+    expect(within(strip).queryByText("Contacts")).toBeNull();
+    expect(strip.querySelectorAll("dt")).toHaveLength(2);
+  });
+
+  it("takes the heading level it is given, so it can sit under the Sharing heading", () => {
+    renderWithProviders(<ReachPanel score={LIVE} totals={TOTALS} headingLevel={3} />);
+    expect(document.querySelector("#reach-score-heading")?.tagName).toBe("H3");
+    cleanup();
+    renderWithProviders(<ReachPanel score={LIVE} totals={TOTALS} />);
+    expect(document.querySelector("#reach-score-heading")?.tagName).toBe("H2");
   });
 
   /**
@@ -138,7 +152,10 @@ describe("ReachPanel", () => {
     );
 
     expect(screen.getByRole("img", { name: "No reach score yet" })).toBeInTheDocument();
-    expect(screen.getByText(/Build a card to start/i)).toBeInTheDocument();
+    /* A heading and nothing under it: the paragraph explaining the score to a new owner was
+       filler (2026-09-28), and the dashboard's Cards tile carries the "create" action. */
+    expect(document.querySelector("#reach-score-heading")).not.toBeNull();
+    expect(document.querySelector("[data-reach-panel] p")).toBeNull();
     /* No arc, and no lever links to press. */
     expect(document.querySelector("[data-reach-lever]")).toBeNull();
     expect(document.querySelector("[data-reach-dial]")).toHaveAttribute("data-reach-dial", "");

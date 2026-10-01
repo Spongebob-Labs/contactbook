@@ -311,6 +311,294 @@
   .mk-steps-after__title {
     font-size: var(--mk-text-subheading);
   }
+
+  /* ── the map band — Maya's four cities ────────────────────────────────────
+     2026-09-28. `world-map.tsx` has the why. The panel is the frames' own
+     grammar (white, hairline, card shadow, uppercase label) so it reads as the
+     same system, but it is NOT `.mk-steps-frame`: the three frames are held
+     identical by test, and this one is a band, not a fourth column. */
+  .mk-map {
+    margin-top: 3.5rem;
+    padding: 20px 22px 24px;
+    border-radius: var(--mk-radius-block);
+    border: 1px solid var(--mk-hairline);
+    background-color: var(--mk-white);
+    box-shadow: var(--mk-shadow-card);
+  }
+
+  .mk-map__label {
+    margin: 0 0 12px;
+    font-family: var(--mk-font-sans);
+    font-size: var(--mk-text-caption);
+    font-weight: var(--mk-weight-medium);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--mk-pebble);
+  }
+
+  .mk-map__body {
+    display: grid;
+    gap: 20px;
+  }
+
+  @media (min-width: 64rem) {
+    .mk-map__body {
+      grid-template-columns: minmax(0, 1.75fr) minmax(0, 1fr);
+      align-items: center;
+      gap: 40px;
+    }
+  }
+
+  /* ── the globe — 2026-09-29 ─────────────────────────────────────────────
+     `world-globe.tsx` has the why and the a11y/perf contract. The stage keeps
+     the flat map's box on desktop, so the card keeps its proportions; a phone
+     column is too short for a sphere at that ratio, so there it is near-square.
+     The canvas and the still share one geometry: the sphere's radius is
+     `GLOBE_RADIUS` of the stage's height and the still's square frame is
+     sized from the same constants inline. */
+  .mk-globe {
+    position: relative;
+  }
+
+  .mk-globe__stage {
+    position: relative;
+    aspect-ratio: 1 / 0.86;
+  }
+
+  @media (min-width: 48rem) {
+    .mk-globe__stage {
+      aspect-ratio: 97.5 / 53.96;
+    }
+  }
+
+  .mk-globe__canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  .mk-globe__frame {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    aspect-ratio: 1;
+    transform: translate(-50%, -50%);
+  }
+
+  .mk-globe__still {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+
+  /* Once the canvas has drawn its first frame the still steps aside; the pins
+     stay, and the loop moves them. */
+  .mk-globe__stage[data-globe="live"] .mk-globe__still {
+    display: none;
+  }
+
+  .mk-globe__stage[data-globe="live"] .mk-map__pin,
+  .mk-globe__stage[data-globe="live"] .mk-globe__name {
+    will-change: transform, opacity;
+  }
+
+  /* Each dot is a round-capped segment — zero-length, or short and tangential
+     where the limb foreshortens it. Width and opacity are per depth band,
+     inline. The gold is decorative only, which is the one job atelier allows. */
+  .mk-globe__land {
+    fill: none;
+    stroke: var(--mk-accent-tint);
+    stroke-linecap: round;
+  }
+
+  .mk-globe__rim {
+    fill: none;
+    stroke: var(--mk-accent-tint);
+    stroke-opacity: 0.5;
+    stroke-width: 1;
+    vector-effect: non-scaling-stroke;
+  }
+
+  .mk-globe__stop-tint {
+    stop-color: var(--mk-accent-tint);
+  }
+
+  .mk-globe__stop-lit {
+    stop-color: var(--mk-white);
+  }
+
+  .mk-globe__stop-wash {
+    stop-color: var(--mk-wash);
+  }
+
+  /* The pause control WCAG 2.2.2 requires, in the solution exhibit's own pill.
+     Top right, on the label's line. Absent until the script says the globe can
+     move — so never with scripting off or under reduced motion. */
+  .mk-globe__pause {
+    position: absolute;
+    top: -7px;
+    right: 0;
+    display: none;
+    align-items: center;
+    gap: 6px;
+    min-height: 32px;
+    padding: 0 12px;
+    border-radius: var(--mk-radius-pill);
+    border: 1px solid var(--mk-hairline-strong);
+    background-color: var(--mk-white);
+    font-family: var(--mk-font-sans);
+    font-size: var(--mk-text-caption);
+    font-weight: var(--mk-weight-medium);
+    color: var(--mk-ink);
+    cursor: pointer;
+  }
+
+  .mk-globe[data-globe-motion] .mk-globe__pause {
+    display: inline-flex;
+  }
+
+  .mk-globe__pause:hover {
+    border-color: var(--mk-ink);
+  }
+
+  .mk-globe__pause-icon {
+    display: inline-flex;
+  }
+
+  /* Each pin is a zero-size anchor on the city's point; its parts centre on it. */
+  .mk-map__pin {
+    position: absolute;
+    width: 0;
+    height: 0;
+  }
+
+  .mk-map__dot,
+  .mk-map__halo {
+    position: absolute;
+    left: 0;
+    top: 0;
+    border-radius: var(--mk-radius-pill);
+    transform: translate(-50%, -50%);
+  }
+
+  .mk-map__dot {
+    width: 8px;
+    height: 8px;
+    background-color: var(--mk-accent-deep);
+    box-shadow: 0 0 0 2px var(--mk-white);
+  }
+
+  .mk-map__halo {
+    width: 20px;
+    height: 20px;
+    background-color: var(--mk-accent-tint);
+    opacity: 0.35;
+  }
+
+  @media (min-width: 48rem) {
+    .mk-map__dot {
+      width: 10px;
+      height: 10px;
+    }
+
+    .mk-map__halo {
+      width: 26px;
+      height: 26px;
+    }
+  }
+
+  /* A city's name, under its pin. Its horizontal shift (`labelShift`) and, while
+     the globe turns, its opacity are inline: centred mid-disc, sliding inward
+     toward either limb so a name never leaves the sphere's side of the card. */
+  .mk-globe__name {
+    position: absolute;
+    left: 0;
+    top: 10px;
+    font-family: var(--mk-font-sans);
+    font-size: var(--mk-text-caption);
+    font-weight: var(--mk-weight-medium);
+    line-height: 1.2;
+    white-space: nowrap;
+    color: var(--mk-ink);
+    text-shadow:
+      0 0 2px var(--mk-white),
+      0 0 6px var(--mk-white);
+  }
+
+  .mk-map__legend {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px 20px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  @media (min-width: 48rem) {
+    .mk-map__legend {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+
+  @media (min-width: 64rem) {
+    .mk-map__legend {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 22px 24px;
+    }
+  }
+
+  .mk-map__place {
+    position: relative;
+    min-width: 0;
+    padding-top: 10px;
+    border-top: 1px solid var(--mk-hairline);
+  }
+
+  /* The city the globe is showing: the accent draws along the cell's own
+     hairline. A transform on a pseudo-element, so nothing reflows, and an
+     attribute rather than focus or a live region, so nothing is announced. */
+  .mk-map__place::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: -1px;
+    height: 1px;
+    background-color: var(--mk-accent-display);
+    transform: scaleX(0);
+    transform-origin: left center;
+    transition: transform var(--mk-dur-settle) var(--mk-ease);
+  }
+
+  .mk-map__place[data-active]::before {
+    transform: scaleX(1);
+  }
+
+  .mk-map__city {
+    font-family: var(--mk-font-display);
+    font-size: var(--mk-text-subheading);
+    line-height: 1.25;
+    color: var(--mk-ink);
+  }
+
+  .mk-map__phone {
+    margin-top: 2px;
+    font-family: var(--mk-font-sans);
+    font-size: var(--mk-text-body-sm);
+    font-variant-numeric: tabular-nums;
+    color: var(--mk-ink);
+  }
+
+  .mk-map__address {
+    margin-top: 2px;
+    font-family: var(--mk-font-sans);
+    font-size: var(--mk-text-caption);
+    line-height: 1.45;
+    color: var(--mk-pebble);
+  }
 }
 
 /* ── The rail's motion ────────────────────────────────────────────────────
@@ -422,6 +710,47 @@
     animation: mk-steps-land 620ms var(--mk-ease) backwards;
     animation-delay: calc(var(--mk-steps-i, 0) * 60ms + 700ms);
   }
+
+  /* The map's one shot, keyed on the band's OWN reveal (it sits a screen below
+     the rail's): each pin lands in turn and its halo swells once and settles,
+     ~1s, once, ending at rest. The names no longer rise here — since the globe
+     (2026-09-29) the loop fades each one in as its city comes round. */
+  [data-steps-map][data-mk-reveal="in"] .mk-map__dot {
+    animation: mk-map-drop 520ms var(--mk-ease) backwards;
+    animation-delay: calc(260ms + var(--mk-map-i, 0) * 150ms);
+  }
+
+  [data-steps-map][data-mk-reveal="in"] .mk-map__halo {
+    animation: mk-map-halo 900ms var(--mk-ease) backwards;
+    animation-delay: calc(380ms + var(--mk-map-i, 0) * 150ms);
+  }
+}
+
+/* Every map keyframe keeps the element's resting centring translate as its
+   first term, so the pin lands ON its point rather than beside it. */
+@keyframes mk-map-drop {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) translate3d(0, -12px, 0) scale(0.4);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%);
+  }
+}
+
+/* No `to`: it settles on the halo's own resting opacity and size. */
+@keyframes mk-map-halo {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.2);
+  }
+
+  55% {
+    opacity: 0.6;
+    transform: translate(-50%, -50%) scale(1.6);
+  }
 }
 
 /* The deal keeps each card's resting diagonal offset as its END state — the
@@ -510,3 +839,10 @@
   color: var(--mk-white);
 }
 
+/* The globe's pause pill keeps its shape when focused. The site's one focus
+   ring (`[data-mk-root] :focus-visible`, marketing.css) is unlayered and also
+   squares every corner to the chrome radius; a layered rule cannot win that,
+   so this one line is unlayered too. The ring itself stays the site's. */
+.mk-globe .mk-globe__pause:focus-visible {
+  border-radius: var(--mk-radius-pill);
+}

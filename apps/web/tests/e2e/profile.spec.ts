@@ -1,75 +1,62 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page, type Request } from "@playwright/test";
+
+import { ALL_SUGGESTIONS, PROFILE_SECTIONS, childBirthdayLabel } from "@/components/builder/field-suggestions";
+import { FIELD_CATALOGUE } from "@/components/builder/field-catalogue";
+import { fixtureFields } from "@/fixtures/profile";
 
 import { gotoReady } from "../helpers/e2e";
-import { signIn } from "../helpers/session";
+import { signIn, statefulSub } from "../helpers/session";
 
 /* ⚠ `/profile` is a gated route — `proxy.ts` bounces it to `/signin/phone` without a session
-   cookie, and this file had no sign-in step at all, so every test in it was asserting against
-   the phone-number screen rather than the profile. `contacts.spec.ts` has carried this exact
-   block since the routes were gated; this file was simply missed. */
+   cookie. Every test signs in first; the ones that need writes to persist sign in again with
+   their own `e2e-state-*` sub. */
 test.beforeEach(async ({ context, baseURL }) => {
   await signIn(context, baseURL!);
 });
 
 /**
- * `/profile` and `/profile/groups/[groupId]` — spec §6.1 R-16/R-17, §8D.3, §4.5, §7.3,
- * §11 E-08, E-34, E-40, E-41, and **AC-33's reveal**.
+ * `/profile` — **Profile & Cards**, the merged workspace (client, 2026-09-28) — and
+ * `/profile/groups/[groupId]`, the group editor that still owns reorder and delete.
  *
- * ## The three assertions this file exists for
+ * ## What this file pins
  *
- * 1. **AC-33 — this is the only surface in the product with a reveal control, and while a
- *    row is masked the raw value is not in its markup at all.** The headline check is
- *    deliberately `outerHTML`, not `toContainText`: a leak through an `href`, a `title`, a
- *    `value=` or a `data-` attribute is invisible to a text assertion and is exactly the
- *    class of bug §7.3 is written against. T12 strips `href` and `title` from a masked row
- *    on purpose — a masked `+91 22612 34567` still carrying `tel:+912261234567` is a leak,
- *    not a cosmetic slip — so the row-level markup check is what proves the consumer did
- *    not put them back.
+ * 1. **AC-33** — the workspace and the group editor are the only surfaces with a reveal, and
+ *    while a row is masked the raw value is nowhere in its markup (`outerHTML`, not text).
+ * 2. **Click-to-edit** — the row itself opens the editor; Enter saves, Escape cancels.
+ * 3. **Blank suggested fields** are client-side rows; the first non-empty save creates the
+ *    field (`POST /profile/fields`) and puts it on the selected card.
+ * 4. **The card tick** changes the preview at once and writes the card's whole set.
+ * 5. **A new card carries every filled field.**
+ * 6. **E-41** — deleting a field states how many cards use it, first (group editor).
  *
- * 2. **E-08 — `?state=empty` is SEVEN groups with no fields, not zero groups.**
- *    `EMPTY_FIXTURE_DB` keeps the user and keeps every `FieldGroup` with `fieldIds: []`
- *    (§6.3). A test asserting "empty means nothing renders" on this screen would be
- *    asserting the wrong product.
+ * ## Mechanics
  *
- * 3. **E-41 — deleting a field states how many cards use it, in the dialog, before the
- *    delete happens.** Asserted on the count itself, since the count is the decision.
- *
- * ## Two mechanics every test here depends on
- *
- * · **Wait for `[data-screen-state]`, never race the fallback.** Both routes ship a
- *   `loading.tsx`, so the response streams a skeleton before the client half mounts. The
- *   skeletons deliberately carry no `data-screen-state`, and `gotoProfile` waits for
- *   exactly one element that does — the wave-6 W6-08 lesson, applied up front.
- *
- * · **Sections are collapsed below 768px (§8D.3).** `expandGroup` reads `aria-expanded`
- *   and clicks only when it needs to, so every test reads identically at 360, 768 and
- *   1440 without branching on the project name.
+ * · Wait for `[data-screen-state]`, never race the fallback: the skeletons carry none.
+ * · Personal and Work open by default, the rest collapsed, at every width — `expandSection`
+ *   clicks only when it needs to, so no test branches on the viewport.
+ * · The stateless stub echoes profile writes without storing them, so a created field is
+ *   asserted on the request it sends, never on a row that the re-read removes again.
  */
 
 /* ── fixture facts these tests are written against (src/fixtures/profile.ts) ─────────── */
 
-/** `BANK_ACCOUNT`, `isSensitive: true`. Masked twice over. */
+/** `BANK_ACCOUNT`. Masked by type. */
 const BANK_FIELD = "field_bank";
 const BANK_RAW = "50100412345678";
 const BANK_MASKED = "••••5678";
 
-/** `DIGITAL_WALLET`, `isSensitive: FALSE` — masked anyway, because the type says so. */
+/** `DIGITAL_WALLET` — masked because the type says so. */
 const UPI_FIELD = "field_upi";
 const UPI_RAW = "priyanka@okhdfcbank";
 
-/**
- * `DATE`. ⚠ The fixture still carries `isSensitive: true`, and it no longer reaches the row —
- * sensitivity is derived from the field's type now, and `DATE` is not one of the three
- * encrypted kinds. The row renders plainly. `DOB_RAW` is gone with the assertion that used it:
- * the value is formatted for reading ("8 March 1991"), so the fixture's `1991-03-08` is not in
- * the markup even when nothing is hidden.
- */
+/** `DATE`, not one of the encrypted kinds, so it renders plainly ("8 March 1991"). */
 const DOB_FIELD = "field_dob";
 
-/** `PHONE`, not sensitive. The control case: never masked, always editable. */
+/** `PHONE`, not sensitive. The control case. */
 const PHONE_FIELD = "field_mobile";
 
-const SEVEN_GROUPS = 7;
+/** The stub's first card (API order) — what the workspace previews with no `?card=`. */
+const FIRST_CARD = "card_minimal_demo";
 
 /* ── helpers ────────────────────────────────────────────────────────────────────────── */
 
@@ -79,36 +66,42 @@ async function gotoProfile(page: Page, query = ""): Promise<void> {
   await expect(page.locator("[data-screen-state]")).toHaveCount(1);
 }
 
-/** The add-field dialog's submit control. See the note at its first call site. */
-async function submitAddField(page: Page): Promise<void> {
-  await page.getByRole("dialog").getByRole("button", { name: "Add field" }).click();
-}
-
 async function gotoGroup(page: Page, groupId: string, query = ""): Promise<void> {
   await gotoReady(page, `/profile/groups/${groupId}${query}`);
   await expect(page.locator("[data-screen-state]")).toHaveCount(1);
 }
 
-/** Expand a group if this viewport collapsed it. Idempotent, so tests never branch. */
-async function expandGroup(page: Page, groupId: string): Promise<void> {
-  const toggle = page.locator(`[data-group-toggle="${groupId}"]`);
+/** Open a workspace section if it is collapsed. Idempotent. */
+async function expandSection(page: Page, sectionId: string): Promise<void> {
+  const toggle = page.locator(`[data-section-toggle="${sectionId}"]`);
   await toggle.waitFor();
-  if ((await toggle.getAttribute("aria-expanded")) === "false") {
-    await toggle.click();
-  }
+  if ((await toggle.getAttribute("aria-expanded")) === "false") await toggle.click();
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
 }
 
+/** A workspace row. */
 function row(page: Page, fieldId: string): Locator {
+  return page.locator(`[data-workspace-row="${fieldId}"]`);
+}
+
+/** A group-editor row — the old `ProfileFieldRow`, which that screen still uses. */
+function groupRow(page: Page, fieldId: string): Locator {
   return page.locator(`[data-profile-field="${fieldId}"]`);
 }
 
-/**
- * The strong form of "this value is not on screen": it is nowhere in the row's markup.
- * Text, `href`, `title`, `value`, `aria-label`, a data attribute — all covered at once.
- */
+/** The strong form of "this value is not on screen": it is nowhere in the markup. */
 async function markupOf(target: Locator): Promise<string> {
   return target.evaluate((node) => node.outerHTML);
+}
+
+function bodyOf(request: Request): Record<string, unknown> {
+  return JSON.parse(request.postData() ?? "{}") as Record<string, unknown>;
+}
+
+function waitForWrite(page: Page, method: string, path: RegExp): Promise<Request> {
+  return page.waitForRequest(
+    (request) => request.method() === method && path.test(new URL(request.url()).pathname),
+  );
 }
 
 /* ── the `?state=` matrix on both routes (AC-24, E-34) ──────────────────────────────── */
@@ -157,14 +150,16 @@ test.describe("the state matrix (§8D.1, AC-24)", () => {
 
     // §8D.1: the page header survives a data failure — a partial failure never costs the
     // reader their orientation.
-    await expect(page.getByRole("heading", { level: 1, name: "Profile" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Profile & Cards" })).toBeVisible();
   });
 
-  test("the shell keeps exactly one main landmark and one h1 (AC-25)", async ({ page }) => {
+  test("the shell keeps exactly one main landmark and one page h1 (AC-25)", async ({ page }) => {
     await gotoProfile(page);
     // `AppShell` owns it. `<ScreenStateRoot as="main">` here would fail landmark-unique.
     await expect(page.locator("main")).toHaveCount(1);
-    await expect(page.locator("h1")).toHaveCount(1);
+    /* The preview is the card page itself, which titles the card with its own <h1> — the same
+       as the builder's preview. The workspace's own heading is the one outside it. */
+    await expect(page.locator("h1:not([data-builder-preview] h1)")).toHaveCount(1);
 
     await gotoGroup(page, "group_identity");
     await expect(page.locator("main")).toHaveCount(1);
@@ -175,43 +170,25 @@ test.describe("the state matrix (§8D.1, AC-24)", () => {
 
 /* ── §11 E-08 ───────────────────────────────────────────────────────────────────────── */
 
-test.describe("E-08 — a profile with zero fields in every group", () => {
-  test("renders all seven groups, each with its own empty state and Add field", async ({
+test.describe("E-08 — a profile with no fields", () => {
+  test("every section still renders, with every suggestion as a blank row to fill", async ({
     page,
   }) => {
     await gotoProfile(page, "?state=empty");
 
-    // The screen is empty; the groups are not gone. Both facts, at once.
     await expect(page.locator("[data-screen-state]")).toHaveAttribute(
       "data-screen-state",
       "empty",
     );
-    await expect(page.locator("[data-field-group-section]")).toHaveCount(SEVEN_GROUPS);
-    await expect(page.locator("[data-group-empty]")).toHaveCount(SEVEN_GROUPS);
-    await expect(page.locator("[data-add-field]")).toHaveCount(SEVEN_GROUPS);
-
-    // Not a single field row anywhere.
-    await expect(page.locator("[data-profile-field]")).toHaveCount(0);
-
-    // And it is the FIRST-RUN empty, never the filtered-to-nothing one: this screen has
-    // no filter, so `empty-filtered` is unreachable by construction (§8D.3 records it n/a).
-    await expect(page.locator('[data-empty-state="first-run"]')).toHaveCount(SEVEN_GROUPS);
-    await expect(page.locator('[data-empty-state="filtered"]')).toHaveCount(0);
-  });
-
-  test("the per-group copy names the group and the identity block still renders", async ({
-    page,
-  }) => {
-    await gotoProfile(page, "?state=empty");
-    await expandGroup(page, "group_identity");
-
-    await expect(page.locator('[data-group-empty="group_identity"]')).toContainText(
-      "No fields in Identity yet",
-    );
+    await expect(page.locator("[data-workspace-section]")).toHaveCount(PROFILE_SECTIONS.length);
+    await expect(page.locator("[data-workspace-row-blank]")).toHaveCount(ALL_SUGGESTIONS.length);
+    await expect(page.locator("[data-workspace-row]:not([data-workspace-row-blank])")).toHaveCount(0);
+    await expect(page.locator("[data-add-child]")).toHaveCount(1);
 
     // §6.3: `?state=empty` keeps the user. An owner with no fields still has a name.
     await expect(page.locator("[data-profile-identity]")).toBeVisible();
     await expect(page.locator("[data-identity-name]")).toContainText("Priyanka");
+    await expect(page.locator("[data-workspace-intro]")).toHaveText("Complete the fields below.");
   });
 
   test("the group editor shows the same empty state for an empty group", async ({ page }) => {
@@ -235,185 +212,118 @@ test.describe("AC-33 — masked values, and the reveal that lives only here", ()
     page,
   }) => {
     await gotoProfile(page);
-    await expandGroup(page, "group_financial");
+    await expandSection(page, "payment");
 
     const bank = row(page, BANK_FIELD);
     await expect(bank).toHaveAttribute("data-field-masked", "");
     await expect(bank).toContainText(BANK_MASKED);
-
-    // The headline check: not the text, the markup. An `href`, a `title`, an input value
-    // or a stray data attribute would all be caught here and by nothing else.
     expect(await markupOf(bank)).not.toContain(BANK_RAW);
-
-    // T12 strips both deliberately. Neither may be put back by a consumer.
     await expect(bank.locator("a")).toHaveCount(0);
     await expect(bank.locator("[title]")).toHaveCount(0);
   });
 
-  /**
-   * ⚠ **Sensitivity is derived from the field's TYPE, not stored** — see `map.ts`'s
-   * `isSensitiveType`. The API has no `isSensitive` column at all; what it has is a set of
-   * types it encrypts at rest. So a financial field is sensitive *and* masked by construction,
-   * and the guarantee is stronger than a stored boolean: a bank account cannot be un-marked,
-   * because nothing anywhere stores the mark.
-   *
-   * This test used to assert the opposite of its second line — that `field_upi` was masked
-   * while NOT carrying the sensitive flag, because the fixture set `isSensitive: false` on it.
-   * That fixture property no longer reaches the row.
-   */
   test("the three financial types are sensitive and masked, by type alone", async ({ page }) => {
     await gotoProfile(page);
-    await expandGroup(page, "group_financial");
+    await expandSection(page, "payment");
 
     const upi = row(page, UPI_FIELD);
     await expect(upi).toHaveAttribute("data-field-masked", "");
     await expect(upi).toHaveAttribute("data-field-sensitive", "");
     expect(await markupOf(upi)).not.toContain(UPI_RAW);
-
-    // The toggle is present but inert, and says why — nothing can subtract the mark.
-    await expect(upi.locator(`[data-sensitive-toggle="${UPI_FIELD}"]`)).toBeDisabled();
-    await expect(upi).toContainText("Set by the field's type");
   });
 
   /**
-   * ⚠ **A non-financial field can no longer be masked, and this test records the loss.**
-   *
-   * It used to assert the opposite: `field_dob` is a `DATE` the fixture marked
-   * `isSensitive: true`, and it was masked purely by that owner policy. With sensitivity
-   * derived from the type there is nowhere to record such a wish — `map.ts` says so in as many
-   * words, and `docs/INTEGRATION.md` carries it as ask #6 against the API.
-   *
-   * Inverted rather than deleted, deliberately. A home address the owner wants hidden is a real
-   * request the product currently cannot meet, and a suite that simply dropped the test would
-   * leave nothing to fail on the day an `isSensitive` column lands and the UI is not rewired.
+   * A non-financial field cannot be masked: sensitivity is derived from the type and there is
+   * no `isSensitive` column to record an owner's wish (`docs/INTEGRATION.md` ask #6).
    */
-  test("a non-financial field cannot be masked — the owner's own policy has nowhere to live", async ({
-    page,
-  }) => {
+  test("a non-financial field is shown plainly, with no reveal", async ({ page }) => {
     await gotoProfile(page);
-    await expandGroup(page, "group_identity");
+    await expandSection(page, "personal");
 
     const dob = row(page, DOB_FIELD);
     await expect(dob).not.toHaveAttribute("data-field-sensitive", "");
     await expect(dob).not.toHaveAttribute("data-field-masked", "");
-    /* Visible, and no reveal control — there is nothing to reveal.
-
-       ⚠ The rendered date, not `DOB_RAW`. A `DATE` row is formatted for reading — the fixture
-       holds `1991-03-08` and the row prints "8 March 1991" — so asserting the ISO string finds
-       nothing and would fail on a perfectly unmasked field. */
     await expect(dob.locator("[data-field-value]")).toHaveText("8 March 1991");
     await expect(dob.locator("[data-field-reveal]")).toHaveCount(0);
-    // The toggle cannot be used to change that, and says so rather than failing silently.
-    await expect(dob.locator(`[data-sensitive-toggle="${DOB_FIELD}"]`)).toBeDisabled();
   });
 
   test("an ordinary field is not masked and offers no reveal control", async ({ page }) => {
     await gotoProfile(page);
-    await expandGroup(page, "group_personal");
-
     const phone = row(page, PHONE_FIELD);
     await expect(phone).not.toHaveAttribute("data-field-masked", "");
     await expect(phone.locator("[data-field-reveal]")).toHaveCount(0);
   });
 
-  test("reveal shows the value, announces which field, and hides it again", async ({
+  test("pressing a masked row reveals it, announces which field, and it hides again", async ({
     page,
   }) => {
     await gotoProfile(page);
-    await expandGroup(page, "group_financial");
+    await expandSection(page, "payment");
 
     const bank = row(page, BANK_FIELD);
-    const reveal = bank.locator(`[data-field-reveal="${BANK_FIELD}"]`);
-
-    await expect(reveal).toHaveAttribute("aria-pressed", "false");
-    await expect(reveal).toHaveAccessibleName("Reveal Business account");
-
-    await reveal.click();
+    await bank.getByRole("button", { name: "Reveal Business account" }).click();
 
     await expect(bank).toHaveAttribute("data-field-revealed", "");
     await expect(bank).not.toHaveAttribute("data-field-masked", "");
     await expect(bank).toContainText(BANK_RAW);
-    await expect(reveal).toHaveAttribute("aria-pressed", "true");
-    await expect(reveal).toHaveAccessibleName("Hide Business account");
-
+    const hide = bank.locator(`[data-field-reveal="${BANK_FIELD}"]`);
+    await expect(hide).toHaveAttribute("aria-pressed", "true");
+    await expect(hide).toHaveAccessibleName("Hide Business account");
     // The announcement names the field and never carries the value (§13.1, §7.3).
-    const status = bank.locator('[role="status"]');
-    await expect(status).toHaveText("Showing Business account");
-
-    // Revealing is a decision to look, not a decision to publish: still no link, still no
-    // hoverable copy of the value.
+    await expect(bank.locator('[role="status"]')).toHaveText("Showing Business account");
     await expect(bank.locator("a")).toHaveCount(0);
     await expect(bank.locator("[title]")).toHaveCount(0);
 
-    await reveal.click();
+    await hide.click();
     await expect(bank).toHaveAttribute("data-field-masked", "");
     expect(await markupOf(bank)).not.toContain(BANK_RAW);
   });
 
-  test("editing a masked field is gated on revealing it first", async ({ page }) => {
+  test("editing a masked field needs the reveal first — the first press never opens a form", async ({
+    page,
+  }) => {
     await gotoProfile(page);
-    await expandGroup(page, "group_financial");
+    await expandSection(page, "payment");
 
     const bank = row(page, BANK_FIELD);
-    const edit = bank.locator(`[data-field-edit="${BANK_FIELD}"]`);
+    await bank.locator("[data-workspace-row-open]").click();
+    // A negative assertion needs time to be wrong in.
+    await page.waitForTimeout(300);
+    await expect(bank.locator("[data-workspace-row-form]")).toHaveCount(0);
+    await expect(bank).toHaveAttribute("data-field-revealed", "");
 
-    // The edit form is populated from the stored value, so opening it on a masked row
-    // would be an unlabelled reveal. The control stays focusable and says why (AC-26).
-    await expect(edit).toHaveAttribute("aria-disabled", "true");
-
-    // `dispatchEvent` rather than `click`, for the same reason as builder.spec.ts's blocked
-    // Save: Playwright's actionability gate treats `aria-disabled="true"` on a `button` as
-    // not-enabled and would wait out the timeout instead of ever pressing it, so a plain
-    // `click()` here tests the harness rather than the guard. This fires a real DOM click
-    // straight at the element and asks what the application does with it — which is the
-    // whole point, since T05's Button never emits the native `disabled` attribute.
-    await edit.dispatchEvent("click");
-
-    // A negative assertion needs time to be wrong in: `startEditing` is a React state
-    // update, so a form that opened one frame later would sail past an immediate
-    // `toHaveCount(0)`.
-    await page.waitForTimeout(500);
-
-    await expect(page.locator(`[data-field-edit-form="${BANK_FIELD}"]`)).toHaveCount(0);
-    expect(await markupOf(bank)).not.toContain(BANK_RAW);
-
-    await bank.locator(`[data-field-reveal="${BANK_FIELD}"]`).click();
-    await expect(edit).not.toHaveAttribute("aria-disabled", "true");
-    await edit.click();
-    await expect(page.locator(`[data-field-edit-form="${BANK_FIELD}"]`)).toBeVisible();
+    await bank.locator("[data-workspace-row-open]").click();
+    await expect(bank.locator("[data-workspace-row-form]")).toBeVisible();
   });
 
   test("reveal resets when the owner navigates away and back (§7.3)", async ({ page }) => {
     await gotoProfile(page);
-    await expandGroup(page, "group_financial");
-    await row(page, BANK_FIELD).locator(`[data-field-reveal="${BANK_FIELD}"]`).click();
+    await expandSection(page, "payment");
+    await row(page, BANK_FIELD).getByRole("button", { name: "Reveal Business account" }).click();
     await expect(row(page, BANK_FIELD)).toHaveAttribute("data-field-revealed", "");
 
-    // A real client-side navigation, not a reload: the reveal set has to die with the
-    // component rather than be cleared by a full page load.
+    // A real client-side navigation: the reveal set has to die with the component.
     await page.locator('[data-group-editor-link="group_financial"]').click();
     await expect(page.locator("[data-screen-state]")).toHaveCount(1);
-    await expect(row(page, BANK_FIELD)).toHaveAttribute("data-field-masked", "");
-    expect(await markupOf(row(page, BANK_FIELD))).not.toContain(BANK_RAW);
+    await expect(groupRow(page, BANK_FIELD)).toHaveAttribute("data-field-masked", "");
+    expect(await markupOf(groupRow(page, BANK_FIELD))).not.toContain(BANK_RAW);
 
     await page.getByRole("link", { name: "Back to profile" }).first().click();
     await expect(page.locator("[data-screen-state]")).toHaveCount(1);
-    await expandGroup(page, "group_financial");
+    await expandSection(page, "payment");
     await expect(row(page, BANK_FIELD)).toHaveAttribute("data-field-masked", "");
     expect(await markupOf(row(page, BANK_FIELD))).not.toContain(BANK_RAW);
   });
 
   test("a reload never restores a reveal — nothing about it is persisted", async ({ page }) => {
     await gotoProfile(page);
-    await expandGroup(page, "group_financial");
-    await row(page, BANK_FIELD).locator(`[data-field-reveal="${BANK_FIELD}"]`).click();
+    await expandSection(page, "payment");
+    await row(page, BANK_FIELD).getByRole("button", { name: "Reveal Business account" }).click();
     await expect(row(page, BANK_FIELD)).toHaveAttribute("data-field-revealed", "");
 
-    // Same URL, fresh document. A reveal recorded in storage or in the query string would
-    // survive this; component state cannot.
     await gotoProfile(page);
     expect(page.url()).not.toContain("reveal");
-    await expandGroup(page, "group_financial");
+    await expandSection(page, "payment");
     await expect(row(page, BANK_FIELD)).toHaveAttribute("data-field-masked", "");
   });
 
@@ -458,7 +368,7 @@ test.describe("AC-33 — masked values, and the reveal that lives only here", ()
   }) => {
     await gotoGroup(page, "group_financial");
 
-    const bank = row(page, BANK_FIELD);
+    const bank = groupRow(page, BANK_FIELD);
     await expect(bank).toHaveAttribute("data-field-masked", "");
     await expect(bank.locator("[data-field-value]")).toHaveText(BANK_MASKED);
     expect(await markupOf(bank)).not.toContain(BANK_RAW);
@@ -471,183 +381,161 @@ test.describe("AC-33 — masked values, and the reveal that lives only here", ()
   });
 });
 
-/* ── editing, adding, reordering — all of it in-memory (§5.7) ───────────────────────── */
+/* ── click-to-edit, suggestions, Add field ─────────────────────────────────────────── */
 
-test.describe("the editor", () => {
-  test("an inline edit updates the row and says so in words", async ({ page }) => {
+test.describe("the workspace editor", () => {
+  test("pressing a row opens it in place, and Enter saves it to the profile", async ({ page }) => {
     await gotoProfile(page);
-    await expandGroup(page, "group_work");
 
     const company = row(page, "field_company");
-    await company.locator('[data-field-edit="field_company"]').click();
+    await company.locator("[data-workspace-row-open]").click();
+    const input = company.locator("[data-workspace-row-input]");
+    await expect(input).toBeFocused();
+    await input.fill("Fernwood Studio Pvt Ltd");
 
-    const form = page.locator('[data-field-edit-form="field_company"]');
-    await form.getByLabel("Value").fill("Fernwood Studio Pvt Ltd");
-    await form.getByRole("button", { name: "Save" }).click();
+    const patched = waitForWrite(page, "PATCH", /\/profile\/fields\/field_company$/);
+    await input.press("Enter");
 
-    await expect(form).toHaveCount(0);
-    await expect(company).toContainText("Fernwood Studio Pvt Ltd");
-    /* §8D.1: every outcome is stated in words, never by an icon alone.
-       ⚠ The wording moved and the assertion follows it. This screen used to be in-memory and
-       said so — "Changes live in this browser session only." — and it now writes through
-       `PATCH /profile/fields/{id}`, so that sentence would be a lie and was removed. The toast
-       is title-only, hence `[data-toast-title]`; `[data-toast-description]` does not exist on
-       it any more. Scoped to the toast's own node rather than the raw text because Radix
-       mirrors the copy into an off-screen announce region, so a bare `getByText` matches two
-       nodes and fails strict mode. */
-    await expect(page.locator("[data-toast-title]")).toContainText("Updated Company");
+    expect(bodyOf(await patched)).toMatchObject({ label: "Company", value: "Fernwood Studio Pvt Ltd" });
+    await expect(company.locator("[data-workspace-row-form]")).toHaveCount(0);
   });
 
-  /**
-   * ⚠ It is a **modal dialog** now, not a popover anchored to the trigger — the old panel
-   * covered the group it was adding to. Dismissal is unchanged and still asserted here:
-   * Escape closes it and focus returns to the trigger (E-50).
-   */
-  test("Add field opens a dialog, adds a row, and Escape restores focus (E-50)", async ({
+  test("Escape cancels an edit and sends nothing", async ({ page }) => {
+    await gotoProfile(page);
+    let wrote = false;
+    page.on("request", (request) => {
+      if (request.method() === "PATCH" && request.url().includes("/profile/fields/")) wrote = true;
+    });
+
+    const company = row(page, "field_company");
+    await company.locator("[data-workspace-row-open]").click();
+    await company.locator("[data-workspace-row-input]").fill("Something else");
+    await page.keyboard.press("Escape");
+
+    await expect(company.locator("[data-workspace-row-form]")).toHaveCount(0);
+    await expect(company.locator("[data-field-value]")).toHaveText("Fernwood Studio");
+    await page.waitForTimeout(300);
+    expect(wrote).toBe(false);
+  });
+
+  test("a stored field cannot be emptied — it stays open and says why", async ({ page }) => {
+    await gotoProfile(page);
+    const mobile = row(page, PHONE_FIELD);
+    await mobile.locator("[data-workspace-row-open]").click();
+    await mobile.locator("[data-workspace-row-input]").fill("");
+    await page.keyboard.press("Enter");
+
+    await expect(mobile.getByRole("alert")).toHaveText("Enter a value.");
+    await expect(mobile.locator("[data-workspace-row-form]")).toBeVisible();
+  });
+
+  test("a blank suggestion is created on its first non-empty save, onto the selected card", async ({
     page,
   }) => {
     await gotoProfile(page);
-    await expandGroup(page, "group_custom");
+    await expandSection(page, "business");
 
-    const trigger = page.locator('[data-add-field="group_custom"]');
+    /* The fixture has no business name, so the suggestion is a blank row with its prompt. */
+    const blank = page.locator('[data-suggestion="business-name"]');
+    await expect(blank).toHaveAttribute("data-workspace-row-blank", "");
+    await blank.getByRole("button", { name: "Add business name" }).click();
+    await blank.locator("[data-workspace-row-input]").fill("Fernwood Studio Pvt Ltd");
 
-    await trigger.click();
-    await expect(page.locator('[data-add-field-form="group_custom"]')).toBeVisible();
-    await page.keyboard.press("Escape");
-    await expect(page.locator('[data-add-field-form="group_custom"]')).toHaveCount(0);
-    // Dismissal is identical to a dialog's; only the modality differs.
-    await expect(trigger).toBeFocused();
+    const created = waitForWrite(page, "POST", /\/profile\/fields$/);
+    const carded = waitForWrite(page, "PUT", new RegExp(`/cards/${FIRST_CARD}/fields$`));
+    await page.keyboard.press("Enter");
 
-    await trigger.click();
-    const form = page.locator('[data-add-field-form="group_custom"]');
-    await form.getByLabel("Field name").fill("Studio motto");
-    await form.getByLabel("Value").fill("Make the thing, then make it plain");
+    expect(bodyOf(await created)).toMatchObject({
+      category: "BUSINESS",
+      type: "COMPANY",
+      label: "Business name",
+      value: "Fernwood Studio Pvt Ltd",
+      groupId: "group_business",
+    });
+    /* The stub answers the create with the id `field_created_stub`; the card's whole set goes
+       out with it added. */
+    const fields = (bodyOf(await carded).fields as { fieldId: string }[]).map((f) => f.fieldId);
+    expect(fields).toContain("field_created_stub");
+  });
 
-    /* ⚠ The POST is what is asserted, not the row that briefly appears.
-       `profile-client.tsx`'s `mutate` calls `reload()` after every write, and the e2e stub does
-       not persist a created field — so the optimistic `field_local_*` row is removed again the
-       moment the refetch lands. Asserting it is a race that the assertion sometimes wins, which
-       is worse than either outcome. What this test actually owns is the payload the dialog
-       assembles, and that is deterministic. */
-    const posted = page.waitForRequest(
-      (request) =>
-        request.method() === "POST" && request.url().includes("/profile/fields"),
-    );
+  test("a blank row left empty closes without a request", async ({ page }) => {
+    await gotoProfile(page);
+    await expandSection(page, "business");
+    let wrote = false;
+    page.on("request", (request) => {
+      if (request.method() === "POST" && request.url().includes("/profile/fields")) wrote = true;
+    });
 
-    /* ⚠ Scoped to the dialog, not the form. The submit control sits in the dialog's footer —
-       the house action row beneath a hairline — and is bound to the form by `form="…"`, so it
-       is a sibling of `[data-add-field-form]` rather than a descendant. Scoping to `page`
-       instead would match the trigger, which carries the same name. */
-    await submitAddField(page);
+    const blank = page.locator('[data-suggestion="business-name"]');
+    await blank.locator("[data-workspace-row-open]").click();
+    await page.locator('[data-section-toggle="business"]').focus();
 
-    expect(JSON.parse((await posted).postData() ?? "{}")).toMatchObject({
+    await expect(blank.locator("[data-workspace-row-form]")).toHaveCount(0);
+    await expect(blank.getByRole("button", { name: "Add business name" })).toBeVisible();
+    await page.waitForTimeout(300);
+    expect(wrote).toBe(false);
+  });
+
+  test("Add field offers the section's own catalogue, and the pick is saved like a suggestion", async ({
+    page,
+  }) => {
+    await gotoProfile(page);
+    await expandSection(page, "other");
+
+    await page.locator('[data-add-field-open="other"]').click();
+    const offers = page.locator('[data-add-field-offers="other"] [data-field-offer]');
+    const catalogue = FIELD_CATALOGUE.find((section) => section.category === "CUSTOM");
+    await expect(offers).toHaveCount(catalogue?.offers.length ?? -1);
+
+    await page.locator('[data-add-field-offers="other"] [data-field-offer="note"]').click();
+    const draft = page.locator('[data-workspace-section="other"] [data-workspace-row-editing]');
+    /* A note names itself badly, so its name is asked for too. */
+    await draft.getByLabel("Field name").fill("Studio motto");
+    await draft.locator("[data-workspace-row-input]").fill("Make the thing, then make it plain");
+
+    const created = waitForWrite(page, "POST", /\/profile\/fields$/);
+    await page.keyboard.press("Enter");
+    expect(bodyOf(await created)).toMatchObject({
+      category: "CUSTOM",
       type: "TEXT",
       label: "Studio motto",
       value: "Make the thing, then make it plain",
     });
-    await expect(form).toHaveCount(0);
   });
 
-  /**
-   * ⚠ **The name is derived from the kind, and the derived name is what gets saved.**
-   *
-   * This is the change the redesign turns on: for the nineteen kinds that name themselves, the
-   * owner picks **Email** and types an address — they are never asked "field name" and "value"
-   * as two peer questions with no stated difference, which is what made the old popover
-   * confusing. If the derivation ever silently stops feeding `label`, this fails and the old
-   * two-box form is the only way back.
-   */
-  test("choosing a kind names the field, so only the value is typed", async ({ page }) => {
+  test("Add a child saves the name and the birthday as two personal fields", async ({ page }) => {
     await gotoProfile(page);
-    await expandGroup(page, "group_custom");
 
-    await page.locator('[data-add-field="group_custom"]').click();
-    const form = page.locator('[data-add-field-form="group_custom"]');
+    await page.locator("[data-add-child]").click();
+    const form = page.locator("[data-add-child-form]");
+    await form.getByLabel("Name").fill("Aarav");
+    await form.getByLabel("Birthday").fill("2019-05-12");
 
-    await form.locator('[data-field-type="EMAIL"]').click();
-
-    // No "Field name" box at all for a kind that names itself — the whole point.
-    await expect(form.getByLabel("Field name")).toHaveCount(0);
-    await expect(form.locator("[data-derived-name]")).toHaveAttribute(
-      "data-derived-name",
-      "Email",
-    );
-
-    // The value box is labelled by the kind, and carries that kind's own example.
-    const value = form.getByLabel("Email");
-    await expect(value).toHaveAttribute("placeholder", "you@example.com");
-    await value.fill("ada@example.com");
-
-    const posted = page.waitForRequest(
-      (request) => request.method() === "POST" && request.url().includes("/profile/fields"),
-    );
-    await submitAddField(page);
-
-    expect(JSON.parse((await posted).postData() ?? "{}")).toMatchObject({
-      type: "EMAIL",
-      label: "Email",
-      value: "ada@example.com",
+    const posts: Record<string, unknown>[] = [];
+    page.on("request", (request) => {
+      if (request.method() === "POST" && request.url().includes("/profile/fields")) {
+        posts.push(bodyOf(request));
+      }
     });
+    await form.locator("[data-add-child-save]").click();
+
+    await expect.poll(() => posts.length).toBe(2);
+    expect(posts).toEqual([
+      expect.objectContaining({ category: "PERSONAL", type: "RELATION", label: "Child", value: "Aarav" }),
+      expect.objectContaining({
+        category: "PERSONAL",
+        type: "DATE",
+        label: childBirthdayLabel("Aarav"),
+        value: "2019-05-12",
+      }),
+    ]);
   });
 
-  /** Rename is the escape hatch for the derived name, and it must reach the wire. */
-  test("Rename overrides the derived name", async ({ page }) => {
+  test("the company logo row says it belongs to the selected card", async ({ page }) => {
     await gotoProfile(page);
-    await expandGroup(page, "group_custom");
-
-    await page.locator('[data-add-field="group_custom"]').click();
-    const form = page.locator('[data-add-field-form="group_custom"]');
-
-    await form.locator('[data-field-type="EMAIL"]').click();
-    await form.locator("[data-field-rename]").click();
-
-    // Seeded with the derived name, so Rename is an edit rather than a blank box.
-    const name = form.getByLabel("Field name");
-    await expect(name).toHaveValue("Email");
-    await name.fill("Studio inbox");
-    await form.getByLabel("Email").fill("studio@example.com");
-
-    const posted = page.waitForRequest(
-      (request) => request.method() === "POST" && request.url().includes("/profile/fields"),
-    );
-    await submitAddField(page);
-
-    expect(JSON.parse((await posted).postData() ?? "{}")).toMatchObject({
-      type: "EMAIL",
-      label: "Studio inbox",
-      value: "studio@example.com",
-    });
-  });
-
-  /**
-   * ⚠ `PHOTO` must not be offered. `POST /profile/fields` rejects it outright — the old picker
-   * listed it, so choosing it was a guaranteed round trip to a server error.
-   */
-  test("Photo is not offered as a field kind", async ({ page }) => {
-    await gotoProfile(page);
-    await expandGroup(page, "group_custom");
-
-    await page.locator('[data-add-field="group_custom"]').click();
-    const form = page.locator('[data-add-field-form="group_custom"]');
-
-    await form.locator("[data-field-type-more]").click();
-    await expect(form.locator('[data-field-type="PHOTO"]')).toHaveCount(0);
-    // And the reader is told where a picture actually comes from.
-    await expect(form).toContainText("avatar at the top of your profile");
-  });
-
-  test("a field with no name is refused rather than added", async ({ page }) => {
-    await gotoProfile(page);
-    await expandGroup(page, "group_custom");
-
-    await page.locator('[data-add-field="group_custom"]').click();
-    const form = page.locator('[data-add-field-form="group_custom"]');
-    await form.getByLabel("Value").fill("orphaned");
-    await submitAddField(page);
-
-    await expect(form).toBeVisible();
-    await expect(form.getByRole("alert")).toContainText("Give the field a name");
-    await expect(page.locator('[data-profile-field="field_local_1"]')).toHaveCount(0);
+    const logo = page.locator('[data-workspace-section="work"] [data-workspace-logo]');
+    await expect(logo).toContainText("Company logo");
+    await expect(logo).toContainText("On the Work card only");
   });
 
   test("reordering moves a field within its group and stops at the ends", async ({ page }) => {
@@ -675,22 +563,224 @@ test.describe("the editor", () => {
     expect(after[1]).toBe(before[0]);
   });
 
-  test("nothing is persisted — a reload restores the fixture profile (§5.7)", async ({
+});
+
+/* ── Design and Share are panels on this page, not links away (client, 2026-09-30) ──── */
+
+test.describe("Design and Share open beside the card", () => {
+  test("neither tab leaves /profile, and the card stays on screen", async ({ page }) => {
+    await gotoProfile(page);
+    const preview = page.locator("[data-builder-preview]");
+    await expect(preview).toBeVisible();
+    /* The old links are gone, not hidden. */
+    await expect(page.locator('[data-split-pinned] a[href^="/cards/"]')).toHaveCount(0);
+
+    await page.locator('[data-workspace-tab="design"]').click();
+    await expect(page.locator("[data-design-panel]")).toBeVisible();
+    await expect(page).toHaveURL(/\/profile\?panel=design$/);
+    await expect(preview).toBeVisible();
+
+    await page.locator('[data-workspace-tab="share"]').click();
+    await expect(page.locator("[data-send-to-phone]")).toBeVisible();
+    await expect(page.locator("[data-card-link] [data-link-field] input")).toHaveValue(/\/c\//);
+    await expect(page.locator("[data-workspace-qr] [data-qr-zone]")).toBeVisible();
+    await expect(page).toHaveURL(/\/profile\?panel=share$/);
+    await expect(preview).toBeVisible();
+
+    await page.locator('[data-workspace-tab="fields"]').click();
+    await expect(page.locator("[data-workspace-fields]")).toBeVisible();
+    await expect(page).toHaveURL(/\/profile$/);
+  });
+
+  test("?panel= opens that panel on load", async ({ page }) => {
+    await gotoProfile(page, "?panel=share&card=card_forest_demo");
+    await expect(page.locator('[data-workspace-tab="share"]')).toHaveAttribute(
+      "data-state",
+      "active",
+    );
+    await expect(page.locator("[data-send-to-phone]")).toBeVisible();
+  });
+
+  test("a look lands on the preview at once and saves itself", async ({ page }) => {
+    await gotoProfile(page, "?panel=design");
+    const summary = page.locator("[data-builder-preview-summary]");
+    await expect(summary).not.toContainText("Emerald");
+
+    const patched = waitForWrite(page, "PATCH", new RegExp(`/cards/${FIRST_CARD}$`));
+    await page.locator('[data-look-option="emerald-gradient"]').click();
+
+    // Same frame as the tap — not after the write.
+    await expect(summary).toContainText("Emerald");
+    const body = bodyOf(await patched);
+    expect(body.paletteId).toBe("emerald");
+    expect(body.finish).toBe("gradient");
+    /* PATCH takes only `null` for the cover; a design write must never carry it. */
+    expect(body).not.toHaveProperty("coverUrl");
+    await expect(page.locator('[data-workspace-sync="saved"]')).toBeVisible();
+
+    /* The edit survives a trip to another panel and back. */
+    await page.locator('[data-workspace-tab="fields"]').click();
+    await page.locator('[data-workspace-tab="design"]').click();
+    await expect(page.locator("[data-look-picker]")).toHaveAttribute(
+      "data-selected-look",
+      "emerald-gradient",
+    );
+  });
+
+  test("renaming the card in Design renames its switcher pill and saves the name", async ({
+    page,
+  }) => {
+    await gotoProfile(page, "?panel=design");
+    const name = page.locator("[data-builder-name]");
+    const patched = waitForWrite(page, "PATCH", new RegExp(`/cards/${FIRST_CARD}$`));
+    await name.fill("Partnerships");
+    await expect(page.locator(`[data-card-switch="${FIRST_CARD}"]`)).toContainText("Partnerships");
+    expect(bodyOf(await patched).name).toBe("Partnerships");
+  });
+
+  test("Position and Bio are rows at the top of Fields, and Design no longer has them", async ({
     page,
   }) => {
     await gotoProfile(page);
-    await expandGroup(page, "group_custom");
+    const intro = page.locator("[data-workspace-card-intro]");
+    await expect(intro.locator("[data-card-intro-row]")).toHaveCount(2);
+    await expect(intro.locator("[data-card-intro-scope]")).toContainText("Work");
+    /* Above Personal: they print under the name, so they come first. */
+    const order = await page
+      .locator("[data-workspace-fields] > section")
+      .evaluateAll((nodes) =>
+        nodes.map((node) =>
+          node.hasAttribute("data-workspace-card-intro")
+            ? "intro"
+            : node.getAttribute("data-workspace-section"),
+        ),
+      );
+    expect(order[0]).toBe("intro");
 
-    await page.locator('[data-add-field="group_custom"]').click();
-    const form = page.locator('[data-add-field-form="group_custom"]');
-    await form.getByLabel("Field name").fill("Temporary");
-    await form.getByLabel("Value").fill("gone on reload");
-    await submitAddField(page);
-    await expect(page.locator('[data-profile-field="field_local_1"]')).toHaveCount(1);
+    await page.locator('[data-workspace-tab="design"]').click();
+    await expect(page.locator("[data-design-panel]")).toBeVisible();
+    await expect(page.locator("[data-headline-input], [data-bio-input]")).toHaveCount(0);
+  });
 
+  test("a position typed in Fields replaces the job title on the card and saves to it", async ({
+    page,
+  }) => {
     await gotoProfile(page);
-    await expandGroup(page, "group_custom");
-    await expect(page.locator('[data-profile-field="field_local_1"]')).toHaveCount(0);
+    const fold = page.locator("[data-workspace-preview-fold]");
+    const preview = page.locator("[data-builder-preview]");
+
+    await page.locator('[data-card-intro-open="headline"]').click();
+    const patched = waitForWrite(page, "PATCH", new RegExp(`/cards/${FIRST_CARD}$`));
+    await page.locator('[data-card-intro-input="headline"]').fill("Founder & CEO");
+    await page.keyboard.press("Enter");
+
+    if (await fold.isVisible()) await expect(fold).toHaveAttribute("aria-expanded", "true");
+    await expect(preview).toContainText("Founder & CEO");
+    await expect(page.locator('[data-card-intro-row="headline"] [data-card-intro-value]')).toHaveText(
+      "Founder & CEO",
+    );
+    const body = bodyOf(await patched);
+    expect(body.headline).toBe("Founder & CEO");
+    expect(body).not.toHaveProperty("coverUrl");
+  });
+
+  test("Send to a phone sends from the Share panel without leaving it", async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await signIn(context, baseURL!, { sub: statefulSub("workspace-share") });
+    await gotoProfile(page, "?panel=share");
+
+    /* Below `lg` the preview is pinned over the top of the screen; fold it, as a phone user
+       filling in the form would, so the form has the viewport. */
+    const fold = page.locator("[data-workspace-preview-fold]");
+    if (await fold.isVisible()) await fold.click();
+
+    await page.locator("[data-send-mode-toggle]").click();
+    await page.locator("[data-send-contact-picker] button").click();
+    await page.getByRole("option").first().click();
+
+    const sent = waitForWrite(page, "POST", new RegExp(`/cards/${FIRST_CARD}/share$`));
+    await page.locator("[data-send-card]").click();
+    await sent;
+
+    await expect(page.locator("[data-send-to-phone]")).toHaveAttribute("data-send-state", /sent/);
+    await expect(page.locator("[data-workspace-sent-to] [data-card-shares] li")).toHaveCount(1);
+    await expect(page).toHaveURL(/\/profile\?panel=share$/);
+  });
+});
+
+/* ── the card switcher, the tick and the preview ──────────────────────────────────── */
+
+test.describe("the card beside the fields", () => {
+  test("ticking a field shows it on the preview at once and writes the card's whole set", async ({
+    page,
+  }) => {
+    await gotoProfile(page);
+    const preview = page.locator("[data-builder-preview]");
+    await expect(page.locator(`[data-workspace-row-toggle="${PHONE_FIELD}"]`)).toBeVisible();
+    await expect(preview.locator(`[data-card-field="${PHONE_FIELD}"]`)).toHaveCount(0);
+
+    const before = await page
+      .locator("[data-workspace-row-toggle][data-state=checked]")
+      .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-workspace-row-toggle")));
+
+    const put = waitForWrite(page, "PUT", new RegExp(`/cards/${FIRST_CARD}/fields$`));
+    await page.locator(`[data-workspace-row-toggle="${PHONE_FIELD}"]`).click();
+
+    // Same frame as the tick — not after the write.
+    await expect(preview.locator(`[data-card-field="${PHONE_FIELD}"]`)).toHaveCount(1);
+
+    const sent = (bodyOf(await put).fields as { fieldId: string }[]).map((f) => f.fieldId);
+    expect(sent.sort()).toEqual([...before, PHONE_FIELD].sort());
+    await expect(page.locator('[data-workspace-sync="saved"]')).toBeVisible();
+  });
+
+  test("the selected card lives in ?card= and survives a reload", async ({ page }) => {
+    await gotoProfile(page);
+    await page.locator('[data-card-switch="card_forest_demo"]').click();
+    await expect(page).toHaveURL(/[?&]card=card_forest_demo/);
+    await expect(page.locator('[data-card-switch="card_forest_demo"]')).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+
+    await page.reload();
+    await expect(page.locator("[data-screen-state]")).toHaveCount(1);
+    await expect(page.locator('[data-card-switch="card_forest_demo"]')).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+  });
+
+  test("a new card asks only for a name and starts with every filled field on it", async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await signIn(context, baseURL!, { sub: statefulSub("workspace-new-card") });
+    await gotoProfile(page);
+
+    await page.locator("[data-card-switcher-open]").click();
+    await page.locator("[data-card-switcher-name]").fill("Weekend");
+
+    const created = waitForWrite(page, "POST", /\/cards$/);
+    const carried = page.waitForRequest(
+      (request) => request.method() === "PUT" && /\/cards\/[^/]+\/fields$/.test(request.url()),
+    );
+    await page.keyboard.press("Enter");
+    await created;
+
+    const expected = fixtureFields
+      .filter((field) => field.type !== "PHOTO" && field.value.trim() !== "")
+      .map((field) => field.id);
+    const sent = (bodyOf(await carried).fields as { fieldId: string }[]).map((f) => f.fieldId);
+    expect(sent.sort()).toEqual([...expected].sort());
+
+    const pill = page.locator('[data-card-switch]:has-text("Weekend")');
+    await expect(pill).toHaveAttribute("aria-checked", "true");
+    await expect(page).toHaveURL(/[?&]card=card_stateful_/);
   });
 });
 
@@ -702,7 +792,7 @@ test.describe("E-41 — deleting a field states how many cards use it, first", (
   }) => {
     await gotoGroup(page, "group_financial");
 
-    await row(page, BANK_FIELD).locator(`[data-field-delete="${BANK_FIELD}"]`).click();
+    await groupRow(page, BANK_FIELD).locator(`[data-field-delete="${BANK_FIELD}"]`).click();
 
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
@@ -718,16 +808,16 @@ test.describe("E-41 — deleting a field states how many cards use it, first", (
     // Focus starts on the safe choice — one stray Enter must not delete anything.
     await expect(dialog.getByRole("button", { name: "Cancel" })).toBeFocused();
     await dialog.getByRole("button", { name: "Cancel" }).click();
-    await expect(row(page, BANK_FIELD)).toHaveCount(1);
+    await expect(groupRow(page, BANK_FIELD)).toHaveCount(1);
   });
 
   test("confirming removes the row and reports what stopped showing it", async ({ page }) => {
     await gotoGroup(page, "group_financial");
 
-    await row(page, BANK_FIELD).locator(`[data-field-delete="${BANK_FIELD}"]`).click();
+    await groupRow(page, BANK_FIELD).locator(`[data-field-delete="${BANK_FIELD}"]`).click();
     await page.getByRole("dialog").getByRole("button", { name: "Delete field" }).click();
 
-    await expect(row(page, BANK_FIELD)).toHaveCount(0);
+    await expect(groupRow(page, BANK_FIELD)).toHaveCount(0);
     /* Scoped to the toast's own description, for the same reason as the edit test above: Radix
        mirrors toast copy into an off-screen announce region for screen readers, so a bare
        `getByText` matches two nodes — the visible one and the announcement — and `toBeVisible`
@@ -735,9 +825,9 @@ test.describe("E-41 — deleting a field states how many cards use it, first", (
     await expect(page.locator("[data-toast-description]")).toContainText("stopped showing it");
   });
 
-  test("delete lives on the group editor, not on the overview (§8D.3)", async ({ page }) => {
+  test("delete lives on the group editor, not on the workspace (§8D.3)", async ({ page }) => {
     await gotoProfile(page);
-    await expandGroup(page, "group_financial");
+    await expandSection(page, "payment");
     await expect(page.locator("[data-field-delete]")).toHaveCount(0);
   });
 });
@@ -780,37 +870,51 @@ test.describe("field groups (§5.5)", () => {
   });
 });
 
-/* ── the collapsible sections (§8D.3) ───────────────────────────────────────────────── */
+/* ── the collapsible sections ─────────────────────────────────────────────────────── */
 
-test.describe("the group sections", () => {
-  test("every group renders with a count and a working disclosure", async ({ page }) => {
+test.describe("the workspace sections", () => {
+  test("Personal and Work open, the rest collapsed, each with a working disclosure", async ({
+    page,
+  }) => {
     await gotoProfile(page);
 
-    await expect(page.locator("[data-field-group-section]")).toHaveCount(SEVEN_GROUPS);
+    await expect(page.locator("[data-workspace-section]")).toHaveCount(PROFILE_SECTIONS.length);
+    for (const section of PROFILE_SECTIONS) {
+      await expect(page.locator(`[data-section-toggle="${section.id}"]`)).toHaveAttribute(
+        "aria-expanded",
+        String(section.defaultOpen),
+      );
+    }
 
-    const toggle = page.locator('[data-group-toggle="group_social"]');
-    const expandedBefore = await toggle.getAttribute("aria-expanded");
-
+    const toggle = page.locator('[data-section-toggle="social"]');
     await toggle.click();
-    await expect(toggle).toHaveAttribute(
-      "aria-expanded",
-      expandedBefore === "true" ? "false" : "true",
-    );
-
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(row(page, "field_linkedin")).toBeVisible();
     await toggle.click();
-    await expect(toggle).toHaveAttribute("aria-expanded", expandedBefore ?? "true");
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
   });
 
   test("collapsed sections hide their rows from everyone, not just visually", async ({
     page,
   }) => {
     await gotoProfile(page);
-
-    const toggle = page.locator('[data-group-toggle="group_social"]');
-    if ((await toggle.getAttribute("aria-expanded")) === "true") {
-      await toggle.click();
-    }
-    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(page.locator('[data-section-toggle="social"]')).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
     await expect(row(page, "field_linkedin")).toBeHidden();
+  });
+
+  test("none of the retired helper copy is on the screen", async ({ page }) => {
+    await gotoProfile(page);
+    const text = await page.locator("[data-screen-state]").innerText();
+    for (const retired of [
+      "Every card is a filter",
+      "fields across",
+      "Add a job, business, social profile",
+      "Your name and email are set when you sign up",
+    ]) {
+      expect(text, retired).not.toContain(retired);
+    }
   });
 });

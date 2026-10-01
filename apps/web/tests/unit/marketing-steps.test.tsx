@@ -1,14 +1,19 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { renderWithProviders, screen, userEvent } from "../helpers/render";
+import { renderWithProviders, screen } from "../helpers/render";
 import { Close } from "@/components/marketing/close";
 import { HowItWorks } from "@/components/marketing/how-it-works";
-import { FIXTURE_DB } from "@/fixtures";
-import { close, exampleCardSpecs, howItWorks, waitlistPage } from "@/fixtures/marketing";
-import { formatPhoneDisplay } from "@/lib/format";
-import { contactDetails } from "@/lib/site";
+import {
+  close,
+  exampleCardSpecs,
+  howItWorks,
+  mayaProfile,
+  waitlistPage,
+} from "@/fixtures/marketing";
+import { MAYA_CITIES } from "@/fixtures/marketing-identity";
+import { formatPhoneDisplay, toE164 } from "@/lib/format";
 
 /**
  * `how-it-works.tsx` + `close.tsx` — the two sections built together for
@@ -48,9 +53,23 @@ function code(relative: string): string {
 
 const OWNED = [
   "components/marketing/how-it-works.tsx",
+  "components/marketing/world-map.tsx",
+  "components/marketing/world-globe.tsx",
+  "components/marketing/globe-geometry.ts",
+  "components/marketing/globe-land.ts",
   "components/marketing/close.tsx",
   "styles/marketing-steps.css",
 ] as const;
+
+/** How the section prints a voice number. Maya's four must come out of the product's formatter
+ *  exactly as the identity file writes them — London `+44 20 …` and the 8-digit UAE line were
+ *  added to `format.ts` so no section needs its own override. */
+function expectedVoice(value: string): string {
+  return (
+    MAYA_CITIES.find((city) => toE164(city.phone) === toE164(value))?.phone ??
+    formatPhoneDisplay(value)
+  );
+}
 
 /**
  * ⚠ REWRITTEN 2026-09-21 WITH THE SECTION'S THIRD BUILD. The suite this replaces asserted a
@@ -214,7 +233,8 @@ describe("HowItWorks — the frames, and the rule that finally made the row cohe
     expect(hero!.getAttribute("data-palette-id")).toBe(front!.getAttribute("data-palette-id"));
   });
 
-  it("draws the profile from real fixture records, in the product's own formatting", () => {
+  /** 2026-09-28: the records are Maya's (`mayaProfile`), not the app fixture user's. */
+  it("draws the profile from Maya's real records, numbers formatted as they are written", () => {
     const { container } = renderWithProviders(<HowItWorks />);
     const panel = container.querySelector("[data-steps-profile]");
     expect(panel, "expected the profile frame body").not.toBeNull();
@@ -230,10 +250,10 @@ describe("HowItWorks — the frames, and the rule that finally made the row cohe
 
       const label = row.querySelector(".mk-steps-profile__name")?.textContent?.trim();
       const value = row.querySelector(".mk-steps-profile__value")?.textContent?.trim();
-      const match = FIXTURE_DB.fields.find((f) => f.label === label);
-      expect(match, `"${label}" is not a field in FIXTURE_DB`).toBeTruthy();
-      const expected = match!.type === "PHONE" ? formatPhoneDisplay(match!.value) : match!.value;
-      expect(value).toBe(expected);
+      const match = mayaProfile.fields.find((f) => f.label === label);
+      expect(match, `"${label}" is not a field in mayaProfile`).toBeTruthy();
+      const voice = match!.type === "PHONE" || match!.type === "LANDLINE";
+      expect(value).toBe(voice ? expectedVoice(match!.value) : match!.value);
     });
   });
 
@@ -244,17 +264,102 @@ describe("HowItWorks — the frames, and the rule that finally made the row cohe
    */
   it("lists the fields the front card actually carries, plus one it leaves off", () => {
     renderWithProviders(<HowItWorks />);
-    const business = exampleCardSpecs.find((c) => c.id === "business")!.card;
-    const onCard = new Set<string>(business.fieldIds);
+    const work = exampleCardSpecs.find((c) => c.id === "work")!.card;
+    const onCard = new Set<string>(work.fieldIds);
     const listed = [...document.querySelectorAll("[data-steps-profile] .mk-steps-profile__name")]
       .map((n) => n.textContent?.trim())
-      .map((label) => FIXTURE_DB.fields.find((f) => f.label === label)?.id)
+      .map((label) => mayaProfile.fields.find((f) => f.label === label)?.id)
       .filter((id): id is string => Boolean(id));
 
     const shared = listed.filter((id) => onCard.has(id));
     const excluded = listed.filter((id) => !onCard.has(id));
     expect(shared.length, "the profile should visibly feed the card").toBeGreaterThanOrEqual(4);
     expect(excluded.length, "one row should visibly NOT make it onto the card").toBeGreaterThanOrEqual(1);
+  });
+});
+
+/**
+ * The client, 2026-09-28: *"'How it works' section: replace Indian numbers with London, Dubai,
+ * New York, Singapore addresses and numbers. Consider adding a global map element to
+ * reinforce international feel."*
+ */
+describe("HowItWorks — Maya's four cities, and the map", () => {
+  it("carries no Indian number or Mumbai detail anywhere in the section", () => {
+    const { container } = renderWithProviders(<HowItWorks />);
+    const text = container.textContent ?? "";
+    expect(text).not.toMatch(/\+91|Mumbai|Maharashtra|India\b/);
+  });
+
+  it("shows all four cities' numbers in the profile and on the map", () => {
+    const { container } = renderWithProviders(<HowItWorks />);
+    const profile = container.querySelector("[data-steps-profile]")!.textContent ?? "";
+    for (const city of MAYA_CITIES) {
+      expect(profile, `${city.city}'s number is not in the profile`).toContain(city.phone);
+    }
+
+    const map = container.querySelector("[data-steps-map]");
+    expect(map, "no map band").not.toBeNull();
+    /* ⚠ CHANGED 2026-09-29 WITH THE GLOBE. This asserted the flat map's `svg[role="img"]` carried
+       `howItWorks.map.alt`. The globe is decorative by design — its whole stage is `aria-hidden`
+       and the list below is the accessible content — so an image name would only read the list
+       out twice. What must hold now is that the picture is hidden and the list is not. */
+    expect(map!.querySelector(".mk-globe__stage")).toHaveAttribute("aria-hidden", "true");
+    expect(map!.querySelector(".mk-map__legend")!.closest("[aria-hidden]")).toBeNull();
+    expect(map!.querySelectorAll(".mk-map__pin")).toHaveLength(MAYA_CITIES.length);
+
+    const legend = [...map!.querySelectorAll(".mk-map__place")];
+    expect(legend).toHaveLength(MAYA_CITIES.length);
+    MAYA_CITIES.forEach((city, i) => {
+      expect(legend[i]!.textContent).toContain(city.city);
+      expect(legend[i]!.textContent).toContain(city.phone);
+      expect(legend[i]!.textContent).toContain(city.address);
+    });
+  });
+
+  /* Still true of the globe: its server-rendered still places each pin by percentage inside the
+     still's own square frame, the way the flat map placed them inside its box. */
+  it("places every pin inside the map's own box", () => {
+    const { container } = renderWithProviders(<HowItWorks />);
+    for (const pin of container.querySelectorAll<HTMLElement>(".mk-map__pin")) {
+      const left = Number.parseFloat(pin.style.left);
+      const top = Number.parseFloat(pin.style.top);
+      expect(left, pin.dataset.city).toBeGreaterThan(0);
+      expect(left, pin.dataset.city).toBeLessThan(100);
+      expect(top, pin.dataset.city).toBeGreaterThan(0);
+      expect(top, pin.dataset.city).toBeLessThan(100);
+    }
+  });
+
+  /**
+   * ⚠ REWRITTEN 2026-09-29. This pinned "a static inline SVG" — true of the flat map, and no longer
+   * the design: the globe turns, so it is a client island. What it guarded is unchanged and is
+   * restated against the new files: the band's own file stays a server component, nothing links a
+   * map or 3D library (cobe, three, d3 and globe.gl were references, rebuilt here, never installed),
+   * nothing is fetched, and the land data stays small.
+   */
+  it("is a server band around a small client island, with no map library and no outbound request", () => {
+    const band = source("components/marketing/world-map.tsx");
+    expect(band).not.toMatch(/^\s*["']use client["'];?\s*$/m);
+    expect(source("components/marketing/world-globe.tsx")).toMatch(/^["']use client["'];/);
+
+    for (const file of [
+      "components/marketing/world-map.tsx",
+      "components/marketing/world-globe.tsx",
+      "components/marketing/globe-geometry.ts",
+      "components/marketing/globe-land.ts",
+    ]) {
+      const raw = source(file);
+      expect(raw, file).not.toMatch(
+        /from "(?:dotted-map|cobe|three|globe\.gl|react-globe\.gl|d3[\w-]*|leaflet|mapbox[\w-]*|topojson[\w-]*)"/,
+      );
+      expect(code(file), file).not.toMatch(/https?:\/\//);
+      expect(Buffer.byteLength(raw, "utf8"), file).toBeLessThan(40_000);
+    }
+
+    const pkg = readFileSync(resolve(__dirname, "../../package.json"), "utf8");
+    for (const dep of ["dotted-map", "cobe", "\"three\"", "globe.gl"]) {
+      expect(pkg, `${dep} is a reference, never a dependency`).not.toContain(dep);
+    }
   });
 });
 
@@ -421,73 +526,33 @@ describe("HowItWorks — the CSS contracts", () => {
   });
 });
 
-describe("Close — the deep ground and the inline capture", () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  function stubLeadsApi(status: number, body: unknown) {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(
-        async () =>
-          new Response(JSON.stringify(body), {
-            status,
-            headers: { "content-type": "application/json" },
-          }),
-      ),
-    );
-  }
-
-  it("renders the headline, the body, and exactly one link at rest", () => {
+/* ⚠ REWRITTEN 2026-09-28 (L1). The close carried an inline waitlist capture — a name-and-email
+   `<LeadForm>` — and three of the four tests here drove it end to end against a stubbed
+   `/api/leads`. The client asked for the waitlist to come off the homepage, so the form went and
+   the close is one "Create your card" link. The lead pipeline is still covered where it still
+   lives: `/waitlist` (`tests/e2e/marketing-pages.spec.ts`). */
+describe("Close — the deep ground and one call to action", () => {
+  it("renders the headline, the body, and exactly one link — the front door", () => {
     renderWithProviders(<Close />);
 
     expect(screen.getByRole("heading", { name: close.headline })).toBeInTheDocument();
     expect(screen.getByText(close.body)).toBeInTheDocument();
 
     /* `tests/e2e/marketing.spec.ts` asserts "the close carries exactly one action" against the
-       rendered page; this is the same property, pinned here so a regression is caught locally
-       rather than only in the full e2e run. The form's own control is a `<button>`, not a link,
-       and its mailto fallback only exists after a failed submit — see the tests below. */
+       rendered page; this is the same property, pinned here so a regression is caught locally. */
     const links = screen.getAllByRole("link");
     expect(links).toHaveLength(1);
     expect(links[0]).toHaveAttribute("href", close.cta.href);
     expect(links[0]).toHaveTextContent(close.cta.label);
   });
 
-  it("carries the inline capture — name, email, and the waitlist's own submit label", () => {
+  it("carries no waitlist form or copy any more (client, 2026-09-28)", () => {
     renderWithProviders(<Close />);
 
-    expect(screen.getByLabelText("Name")).toBeInTheDocument();
-    expect(screen.getByLabelText("Email")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: waitlistPage.submitLabel })).toBeInTheDocument();
-  });
-
-  it("shows the email fallback, never a false success tick, when there is no webhook", async () => {
-    stubLeadsApi(503, { ok: false, reason: "unconfigured" });
-    const user = userEvent.setup();
-    renderWithProviders(<Close />);
-
-    await user.type(screen.getByLabelText("Name"), "Priya");
-    await user.type(screen.getByLabelText("Email"), "priya@example.com");
-    await user.click(screen.getByRole("button", { name: waitlistPage.submitLabel }));
-
-    expect(await screen.findByText(waitlistPage.fallbackBody)).toBeInTheDocument();
-    const fallback = screen.getByRole("link", { name: contactDetails.email });
-    expect(fallback).toHaveAttribute("href", `mailto:${contactDetails.email}`);
-    expect(screen.queryByText(waitlistPage.successHeading)).not.toBeInTheDocument();
-  });
-
-  it("shows the real success state when the webhook accepts the lead", async () => {
-    stubLeadsApi(200, { ok: true });
-    const user = userEvent.setup();
-    renderWithProviders(<Close />);
-
-    await user.type(screen.getByLabelText("Name"), "Priya");
-    await user.type(screen.getByLabelText("Email"), "priya@example.com");
-    await user.click(screen.getByRole("button", { name: waitlistPage.submitLabel }));
-
-    expect(await screen.findByText(waitlistPage.successHeading)).toBeInTheDocument();
+    expect(document.querySelector("form")).toBeNull();
+    expect(screen.queryAllByRole("textbox")).toHaveLength(0);
+    expect(screen.queryByRole("button", { name: waitlistPage.submitLabel })).toBeNull();
+    expect(document.body.textContent ?? "").not.toMatch(/waitlist/i);
   });
 });
 

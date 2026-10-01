@@ -271,7 +271,7 @@ describe("CardThumbTile (§8D.3, E-13)", () => {
     expect(document.querySelector("[data-card-thumb]")).not.toBeNull();
   });
 
-  it("names the card, its type and its template beside the thumb", () => {
+  it("names the card and its type beside the thumb, and nothing else on a card that shares", () => {
     renderWithProviders(<CardThumbTile resolved={LEDGER} href="/cards/card_minimal_demo" />);
     const tile = document.querySelector("[data-card-tile]") as HTMLElement;
 
@@ -282,13 +282,11 @@ describe("CardThumbTile (§8D.3, E-13)", () => {
     expect(tile.querySelector("[data-card-type]")).toHaveTextContent(
       CARD_TYPE_LABELS[LEDGER.cardType],
     );
-    expect(tile.querySelector("[data-card-tile-template]")).toHaveTextContent(
-      LEDGER.template.name,
-    );
-    expect(tile.querySelector("[data-field-count-meter]")).toHaveAttribute(
-      "data-field-count",
-      String(LEDGER.fieldCount),
-    );
+    /* Client, 2026-09-28: the "Meridian · 5 fields" caption read as noise. A card that
+       shares something carries neither its template name nor a count. */
+    expect(tile.querySelector("[data-card-tile-template]")).toBeNull();
+    expect(tile).not.toHaveTextContent(LEDGER.template.name);
+    expect(tile.querySelector("[data-field-count-meter]")).toBeNull();
   });
 
   it("clamps a 40+ character name and keeps the full text in title (E-13)", () => {
@@ -326,8 +324,11 @@ describe("CardThumbTile (§8D.3, E-13)", () => {
     const badge = document.querySelector("[data-field-count-meter]");
 
     expect(badge).toHaveAttribute("data-field-count", "0");
+    expect(badge).toHaveAttribute("data-field-count-state", "empty");
     expect(badge).toHaveAttribute("data-tone", "warning");
-    expect(badge).toHaveTextContent("0 fields");
+    /* Said in words, and heard: the consequence rides in the accessible text too. */
+    expect(badge).toHaveTextContent("No fields yet");
+    expect(badge).toHaveTextContent(EMPTY_CARD_NOTE);
   });
 
   /**

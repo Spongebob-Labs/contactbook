@@ -9,9 +9,9 @@ import { Solution } from "@/components/marketing/solution";
 import { renderWithProviders, screen, within } from "../helpers/render";
 
 /**
- * The solution section, rebuilt again 2026-09-21 — see `solution.tsx`'s own header for the full
- * account of what changed (the segmented control is gone; a CSS-only loop demonstrates the
- * edit/sync/revoke story the tabs never showed) and why.
+ * The solution section — see `solution.tsx`'s own header for the full account. Sixth build,
+ * 2026-09-28: the three side-by-side cards became one DECK (front card large, two behind,
+ * rotating to the front with a bold label), on the client's word.
  *
  * Two kinds of assertion, the same convention `marketing-hero.test.tsx` established:
  *
@@ -50,10 +50,25 @@ describe("Solution", () => {
     }
   });
 
-  it("keeps the honesty paragraph — the fixture marks it load-bearing", () => {
+  /** 2026-09-28: the headed block ("What that does not mean" + three sentences) became two
+   *  plain sentences. The claim it carries is the one that may not be cut. */
+  it("keeps the honesty line — the fixture marks it load-bearing", () => {
     renderWithProviders(<Solution />);
-    expect(screen.getByText(solution.honesty.term)).toBeInTheDocument();
-    expect(screen.getByText(solution.honesty.detail)).toBeInTheDocument();
+    expect(screen.getByText(solution.honesty)).toBeInTheDocument();
+    expect(solution.honesty).toMatch(/no app can edit a contact/i);
+    expect(solution.honesty).toMatch(/always current/i);
+  });
+
+  /** The client's own example sentence is the model: direct, second person, and naming the
+   *  kinds of card. The filter line it replaced explained the product to its own reader. */
+  it("speaks in the client's direct voice, without the filter line", () => {
+    expect(solution.lead).toMatch(/^Create a contact card/);
+    for (const kind of ["work", "recruiters", "family"]) {
+      expect(solution.lead).toContain(kind);
+    }
+    const copy = [solution.lead, ...solution.paragraphs, solution.honesty].join(" ");
+    expect(copy).not.toMatch(/filter over your profile/i);
+    expect(copy, "no em-dash asides").not.toMatch(/\u2014|—/);
   });
 
   /**
@@ -70,7 +85,14 @@ describe("Solution", () => {
    * renders its whole subtree `inert`, which takes every control out of the tab order and the
    * accessibility tree together, so what a reader can actually reach is unchanged: nothing.
    */
-  it("shows every card's asymmetry at rest, with no control to press first", () => {
+  /**
+   * ⚠ 2026-09-28: "NOTHING FOCUSABLE" BECAME "NOTHING BUT THE PAUSE CONTROL", DELIBERATELY.
+   * The deck rotates on its own and loops past five seconds, so WCAG 2.2.2 (Level A) requires a
+   * way to pause it. That control changes nothing about what the section MEANS — the static
+   * first paint already makes the argument — so the rule's intent (no press required to
+   * understand it) is untouched. Exactly one reachable control, and it is that one.
+   */
+  it("shows every card's asymmetry at rest, with nothing to press but the pause", () => {
     renderWithProviders(<Solution />);
     const exhibit = document.querySelector("[data-solution-exhibit]") as HTMLElement;
     expect(exhibit).not.toBeNull();
@@ -82,7 +104,8 @@ describe("Solution", () => {
     const reachable = [...exhibit.querySelectorAll("a, button, input, select, textarea")].filter(
       (node) => node.closest("[inert]") === null,
     );
-    expect(reachable, "the exhibit must hold nothing a reader can reach").toEqual([]);
+    expect(reachable, "the exhibit's one control is the WCAG 2.2.2 pause").toHaveLength(1);
+    expect(reachable[0]).toBe(screen.getByRole("checkbox", { name: /Pause/ }));
 
     // One chip per profile field — the band is the WHOLE profile, and it is the first list.
     const [profileList] = within(exhibit).getAllByRole("list");
@@ -195,9 +218,55 @@ describe("Solution", () => {
     renderWithProviders(<Solution />);
     for (const card of solution.cards) {
       expect(
-        screen.getByText(`${card.fields.length} of ${solution.profile.length}`),
+        screen.getByText(`${card.fields.length} of your ${solution.profile.length} details`),
         `no count rendered for ${card.name}`,
       ).toBeInTheDocument();
+    }
+  });
+
+  /**
+   * The client's spec, 2026-09-28: *"One card large in front, two slotted behind, rotating to
+   * front with bold label ('Your Work Contact Card'). Add short descriptive text per card
+   * type: work, headhunter/CV, family."*
+   */
+  it("is a deck of Work, CV and Family, each with its bold label and one line", () => {
+    renderWithProviders(<Solution />);
+    expect(solution.cards.map((card) => card.id).sort()).toEqual(["cv", "family", "work"]);
+
+    // Work is at the front of the deck at rest — column 0 on the one clock.
+    const front = document.querySelector('.mk-sol-deck [data-mk-walk-col="0"]');
+    expect(front?.getAttribute("data-solution-card")).toBe("work");
+
+    const names = within(screen.getByRole("list", { name: solution.cardsLabel }));
+    expect(names.getAllByRole("listitem")).toHaveLength(3);
+    for (const card of solution.cards) {
+      expect(card.title).toBe(`Your ${card.name} Contact Card`);
+      expect(names.getByText(card.title)).toBeInTheDocument();
+      expect(names.getByText(card.note)).toBeInTheDocument();
+    }
+    // The CV card is the headhunter card; the line says who it is for.
+    expect(solution.cards.find((card) => card.id === "cv")!.note).toMatch(/recruiters|headhunters/);
+  });
+
+  /**
+   * A "Pause" / "Paused" pair, so the visible word is always the accessible name: the stylesheet
+   * `display: none`s whichever word does not apply, which also drops it from the name. happy-dom
+   * has no cascade, so here both words are present — what is pinned is that both exist, in one
+   * native checkbox inside its label, and that the icons never reach the name.
+   */
+  it("labels the pause control with the word it shows", () => {
+    renderWithProviders(<Solution />);
+    const toggle = screen.getByRole("checkbox", { name: /Pause/ });
+    expect(toggle).not.toBeChecked();
+    const label = toggle.closest("label")!;
+    expect(label.querySelector('[data-when="running"].mk-sol-pause__text')?.textContent).toBe(
+      solution.pauseLabel,
+    );
+    expect(label.querySelector('[data-when="paused"].mk-sol-pause__text')?.textContent).toBe(
+      solution.pausedLabel,
+    );
+    for (const icon of label.querySelectorAll(".mk-sol-pause__icon")) {
+      expect(icon).toHaveAttribute("aria-hidden", "true");
     }
   });
 
@@ -291,5 +360,34 @@ describe("source hygiene", () => {
       }
     }
     expect(body).toMatch(/@media \(prefers-reduced-motion: no-preference\)/);
+  });
+
+  /**
+   * ⚠ THE LOOP MUST START ON SCROLL-IN, STAY BEHIND THE MOTION PREFERENCE, AND BE PAUSABLE.
+   * Every infinite animation is keyed on the exhibit's own reveal (`data-mk-reveal="in"`), so it
+   * never runs on the document clock before a reader arrives; the whole block is inside the
+   * no-preference query; and one `:has(:checked)` rule pauses every moving part together.
+   */
+  it("starts the rotation on scroll-in only, gates it on motion preference, and can pause it", () => {
+    const body = withoutComments(css);
+    const gated = /@media \(prefers-reduced-motion: no-preference\) \{([\s\S]*?)\n\}/.exec(body);
+    expect(gated, "no no-preference block").not.toBeNull();
+
+    const loops = [...body.matchAll(/([^{}]+)\{[^{}]*\banimation:[^;]*\binfinite\b[^}]*\}/g)];
+    expect(loops.length, "expected the deck, names and chips to loop").toBe(3);
+    for (const [rule, selector] of loops) {
+      expect(selector, `a loop is not gated on the reveal: ${selector}`).toMatch(/\[data-mk-reveal="in"\]/);
+      expect(gated![1], "a loop sits outside the no-preference block").toContain(rule.trim());
+    }
+
+    expect(body).toMatch(/:has\(\.mk-sol-pause__input:checked\)[^{]*\{\s*animation-play-state:\s*paused/);
+  });
+
+  /** The deck re-stacks by depth, never by `z-index` (which may not be animated here). */
+  it("re-stacks the deck by depth, not by z-index", () => {
+    const body = withoutComments(css);
+    expect(body).toMatch(/\.mk-sol-deck\s*\{[^}]*transform-style:\s*preserve-3d/);
+    const deck = /\.mk-sol-deck\s*\{([^}]*)\}/.exec(body)![1]!;
+    expect(deck, "anything here flattens the 3D context").not.toMatch(/overflow|opacity|filter|isolation/);
   });
 });

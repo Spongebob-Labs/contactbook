@@ -667,6 +667,95 @@
   --mk-font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
+/* ── The hero phone's own inks, 2026-09-29 ───────────────────────────────────
+   Every value is SAMPLED from the client's reference render (the "Your
+   network, on your terms" hero), as a median over a flat interior region —
+   never a single pixel, never an anti-aliased edge. Text inks are the stem
+   CORE (darkest 5–10% of the glyph box), because a thin glyph renders lighter
+   than its ink and setting the lighter value would print lighter still.
+
+   ⚠ Three inks were then re-fitted on the RENDERED card: the section labels,
+   the row values and the slate lines printed darker than the reference once
+   set in Inter (its stems cover more pixels than the reference's face), so
+   those three are set to match the reference's apparent colour, not its core.
+
+   Declared here, on `[data-mk-root]` and outside both skin blocks, because the
+   phone is an OBJECT photographed on the page, not page chrome: it is the same
+   device and the same card under either skin. `marketing-hero.css` reads these
+   and holds no literal of its own (its test asserts that).
+
+   ⚠ Several of the card's small inks are below 4.5:1 AS DRAWN in the reference
+   (the gold caps ~2:1, the section labels 3.6:1, the slate lines 4.0:1). They
+   are kept: the card is an `inert` picture of a card with a text alternative
+   (`hero-card.tsx`), and the page-wide contrast sweep excludes it for that
+   reason. Do not lift one of these into page copy. */
+
+[data-mk-root] {
+  /* The device — a three-ring rail (hairline, graphite step, polished band)
+     around a black bezel. The band is brightest lower-left. */
+  --mk-phone-hairline: #161616;
+  --mk-phone-graphite: #707070;
+  --mk-phone-silver-dim: #b4b4b4;
+  --mk-phone-silver: #c6c6c6;
+  --mk-phone-silver-lit: #d6d6d6;
+  --mk-phone-bezel: #020202;
+  --mk-phone-seam: rgb(40 40 40 / 0.55);
+  --mk-phone-rim-light: rgb(255 255 255 / 0.8);
+  --mk-phone-antenna: rgb(0 0 0 / 0.32);
+  --mk-phone-notch: #030303;
+  --mk-phone-speaker: #1a1a1a;
+  --mk-phone-camera: #15171a;
+  --mk-phone-lens: #23272c;
+  --mk-phone-key-end: #181818;
+  --mk-phone-key-shoulder: #3c3c3c;
+  --mk-phone-key-face: #5e5e5e;
+  --mk-phone-key-lit: #686868;
+  --mk-phone-key-edge: rgb(0 0 0 / 0.55);
+  /* Fitted as one Gaussian over ~200k px of the reference's falloff (rms
+     2.6/255): neutral black, pooled below and to the left. */
+  --mk-phone-shadow: rgb(0 0 0 / 0.21);
+  --mk-phone-status: #000000;
+
+  /* The card on the glass. */
+  --mk-phone-sheet: #fcfaf8;
+  --mk-phone-lip: #efe5d4;
+  --mk-phone-gold-line: #c7bda6;
+  --mk-phone-script: #ffffff;
+  --mk-phone-caps: #b7ab96;
+  --mk-phone-ink: #06080b;
+  --mk-phone-slate: #7a7c82;
+  --mk-phone-bio: #4c4d4d;
+  --mk-phone-button-top: #181c1e;
+  --mk-phone-button-upper: #13171a;
+  --mk-phone-button-lower: #0d1114;
+  --mk-phone-button-bottom: #0a0c10;
+  --mk-phone-button-sheen: rgb(84 70 44 / 0.38);
+  --mk-phone-button-ink: #f8f9fc;
+  --mk-phone-divider: #e1dfdd;
+  --mk-phone-label: #8e8f90;
+  --mk-phone-disc: #efe9de;
+  --mk-phone-social-disc: #f0eae0;
+  /* The reference mixes filled and outline glyphs, and its filled ones read
+     lighter than its outline ones — two inks, measured separately. */
+  --mk-phone-icon: #867254;
+  --mk-phone-icon-line: #65563b;
+  --mk-phone-value: #585a5a;
+  --mk-phone-chevron: #9c9d9a;
+  --mk-phone-social-ink: #0d0c07;
+
+  /* The medallion: a radial disc (no border, no shadow), the monogram's one
+     bronze ink, the B's lighter face and the stem's engraving. */
+  --mk-phone-disc-0: #efe3d0;
+  --mk-phone-disc-1: #ebdecb;
+  --mk-phone-disc-2: #e6d9c5;
+  --mk-phone-disc-3: #dfd1bb;
+  --mk-phone-disc-4: #ddcfb9;
+  --mk-phone-mark: #3f2d14;
+  --mk-phone-mark-face: #f2e7d5;
+  --mk-phone-mark-shade: #d4cabe;
+  --mk-phone-mark-highlight: #fffbe9;
+}
+
 /* ── Tailwind bridge — the marketing half ────────────────────────────────────
    A second `@theme inline`, merged with the app's by Tailwind. Same rule as
    globals.css: a theme key must never share a name with the variable it points

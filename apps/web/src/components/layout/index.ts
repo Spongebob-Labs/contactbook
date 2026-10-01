@@ -19,7 +19,7 @@
 export { AppShell } from "./app-shell";
 export type { AppShellProps } from "./app-shell";
 
-export { Sidebar, APP_NAV_ITEMS, isNavItemActive } from "./sidebar";
+export { Sidebar, APP_NAV_ITEMS, isAppNavItemActive, isNavItemActive } from "./sidebar";
 export type { AppNavItem, SidebarProps } from "./sidebar";
 
 /* Focus mode: the predicate `AppShell` and `BuilderHeader` both read, and the drawer that is
@@ -27,6 +27,9 @@ export type { AppNavItem, SidebarProps } from "./sidebar";
    rail that never left. */
 export { isFocusRoute } from "./focus-route";
 export { NavDrawer } from "./nav-drawer";
+
+export { BrandLogo } from "./brand-logo";
+export type { BrandLogoProps } from "./brand-logo";
 
 export { BottomBar } from "./bottom-bar";
 export type { BottomBarProps } from "./bottom-bar";

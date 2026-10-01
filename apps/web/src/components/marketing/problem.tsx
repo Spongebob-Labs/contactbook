@@ -81,6 +81,9 @@ import { accented, HEAD_TO_BODY, Heading, Prose } from "./type";
  * worked around — the photograph and the headline carry the "editorial" register without it.
  *
  * ## The full-bleed band reaches the page's own edge, never `100vw`
+ *
+ * (2026-09-28: it now bleeds only from `xl`, and is rounded at every width — see the comment on
+ * the band itself. The `100vw` reasoning below still holds for the bleed that remains.)
  * `marketing.css` already flagged why not, on the ledger rule's own `left` calc: "`100vw`
  * includes the scrollbar gutter on any platform that reserves one… invisible on this machine and
  * obvious on Windows." Cancelling `CONTENT_COLUMN`'s own `px-6 md:px-10` (`-mx-6 md:-mx-10`)
@@ -95,7 +98,17 @@ export function Problem() {
   return (
     <Section id="problem" tone="wash" labelledBy="problem-heading">
       <MkReveal index={0} move="rise">
-        <div className="-mx-6 md:-mx-10">
+        {/* ⚠ ROUNDED, AND INSIDE THE GUTTERS BELOW `xl` — 2026-09-28. The client: *"make the
+            hero image slightly more curved"*. This photograph is the first image a visitor
+            scrolls into, and it had square corners. A curve reads as an object sitting on the
+            ground rather than a strip cut out of it, which is the card language every other
+            object on this page already speaks — so 20px on a phone, 28px from `md`, 32px from
+            `lg`, stepping up with the image's own size.
+
+            A rounded corner cannot sit against the viewport edge (it reads as clipped), so the
+            full-bleed band now only bleeds from `xl`, where the page's 1200px cap leaves a
+            margin either side. Below that it sits in the column like the copy beneath it. */}
+        <div className="xl:-mx-10">
           {/* `alt=""`: the image illustrates the paragraph beneath it rather than adding a fact
               that is not already in the copy, so it is decorative under WCAG's own test — a
               screen reader skips it rather than describing a stock photo the text already made
@@ -109,7 +122,7 @@ export function Problem() {
             height={615}
             loading="lazy"
             decoding="async"
-            className="block h-56 w-full object-cover md:h-72 lg:h-96"
+            className="block h-56 w-full rounded-[20px] object-cover md:h-72 md:rounded-[28px] lg:h-96 lg:rounded-[32px]"
           />
         </div>
       </MkReveal>

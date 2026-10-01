@@ -6,7 +6,12 @@ import { AppShell } from "@/components/layout/app-shell";
 import { BottomBar } from "@/components/layout/bottom-bar";
 import { PageHeader } from "@/components/layout/page-header";
 import { isFocusRoute } from "@/components/layout/focus-route";
-import { APP_NAV_ITEMS, Sidebar, isNavItemActive } from "@/components/layout/sidebar";
+import {
+  APP_NAV_ITEMS,
+  Sidebar,
+  isAppNavItemActive,
+  isNavItemActive,
+} from "@/components/layout/sidebar";
 import { SkipLink } from "@/components/layout/skip-link";
 import { SplitView } from "@/components/layout/split-view";
 import AppGroupError from "@/app/(app)/error";
@@ -96,42 +101,49 @@ describe("SkipLink (AC-26)", () => {
 });
 
 describe("Sidebar nav (spec §8D.3)", () => {
-  it("declares exactly four items, in order, with the §8D.3 routes", () => {
+  /* Client, 2026-09-28: Profile and Cards are one section now. */
+  it("declares exactly four items, in order, with Profile and Cards merged and Share on its own", () => {
     expect(APP_NAV_ITEMS.map((item) => [item.label, item.href])).toEqual([
       ["Dashboard", "/dashboard"],
-      ["Cards", "/cards"],
+      ["Profile & Cards", "/profile"],
+      ["Share", "/share"],
       ["Contacts", "/contacts"],
-      ["Profile", "/profile"],
     ]);
   });
 
-  it("renders exactly four nav links and nothing else inside the nav landmark", () => {
+  it("renders one nav link per item and nothing else inside the nav landmark", () => {
     renderSidebar();
 
     const nav = screen.getByRole("navigation", { name: /primary/i });
-    expect(within(nav).getAllByRole("link")).toHaveLength(4);
+    expect(within(nav).getAllByRole("link")).toHaveLength(APP_NAV_ITEMS.length);
   });
 
   it("marks the current route with aria-current=page and the --accent-wash pill", () => {
-    pathname.current = "/cards";
+    pathname.current = "/profile";
     renderSidebar();
 
-    const cards = screen.getByRole("link", { name: "Cards" });
-    expect(cards).toHaveAttribute("aria-current", "page");
-    expect(cards.className).toMatch(/bg-accent-wash/);
-    expect(cards.className).toMatch(/text-accent/);
-    expect(cards.className).toMatch(/rounded-full/);
+    const merged = screen.getByRole("link", { name: "Profile & Cards" });
+    expect(merged).toHaveAttribute("aria-current", "page");
+    expect(merged.className).toMatch(/bg-accent-wash/);
+    expect(merged.className).toMatch(/text-accent/);
+    expect(merged.className).toMatch(/rounded-full/);
 
     expect(screen.getByRole("link", { name: "Dashboard" })).not.toHaveAttribute("aria-current");
   });
 
-  it("keeps the parent item active on a child route, and only that item", () => {
-    pathname.current = "/cards/card_kestrel/edit";
-    renderSidebar();
+  it("lights the merged section on every /cards route, and only that item", () => {
+    for (const route of ["/cards", "/cards/card_kestrel", "/cards/card_kestrel/edit", "/cards/new"]) {
+      pathname.current = route;
+      const { unmount } = renderSidebar();
 
-    expect(screen.getByRole("link", { name: "Cards" })).toHaveAttribute("aria-current", "page");
-    for (const label of ["Dashboard", "Contacts", "Profile"]) {
-      expect(screen.getByRole("link", { name: label })).not.toHaveAttribute("aria-current");
+      expect(
+        screen.getByRole("link", { name: "Profile & Cards" }),
+        route,
+      ).toHaveAttribute("aria-current", "page");
+      for (const label of ["Dashboard", "Contacts"]) {
+        expect(screen.getByRole("link", { name: label })).not.toHaveAttribute("aria-current");
+      }
+      unmount();
     }
   });
 
@@ -140,6 +152,26 @@ describe("Sidebar nav (spec §8D.3)", () => {
     expect(isNavItemActive("/cards/card_1", "/cards")).toBe(true);
     expect(isNavItemActive("/cards-archive", "/cards")).toBe(false);
     expect(isNavItemActive(null, "/cards")).toBe(false);
+
+    const merged = APP_NAV_ITEMS.find((item) => item.href === "/profile");
+    expect(merged).toBeDefined();
+    if (merged === undefined) return;
+    expect(isAppNavItemActive("/profile/groups/group_work", merged)).toBe(true);
+    expect(isAppNavItemActive("/cards-archive", merged)).toBe(false);
+  });
+
+  it("shows the logo in the header as the link home — the lockup wide, the mark narrow", () => {
+    renderSidebar();
+
+    const home = screen.getByRole("link", { name: "Contact Book" });
+    expect(home).toHaveAttribute("href", "/dashboard");
+    const lockup = home.querySelector('[data-brand-logo="lockup"]');
+    const mark = home.querySelector('[data-brand-logo="mark"]');
+    expect(lockup).toHaveAttribute("src", "/brand/contactbook-logo-nav.png");
+    expect(mark).toHaveAttribute("src", "/brand/contactbook-mark.png");
+    /* In the auto state CSS picks, never JS: exactly one of the two is shown at each width. */
+    expect(lockup?.className).toMatch(/\bhidden\b.*\blg:block\b/);
+    expect(mark?.className).toMatch(/\bblock\b.*\blg:hidden\b/);
   });
 });
 
@@ -247,7 +279,7 @@ describe("Sidebar user chip (§11 E-14)", () => {
 });
 
 describe("BottomBar (spec §8D.3, ≤767px)", () => {
-  it("carries the same four destinations as the sidebar", () => {
+  it("carries the same destinations as the sidebar", () => {
     renderWithProviders(<BottomBar />);
 
     const nav = screen.getByRole("navigation", { name: /primary/i });
@@ -706,11 +738,13 @@ describe("the layout barrel", () => {
         "APP_NAV_ITEMS",
         "AppShell",
         "BottomBar",
+        "BrandLogo",
         "NavDrawer",
         "PageHeader",
         "Sidebar",
         "SkipLink",
         "SplitView",
+        "isAppNavItemActive",
         "isFocusRoute",
         "isNavItemActive",
       ].sort(),

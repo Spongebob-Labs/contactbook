@@ -69,7 +69,8 @@ import type { FieldGroup, FieldType } from "@/types/domain";
  * ## A card is a filter, so this is where cards get their content
  * §5.3: a card owns no data. A field added here becomes tickable in **every** card builder
  * immediately, and a card that maps nothing renders name-only — the old build's 73-byte `.vcf`
- * (§11 E-01/E-02). That is what the dialog's description says out loud.
+ * (§11 E-01/E-02). The dialog no longer says so in a description line (client, 2026-09-28:
+ * strip the explanatory copy); the title and the kind chips are enough to act on.
  */
 
 export interface NewFieldDraft {
@@ -169,7 +170,6 @@ export function AddFieldDialog({ group, onAdd, variant = "secondary" }: AddField
       size="md"
       overline={group.name}
       title="Add a field"
-      description="Every card you build can tick this field on."
       trigger={
         <Button variant={variant} data-add-field={group.id}>
           <Plus aria-hidden="true" size={16} strokeWidth={1.5} />

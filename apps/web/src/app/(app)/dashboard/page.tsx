@@ -24,26 +24,24 @@ import { DashboardClient, DashboardSkeleton } from "./dashboard-client";
  * file adds no ground, no width cap and no top padding of its own — a second allowance
  * here would push the title down the page.
  *
- * **The card-only typefaces are deliberately not opted in here.** The dashboard renders
- * one `thumb`, and a `thumb` is a miniature: T13's frame resolves `typeFamily` through
- * `var(--font-archivo, …)` with a real fallback stack, so the tile renders correctly
- * without pulling two card-route-only typefaces into an authenticated bundle that holds no
- * `full`-mode card at all (AC-17, N-3). Card routes opt in; this one has nothing to gain.
+ * **The card-only typefaces are deliberately not opted in here.** The Cards tile renders up
+ * to three thumbnails, and a thumbnail is a miniature: the frame resolves `typeFamily` through
+ * `var(--font-archivo, …)` with a real fallback stack, so it renders correctly without pulling
+ * two card-route-only typefaces into an authenticated bundle that holds no `full`-mode card at
+ * all (AC-17, N-3). Card routes opt in; this one has nothing to gain.
  */
 
 export const metadata: Metadata = {
   title: "Dashboard",
-  description:
-    "Your cards, the contacts saved from them, and the profile fields they draw on.",
+  description: "Your profile, cards and contacts.",
 };
 
 export default function DashboardPage() {
   return (
     <>
-      <PageHeader
-        title="Dashboard"
-        subtitle="Your cards, the people who saved them, and the profile fields they draw on."
-      />
+      {/* No subtitle. It described the page to the person using it; the tiles below say
+          what is here. */}
+      <PageHeader title="Dashboard" />
 
       <Suspense fallback={<DashboardSkeleton />}>
         <DashboardClient />

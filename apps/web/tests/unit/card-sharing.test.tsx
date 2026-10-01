@@ -1,25 +1,29 @@
+import { createRef } from "react";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { renderWithProviders, screen, userEvent, waitFor } from "../helpers/render";
 import { ToastProvider } from "@/components/overlay/toast";
-import { SendToContact, type MintedLink } from "@/components/share/card-sharing";
+import type { MintedLink } from "@/components/share/card-sharing";
+import {
+  SendToPhone,
+  type SendCardOption,
+  type SendToPhoneHandle,
+} from "@/components/share/send-to-phone";
 import { ApiError } from "@/lib/api/errors";
 import { toContact } from "@/lib/api/map";
 import type { ContactResponseDto, ShareLinkResponseDto } from "@/lib/api/schema";
 import type { Contact } from "@/types/domain";
 
 /**
- * Minting a link — the two calls behind one button.
+ * Sending a card to a phone number — the two calls behind one button.
  *
- * ## What this file is really guarding
- * The panel used to render a **dead end** on a new account: *"You have no contacts yet"*, an empty
- * state standing in front of the one action the panel exists to perform, on exactly the accounts
- * most likely to be trying it for the first time. Since `POST /contacts` upserts, that was never
- * a real constraint — a typed number is a contact id one call later.
+ * `<SendToPhone>` is the primary share action on `/cards/[cardId]` and the whole of `/share`, so
+ * the load-bearing assertions are ordering and payload: `contacts.upsert` **then** `cards.share`
+ * with the id the first call returned, and a number built from the country select plus the typed
+ * digits. Getting that backwards, or sending the raw typed string, are failures no type catches.
  *
- * So the load-bearing assertions here are ordering and payload: `contacts.upsert` **then**
- * `cards.share` with the id the first call returned. Getting that backwards, or sending the raw
- * typed string as a `contactId`, are both failures no type would catch.
+ * Then the three outcomes, each shown in place of the form: sent; not sent because WhatsApp
+ * sending is off (with a `wa.me` link aimed at THAT number, carrying THEIR link); and failed.
  */
 
 const { upsert, share, listLinks } = vi.hoisted(() => ({
@@ -59,22 +63,51 @@ const LINK: ShareLinkResponseDto = {
   createdAt: "2026-08-23T18:00:00.000Z",
 };
 
+const TEMPLATE_MISSING = () =>
+  new ApiError({
+    status: 409,
+    code: "CARD_SHARE_TEMPLATE_NOT_CONFIGURED",
+    rawMessage: "No approved CARD_SHARE template.",
+  });
+
+const WORK: SendCardOption = { id: "card-1", name: "Work" };
+
 function renderSend(
-  options: { contacts?: readonly Contact[]; alreadySentTo?: ReadonlySet<string> } = {},
+  options: {
+    cards?: readonly SendCardOption[];
+    defaultCardId?: string;
+    contacts?: readonly Contact[];
+    alreadySent?: (cardId: string, contactId: string) => boolean;
+  } = {},
 ) {
-  const onShared = vi.fn<(minted: MintedLink) => void>();
+  const onSent = vi.fn<(minted: MintedLink, cardId: string) => void>();
+  const handle = createRef<SendToPhoneHandle>();
   renderWithProviders(
     <ToastProvider>
-      <SendToContact
-        cardId="card-1"
+      <SendToPhone
+        ref={handle}
+        title="Send this card"
+        cards={options.cards ?? [WORK]}
+        defaultCardId={options.defaultCardId}
         contacts={options.contacts ?? []}
-        alreadySentTo={options.alreadySentTo ?? new Set()}
-        onShared={onShared}
+        alreadySent={options.alreadySent}
+        onSent={onSent}
       />
     </ToastProvider>,
   );
-  return onShared;
+  return { onSent, handle };
 }
+
+const numberField = () => screen.getByRole("textbox", { name: /^number$/i });
+const sendButton = () => screen.getByRole("button", { name: /send on whatsapp/i });
+
+beforeAll(() => {
+  /* Radix Select reaches for pointer capture and `scrollIntoView`, which happy-dom does not
+     implement. */
+  Element.prototype.hasPointerCapture ??= () => false;
+  Element.prototype.releasePointerCapture ??= () => undefined;
+  Element.prototype.scrollIntoView ??= () => undefined;
+});
 
 beforeEach(() => {
   upsert.mockReset().mockResolvedValue(CONTACT);
@@ -82,148 +115,218 @@ beforeEach(() => {
   listLinks.mockReset().mockResolvedValue([LINK]);
 });
 
-describe("an account with no contacts", () => {
-  it("offers a number field rather than an empty state", () => {
-    renderSend({});
+describe("the phone number comes first", () => {
+  it("renders the country code and number before anything else, with one send button", () => {
+    renderSend();
 
-    expect(screen.getByLabelText(/their number/i)).toBeInTheDocument();
-    expect(screen.queryByText(/you have no contacts yet/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("group", { name: /phone number/i })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: /country code/i })).toHaveTextContent("+91");
+    expect(numberField()).toBeInTheDocument();
+    expect(sendButton()).toBeInTheDocument();
   });
 
-  it("does not offer a picker there is nothing to pick from", () => {
-    renderSend({});
+  it("does not offer a contact picker when there is nothing to pick from", () => {
+    renderSend();
+    expect(screen.queryByRole("button", { name: /choose from contacts/i })).not.toBeInTheDocument();
+  });
 
-    expect(screen.queryByRole("button", { name: /pick from contacts/i })).not.toBeInTheDocument();
+  it("does not show a card picker when there is only one card", () => {
+    renderSend();
+    expect(screen.queryByRole("combobox", { name: /^card$/i })).not.toBeInTheDocument();
+  });
+
+  it("focuses the number field when the header's Share asks it to", () => {
+    const { handle } = renderSend();
+    handle.current?.focus();
+    expect(numberField()).toHaveFocus();
   });
 });
 
-describe("minting from a typed number", () => {
+describe("sending to a typed number", () => {
   it("upserts the contact, then shares the card to the id that came back", async () => {
-    const onShared = renderSend({});
+    const { onSent } = renderSend();
 
-    await userEvent.type(screen.getByLabelText(/their number/i), "+91 98200 00000");
-    await userEvent.type(screen.getByLabelText(/^name$/i), "Priya");
-    await userEvent.click(screen.getByRole("button", { name: /create link/i }));
+    await userEvent.type(numberField(), "98200 00000");
+    await userEvent.type(screen.getByRole("textbox", { name: /^name$/i }), "Priya");
+    await userEvent.click(sendButton());
 
     await waitFor(() => expect(share).toHaveBeenCalled());
 
-    // Normalised before it left — the API validates strict E.164 and a 400 here is unactionable.
+    // Country select + digits, joined into strict E.164 before it left.
     expect(upsert).toHaveBeenCalledWith({ phoneE164: "+919820000000", displayName: "Priya" });
     // ⚠ The id from the response, never the typed string.
     expect(share).toHaveBeenCalledWith("card-1", { contactId: CONTACT.id });
     expect(upsert.mock.invocationCallOrder[0]).toBeLessThan(share.mock.invocationCallOrder[0]);
 
-    expect(onShared).toHaveBeenCalledWith(
-      expect.objectContaining({
-        url: LINK.url,
-        recipientLabel: "Priya",
-        recipientPhoneE164: CONTACT.phoneE164,
-        templateMissing: false,
-      }),
+    expect(onSent).toHaveBeenCalledWith(
+      expect.objectContaining({ url: LINK.url, recipientLabel: "Priya", templateMissing: false }),
+      "card-1",
     );
   });
 
-  it("omits an empty name rather than sending a blank one", async () => {
-    renderSend({});
+  it("replaces the form with 'Sent to …' and the recipient's own link", async () => {
+    renderSend();
 
-    await userEvent.type(screen.getByLabelText(/their number/i), "+919820000000");
-    await userEvent.click(screen.getByRole("button", { name: /create link/i }));
+    await userEvent.type(numberField(), "9820000000");
+    await userEvent.click(sendButton());
+
+    expect(await screen.findByRole("heading", { name: "Sent to Priya" })).toBeInTheDocument();
+    expect(screen.getByText(/saved to your contacts/i)).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: /priya's link/i })).toHaveValue(LINK.url);
+    expect(screen.queryByRole("button", { name: /send on whatsapp/i })).not.toBeInTheDocument();
+  });
+
+  it("names an unnamed recipient by their formatted number", async () => {
+    share.mockResolvedValue({ ...LINK, contactDisplayName: null });
+    renderSend();
+
+    await userEvent.type(numberField(), "9820000000");
+    await userEvent.click(sendButton());
+
+    expect(
+      await screen.findByRole("heading", { name: "Sent to +91 98200 00000" }),
+    ).toBeInTheDocument();
+  });
+
+  it("goes back to an empty form for the next person", async () => {
+    renderSend();
+
+    await userEvent.type(numberField(), "9820000000");
+    await userEvent.click(sendButton());
+    await userEvent.click(await screen.findByRole("button", { name: /send to someone else/i }));
+
+    expect(numberField()).toHaveValue("");
+    expect(sendButton()).toBeInTheDocument();
+  });
+
+  it("omits an empty name rather than sending a blank one", async () => {
+    renderSend();
+
+    await userEvent.type(numberField(), "9820000000");
+    await userEvent.click(sendButton());
 
     await waitFor(() => expect(upsert).toHaveBeenCalled());
     expect(upsert).toHaveBeenCalledWith({ phoneE164: "+919820000000", displayName: undefined });
   });
 
-  it("refuses a number with no country code without spending a round trip on it", async () => {
-    renderSend({});
+  it("drops a trunk zero, the way the number is dialled at home", async () => {
+    renderSend();
 
-    await userEvent.type(screen.getByLabelText(/their number/i), "9820000000");
-    await userEvent.click(screen.getByRole("button", { name: /create link/i }));
+    await userEvent.type(numberField(), "09820000000");
+    await userEvent.click(sendButton());
 
-    expect(await screen.findByText(/include the country code/i)).toBeInTheDocument();
+    await waitFor(() => expect(upsert).toHaveBeenCalled());
+    expect(upsert).toHaveBeenCalledWith(expect.objectContaining({ phoneE164: "+919820000000" }));
+  });
+
+  it("splits a pasted international number into the country and the digits", async () => {
+    renderSend();
+
+    await userEvent.click(numberField());
+    await userEvent.paste("+44 7979 080009");
+
+    expect(screen.getByRole("combobox", { name: /country code/i })).toHaveTextContent("+44");
+    expect(numberField()).toHaveValue("7979080009");
+
+    await userEvent.click(sendButton());
+    await waitFor(() => expect(upsert).toHaveBeenCalled());
+    expect(upsert).toHaveBeenCalledWith(expect.objectContaining({ phoneE164: "+447979080009" }));
+  });
+
+  it("refuses an empty or short number without spending a round trip on it", async () => {
+    renderSend();
+
+    await userEvent.click(sendButton());
+    expect(await screen.findByText("Enter a phone number.")).toBeInTheDocument();
+
+    await userEvent.type(numberField(), "123");
+    await userEvent.click(sendButton());
+    expect(await screen.findByText(/too short/i)).toBeInTheDocument();
+
     expect(upsert).not.toHaveBeenCalled();
     expect(share).not.toHaveBeenCalled();
   });
+
+  it("reports an API failure under the button and keeps what was typed", async () => {
+    share.mockRejectedValue(
+      new ApiError({ status: 404, code: "CARD_NOT_FOUND", rawMessage: "No card." }),
+    );
+    const { onSent } = renderSend();
+
+    await userEvent.type(numberField(), "9820000000");
+    await userEvent.click(sendButton());
+
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(numberField()).toHaveValue("9820000000");
+    expect(onSent).not.toHaveBeenCalled();
+  });
 });
 
-describe("the failure that is not a failure", () => {
-  /**
-   * `CARD_SHARE_TEMPLATE_NOT_CONFIGURED` means the WhatsApp send could not be enqueued — but the
-   * API mints the link *before* it tries, so a live link exists that the error body does not
-   * carry. It is read back from `GET /share-links`, matched on the pair, and handed over.
-   */
-  it("recovers the minted link and reports success with the send flagged as missed", async () => {
-    share.mockRejectedValue(
-      new ApiError({
-        status: 409,
-        code: "CARD_SHARE_TEMPLATE_NOT_CONFIGURED",
-        rawMessage: "No approved CARD_SHARE template.",
-      }),
-    );
-    const onShared = renderSend({});
+describe("when WhatsApp sending is not switched on", () => {
+  it("says plainly the message did not go out, and offers wa.me aimed at that number", async () => {
+    share.mockRejectedValue(TEMPLATE_MISSING());
+    const { onSent } = renderSend();
 
-    await userEvent.type(screen.getByLabelText(/their number/i), "+919820000000");
-    await userEvent.click(screen.getByRole("button", { name: /create link/i }));
+    await userEvent.type(numberField(), "9820000000");
+    await userEvent.click(sendButton());
 
-    await waitFor(() => expect(onShared).toHaveBeenCalled());
-    expect(onShared).toHaveBeenCalledWith(
-      expect.objectContaining({ url: LINK.url, templateMissing: true }),
+    expect(await screen.findByRole("heading", { name: "Not sent to Priya" })).toBeInTheDocument();
+    expect(screen.getByText(/no message went out/i)).toBeInTheDocument();
+
+    const whatsapp = screen.getByRole("link", { name: /open whatsapp/i });
+    const href = whatsapp.getAttribute("href") ?? "";
+    expect(href.startsWith("https://wa.me/919820000000?text=")).toBe(true);
+    // THEIR link, not the card's public one.
+    expect(new URL(href).searchParams.get("text")).toContain(LINK.url);
+    expect(whatsapp).toHaveAttribute("rel", "noopener noreferrer");
+
+    expect(screen.getByRole("textbox", { name: /priya's link/i })).toHaveValue(LINK.url);
+    expect(onSent).toHaveBeenCalledWith(
+      expect.objectContaining({ templateMissing: true }),
+      "card-1",
     );
   });
 
   it("matches the pair rather than the card, so another recipient's link is never handed over", async () => {
-    share.mockRejectedValue(
-      new ApiError({
-        status: 409,
-        code: "CARD_SHARE_TEMPLATE_NOT_CONFIGURED",
-        rawMessage: "No approved CARD_SHARE template.",
-      }),
-    );
+    share.mockRejectedValue(TEMPLATE_MISSING());
     // Same card, someone else, listed first — a `find` on cardId alone would return this one.
     listLinks.mockResolvedValue([
-      { ...LINK, id: "other", url: "https://cards.contactbook.app/c/someone-else", contactPhoneE164: "+919999999999" },
+      {
+        ...LINK,
+        id: "other",
+        url: "https://cards.contactbook.app/c/someone-else",
+        contactId: "someone-else",
+        contactPhoneE164: "+919999999999",
+      },
       LINK,
     ]);
-    const onShared = renderSend({});
+    const { onSent } = renderSend();
 
-    await userEvent.type(screen.getByLabelText(/their number/i), "+919820000000");
-    await userEvent.click(screen.getByRole("button", { name: /create link/i }));
+    await userEvent.type(numberField(), "9820000000");
+    await userEvent.click(sendButton());
 
-    await waitFor(() => expect(onShared).toHaveBeenCalled());
-    expect(onShared).toHaveBeenCalledWith(expect.objectContaining({ url: LINK.url }));
+    await waitFor(() => expect(onSent).toHaveBeenCalled());
+    expect(onSent).toHaveBeenCalledWith(expect.objectContaining({ url: LINK.url }), "card-1");
   });
 
   it("reports the error honestly when the link cannot be read back", async () => {
-    share.mockRejectedValue(
-      new ApiError({
-        status: 409,
-        code: "CARD_SHARE_TEMPLATE_NOT_CONFIGURED",
-        rawMessage: "No approved CARD_SHARE template.",
-      }),
-    );
+    share.mockRejectedValue(TEMPLATE_MISSING());
     listLinks.mockRejectedValue(new Error("network"));
-    const onShared = renderSend({});
+    const { onSent } = renderSend();
 
-    await userEvent.type(screen.getByLabelText(/their number/i), "+919820000000");
-    await userEvent.click(screen.getByRole("button", { name: /create link/i }));
+    await userEvent.type(numberField(), "9820000000");
+    await userEvent.click(sendButton());
 
-    // No link to show, so nothing is claimed — the panel must not publish a URL it never got.
-    await waitFor(() => expect(share).toHaveBeenCalled());
-    expect(onShared).not.toHaveBeenCalled();
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    // No link to show, so nothing is claimed.
+    expect(onSent).not.toHaveBeenCalled();
+    expect(screen.queryByRole("heading", { name: /not sent to/i })).not.toBeInTheDocument();
   });
 });
 
-/* ── the contact picker ──────────────────────────────────────────────────────────────── */
+/* ── choosing from contacts ─────────────────────────────────────────────────────────── */
 
-describe("picking a contact", () => {
-  /* Radix Select reaches for pointer capture and `scrollIntoView`, which happy-dom does not
-     implement. Stubbed here, in the one block that opens a select, rather than in the global
-     setup where they would mask a real gap for every other suite. */
-  beforeAll(() => {
-    Element.prototype.hasPointerCapture ??= () => false;
-    Element.prototype.releasePointerCapture ??= () => undefined;
-    Element.prototype.scrollIntoView ??= () => undefined;
-  });
-
+describe("choosing from contacts", () => {
   const UNNAMED: ContactResponseDto = {
     ...CONTACT,
     id: "5d2c9e1f-0000-4a5b-8c6d-000000000001",
@@ -233,68 +336,69 @@ describe("picking a contact", () => {
   const registry = [toContact(CONTACT, "owner-1"), toContact(UNNAMED, "owner-1")];
 
   async function openPicker(): Promise<HTMLElement[]> {
-    await userEvent.click(screen.getByRole("combobox", { name: /contact/i }));
+    await userEvent.click(screen.getByRole("button", { name: /choose from contacts/i }));
+    await userEvent.click(screen.getByRole("combobox", { name: /^contact$/i }));
     return screen.findAllByRole("option");
   }
 
-  /**
-   * ⚠ The reported bug: every unnamed contact read "+447979080009 · +44 7979 080009" — the raw
-   * number standing in for a name, then the formatted number after it.
-   */
+  /** ⚠ The reported bug: an unnamed contact read "+447979080009 · +44 7979 080009". */
   it("writes an unnamed contact's number once, formatted, and a named one as name · number", async () => {
     renderSend({ contacts: registry });
 
     const labels = (await openPicker()).map((option) => option.textContent ?? "");
 
     expect(labels).toContain("Priya · +91 98200 00000");
-    const unnamed = labels.find((label) => label.includes("7979"));
-    expect(unnamed).toBe("+44 7979 080009");
+    expect(labels.find((label) => label.includes("7979"))).toBe("+44 7979 080009");
     expect(labels.join(" ")).not.toContain("+447979080009");
   });
 
-  it("never marks a row as already sent", async () => {
-    renderSend({ contacts: registry, alreadySentTo: new Set([CONTACT.id, UNNAMED.id]) });
-
-    const labels = (await openPicker()).map((option) => option.textContent ?? "");
-    expect(labels.join(" ")).not.toMatch(/already/i);
-  });
-
-  it("offers someone who already holds the card a Send again, and sends it", async () => {
-    const onShared = renderSend({ contacts: registry, alreadySentTo: new Set([CONTACT.id]) });
+  it("sends to the picked contact without an upsert, and says when it is the same link again", async () => {
+    renderSend({ contacts: registry, alreadySent: (_, id) => id === CONTACT.id });
 
     await openPicker();
     await userEvent.click(screen.getByRole("option", { name: /priya/i }));
-
-    const button = screen.getByRole("button", { name: /send again/i });
-    expect(button).toBeEnabled();
-    expect(screen.queryByText(/already have this card/i)).not.toBeInTheDocument();
-
-    await userEvent.click(button);
+    await userEvent.click(sendButton());
 
     await waitFor(() => expect(share).toHaveBeenCalledWith("card-1", { contactId: CONTACT.id }));
-    // A re-send reuses the link, so the toast must not claim one was created.
-    expect(await screen.findByText("Sent to Priya again")).toBeInTheDocument();
-    expect(screen.queryByText(/link created/i)).not.toBeInTheDocument();
-    expect(onShared).toHaveBeenCalledTimes(1);
+    expect(upsert).not.toHaveBeenCalled();
+    expect(await screen.findByText(/same link as before/i)).toBeInTheDocument();
   });
 
   it("can send to the same person again and again", async () => {
-    renderSend({ contacts: registry, alreadySentTo: new Set([CONTACT.id]) });
+    renderSend({ contacts: registry, alreadySent: () => true });
 
     for (let i = 0; i < 3; i += 1) {
       await openPicker();
       await userEvent.click(screen.getByRole("option", { name: /priya/i }));
-      await userEvent.click(screen.getByRole("button", { name: /send again/i }));
+      await userEvent.click(sendButton());
       await waitFor(() => expect(share).toHaveBeenCalledTimes(i + 1));
+      await userEvent.click(await screen.findByRole("button", { name: /send to someone else/i }));
     }
   });
+});
 
-  it("still says Create link for someone who does not have the card yet", async () => {
-    renderSend({ contacts: registry, alreadySentTo: new Set([CONTACT.id]) });
+/* ── the quick-share card picker ───────────────────────────────────────────────────── */
 
-    await openPicker();
-    await userEvent.click(screen.getByRole("option", { name: /7979/ }));
+describe("which card", () => {
+  const CARDS: SendCardOption[] = [WORK, { id: "card-2", name: "Personal" }];
 
-    expect(screen.getByRole("button", { name: /create link/i })).toBeEnabled();
+  it("selects the default card and sends whichever card is picked", async () => {
+    renderSend({ cards: CARDS, defaultCardId: "card-2" });
+
+    const picker = screen.getByRole("combobox", { name: /^card$/i });
+    expect(picker).toHaveTextContent("Personal");
+
+    await userEvent.click(picker);
+    await userEvent.click(await screen.findByRole("option", { name: "Work" }));
+
+    await userEvent.type(numberField(), "9820000000");
+    await userEvent.click(sendButton());
+
+    await waitFor(() => expect(share).toHaveBeenCalledWith("card-1", { contactId: CONTACT.id }));
+  });
+
+  it("falls back to the first card when the default is not one of them", () => {
+    renderSend({ cards: CARDS, defaultCardId: "archived" });
+    expect(screen.getByRole("combobox", { name: /^card$/i })).toHaveTextContent("Work");
   });
 });

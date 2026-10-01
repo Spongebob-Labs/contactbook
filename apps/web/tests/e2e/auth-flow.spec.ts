@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { WELCOME_PATH } from "@/components/onboarding/welcome-steps";
+
 import { PROJECT_VIEWPORT, gotoReady } from "../helpers/e2e";
 
 /**
@@ -22,7 +24,7 @@ const STEPS = [
   { index: 3, path: "/signup/first-name", question: "What's your first name?" },
   { index: 4, path: "/signup/last-name", question: "And your last name?" },
   { index: 5, path: "/signup/email", question: "Where can we reach you?" },
-  { index: 6, path: "/signup/done", question: "You're all set" },
+  { index: 6, path: "/signup/done", question: "Your card is ready" },
 ] as const;
 
 const PHONE = "9876543210";
@@ -163,14 +165,16 @@ test.describe("the walk", () => {
     await page.keyboard.type(EMAIL);
     await page.keyboard.press("Enter");
 
-    // 6 — done, personalised from the name given three screens ago.
+    // 6 — done, personalised from the name given three screens ago. It hands off to the
+    // card walkthrough, not the dashboard (client feedback 2026-09-28).
     await expect(page).toHaveURL(/\/signup\/done$/);
     await expectStep(page, 6);
     await expect(page.locator("[data-auth-question]")).toContainText(FIRST);
-    await expect(page.locator("[data-auth-primary]")).toHaveText("Go to dashboard");
-    await expect(page.locator("[data-auth-primary]")).toHaveAttribute("href", "/dashboard");
-    // §8D.2 A-6: a live thumb of the starter card, not an illustration of one.
-    await expect(page.locator("[data-auth-card] [data-card-thumb]")).toHaveCount(1);
+    await expect(page.locator("[data-auth-primary]")).toHaveText("Set up my card");
+    await expect(page.locator("[data-auth-primary]")).toHaveAttribute("href", WELCOME_PATH);
+    // The fixture card is gone from this step: it was somebody else's card captioned "your
+    // starter card". The owner's real card is the next screen.
+    await expect(page.locator("[data-auth-card]")).toHaveCount(0);
   });
 
   test("a bad answer never advances the flow, and says what to fix", async ({ page }) => {

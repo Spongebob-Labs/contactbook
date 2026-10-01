@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useMemo, useState, type ReactElement } from "react";
 
 import { resolveCard } from "@/card/resolve-card";
@@ -78,13 +78,12 @@ export function emptyCardsData(real: CardsData): CardsData {
  *
  * This list **keeps the recency ranking on purpose.** `card_empty_demo` maps no fields and
  * is the newest fixture card by `updatedAt`, so it lands in position one — and it arrives
- * wearing `<FieldCountMeter>`'s zero-field warning. Sorting it out of sight would hide the
+ * wearing the tile's "No fields yet" warning. Sorting it out of sight would hide the
  * consequence rather than fix it; the fix is that emptiness is legible before the card is
- * ever handed out.
+ * ever handed out. (Every other tile no longer prints a field count — client, 2026-09-28.)
  *
- * `<FieldCountMeter resolved …>` takes a `ResolvedCard`, **not a count**, precisely so a
- * call site cannot re-derive the answer: it reads `canBuildVcf` (T11), the single
- * definition of "this card shares nothing". **Never write an inline `fieldCount > 0` here.**
+ * The tile decides with `canBuildVcf` (T11), the single definition of "this card shares
+ * nothing". **Never write an inline `fieldCount > 0` here.**
  * A links-only card is not empty — `fieldCount` counts `fields` *and* `socialFields` — and
  * a local count taken over one of them would warn on a perfectly good card.
  *
@@ -196,15 +195,15 @@ function resolveAll(data: CardsData): ResolvedCard[] {
 }
 
 /**
- * Search over what the tile actually shows — name, type and template — so a reader can
- * always find a card by something they can see. `needle` arrives already trimmed and
- * lower-cased so the comparison is done once per keystroke rather than once per card.
+ * Search over what the tile actually shows — name and type — so a reader can always find a
+ * card by something they can see. The template name stopped being shown on 2026-09-28, so it
+ * stopped being searchable too. `needle` arrives already trimmed and lower-cased so the
+ * comparison is done once per keystroke rather than once per card.
  */
 function matchesQuery(resolved: ResolvedCard, needle: string): boolean {
   if (needle === "") return true;
   return (
     resolved.cardName.toLowerCase().includes(needle) ||
-    resolved.template.name.toLowerCase().includes(needle) ||
     CARD_TYPE_LABELS[resolved.cardType].toLowerCase().includes(needle)
   );
 }
@@ -269,7 +268,6 @@ function CardsListScreen({
   error: FixtureError | null;
   reload: () => void;
 }): ReactElement {
-  const router = useRouter();
   const searchParams = useSearchParams();
 
   /**
@@ -386,8 +384,7 @@ function CardsListScreen({
   } else if (screenState === "empty") {
     body = (
       <EmptyState
-        title="You haven't made a card yet"
-        description="A card is a filter over your profile: pick the fields you want to share, and the QR code carries those and nothing else."
+        title="No cards yet"
         action={{ label: "Create your first card", href: NEW_CARD_HREF }}
       />
     );
@@ -419,7 +416,6 @@ function CardsListScreen({
     >
       <PageHeader
         title="Cards"
-        subtitle="Each card shares only the fields you mapped to it."
         actions={
           <Link href={NEW_CARD_HREF} className={buttonClassName()}>
             New card

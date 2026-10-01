@@ -1,13 +1,14 @@
 "use client";
 
+import { ChevronDown } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useState, useTransition } from "react";
+import { useCallback, useMemo, useRef, useState, useTransition } from "react";
 
 import { buildVcf, canBuildVcf } from "@/card/build-vcf";
 import { ShareFace } from "@/card/share-face";
 import { resolveCard } from "@/card/resolve-card";
-import { CardTypeChip, FieldCountMeter, FieldList } from "@/components/app";
+import { FieldList } from "@/components/app";
 import {
   ErrorPanel,
   LoadingSkeleton,
@@ -16,19 +17,19 @@ import {
 } from "@/components/data";
 import { PageHeader } from "@/components/layout";
 import { Button, buttonClassName } from "@/components/primitives";
+import { CardLinkBlock } from "@/components/share/card-link-block";
+import { CardShares } from "@/components/share/card-sharing";
 import { DeleteCardDialog } from "@/components/share/delete-card-dialog";
-import { ExportPngButton } from "@/components/share/export-png-button";
-import { ShareSheet } from "@/components/share/share-sheet";
-import { WalletPassBlock } from "@/components/share/wallet-pass-block";
-import { CardShares, SendToContact, type MintedLink } from "@/components/share/card-sharing";
 import { NotifyBanner } from "@/components/share/notify-recipients";
+import { SendToPhone, type SendToPhoneHandle } from "@/components/share/send-to-phone";
+import { WalletActions } from "@/components/share/wallet-actions";
+import { WalletPassBlock } from "@/components/share/wallet-pass-block";
 import { cards as api } from "@/lib/api/browser";
 import { fetchCardDetail } from "@/lib/api/browser-loaders";
 import { toScreenError } from "@/lib/api/errors";
-import { cn } from "@/lib/cn";
 import { useApiResource } from "@/lib/use-api";
 import { useToast } from "@/components/overlay";
-import { CARD_LINK_PENDING, formatLongDate } from "@/lib/format";
+import { formatLongDate } from "@/lib/format";
 import type {
   Contact,
   ContactCard,
@@ -70,26 +71,34 @@ import type {
  * resolved card survives a re-render. Without them, opening the share sheet would hand the
  * preview a different object from the one the card was drawn with.
  *
- * ## ⚠ THIS SCREEN SHOWS TWO DIFFERENT THINGS AND MUST SAY WHICH IS WHICH
+ * ## ⚠ THIS SCREEN IS SHARE-FIRST (client review, 2026-09-28)
  *
- * The product has two verticals and only one of them used to be legible here.
+ * *"Sharing view needs a redesign: core function is sharing, not showing fields again."* So the
+ * page is, in order: **(a)** the card itself — the share face, in the card's own palette, with
+ * the QR someone scans; **(b)** "Send this card" to a phone number, the primary action;
+ * **(c)** the card's own link with Copy beside it, WhatsApp and the share sheet; **(d)** Wallet —
+ * Apple and Google (flagged until the pass endpoints exist) and a working "Save QR to phone";
+ * **(e)** who it was sent to. The field list is demoted to a closed "What's on this card"
+ * disclosure at the foot. The template name and the field-count meter are gone from the page:
+ * the client read "Meridian · Field count 5" as noise.
  *
- * · **The pass.** The rigid 336×500 `<ShareFace>` in the left column, with its QR. It exists
- *   to be added to Apple Wallet or Google Wallet and held up to be scanned. Its QR encodes
- *   `qrPayload` — the card's **own public URL**, minted by the API as `Card.publicToken` when
- *   the card is created. ⚠ This is NOT the link the Share action sends: Share mints a
- *   per-recipient `ShareLink`, revocable for that one person. A QR is one-to-many and gets
- *   printed, so it must not carry a token that revoking one contact would kill.
- * · **The card.** The page either link opens, at `/c/{token}`, which the builder previews.
+ * On desktop (a)+(d) are the pinned left column and (b)(c)(e) the right. On a phone the two
+ * column wrappers are `display: contents`, so their children join one flex column and `order`
+ * puts them in a–e sequence — the wallet row lands after the link rather than between the
+ * card and the phone field.
  *
- * `<WalletPassBlock>` names the first of those two things and does nothing else. It once
- * explained them at length — a lede, a sentence printing what the QR resolves to, and two
- * wallet buttons that admitted in body copy that they install nothing — and the client read
- * the result as clutter and "random text" on their own card (2026-09-20). What a *recipient*
- * needs to be taught belongs on `/c/{slug}`; the owner built this card. Two words above the
- * face is what survived, and the removal reasoning is recorded at the block's head so the
- * copy is not reinstated a paragraph at a time. **The face must keep rendering on this route,
- * unscaled, in normal flow — do not tab it, dialog it, lazy-mount it or scale it.**
+ * There is ONE share UI. The header's Share button does not open a dialog any more; it scrolls to
+ * and focuses the phone field. `share-sheet.tsx` explains what happened to the old dialog.
+ *
+ * Two links live here and must not be confused. The QR and the "Card link" block carry
+ * `qrPayload` — the card's own public URL (`Card.publicToken`), one-to-many, never repointed by a
+ * send. A send mints a per-recipient `ShareLink`, revocable for that one person, and shows it in
+ * the send result only.
+ *
+ * **The face must keep rendering on this route, unscaled, in normal flow, and it must be the
+ * first `[data-card-root]` in the document** — five QR suites measure it here via
+ * `document.querySelector` and a strict locator. Do not tab it, dialog it, lazy-mount it, scale
+ * it, or render a `<CardPage>` anywhere on this route.
  *
  * ## What "empty" means on this screen
  * §8D.3's card-detail row puts *not-found* where other screens put a first-run empty, and
@@ -136,6 +145,15 @@ export function emptyCardDetailData(real: CardDetailData): CardDetailData {
   return { ...real, groups: real.groups.map((group) => ({ ...group, fieldIds: [] })), fields: [] };
 }
 
+/**
+ * `?state=empty` for the loaded payload: the same card, over a profile with nothing to map.
+ * Module-level so it is one stable reference. Without it the override had no data to render and
+ * the screen fell back to `success` (AC-24's empty row was failing for that reason).
+ */
+function emptyCardDetail<T extends CardDetailData>(real: T | null): T | null {
+  return real === null ? null : { ...real, ...emptyCardDetailData(real) };
+}
+
 export interface CardDetailClientProps {
   /**
    * The card the id addresses, resolved on the server so the not-found decision and the
@@ -148,7 +166,7 @@ export interface CardDetailClientProps {
 export function CardDetailClient({ cardId }: CardDetailClientProps) {
   // `useCallback` because `useApiResource` re-runs on loader identity change.
   const load = useCallback(() => fetchCardDetail(cardId)(), [cardId]);
-  const result = useApiResource(load);
+  const result = useApiResource(load, emptyCardDetail);
 
   return (
     <CardDetailScreen
@@ -194,36 +212,22 @@ function CardDetailScreen({
   const [deleted, setDeleted] = useState(false);
 
   /**
-   * The link minted in this session, held locally so the panel publishes it immediately.
+   * The one re-read every sharing affordance goes through — a send, a revoke/restore, a notify —
+   * so "Sent to" always shows the server's answer rather than a local guess.
    *
-   * `reload()` re-reads `GET /share-links` and would eventually produce the same URL, but a
-   * network round trip between pressing "Create link" and seeing one is exactly the gap the old
-   * panel left — the user pressed a button and the link area did not change. This closes it, and
-   * the re-read then confirms it.
-   *
-   * It takes precedence over the list below rather than merely filling a hole, so the panel
-   * always shows the most recent recipient rather than the first one.
-   *
-   * ⚠ It no longer moves the QR. Minting used to rewrite `qrPayload`, which meant sharing with
-   * one person repointed the printed symbol at their private, individually-revocable token.
-   * The QR is now `card.publicUrl` and is not a function of who has been sent the card.
-   */
-  const [minted, setMinted] = useState<MintedLink | null>(null);
-
-  /**
-   * The one re-read every sharing affordance goes through.
-   *
-   * ⚠ `setMinted(null)` matters here as much as the reload: a link minted this session is held
-   * locally so the panel can publish it immediately, and after any change to the share set the
-   * server's answer is the only honest source. Shared by revoke/restore and by notify, so a
-   * notify's reconcile cannot drift from what a revoke does.
+   * ⚠ Nothing minted here is held in this component any more. A send shows its own result in
+   * place of the form (with the recipient's link), and the QR never follows a send: it is
+   * `card.publicUrl`, not a function of who has been sent the card.
    */
   const reloadShares = useCallback(() => {
-    setMinted(null);
     reload();
   }, [reload]);
 
+  /** The header's Share button focuses the phone field — one share UI, not a second dialog. */
+  const sendBlock = useRef<SendToPhoneHandle>(null);
 
+  /** Who already holds this card, so a repeat send can say "Same link as before." */
+  const holders = useMemo(() => new Set(shares.map((share) => share.contactId)), [shares]);
 
   const resolved = useMemo(
     // `card` is null while the read is in flight and on a failure — both are states this screen
@@ -339,55 +343,30 @@ function CardDetailScreen({
             subtitle={card === null ? undefined : `Updated ${formatLongDate(card.updatedAt)}`}
             actions={
               <div data-card-detail-actions="" className="flex flex-wrap items-center gap-3">
+                {/* Scrolls to the phone field and focuses it. There is no share dialog: the share
+                    controls are this page, and a second copy of them in a modal is how the old
+                    screen came to show the same link twice. */}
+                <Button
+                  variant="secondary"
+                  data-card-detail-action="share"
+                  onClick={() => sendBlock.current?.focus()}
+                >
+                  Share
+                </Button>
+
                 {/* An anchor wearing the button skin — never a `<button>` inside a link. */}
                 <Link
                   href={editHref}
                   data-card-detail-action="edit"
-                  className={buttonClassName()}
+                  className={buttonClassName({ variant: "secondary" })}
                 >
                   Edit
                 </Link>
 
-                {/* ⚠ THE "NOTIFY RECIPIENTS" BUTTON WAS HERE AND IS DELIBERATELY GONE.
-                    Client call, 2026-09-03: *"that particular button should be removed"* — it
-                    sat in this row on every card with recipients, and an owner who had just
-                    edited a card had to notice it and come back to press it. Missing that step
-                    is the whole problem it was meant to solve.
-
-                    The notify prompt now opens by itself when the owner presses **Save
-                    changes** in the editor, which is the moment they actually know what
-                    changed (`builder-client.tsx`). The passive banner above the "Sent to" list
-                    stays as the recovery path — it appears only when somebody is genuinely
-                    behind, so it is not "a button on every card", and without it an owner who
-                    dismissed the prompt, or who wants to re-notify without editing anything,
-                    would have no way to do either. */}
-
-                <ShareSheet
-                  resolved={resolved}
-                  sharesNothing={vcf === null}
-                  editHref={editHref}
-                  sendSlot={
-                    <SendToContact
-                      cardId={cardId}
-                      contacts={contacts}
-                      alreadySentTo={new Set(shares.map((share) => share.contactId))}
-                      onShared={(link) => {
-                        // Local first, then the re-read: the panel updates on the press, and
-                        // "who has it" catches up a moment later.
-                        setMinted(link);
-                        reload();
-                      }}
-                    />
-                  }
-                  lastSent={minted ?? undefined}
-                  trigger={
-                    <Button variant="secondary" data-card-detail-action="share">
-                      Share
-                    </Button>
-                  }
-                />
-
-                <ExportPngButton resolved={resolved} />
+                {/* ⚠ "Notify recipients" was removed from this row on 2026-09-03 (the prompt opens
+                    after Save in the editor; the banner above "Sent to" is the recovery path).
+                    "Export PNG" left it on 2026-09-28 and is "Save QR to phone" in the wallet
+                    row now. */}
 
                 <DeleteCardDialog
                   resolved={resolved}
@@ -421,131 +400,86 @@ function CardDetailScreen({
             }
           />
 
-          <div className="grid gap-8 lg:grid-cols-[minmax(0,400px)_minmax(0,1fr)] lg:items-start">
-            {/* §8D.3: the card is pinned on desktop and first in the stack on mobile. It is
-                `sticky` rather than `fixed` — §6.5 forbids `position: fixed` anywhere inside
-                the card root, and a fixed wrapper would take the same behaviour with it. */}
+          <div
+            data-card-detail-layout=""
+            className="flex flex-col gap-8 lg:grid lg:grid-cols-[336px_minmax(0,1fr)] lg:items-start lg:gap-x-12"
+          >
+            {/* ── left on desktop: the card and its wallet row ─────────────────────────────
+                `contents` below lg, so the two children join the outer column and `order`
+                can put the wallet row after the link. `sticky` rather than `fixed` — §6.5
+                forbids `position: fixed` inside the card root — and as an ANCESTOR of the
+                plate it is excluded from qr-overlap's fixed/sticky sweep by construction. */}
             <div
               data-card-detail-preview=""
-              /* Fluid. The one rigid object on this screen is the share face, and the rail that
-                 lets it overhang a 320px viewport lives around the face itself inside
-                 `<WalletPassBlock>` — not here. Scoping it to this column instead made the
-                 block's own eyebrow 336px wide in a 296px box, so the label needed a sideways
-                 nudge to be read, which is a worse bug than the one it fixed. */
-              className="min-w-0 lg:sticky lg:top-8 lg:self-start"
+              className="contents lg:sticky lg:top-8 lg:flex lg:min-w-0 lg:flex-col lg:gap-8 lg:self-start"
             >
-              {/* ⚠ THE FACE IS HANDED TO `<WalletPassBlock>` AS CHILDREN AND IS RENDERED BY
-                  IT VERBATIM — unscaled, unclipped, untransformed, still at 336×500. That is
-                  not a stylistic preference: five contract suites decode and measure this
-                  exact element on this exact route (`tests/helpers/qr-surface.ts`), and this
-                  is the only surface in the product that paints it at the size every constant
-                  in `qr-geometry.ts` was derived from. The block adds a two-word eyebrow above
-                  it, in normal flow, and nothing else.
-
-                  ⚠ THE OWNER'S "SAVE TO CONTACTS" WAS HERE AND IS DELIBERATELY GONE, with the
-                  two wallet buttons and the block's explanatory prose. Client review,
-                  2026-09-20: *"this page is looking very cluttered. There is too much
-                  information in this, and there is random text in this."* Saving your own card
-                  into your own address book is not an action anybody takes — the control that
-                  matters is the recipient's, on `/c/{slug}`, and that one is the product's
-                  stated success metric and is untouched. The removal reasoning for the rest
-                  lives at the head of `wallet-pass-block.tsx`.
-
-                  ⚠ NOTHING MAY BE ADDED TO THIS SLOT. It is inside the block's horizontal
-                  scroll rail, which exists so the rigid 336px face can overhang a 296px column
-                  without scrolling the document; a control placed here is sized by the rail
-                  rather than the column and needs a sideways scroll to reach its own right
-                  edge. Anything new belongs in the block, outside that rail — and on this
-                  canvas it wears the app's chrome, never `<CardActionButton>` (see
-                  `tests/contract/card-buttons-on-canvas.test.tsx`). */}
-              <WalletPassBlock>
-                <ShareFace resolved={resolved} mode="full" />
-              </WalletPassBlock>
-            </div>
-
-            <div data-card-detail-body="" className="flex min-w-0 flex-col gap-8">
-              <div
-                data-card-meta=""
-                className="flex flex-col gap-3 border-b border-line pb-6"
-              >
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                  <CardTypeChip type={resolved.cardType} size="md" />
-                  <span data-card-meta-template="" className="text-sm text-ink-3">
-                    {resolved.template.name}
-                  </span>
-                  {/* AC-36's meter, reading T11's `canBuildVcf` — never a local count. */}
-                  <FieldCountMeter resolved={resolved} variant="meter" />
-                </div>
-
-                {/* The exact string the QR encodes (§8A.6), so the printed card and this
-                    screen can never publish two different URLs. Absent until the card is
-                    saved — stated rather than rendered as a link to nowhere. */}
-                <p data-card-meta-link="" className="text-machine text-sm break-all text-ink-3">
-                  {resolved.qrPayload == null ? (
-                    <span className="text-ink-3">{CARD_LINK_PENDING}</span>
-                  ) : (
-                    /* 44px on touch. This is the card's own public URL and the one link on
-                       this screen a reader taps to check what the QR opens; `--text-sm` gives
-                       it a 20px line box. `inline-block` is required for the padding to affect
-                       the hit area, and the negative margin keeps the meta block's rhythm. */
-                    <Link
-                      href={resolved.qrPayload}
-                      className={cn(
-                        "text-ink underline underline-offset-4",
-                        "max-md:-my-3 max-md:inline-block max-md:py-3",
-                      )}
-                    >
-                      {resolved.qrPayload}
-                    </Link>
-                  )}
-                </p>
+              {/* ⚠ THE FACE IS HANDED TO `<WalletPassBlock>` AS CHILDREN AND IS RENDERED BY IT
+                  VERBATIM — unscaled, unclipped, untransformed, still at 336×500. Five contract
+                  suites decode and measure this exact element on this exact route
+                  (`tests/helpers/qr-surface.ts`). NOTHING MAY BE ADDED TO THIS SLOT: it is the
+                  block's horizontal scroll rail, and a control inside it is sized by the rigid
+                  face rather than the column. Controls go in `<WalletActions>` below. */}
+              <div data-card-detail-face="" className="order-1 min-w-0">
+                <WalletPassBlock>
+                  <ShareFace resolved={resolved} mode="full" />
+                </WalletPassBlock>
               </div>
 
-              {vcf === null ? (
-                <div className="flex flex-col gap-3">
-                  <h2 className="text-overline uppercase text-ink-3">Fields</h2>
-                  {/* The consequence itself — "anyone who scans it will only get your name"
-                      — is stated once, by the meter above, which is the single owner of that
-                      sentence (T17). Repeating it here would put the same warning on the
-                      screen twice and make neither copy the authority. */}
-                  <p data-card-detail-empty-note="" className="text-base text-ink-3">
-                    This card maps no profile fields, so there is nothing to list here.
-                  </p>
-                  <div className="flex">
-                    <Link href={editHref} className={buttonClassName()}>
-                      Add fields
-                    </Link>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex flex-col gap-4">
-                  <h2 className="text-overline uppercase text-ink-3">Fields</h2>
-                  {/* T12's rows, rendered verbatim by T17: `context` reaches the DOM (E-23),
-                      every external destination carries `rel="noopener noreferrer"` (AC-32),
-                      and a masked row keeps no href, no raw title and no reveal control
-                      (AC-33) — all four are defeatable only at the consumer. */}
-                  <FieldList fields={rows} headingLevel={3} />
-                </div>
-              )}
+              <div className="order-4 min-w-0">
+                <WalletActions cardId={cardId} resolved={resolved} />
+              </div>
+            </div>
 
-              {/* Who has this card, and whether they opened it.
-                  It lives below the field list rather than in the share dialog because it is
-                  *status*, not an action: a dialog you have to open to find out whether anybody
-                  read your card is a dialog nobody opens. Revoke and restore are here too —
-                  both address one link, and this is the only place every link is listed. */}
+            {/* ── right on desktop: send, link, who has it, what is on it ──────────────── */}
+            <div
+              data-card-detail-body=""
+              className="contents lg:flex lg:min-w-0 lg:flex-col lg:gap-8"
+            >
+              <div className="order-2 min-w-0">
+                <SendToPhone
+                  ref={sendBlock}
+                  title="Send this card"
+                  cards={[{ id: cardId, name: resolved.cardName }]}
+                  contacts={contacts}
+                  alreadySent={(_, contactId) => holders.has(contactId)}
+                  onSent={() => {
+                    // "Sent to" catches up a moment later; the block has already shown the result.
+                    reloadShares();
+                  }}
+                  notice={
+                    vcf === null ? (
+                      /* §11 E-01's consequence, in the owner's language, before they send. */
+                      <p data-share-empty-note="" className="text-sm text-warning-ink">
+                        This card has no fields yet, so the link only shows your name.{" "}
+                        <Link
+                          href={editHref}
+                          data-share-add-fields=""
+                          className="font-medium underline underline-offset-4"
+                        >
+                          Add fields
+                        </Link>
+                      </p>
+                    ) : undefined
+                  }
+                />
+              </div>
+
+              <div className="order-3 min-w-0">
+                {/* The exact string the QR encodes (§8A.6), so the printed card and this block
+                    can never publish two different URLs. */}
+                <CardLinkBlock url={resolved.qrPayload ?? null} cardName={resolved.cardName} />
+              </div>
+
+              {/* Who has this card, and whether they opened it. Status, not an action — and
+                  the only place every link is listed, so revoke and restore live here too. */}
               <section
                 aria-labelledby="card-shares-heading"
-                className="flex flex-col gap-4 border-t border-line pt-8"
+                className="order-5 flex min-w-0 flex-col gap-4 border-t border-line pt-8"
               >
                 <h2 id="card-shares-heading" className="text-overline uppercase text-ink-3">
                   Sent to
                 </h2>
-                {/* ⚠ Above the list, and only when somebody is actually behind.
-
-                    It belongs here rather than in the header because it is a fact about *these
-                    recipients*, and this is already documented as the only place every link is
-                    listed. It renders nothing at all when everyone is caught up — a permanent
-                    zero-count banner trains the eye to skip the row it needs to notice. */}
+                {/* Only when somebody is actually behind; renders nothing otherwise. */}
                 <NotifyBanner
                   cardId={cardId}
                   shares={shares}
@@ -553,12 +487,46 @@ function CardDetailScreen({
                   onChanged={reloadShares}
                 />
 
-                <CardShares
-                  cardId={cardId}
-                  shares={shares}
-                  onChanged={reloadShares}
-                />
+                <CardShares cardId={cardId} shares={shares} onChanged={reloadShares} />
               </section>
+
+              {/* ⚠ DEMOTED, NOT DELETED. The client does not want the fields shown again on a
+                  sharing screen, so they sit behind a closed disclosure. A native `<details>`
+                  keeps the rows in the DOM — T12's guarantees (AC-32 `rel`, AC-33 masking, §6.4
+                  order) are still asserted against the rendered list — and needs no script. */}
+              <details
+                data-card-fields=""
+                className="group order-6 min-w-0 border-t border-line pt-2"
+              >
+                <summary
+                  data-card-fields-toggle=""
+                  className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-4 py-2 [&::-webkit-details-marker]:hidden"
+                >
+                  <h2 className="text-sm font-medium text-ink">What&apos;s on this card</h2>
+                  <ChevronDown
+                    aria-hidden="true"
+                    className="size-4 shrink-0 text-ink-3 transition-transform duration-[var(--dur-fast)] group-open:rotate-180"
+                  />
+                </summary>
+
+                <div className="flex flex-col gap-4 pb-2 pt-2">
+                  {vcf === null ? (
+                    <p data-card-detail-empty-note="" className="text-sm text-ink-3">
+                      No fields on this card yet.
+                    </p>
+                  ) : (
+                    /* T12's rows, rendered verbatim: `context` reaches the DOM (E-23), every
+                       external destination carries `rel="noopener noreferrer"` (AC-32), and a
+                       masked row keeps no href, no raw title and no reveal control (AC-33). */
+                    <FieldList fields={rows} headingLevel={3} />
+                  )}
+                  <div>
+                    <Link href={editHref} className={buttonClassName({ variant: "text-link" })}>
+                      {vcf === null ? "Add fields" : "Edit fields"}
+                    </Link>
+                  </div>
+                </div>
+              </details>
             </div>
           </div>
         </>

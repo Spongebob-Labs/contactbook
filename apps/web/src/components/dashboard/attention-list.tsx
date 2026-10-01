@@ -8,11 +8,10 @@ import type { Attention } from "@/lib/dashboard/metrics";
 /**
  * The four states worth acting on, worst first.
  *
- * ## Why this replaced "Recent contacts"
- * A reverse-chronological list of names answers no question. The owner added those contacts —
- * seeing them again on the dashboard tells them nothing they can do anything about, and it was
- * the largest block on the screen. Every row here has an action attached and a link to the
- * screen where the action lives, which is what earns space on a dashboard.
+ * ## What this list is for
+ * Every row has an action attached and a link to the screen where the action lives. It once
+ * replaced a "Recent contacts" list; since 2026-09-28 the three newest contacts are back, as a
+ * summary in the Contacts tile at the top of the page, and this list sits under "Sharing".
  *
  * A card in good standing produces **no row**. An empty list is the healthy state and says so.
  *
@@ -28,7 +27,7 @@ import type { Attention } from "@/lib/dashboard/metrics";
  *
  *   `│`  a rule in **the card's own colour** — which card, before any reading happens
  *   `Name  [Word]` — which card, and how bad, on one line
- *   `sentence` — what is wrong, in the copy below, unchanged
+ *   `sentence` — what to do, when the badge alone does not say (see `COPY`)
  *
  * The three sit in the same place on every row, so the eye can run down one column at a time.
  * That is the whole difference between a queue and a paragraph.
@@ -74,8 +73,11 @@ import type { Attention } from "@/lib/dashboard/metrics";
  */
 
 /**
- * The per-kind copy. **Deliberately unchanged** — the tone split is a claim about the data,
- * not a style choice.
+ * The per-kind copy. The tone split is a claim about the data, not a style choice.
+ *
+ * The second line is there only when it tells the owner something the badge does not: what to
+ * do, or how many people it concerns. "Unshared" needs no sentence restating it, so
+ * `never-shared` has none (trimmed with the rest of the dashboard's filler on 2026-09-28).
  *
  * `no-fields` and `behind` are `warning` because the owner has to *do* something: an empty card
  * shares nothing at all, and a recipient who has not been told about a change is holding a link
@@ -96,26 +98,29 @@ import type { Attention } from "@/lib/dashboard/metrics";
  * sharper now than it was under mint: a severity scale drawn from the chrome ladder would sit
  * on the chrome itself at 1.07:1 and simply not be there.
  */
-const COPY: Record<Attention["kind"], { tone: "warning" | "neutral"; label: string; say: (n: number) => string }> = {
+const COPY: Record<
+  Attention["kind"],
+  { tone: "warning" | "neutral"; label: string; say: (n: number) => string | null }
+> = {
   "no-fields": {
     tone: "warning",
     label: "Empty",
-    say: () => "Shares nothing — anyone who scans it gets only your name.",
+    say: () => "Add fields before you share it",
   },
   behind: {
     tone: "warning",
     label: "Not told",
-    say: (n) => `${n} ${n === 1 ? "recipient hasn't" : "recipients haven't"} been told it changed.`,
+    say: (n) => `Tell ${n} ${n === 1 ? "person" : "people"} it changed`,
   },
   "never-opened": {
     tone: "neutral",
     label: "Unopened",
-    say: (n) => `${n} ${n === 1 ? "person hasn't" : "people haven't"} opened their link yet.`,
+    say: (n) => `${n} ${n === 1 ? "person hasn't" : "people haven't"} opened it`,
   },
   "never-shared": {
     tone: "neutral",
     label: "Unshared",
-    say: () => "Nobody has this card yet.",
+    say: () => null,
   },
 };
 
@@ -201,6 +206,8 @@ export interface AttentionListProps {
    * keep rendering a usable list; see {@link NO_CARD_COLOUR}.
    */
   palettes?: ReadonlyMap<string, TemplatePalette>;
+  /** `3` inside the dashboard's "Sharing" section. Defaults to `2`. */
+  headingLevel?: 2 | 3;
 }
 
 /**
@@ -218,9 +225,10 @@ export interface AttentionListProps {
  */
 const MAX_ROWS = 5;
 
-export function AttentionList({ rows, palettes }: AttentionListProps) {
+export function AttentionList({ rows, palettes, headingLevel = 2 }: AttentionListProps) {
   const shown = rows.slice(0, MAX_ROWS);
   const hidden = rows.length - shown.length;
+  const Heading = headingLevel === 3 ? "h3" : "h2";
 
   return (
     <section data-dashboard-region="attention" aria-labelledby="attention-heading">
@@ -237,12 +245,12 @@ export function AttentionList({ rows, palettes }: AttentionListProps) {
           only ground either has to be measured against. The count keeps `tabular-nums` — the
           colour changed, the digit metrics did not. */}
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <h2 id="attention-heading" className="text-overline uppercase text-ink-3">
+        <Heading id="attention-heading" className="text-overline uppercase text-ink-3">
           Needs attention
-        </h2>
+        </Heading>
         {rows.length === 0 ? null : (
-          <p className="text-sm text-ink-3 tabular-nums">
-            {rows.length} {rows.length === 1 ? "thing" : "things"} to do
+          <p data-attention-count="" className="text-sm text-ink-3 tabular-nums">
+            {rows.length}
           </p>
         )}
       </div>
@@ -269,13 +277,13 @@ export function AttentionList({ rows, palettes }: AttentionListProps) {
           data-attention-clear=""
           className="mt-5 rounded-lg border border-line bg-surface-sunk px-4 py-3 text-sm text-ink-3"
         >
-          Nothing to do — every card has fields, everyone who has one has opened it, and no
-          recipient is behind on a change.
+          Nothing needs attention
         </p>
       ) : (
         <ul className="mt-5 flex flex-col">
           {shown.map((row) => {
             const copy = COPY[row.kind];
+            const said = copy.say(row.count);
             return (
               <li
                 key={`${row.kind}:${row.cardId}`}
@@ -378,7 +386,7 @@ export function AttentionList({ rows, palettes }: AttentionListProps) {
                       better than the mint step they replace (4.83 / 4.54). It is
                       chrome-coloured on purpose: the sentence explains the row, it does not rank
                       it, and severity stays with the word in the chip. */}
-                  <span className="text-sm text-ink-3">{copy.say(row.count)}</span>
+                  {said === null ? null : <span className="text-sm text-ink-3">{said}</span>}
                 </div>
               </li>
             );
@@ -395,7 +403,7 @@ export function AttentionList({ rows, palettes }: AttentionListProps) {
           data-attention-more=""
           className="mt-4 inline-block text-sm text-ink-2 underline-offset-4 hover:underline"
         >
-          {hidden} more {hidden === 1 ? "card needs" : "cards need"} attention
+          {hidden} more
         </Link>
       ) : null}
     </section>

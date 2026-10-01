@@ -110,10 +110,17 @@ export interface DesignPanelProps {
    * `null` is the removal — the same one-callback shape this row has always had.
    */
   onCover: (picked: { file: File; previewUrl: string } | null) => void;
-  headline: string;
-  onHeadline: (headline: string) => void;
-  bio: string;
-  onBio: (bio: string) => void;
+  /**
+   * The position and bio rows. **Omitted on the Profile & Cards workspace**, where they live in
+   * the Fields panel beside the rest of what the card says (client, 2026-09-30: *"position and bio
+   * should not be in the design section"*). The builder still passes them.
+   */
+  text?: {
+    headline: string;
+    onHeadline: (headline: string) => void;
+    bio: string;
+    onBio: (bio: string) => void;
+  };
 }
 
 /**
@@ -128,8 +135,8 @@ export interface DesignPanelProps {
  * and past roughly 240 characters it stops being a bio and starts pushing the first field row
  * off a phone screen.
  */
-const HEADLINE_MAX = 80;
-const BIO_MAX = 240;
+export const HEADLINE_MAX = 80;
+export const BIO_MAX = 240;
 
 export function DesignPanel({
   logoUrl,
@@ -153,10 +160,7 @@ export function DesignPanel({
   coverUrl,
   coverBusy,
   onCover,
-  headline,
-  onHeadline,
-  bio,
-  onBio,
+  text,
 }: DesignPanelProps): ReactElement {
   const textured = texture !== "none";
   const look = selectedLook(paletteId, finish, groundHex);
@@ -177,7 +181,7 @@ export function DesignPanel({
       <PanelGroup title="Identity">
         <PanelRow
           label="Logo"
-          hint="Shown on the card and on the pass. JPEG, PNG or WebP."
+          hint="JPEG, PNG or WebP."
           /* ⚠ "Added", not "Uploaded". This panel is deliberately path-agnostic — on `/cards/new`
              the file has been chosen and not sent anywhere yet — so the word has to be true in
              both paths. The thumbnail beside it is the real answer to "where does this row
@@ -198,9 +202,9 @@ export function DesignPanel({
           label="Cover"
           /* The "not saved yet" warning that stood here is gone with the limitation it described:
              `Card.coverUrl` is a real column and the crop uploads the moment it is applied. */
-          hint="The photo behind the hero. Uploaded when you apply the crop."
           value={coverUrl === null ? "None" : "Added"}
           id="cover"
+          last={text === undefined}
         >
           <CoverPicker
             coverUrl={coverUrl}
@@ -210,43 +214,46 @@ export function DesignPanel({
           />
         </PanelRow>
 
-        <PanelRow
-          label="Position"
-          hint="Printed under the name. Overrides the job title from your profile."
-          value={headline.trim() === "" ? "From profile" : headline}
-          id="headline"
-        >
-          <Input
-            label="Position"
-            hideLabel
-            id="headline"
-            data-headline-input=""
-            value={headline}
-            maxLength={HEADLINE_MAX}
-            placeholder="Founder & CEO"
-            onChange={(event) => onHeadline(event.target.value)}
-          />
-        </PanelRow>
+        {text === undefined ? null : (
+          <>
+            <PanelRow
+              label="Position"
+              hint="Replaces your job title on this card."
+              value={text.headline.trim() === "" ? "From profile" : text.headline}
+              id="headline"
+            >
+              <Input
+                label="Position"
+                hideLabel
+                id="headline"
+                data-headline-input=""
+                value={text.headline}
+                maxLength={HEADLINE_MAX}
+                placeholder="Founder & CEO"
+                onChange={(event) => text.onHeadline(event.target.value)}
+              />
+            </PanelRow>
 
-        <PanelRow
-          label="Bio"
-          hint="One or two lines under the position."
-          value={bio.trim() === "" ? "None" : `${bio.trim().length}/${BIO_MAX}`}
-          id="bio"
-          last
-        >
-          <TextArea
-            label="Bio"
-            hideLabel
-            id="bio"
-            data-bio-input=""
-            value={bio}
-            rows={3}
-            maxLength={BIO_MAX}
-            placeholder="Connecting people, ideas and opportunities to create lasting impact."
-            onChange={(event) => onBio(event.target.value)}
-          />
-        </PanelRow>
+            <PanelRow
+              label="Bio"
+              value={text.bio.trim() === "" ? "None" : `${text.bio.trim().length}/${BIO_MAX}`}
+              id="bio"
+              last
+            >
+              <TextArea
+                label="Bio"
+                hideLabel
+                id="bio"
+                data-bio-input=""
+                value={text.bio}
+                rows={3}
+                maxLength={BIO_MAX}
+                placeholder="Partnerships lead, based in Mumbai."
+                onChange={(event) => text.onBio(event.target.value)}
+              />
+            </PanelRow>
+          </>
+        )}
       </PanelGroup>
 
       {/* ⚠ **Look comes before the dials, and the dials moved behind a disclosure.**
@@ -264,7 +271,6 @@ export function DesignPanel({
       <PanelGroup title="Look">
         <PanelRow
           label="Style"
-          hint="Colour and finish, already paired."
           value={look === null ? "Custom" : look.name}
           id="look"
           last
@@ -299,7 +305,6 @@ export function DesignPanel({
       <PanelGroup title="Colour">
         <PanelRow
           label="Background"
-          hint="Every ink, button and line is derived from this."
           value={groundLabel(paletteId, groundHex)}
           id="ground"
           last
@@ -319,7 +324,6 @@ export function DesignPanel({
       <PanelGroup title="Surface">
         <PanelRow
           label="Finish"
-          hint="How the colour is laid down."
           value={FINISHES[finish].name}
           id="finish"
         >
@@ -335,7 +339,6 @@ export function DesignPanel({
 
         <PanelRow
           label="Texture"
-          hint="Pressed into the ground, never painted over it."
           value={TEXTURES[texture].name}
           id="texture"
           last={!textured}

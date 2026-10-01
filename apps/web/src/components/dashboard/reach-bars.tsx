@@ -227,17 +227,16 @@ export function ReachBars({ rows, palettes }: ReachBarsProps) {
         {REACH_CSS}
       </style>
 
-      {/* The caption states the scale rather than describing the figure, because the track makes
-          "how long is a full bar" a question a reader can now ask. It falls back to the
-          description when the peak is zero: a scale line is only true while something has been
-          opened, and the figure still has to say what it is in that state. */}
+      {/* The caption states the scale, because the track makes "how long is a full bar" a
+          question a reader can ask. With nothing opened there is no scale to state, and the
+          heading already says what the figure is, so the caption is simply absent. */}
       <figcaption className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <h3 className="text-overline uppercase text-ink-3">Cards by opens</h3>
-        <p className="text-sm tabular-nums text-ink-3">
-          {peak === 0
-            ? "How often each link has been opened"
-            : `Full bar = ${peak} ${peak === 1 ? "open" : "opens"}`}
-        </p>
+        {peak === 0 ? null : (
+          <p className="text-sm tabular-nums text-ink-3">
+            {`Full bar = ${peak} ${peak === 1 ? "open" : "opens"}`}
+          </p>
+        )}
       </figcaption>
 
       {rows.length === 0 ? (
@@ -246,7 +245,7 @@ export function ReachBars({ rows, palettes }: ReachBarsProps) {
            rather than as a region that failed to render — which is the same defect the zero-open
            stub exists to rule out, one level up. */
         <p className="rounded-md border border-line bg-surface px-4 py-6 text-center text-sm text-ink-3">
-          No cards yet. This ranking fills in once you build a card and share it.
+          No cards yet
         </p>
       ) : peak === 0 ? (
         /* ⚠ **Cards exist and none has ever been opened — which is NOT the same as no cards,
@@ -269,7 +268,7 @@ export function ReachBars({ rows, palettes }: ReachBarsProps) {
            in `totals.cards`, which this component is deliberately not given; so it says the one
            thing it can prove from its own props. */
         <p className="rounded-md border border-line bg-surface px-4 py-6 text-center text-sm text-ink-3">
-          No card has been opened yet. Share one and this ranking fills in.
+          No opens yet
         </p>
       ) : (
         <ol className="flex flex-col gap-2">

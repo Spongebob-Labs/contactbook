@@ -21,10 +21,7 @@ import { ContactsListSkeleton } from "./contacts-list-client";
 export default function ContactsLoading() {
   return (
     <div className="flex flex-col gap-8 pb-16">
-      <PageHeader
-        title="Contacts"
-        subtitle="Everyone who scanned one of your cards and saved their details back to you."
-      />
+      <PageHeader title="Contacts" />
       <ContactsListSkeleton />
     </div>
   );

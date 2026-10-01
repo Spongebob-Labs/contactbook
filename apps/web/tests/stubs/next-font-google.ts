@@ -61,8 +61,16 @@ export const Instrument_Serif = loader("instrument-serif");
 
 /*
  * `Fraunces` was here, for the display face `(marketing)/layout.tsx` used to load itself. That
- * layout now loads no typeface at all — marketing draws the app's own Space Grotesk through
- * `--font-space` — so the export is gone with its only caller. Nothing route-scopes a face
- * today; the moment something does, it needs a line here or every test that renders that
- * layout dies at import with `X is not a function`.
+ * layout loads no typeface; marketing draws the app's own faces through the root layout.
  */
+
+/**
+ * The hero phone card's four faces, loaded by `components/marketing/hero-card.tsx` itself
+ * (2026-09-29) — the reference card's own type, identified by rendering candidates against the
+ * reference and scoring them. Component-scoped, so only the route that renders the hero pays for
+ * them; any test that renders `<Hero />` imports them.
+ */
+export const Libre_Caslon_Text = loader("hero-serif");
+export const Inter = loader("hero-sans");
+export const DM_Sans = loader("hero-caps");
+export const Yellowtail = loader("hero-script");

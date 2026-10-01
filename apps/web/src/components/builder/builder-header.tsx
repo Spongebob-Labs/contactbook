@@ -5,7 +5,6 @@ import { ArrowLeft } from "lucide-react";
 import type { ReactElement } from "react";
 
 import { canBuildVcf } from "@/card/build-vcf";
-import { FieldCountMeter } from "@/components/app";
 
 import { NavDrawer } from "@/components/layout";
 import { Button } from "@/components/primitives";
@@ -15,8 +14,8 @@ import type { ResolvedCard } from "@/types/domain";
 import { EMPTY_CARD_SAVE_REASON } from "./empty-card-warning";
 
 /**
- * The builder's header — back link, the card's name as context, the field-count meter, and
- * Save. The name is *edited* one level down, in the control panel's head.
+ * The builder's header — back link, the card's name as context, the saved state, and Save.
+ * The name is *edited* one level down, in the control panel's head.
  *
  * ## Why everything that matters lives here
  *
@@ -24,7 +23,7 @@ import { EMPTY_CARD_SAVE_REASON } from "./empty-card-warning";
  * which only exists while that tab is active, so the anchor vanished the moment somebody
  * switched tabs. The rule that came out of it is structural — anything that must always be
  * reachable attaches to the header, because the header is the part of this screen that always
- * exists. The meter and Save are both here for that reason, not for balance.
+ * exists. Save is here for that reason, not for balance.
  *
  * ## Exactly one commit affordance
  *
@@ -35,8 +34,8 @@ import { EMPTY_CARD_SAVE_REASON } from "./empty-card-warning";
  * ## The Save block, and why it is `aria-disabled` rather than `disabled`
  *
  * AC-36: a card that maps nothing cannot be saved. `canBuildVcf` decides that — the single
- * definition, shared with the meter, `buildVcf`'s `EmptyCardError` and the public page's absent
- * button. A local `fieldCount === 0` here would be a second definition, and the first thing it
+ * definition, shared with the warning bar, `buildVcf`'s `EmptyCardError` and the public page's
+ * absent button. A local `fieldCount === 0` here would be a second definition, and the first thing it
  * would get wrong is a links-only card: `fieldCount` counts social links too, so a card sharing
  * three profiles and nothing else is perfectly good and a naive check would refuse it.
  *
@@ -56,12 +55,12 @@ import { EMPTY_CARD_SAVE_REASON } from "./empty-card-warning";
  */
 
 export interface BuilderHeaderProps {
-  /** The one resolved card (I-5) — the meter and the Save gate both read it. */
+  /** The one resolved card (I-5) — the Save gate reads it. */
   resolved: ResolvedCard;
   name: string;
   /** `null` for a new card: Save creates rather than updates, and the labels say so. */
   cardId: string | null;
-  /** Unsaved changes. Shown as a status beside the meter, never as the Save label. */
+  /** Unsaved changes. Shown as a status beside Save, never as the Save label. */
   dirty: boolean;
   onSave: () => void;
   /**
@@ -101,7 +100,7 @@ export function BuilderHeader({
       className={cn(
         "flex flex-wrap items-center gap-x-3 rounded-xl border border-line",
         /* ⚠ The row gap is tighter on a phone, and it is not a cosmetic tightening.
-           This toolbar WRAPS below `sm` — the title takes one line and the meter/Save block
+           This toolbar WRAPS below `sm` — the title takes one line and the status/Save block
            takes another — so `gap-y-3` plus `py-2.5` twice made it 110px tall. On a 640px
            Android that is 17% of the viewport spent on chrome, above a 243px preview, leaving
            the panel the reader is actually working in about 223px. 8px of row gap and 8px of
@@ -173,11 +172,9 @@ export function BuilderHeader({
       </h1>
 
       <div className="flex w-full flex-wrap items-center gap-x-3 gap-y-2 sm:w-auto">
-        {/* AC-36's persistent meter, reading `canBuildVcf` through `FieldCountMeter`.
-            `note={false}`: the warning bar below carries that sentence verbatim, and printing
-            it twice on one screen makes neither copy the authority. */}
-        <FieldCountMeter resolved={resolved} variant="meter" note={false} />
-
+        {/* ⚠ The "Field count N" meter is gone (client, 2026-09-28: the count was confusing).
+            AC-36 is still held on this screen by the gated Save below and the E-01 warning bar
+            under the header, both reading `canBuildVcf`. */}
         {/* Saved-ness is a state, so it is stated as one. It used to be the Save button's
             label — which put the word "Saved" on a card that had never been saved and, on the
             zero-field card, could not be. A button's label is the action it performs. */}

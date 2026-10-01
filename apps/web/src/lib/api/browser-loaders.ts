@@ -122,96 +122,113 @@ export function fetchCardDetail(cardId: string) {
       throw thrown;
     }
 
-    let registry: Contact[] = [];
-    try {
-      const list = await contacts.list();
-      registry = list.map((c) => toContact(c, user.id));
-    } catch {
-      registry = [];
-    }
-
-    /**
-     * Who can be notified, and how far behind each is.
-     *
-     * ⚠ **`audience` is authoritative, not an enrichment.** This used to build the rows from
-     * `GET /share-links` and merely look versions up here — which silently dropped any recipient
-     * the audience knew about but that list did not return, and a dropped recipient is one the
-     * owner cannot notify at all. The two endpoints are now unioned by `shareLinkId`, so a
-     * disagreement adds a row rather than losing one.
-     *
-     * A failure degrades to "no notification data": the card must still render its recipients.
-     */
-    let currentVersion = 0;
-    let audienceByLinkId = new Map<string, AudienceRecipientDto>();
-    try {
-      const audience = await cards.audience(cardId);
-      currentVersion = audience.currentVersion;
-      audienceByLinkId = new Map(audience.recipients.map((r) => [r.shareLinkId, r]));
-    } catch {
-      audienceByLinkId = new Map();
-    }
-
-    let shares: CardShareRow[] = [];
-    try {
-      const byId = new Map(registry.map((c) => [c.id, c]));
-      /**
-       * The registry's name for a contact, else whatever the API called them, else the number —
-       * formatted, the same rule the share dialog's picker uses. The raw E.164 fallback put
-       * "+447979080009" in the recipients list directly under a picker showing
-       * "+44 7979 080009" for the same person.
-       */
-      const labelFor = (contactId: string, displayName: string | null, phone: string): string => {
-        const name = (byId.get(contactId)?.displayName ?? displayName)?.trim() ?? "";
-        return name.length > 0 ? name : formatPhoneDisplay(phone);
-      };
-
-      const rows = (await shareLinks.list())
-        .filter((link) => link.cardId === cardId)
-        .map((link) => {
-          /* Absent for a revoked link — `audience` lists ACTIVE only. `null` rather than 0, so
-             the picker can tell "caught up" from "cannot be notified at all". */
-          const seen = audienceByLinkId.get(link.id);
-          return {
-            ...toContactShare(link),
-            contactId: link.contactId,
-            contactLabel: labelFor(link.contactId, link.contactDisplayName, link.contactPhoneE164),
-            versionsBehind: seen?.versionsBehind ?? null,
-            lastNotifiedVersion: seen?.lastNotifiedVersion ?? null,
-          } satisfies CardShareRow;
-        });
-
-      /* Anyone the audience lists that the share-link list did not return. Normally none — but
-         "normally none" is exactly the assumption that hid a missing recipient, so it is
-         reconciled rather than trusted. These rows carry no `url`/`createdAt` of their own, so
-         they are built from what the audience itself provides. */
-      const known = new Set(rows.map((r) => r.shareLinkId));
-      const orphans: CardShareRow[] = [...audienceByLinkId.values()]
-        .filter((r) => !known.has(r.shareLinkId))
-        .map((r) => ({
-          shareLinkId: r.shareLinkId,
-          cardId,
-          cardName: dto.name,
-          url: "",
-          status: "ACTIVE" as const,
-          viewCount: r.viewCount,
-          firstViewedAt: null,
-          lastViewedAt: r.lastViewedAt,
-          createdAt: new Date(0).toISOString(),
-          contactId: r.contactId,
-          contactLabel: labelFor(r.contactId, r.contactDisplayName, r.contactPhoneE164),
-          versionsBehind: r.versionsBehind,
-          lastNotifiedVersion: r.lastNotifiedVersion,
-        }));
-
-      shares = [...rows, ...orphans]
-        .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-    } catch {
-      shares = [];
-    }
-
+    const sharing = await fetchCardSharing(cardId, dto.name, user.id);
     const card: ContactCard = toContactCard(dto, user.id);
-    return { user, groups, fields, card, shares, contacts: registry, currentVersion };
+    return { user, groups, fields, card, ...sharing };
   };
+}
+
+/**
+ * Who a card was sent to and the registry to send it to next — the Share half of
+ * `fetchCardDetail`, without the profile and card reads a screen that already holds them would
+ * repeat. The Profile & Cards workspace's Share tab reads this for the selected card.
+ *
+ * Every part degrades rather than throws: a card must still be shareable when the recipients
+ * list cannot be read.
+ */
+export async function fetchCardSharing(
+  cardId: string,
+  cardName: string,
+  userId: string,
+): Promise<{ shares: CardShareRow[]; contacts: Contact[]; currentVersion: number }> {
+  let registry: Contact[] = [];
+  try {
+    const list = await contacts.list();
+    registry = list.map((c) => toContact(c, userId));
+  } catch {
+    registry = [];
+  }
+
+  /**
+   * Who can be notified, and how far behind each is.
+   *
+   * ⚠ **`audience` is authoritative, not an enrichment.** This used to build the rows from
+   * `GET /share-links` and merely look versions up here — which silently dropped any recipient
+   * the audience knew about but that list did not return, and a dropped recipient is one the
+   * owner cannot notify at all. The two endpoints are now unioned by `shareLinkId`, so a
+   * disagreement adds a row rather than losing one.
+   *
+   * A failure degrades to "no notification data": the card must still render its recipients.
+   */
+  let currentVersion = 0;
+  let audienceByLinkId = new Map<string, AudienceRecipientDto>();
+  try {
+    const audience = await cards.audience(cardId);
+    currentVersion = audience.currentVersion;
+    audienceByLinkId = new Map(audience.recipients.map((r) => [r.shareLinkId, r]));
+  } catch {
+    audienceByLinkId = new Map();
+  }
+
+  let shares: CardShareRow[] = [];
+  try {
+    const byId = new Map(registry.map((c) => [c.id, c]));
+    /**
+     * The registry's name for a contact, else whatever the API called them, else the number —
+     * formatted, the same rule the share dialog's picker uses. The raw E.164 fallback put
+     * "+447979080009" in the recipients list directly under a picker showing
+     * "+44 7979 080009" for the same person.
+     */
+    const labelFor = (contactId: string, displayName: string | null, phone: string): string => {
+      const name = (byId.get(contactId)?.displayName ?? displayName)?.trim() ?? "";
+      return name.length > 0 ? name : formatPhoneDisplay(phone);
+    };
+
+    const rows = (await shareLinks.list())
+      .filter((link) => link.cardId === cardId)
+      .map((link) => {
+        /* Absent for a revoked link — `audience` lists ACTIVE only. `null` rather than 0, so
+           the picker can tell "caught up" from "cannot be notified at all". */
+        const seen = audienceByLinkId.get(link.id);
+        return {
+          ...toContactShare(link),
+          contactId: link.contactId,
+          contactLabel: labelFor(link.contactId, link.contactDisplayName, link.contactPhoneE164),
+          versionsBehind: seen?.versionsBehind ?? null,
+          lastNotifiedVersion: seen?.lastNotifiedVersion ?? null,
+        } satisfies CardShareRow;
+      });
+
+    /* Anyone the audience lists that the share-link list did not return. Normally none — but
+       "normally none" is exactly the assumption that hid a missing recipient, so it is
+       reconciled rather than trusted. These rows carry no `url`/`createdAt` of their own, so
+       they are built from what the audience itself provides. */
+    const known = new Set(rows.map((r) => r.shareLinkId));
+    const orphans: CardShareRow[] = [...audienceByLinkId.values()]
+      .filter((r) => !known.has(r.shareLinkId))
+      .map((r) => ({
+        shareLinkId: r.shareLinkId,
+        cardId,
+        cardName,
+        url: "",
+        status: "ACTIVE" as const,
+        viewCount: r.viewCount,
+        firstViewedAt: null,
+        lastViewedAt: r.lastViewedAt,
+        createdAt: new Date(0).toISOString(),
+        contactId: r.contactId,
+        contactLabel: labelFor(r.contactId, r.contactDisplayName, r.contactPhoneE164),
+        versionsBehind: r.versionsBehind,
+        lastNotifiedVersion: r.lastNotifiedVersion,
+      }));
+
+    shares = [...rows, ...orphans]
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  } catch {
+    shares = [];
+  }
+
+  return { shares, contacts: registry, currentVersion };
 }
 
 /** `POST /auth/me`. Named so the four loaders that need the user id read the same way. */

@@ -285,12 +285,7 @@ export function FieldPicker({
 
         {empty ? (
           <div data-field-picker-empty="" className="flex flex-col items-start gap-2 px-4 py-6">
-            <p className="text-sm text-ink">Your profile has no fields yet.</p>
-            <p data-prose className="text-xs text-ink-3">
-              A card shares fields from your profile.{" "}
-              <span className="text-ink">New field</span> makes one and ticks it onto this card at
-              the same time.
-            </p>
+            <p className="text-sm text-ink">No fields yet.</p>
           </div>
         ) : (
           <div data-field-list="" className="flex flex-col">
@@ -344,7 +339,7 @@ export function FieldPicker({
           the object it is about, which is where a footnote belongs. */}
       {empty ? null : (
         <p data-field-picker-note="" data-prose className="px-1 text-xs text-ink-3">
-          Values come from your profile — editing one changes it on every card that uses it.
+          Editing a value changes it on every card that uses it.
         </p>
       )}
     </div>
@@ -355,7 +350,7 @@ export function FieldPicker({
 
 function valueNote(row: BuilderFieldRow, value: string): string | null {
   if (value.trim() === "") {
-    return "Blank fields are not shared, so this one is off the card until you fill it in.";
+    return "Empty fields don't show on the card.";
   }
   if (row.field.type === "EMAIL" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())) {
     return "That does not look like an email address.";

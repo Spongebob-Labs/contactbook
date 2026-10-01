@@ -2,19 +2,23 @@ import type { CSSProperties } from "react";
 
 import Link from "next/link";
 
+import { TriangleAlert } from "lucide-react";
+
+import { canBuildVcf } from "@/card/build-vcf";
 import { CardPageThumb } from "@/card/card-page-thumb";
 import { FACE_WIDTH } from "@/card/share-face";
 import { paletteVars } from "@/card/template-palettes";
 import { CardTypeChip } from "@/components/app/card-type-chip";
-import { FieldCountMeter } from "@/components/app/field-count-meter";
+import { EMPTY_CARD_NOTE } from "@/components/app/field-count-meter";
+import { Badge } from "@/components/primitives/badge";
 import { cn } from "@/lib/cn";
 import type { ResolvedCard } from "@/types/domain";
 
 import "@/styles/card-tile.css";
 
 /**
- * `CardThumbTile` — a card as it appears in a list: the live miniature plus the four facts
- * a reader needs to tell one card from another (spec §8D.3 — `/cards` and `/dashboard`).
+ * `CardThumbTile` — a card as it appears in a list: the live miniature, its name and its type
+ * (spec §8D.3 — `/cards` and `/dashboard`), plus a warning on a card that shares nothing.
  *
  * The preview is a real `<CardPageThumb>` — live component output rather than a picture of one
  * (§8C.2), so it cannot drift from the card it previews. Whatever the card draws, the tile
@@ -159,13 +163,23 @@ export function CardThumbTile({
 
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <CardTypeChip type={resolved.cardType} />
-          <span data-card-tile-template="" className="text-xs text-ink-3">
-            {resolved.template.name}
-          </span>
-          {/* AC-36: the zero-field card wears its warning here, in the list, before anyone
-              hands it out. `card_empty_demo` is the newest card by `updatedAt`, so a
-              recency-sorted list puts it first — exactly where the old build hid it. */}
-          <FieldCountMeter resolved={resolved} />
+          {/* ⚠ No template name and no field count (client, 2026-09-28: the "Meridian · 5
+              fields" caption was confusing). What survives is AC-36's warning, and only on the
+              card that needs it: a card sharing nothing says so here, before anyone hands it
+              out. `canBuildVcf` decides, never a local count. */}
+          {canBuildVcf(resolved) ? null : (
+            <Badge
+              data-field-count-meter="badge"
+              data-field-count={resolved.fieldCount}
+              data-field-count-state="empty"
+              tone="warning"
+              icon={<TriangleAlert aria-hidden="true" className="size-4" />}
+              title={EMPTY_CARD_NOTE}
+            >
+              No fields yet
+              <span className="sr-only"> — {EMPTY_CARD_NOTE}</span>
+            </Badge>
+          )}
         </div>
       </div>
     </article>

@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
-import { hero, MARKETING_SECTION_IDS } from "@/fixtures/marketing";
+import { close, hero, heroPhone, MARKETING_SECTION_IDS } from "@/fixtures/marketing";
 
 import { gotoReady } from "../helpers/e2e";
 
@@ -343,18 +343,26 @@ test.describe("the hero", () => {
    * that dropped the zoom entirely would fail this back up at 336; one that changed the case's
    * thickness without re-deriving the factor would fail it too, which is the point.
    */
-  test("the hero's card holds a fixed, zoomed 269px width regardless of its fluid contents", async ({
+  /* ⚠ 2026-09-29: 336 → 330. The card is now the client's reference card, laid out once at its
+     330px design width (the reference's 326px screen ×1.012), and the zoom steps by viewport in
+     `hero.tsx`'s card column. The claim is unchanged — the card is laid out at exactly its
+     design width and rendered at another size only by `zoom` — and a regression that dropped the
+     zoom, or let the card size itself off its contents, still fails it. */
+  test("the hero's card holds a fixed 330px layout width, rendered only through the frame's zoom", async ({
     page,
   }) => {
     await gotoMarketing(page);
     const card = page.locator('[data-section="hero"] [data-hero-card]');
     await expect(card).toHaveCount(1);
-    const width = await card.evaluate((n) => Math.round(n.getBoundingClientRect().width));
+    const { width, zoom } = await card.evaluate((n) => ({
+      width: n.getBoundingClientRect().width,
+      zoom: Number.parseFloat(getComputedStyle(n.closest(".mk-phone-frame")!).zoom),
+    }));
+    expect(zoom, "the frame lost its zoom").toBeLessThan(1);
     expect(
-      width,
-      "the card drifted off its 336px (zoomed to 269px) budget — see hero-card.tsx's and " +
-        "phone-frame.tsx's own headers",
-    ).toBe(269);
+      Math.round(width),
+      "the card drifted off its 330px design width — see hero-card.tsx's header",
+    ).toBe(Math.round(330 * zoom));
   });
 
   /**
@@ -430,7 +438,10 @@ test.describe("the hero", () => {
            than this one — it measures against the ground the ink is actually drawn on, where
            this test's ladder is the set of colours legal ON WHITE. Adding #0A3325 to the ladder
            below would be the wrong repair: it would make a card colour legal as page copy. */
-        .filter((n) => !n.closest("[data-hero-card]"))
+        /* ⚠ 2026-09-29: THE WHOLE DEVICE, NOT ONLY THE CARD. The phone's status bar ("9:41")
+           sits outside `[data-hero-card]` and is drawn in the reference's own pure black —
+           hardware chrome in a picture of a phone, `aria-hidden`, not page copy on white. */
+        .filter((n) => !n.closest("[data-hero-card], [data-hero-phone-frame]"))
         .map((n) => ({
           text: (n.textContent ?? "").trim().slice(0, 28),
           color: getComputedStyle(n).color,
@@ -553,7 +564,7 @@ test.describe("the hero", () => {
     /* The brief's own control, now that `/waitlist` exists. It read `/signup/first-name` while
        that page did not — a hero button pointing at a 404 is a defect, not a design decision,
        so the label and target changed in the same step that built the route. */
-    await expect(cta).toHaveAttribute("href", "/waitlist");
+    await expect(cta).toHaveAttribute("href", hero.primary.href);
 
     const [deep, white] = await Promise.all([
       resolveSkinColor(page, "--mk-accent-deep"),
@@ -777,12 +788,12 @@ test.describe("the hero", () => {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await gotoMarketing(page);
 
-    /* Non-vacuity: the real card page rendered, complete, exactly as it does with no motion
-       preference set — inert preview, not a control, so there is nothing else to hold. */
+    /* Non-vacuity: the card rendered, complete, exactly as it does with no motion preference
+       set — an inert picture, not a control, so there is nothing else to hold. */
     const card = page.locator('[data-section="hero"] [data-hero-card]');
     await expect(card).toHaveCount(1);
     expect(await card.evaluate((n) => (n as HTMLElement).inert)).toBe(true);
-    await expect(card.locator("[data-card-root]")).toHaveCount(1);
+    await expect(card).toContainText(heroPhone.name);
 
     /**
      * ⚠ **THE HEADLINE MUST CARRY NO CLIP AT ALL UNDER REDUCED MOTION.**
@@ -807,6 +818,26 @@ test.describe("the hero", () => {
       expect(c.anim, "the wipe ran under reduced motion").toBe("none");
       expect(c.clip, "reduced motion left the headline clipped").toBe("none");
     }
+  });
+
+  /**
+   * ⚠ REPLACED 2026-09-29 — THE CARD HOLDS STILL.
+   *
+   * From 2026-09-28 the hero card cycled through Maya Lauren's four cities on a timer, tinting
+   * and tagging each changed line "Updated", with a pause control. The client called that
+   * highlighting unrequested and asked for their reference card, which is a still picture. So
+   * the property is now the opposite one, measured over longer than the old loop's first beat:
+   * nothing on the card changes by itself, nothing is tagged, and there is no control to pause.
+   */
+  test("the hero card holds still — no cycling, no tags, no pause control", async ({ page }) => {
+    await gotoMarketing(page);
+    const card = page.locator("[data-section='hero'] [data-hero-card]");
+    await expect(card).toHaveCount(1);
+    const before = await card.innerHTML();
+    await page.waitForTimeout(4500);
+    expect(await card.innerHTML(), "the card changed by itself").toBe(before);
+    await expect(card).not.toContainText("Updated");
+    await expect(page.locator("[data-section='hero'] [data-hero-toggle]")).toHaveCount(0);
   });
 });
 
@@ -891,7 +922,42 @@ test.describe("content", () => {
     await gotoMarketing(page);
     const links = section(page, "start").getByRole("link");
     await expect(links).toHaveCount(1);
-    await expect(links).toHaveAttribute("href", "/waitlist");
+    await expect(links).toHaveAttribute("href", close.cta.href);
+    /* 2026-09-28: the inline waitlist form went with the waitlist copy. */
+    await expect(section(page, "start").locator("form")).toHaveCount(0);
+  });
+
+  /* 2026-09-29: the hero card and every card below it are one person. Until today the hero was
+     the client's Maya Laurent and the sections under it another woman from the identity file. */
+  test("every card on the page belongs to the hero card's person", async ({ page }) => {
+    await gotoMarketing(page);
+    await expect(section(page, "hero").locator("[data-hero-card]")).toContainText(heroPhone.name);
+    const names = await page.locator("main [data-card-name]").allTextContents();
+    expect(names.length, "no product card rendered below the hero").toBeGreaterThanOrEqual(4);
+    for (const name of names) expect(name.trim()).toBe(heroPhone.name);
+    for (const brand of await page.locator("main [data-card-brand]").allTextContents()) {
+      expect(brand.trim()).toBe(heroPhone.company);
+    }
+  });
+
+  /**
+   * The client, 2026-09-28: *"Still showing old version: 'join the waitlist' copy and 'for
+   * companies' tag need removing."* Both routes still exist; nothing on the homepage or its
+   * chrome may point at them or say either phrase. Swept over the whole rendered page — nav,
+   * every section, footer — by href as well as by text, so a relabelled link still fails.
+   */
+  test("links to neither the waitlist nor the companies page, and says neither phrase", async ({
+    page,
+  }) => {
+    await gotoMarketing(page);
+    const hrefs = await page.evaluate(() =>
+      [...document.querySelectorAll("a[href]")].map((a) => a.getAttribute("href") ?? ""),
+    );
+    expect(hrefs.filter((h) => /^\/(waitlist|corporate)\b/.test(h))).toEqual([]);
+    const text = (await page.locator("body").innerText()).toLowerCase();
+    for (const phrase of ["join the waitlist", "for companies"]) {
+      expect(text, `the page still says "${phrase}"`).not.toContain(phrase);
+    }
   });
 });
 
@@ -980,7 +1046,7 @@ test.describe("craft", () => {
    * tree AND the tab order, which is the correct outcome for a card nobody can act on, and
    * `hero-card.tsx` gives a screen reader a plain `<figcaption>` in its place instead.
    */
-  test("the hero carries exactly one object — the product's own card page, at rest", async ({
+  test("the hero carries exactly one object — the reference card, at rest", async ({
     page,
   }) => {
     await gotoMarketing(page);
@@ -997,8 +1063,10 @@ test.describe("craft", () => {
       "the card preview is not inert",
     ).toBe(true);
 
-    /* The real component, never a hand-built stand-in. */
-    await expect(card.locator("[data-card-root]")).toHaveCount(1);
+    /* ⚠ 2026-09-29: NO LONGER THE PRODUCT'S `<CardPage>`. The client asked for their reference
+       card exactly, which no general-purpose card layout can be; it is a bespoke still drawing
+       now (`hero-card.tsx`), and the one-object guard below is what still holds. */
+    await expect(card.locator("[data-card-root]")).toHaveCount(0);
 
     /* No QR here any more — see this test's own docstring for where that guarantee lives now. */
     await expect(card.locator("[data-qr-zone]")).toHaveCount(0);
@@ -1020,48 +1088,19 @@ test.describe("craft", () => {
       "the caption has no accessible description",
     ).toBeGreaterThan(0);
 
-    /* ⚠ WAS `toHaveCount(0)`, THEN `toHaveCount(1)` WITH "every image is a vector" — 2026-09-21,
-       THE COVER PHOTO LANDS, AND THIS IS THE DELIBERATE WIDENING BOTH EARLIER VERSIONS OF THIS
-       COMMENT SAID WOULD BE NEEDED RATHER THAN A SURPRISE.
-
-       `HERO_COVER_URL` (`fixtures/marketing.ts`) is no longer `null` — the client's own
-       photograph is live at `/marketing/hero-cover.jpg` — so the hero now makes exactly two
-       image requests: the badge's SVG mark (unchanged) and the card's cover photograph. The
-       zero, and then the "vector only", were never the property actually worth protecting; the
-       property is, and always was, that the hero does not quietly acquire UNBUDGETED,
-       UNPRIORITISED photographic weight. A hero-sized JPEG is exactly that risk on its own — so
-       what is asserted now is not "no raster" but "the raster the hero DOES load is the one
-       expected asset, at the one expected path, and the page has actually told the browser to
-       fetch it eagerly and first" — a real, checkable substitute for "small", since this suite
-       cannot measure bytes over the wire. `hero.tsx` cannot set `fetchPriority` on the `<img>`
-       itself (`@/card/card-page` owns that tag and does not accept the prop through it), so the
-       hint takes the other legitimate path: `react-dom`'s `preload()`, called during the
-       server component's own render, which is what the `<link>` assertion below is reading. */
-    const images = hero.locator("img");
-    await expect(images).toHaveCount(2);
-
-    const sources = await images.evaluateAll((nodes) =>
-      nodes.map((n) => (n as HTMLImageElement).getAttribute("src") ?? ""),
-    );
-    const vectors = sources.filter((src) => src.endsWith(".svg") || src.startsWith("data:image/svg"));
-    const rasters = sources.filter((src) => !vectors.includes(src));
-    expect(vectors, `expected exactly one vector (the badge mark); saw ${sources.join(", ")}`).toHaveLength(1);
+    /* ⚠ 2026-09-29: ONE RASTER, AND IT CARRIES ITS OWN PRIORITY. The badge is inline SVG now,
+       so the hero loads exactly one image — the client's reference portrait, at 2×/3× — and
+       the `<img>` asks for it first itself (`fetchpriority="high"`), which replaces the
+       `preload()` `hero.tsx` used while `<CardCover>` owned the tag. The property is the same
+       one this block has always guarded: no unbudgeted, unprioritised photographic weight. */
+    const images = card.locator("img");
+    await expect(images).toHaveCount(1);
+    await expect(images).toHaveAttribute("src", heroPhone.portrait.x2);
+    await expect(images).toHaveAttribute("fetchpriority", "high");
     expect(
-      rasters,
-      `expected exactly one raster (the cover photo) at /marketing/hero-cover.jpg; saw ${sources.join(", ")}`,
-    ).toEqual(["/marketing/hero-cover.jpg"]);
-
-    /* The LCP hint this file's own header explains the need for — a `<link rel=preload
-       as=image fetchpriority=high>` in `<head>`, pointed at the same raster just asserted
-       above, so the browser starts fetching it before it has parsed far enough to discover the
-       `<img>` tag `<CardCover>` renders it into. Scoped to the cover's own `href` rather than
-       "the one `as=image` preload in `<head>`": the badge's logo mark also resolves one (a fact
-       of `src/card/**`, not this file's to assert on either way), so a bare
-       `link[rel=preload][as=image]` locator resolves to two and this test would rather name the
-       one it actually means than be first to notice that in a strict-mode error. */
-    const coverPreload = page.locator('head link[rel="preload"][as="image"][href="/marketing/hero-cover.jpg"]');
-    await expect(coverPreload).toHaveCount(1);
-    await expect(coverPreload).toHaveAttribute("fetchpriority", "high");
+      await images.evaluate((n) => (n as HTMLImageElement).complete && (n as HTMLImageElement).naturalWidth > 0),
+      "the portrait did not load",
+    ).toBe(true);
   });
 
   /**
