@@ -111,6 +111,7 @@ enum FieldCategory {
   BUSINESS
   SOCIAL
   FINANCIAL
+  FAMILY
   CUSTOM
 }
 
@@ -137,6 +138,7 @@ enum FieldType {
   BANK_ACCOUNT
   DIGITAL_WALLET
   CRYPTO_WALLET
+  COMPANY_LOGO
   CUSTOM
 }
 
@@ -149,6 +151,7 @@ enum FieldGroupCategory {
   BUSINESS
   SOCIAL
   FINANCIAL
+  FAMILY
 }
 
 /// One instance of a repeatable structured thing: one specific job, one
