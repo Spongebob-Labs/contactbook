@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AppLogger } from '../common/logging/app-logger.service';
 import { maskPhone } from '../common/logging/redact';
+import { BotService } from './bot.service';
 import type { InboundMessageResponseDto } from './dto/inbound-message-response.dto';
 import type { ListInboundMessagesQueryDto } from './dto/list-inbound-messages-query.dto';
 
@@ -29,6 +30,7 @@ export class WebhooksService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly logger: AppLogger,
+    private readonly bot: BotService,
   ) {}
 
   /**
@@ -86,10 +88,22 @@ export class WebhooksService {
         this.logger.info('webhooks.inbound_duplicate_ignored', {
           providerMessageId,
         });
-        return;
+      } else {
+        throw err;
       }
-      throw err;
     }
+
+    // Fire bot reply after recording (or on duplicate — the bot must respond
+    // to every real message, not just the first one from a given sender).
+    // Async fire-and-forget: a bot failure must never cause Twilio to retry.
+    void this.bot
+      .handleInbound(fromPhoneE164, params.Body ?? null)
+      .catch((err: unknown) => {
+        this.logger.error('bot.unhandled_error', {
+          fromPhone: maskPhone(fromPhoneE164),
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
   }
 
   async list(
