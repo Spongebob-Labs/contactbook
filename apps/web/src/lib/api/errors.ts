@@ -472,7 +472,29 @@ const COPY: Readonly<Record<ApiErrorCode, Copy>> = {
  */
 export function toScreenError(error: unknown): FixtureError {
   const code: ApiErrorCode = isApiError(error) ? error.code : "UNKNOWN";
+  if (code === "NETWORK" && !browserSaysOffline()) return { ...UNREACHABLE };
   return { ...COPY[code] };
+}
+
+/**
+ * ⚠ **`NETWORK` means `fetch` threw — not that the device is offline.**
+ *
+ * A request the browser blocks (a cross-origin call with no `Access-Control-Allow-Origin`), a
+ * DNS failure or a server that drops the connection all throw the same `TypeError` as a dead
+ * Wi-Fi link. Telling a user with a working connection "You're offline" sent them to check their
+ * network over what was a direct call to the API being blocked by CORS — the bug that shipped
+ * with the `/contacts` bypass. So "offline" is claimed only when the browser itself says so.
+ */
+const UNREACHABLE: Copy = {
+  kind: "network",
+  title: "We couldn't reach ContactBook",
+  detail: "Your connection looks fine, but our server didn't answer. Try again in a moment.",
+  retryable: true,
+};
+
+/** `false` on the server, where there is no `navigator.onLine` to consult. */
+function browserSaysOffline(): boolean {
+  return typeof navigator !== "undefined" && navigator.onLine === false;
 }
 
 /** The support reference, when there is one. Rendered small and secondary, never as a headline. */

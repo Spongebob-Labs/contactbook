@@ -77,6 +77,12 @@ export class ProfileService {
         'PHOTO fields cannot be created directly — use POST /profile/photo.',
       );
     }
+    if (dto.type === FieldType.COMPANY_LOGO) {
+      throw ApiError.conflict(
+        'COMPANY_LOGO_VIA_UPLOAD_ONLY',
+        'COMPANY_LOGO fields cannot be created directly — use POST /profile/company-logo.',
+      );
+    }
 
     if (dto.groupId) {
       await this.assertGroupOwnership(userId, dto.groupId);
@@ -127,10 +133,14 @@ export class ProfileService {
         'No such profile field.',
       );
 
-    if (existing.type === FieldType.PHOTO && dto.value !== undefined) {
+    if (
+      (existing.type === FieldType.PHOTO ||
+        existing.type === FieldType.COMPANY_LOGO) &&
+      dto.value !== undefined
+    ) {
       throw ApiError.conflict(
         'PHOTO_VIA_UPLOAD_ONLY',
-        "A photo field's value can only be changed via POST /profile/photo.",
+        "This field's value can only be changed via its dedicated upload endpoint.",
       );
     }
 
@@ -177,7 +187,10 @@ export class ProfileService {
       data: { archivedAt: new Date() },
     });
 
-    if (existing.type === FieldType.PHOTO) {
+    if (
+      existing.type === FieldType.PHOTO ||
+      existing.type === FieldType.COMPANY_LOGO
+    ) {
       await this.photoStorage.deleteByUrl(existing.value);
     }
 
@@ -264,6 +277,61 @@ export class ProfileService {
     });
     if (!existing)
       throw ApiError.notFound('PHOTO_NOT_FOUND', 'No profile photo to remove.');
+    await this.archive(userId, existing.id);
+  }
+
+  /** Upsert-by-type: a user has at most one active COMPANY_LOGO field. Replacing
+   *  an existing logo deletes the old GCS object once the new one is stored. */
+  async upsertCompanyLogo(
+    userId: string,
+    file: { buffer: Buffer; mimetype: string; size: number },
+  ): Promise<{ id: string; url: string }> {
+    const url = await this.photoStorage.upload(userId, file);
+
+    const existing = await this.prisma.profileField.findFirst({
+      where: { userId, type: FieldType.COMPANY_LOGO, archivedAt: null },
+    });
+
+    if (existing) {
+      const oldUrl = existing.value;
+      const row = await this.prisma.profileField.update({
+        where: { id: existing.id },
+        data: { value: url },
+      });
+      await this.photoStorage.deleteByUrl(oldUrl);
+      this.logger.info('profile.company_logo_replaced', {
+        userId,
+        fieldId: row.id,
+      });
+      return { id: row.id, url: row.value };
+    }
+
+    const row = await this.prisma.profileField.create({
+      data: {
+        userId,
+        category: 'WORK',
+        type: FieldType.COMPANY_LOGO,
+        label: 'Company logo',
+        value: url,
+        position: await this.nextPosition(userId),
+      },
+    });
+    this.logger.info('profile.company_logo_uploaded', {
+      userId,
+      fieldId: row.id,
+    });
+    return { id: row.id, url: row.value };
+  }
+
+  async removeCompanyLogo(userId: string): Promise<void> {
+    const existing = await this.prisma.profileField.findFirst({
+      where: { userId, type: FieldType.COMPANY_LOGO, archivedAt: null },
+    });
+    if (!existing)
+      throw ApiError.notFound(
+        'COMPANY_LOGO_NOT_FOUND',
+        'No company logo to remove.',
+      );
     await this.archive(userId, existing.id);
   }
 

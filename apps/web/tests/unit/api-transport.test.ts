@@ -193,6 +193,22 @@ describe("error copy", () => {
     ).toBe(false);
   });
 
+  it("⚠ says 'offline' only when the browser is offline — a blocked request is not a dead link", () => {
+    const network = new ApiError({ status: 0, code: "NETWORK", rawMessage: "Failed to fetch" });
+    const onLine = vi.spyOn(navigator, "onLine", "get");
+    try {
+      // Online, and fetch still threw: CORS, DNS, a dropped connection. Not the user's Wi-Fi.
+      onLine.mockReturnValue(true);
+      expect(toScreenError(network).title).toBe("We couldn't reach ContactBook");
+      expect(JSON.stringify(toScreenError(network))).not.toMatch(/offline|your connection and/i);
+
+      onLine.mockReturnValue(false);
+      expect(toScreenError(network).title).toBe("You're offline");
+    } finally {
+      onLine.mockRestore();
+    }
+  });
+
   it("falls back to the generic panel for a non-ApiError throw", () => {
     expect(toScreenError(new Error("bug in our own mapper")).title).toBe("Something went wrong");
     expect(toScreenError("a thrown string").kind).toBe("unknown");

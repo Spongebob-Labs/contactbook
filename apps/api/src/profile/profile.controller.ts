@@ -328,4 +328,58 @@ export class ProfileController {
   async removePhoto(@Req() req: Request): Promise<void> {
     await this.profile.removePhoto(req.user!.id);
   }
+
+  // ---------------------------------------------------------- company logo
+
+  @Post('company-logo')
+  @ApiOperation({
+    summary: 'Upload or replace your profile-level company logo',
+    description: `JPEG, PNG, or WebP, up to ${MAX_PHOTO_BYTES / (1024 * 1024)} MB. Stored as a WORK-category field so it carries over to any card that includes your work fields. Replacing an existing logo deletes the old one from storage.`,
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['file'],
+      properties: { file: { type: 'string', format: 'binary' } },
+    },
+  })
+  @ApiResponse({ status: 200, type: PhotoResponseDto })
+  @ApiResponse({
+    status: 409,
+    type: ApiErrorResponseDto,
+    description: 'PHOTO_STORAGE_NOT_CONFIGURED',
+  })
+  @ApiResponse({
+    status: 413,
+    type: ApiErrorResponseDto,
+    description: 'PHOTO_TOO_LARGE',
+  })
+  @ApiResponse({
+    status: 415,
+    type: ApiErrorResponseDto,
+    description: 'PHOTO_TYPE_UNSUPPORTED',
+  })
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: MAX_PHOTO_BYTES } }),
+  )
+  async uploadCompanyLogo(
+    @Req() req: Request,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.profile.upsertCompanyLogo(req.user!.id, file);
+  }
+
+  @Delete('company-logo')
+  @ApiOperation({ summary: 'Remove your profile-level company logo' })
+  @HttpCode(204)
+  @ApiResponse({ status: 204, description: 'Removed.' })
+  @ApiResponse({
+    status: 404,
+    type: ApiErrorResponseDto,
+    description: 'COMPANY_LOGO_NOT_FOUND',
+  })
+  async removeCompanyLogo(@Req() req: Request): Promise<void> {
+    await this.profile.removeCompanyLogo(req.user!.id);
+  }
 }

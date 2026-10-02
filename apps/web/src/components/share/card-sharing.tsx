@@ -61,12 +61,14 @@ export interface MintedLink {
 }
 
 /**
+/**
  * How the share UI names a person: their name, or — when the registry has none — their number,
  * **formatted and written once**.
  *
  * ⚠ Not `contactLabel` (types/domain). That falls back to the raw E.164 string, and a picker then
  * appended the formatted number after it, so every unnamed contact read
- * "+447979080009 · +44 7979 080009".
+ * "+447979080009 · +44 7979 080009" — the same number twice and no name. Contacts that arrive
+ * from a QR scan have no name at all, so this was most of a real registry.
  */
 export function recipientName(displayName: string | null, phoneE164: string): string {
   const name = displayName?.trim() ?? "";

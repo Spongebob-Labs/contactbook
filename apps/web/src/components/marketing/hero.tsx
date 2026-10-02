@@ -694,6 +694,14 @@ export function Hero() {
         */}
         <div className="relative -mx-6 flex flex-col items-center [--mk-phone-zoom:0.84] max-lg:order-1 max-lg:mt-12 md:mx-0 lg:order-first lg:col-span-5 lg:[--mk-phone-zoom:0.86] lg:[@media(max-height:820px)]:[--mk-phone-zoom:0.7] lg:[@media(min-height:1000px)]:[--mk-phone-zoom:0.98]">
           <HeroCard />
+          {/* 2026-09-20 — THE SIGHTED HINT BELOW THE CARD LEFT WITH THE FLIP IT DESCRIBED.
+              `hero.cardHint` ("Turns on its own — or press it.") told a sighted reader they
+              could press the card to flip it. Agent F's rewrite made the hero's card a single,
+              still, `inert` preview with no press to invite (`hero-card.tsx`'s header) — so
+              rendering that sentence here would be actively wrong now, not merely stale. It
+              follows `hero.aside` into "kept in the fixture, deliberately not rendered": restore
+              it if the hero ever gets an interactive card again. `hero.cardFrontLabel` and
+              `cardBackLabel` are unused for the same reason and are equally left in place. */}
         </div>
       </div>
     </Section>

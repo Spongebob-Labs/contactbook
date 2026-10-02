@@ -1,10 +1,13 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { CardKind } from '@prisma/client';
 import {
+  ArrayMaxSize,
+  IsArray,
   IsEnum,
   IsIn,
   IsOptional,
   IsString,
+  IsUUID,
   Matches,
   MaxLength,
   MinLength,
@@ -105,4 +108,16 @@ export class CreateCardDto {
   @IsString()
   @MaxLength(280)
   bio?: string;
+
+  @ApiPropertyOptional({
+    type: [String],
+    description:
+      'Profile field IDs to attach atomically on creation. All must belong to the caller; PHOTO fields are rejected.',
+    example: ['3fa85f64-5717-4562-b3fc-2c963f66afa6'],
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(50)
+  @IsUUID('4', { each: true })
+  fieldIds?: string[];
 }

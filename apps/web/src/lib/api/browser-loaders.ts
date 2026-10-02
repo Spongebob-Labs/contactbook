@@ -122,7 +122,7 @@ export function fetchCardDetail(cardId: string) {
       throw thrown;
     }
 
-    const sharing = await fetchCardSharing(cardId, dto.name, user.id);
+const sharing = await fetchCardSharing(cardId, dto.name, user.id);
     const card: ContactCard = toContactCard(dto, user.id);
     return { user, groups, fields, card, ...sharing };
   };
