@@ -98,6 +98,16 @@ describe("formatPhoneDisplay", () => {
   it("returns the E.164 untouched when the digit count contradicts the plan", () => {
     expect(formatPhoneDisplay("+919820")).toBe("+919820");
   });
+
+  it("writes a London 020 number the way London does, and a UK mobile the way mobiles are", () => {
+    expect(formatPhoneDisplay("+442079460958")).toBe("+44 20 7946 0958");
+    expect(formatPhoneDisplay("+447700900123")).toBe("+44 7700 900123");
+  });
+
+  it("groups a UAE fixed line (one digit shorter) and a UAE mobile by their own shapes", () => {
+    expect(formatPhoneDisplay("+97140000147")).toBe("+971 4 000 0147");
+    expect(formatPhoneDisplay("+971501234567")).toBe("+971 50 123 4567");
+  });
 });
 
 describe("hrefs (spec §6.6, §6.9)", () => {

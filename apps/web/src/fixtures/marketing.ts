@@ -1,5 +1,14 @@
 import { FIXTURE_DB } from "@/fixtures";
-import type { ContactCard, User } from "@/types/domain";
+import * as mayaFacts from "@/fixtures/marketing-identity";
+/* `marketingUser`'s own import, kept separate from the namespace import above so the two section
+   passes cannot break each other's. */
+import { MAYA } from "@/fixtures/marketing-identity";
+import type {
+  ContactCard,
+  FieldGroup,
+  ProfileField as DomainProfileField,
+  User,
+} from "@/types/domain";
 
 /**
  * Copy for `/`.
@@ -137,11 +146,15 @@ export const hero = {
      note on the old page was that it is "so text-heavy"; the hero now carries one idea and the
      card beside it carries the demonstration. */
   lead: "Your details change. The card you handed out changes with them.",
-  /* The brief's own pair, now that both destinations exist. Until they did, these read
-     "Create your card" / "See the cards" — a control whose page 404s is a defect rather than a
-     design decision, and swapping the labels in was the last step of building the routes. */
-  primary: { href: "/waitlist", label: "Join the waitlist" },
-  secondary: { href: "/corporate", label: "For companies" },
+  /* ⚠ 2026-09-28 — THE WAITLIST AND "FOR COMPANIES" ARE OFF THE HOMEPAGE, ON THE CLIENT'S
+     WORD: *"Still showing old version: 'join the waitlist' copy and 'for companies' tag need
+     removing."* The product is open, so the primary is the real front door — phone sign-in,
+     which is both sign-up and log-in (`/signin/phone` → OTP → onboarding for a new number).
+     The secondary stays on the page instead of sending a reader to a second one.
+     `/waitlist` and `/corporate` still exist as routes; nothing on the homepage or its chrome
+     links to them any more. */
+  primary: { href: "/signin/phone", label: "Create your card" },
+  secondary: { href: "#how-it-works", label: "See how it works" },
   /* ⚠ NOT RENDERED SINCE 2026-09-19, AND DELIBERATELY KEPT ANYWAY.
      `proof[2]` ("Nothing to install" / "They tap a link. It opens in their browser.") now makes
      this exact claim, with an icon and a heading, a few rows below where this used to sit — the
@@ -191,40 +204,20 @@ export const hero = {
   ],
 } as const satisfies HeroCopy;
 /* ════════════════════════════════════════════════════════════════════════════════════════
-   THE HERO'S LIVE CARD — the animation the client asked for, written as data.
+   RETIRED — THE HERO'S LIVE CARD (2026-09-28 → 2026-09-29).
 
-   The brief: "a visual of contact cards being updated... a card in the middle, you see the
-   fields updating, flying off, updating, new ones, new fields coming in, existing fields
-   changing and being updated."
-
-   ## Why this is a script and not an animation
-   The card component knows how to draw a row in five states and nothing else. Everything
-   about WHAT happens and WHEN lives here, as a list of beats, each one a complete picture of
-   the card at that moment. That split is the whole design:
-     · the timing is tunable without touching a component
-     · every beat is a state the card can legally render, so there is no frame mid-flight that
-       nobody chose — a visitor who arrives at beat 3 sees a card someone designed
-     · the same script drives the still image under reduced motion (beat 0)
-
-   ## Why beat 0 is a plain, finished card
-   It is three things at once: what the server renders, what a reader with reduced motion sees
-   forever, and what the loop returns to. So it may not carry a marker, a strike-through or an
-   empty slot — the first paint has to be a card that looks correct and complete, because for
-   some readers it is the only one they will ever see.
-
-   ## The five verbs, in the client's own order
-   stale (a field goes wrong) → update (it is corrected) → arrive (a new field) → revoke (a
-   field is taken back). The fourth is ours: "you can take a card back" is one of the product's
-   real promises and no other section demonstrates it.
-
-   ⚠ NUMBERS AND DOMAINS. `+44 20 7946 0xxx` is Ofcom's range reserved for drama — it cannot
-   be allocated to a real subscriber. Domains are RFC-2606 reserved, which
-   `tests/contract/fixture-hygiene.test.ts` enforces as an allowlist. The deck this content
-   came from contains the founder's real friends and their real mobile numbers; none of it
-   crosses into a fixture.
+   The hero card used to cycle through Maya Lauren's four cities, re-resolving the product's
+   `<CardPage>` per beat and tagging changed lines "Updated". The client rejected it; the hero
+   now draws their reference card still (see `heroPhone` below). The beats, `LIVE_FIELD` and
+   `heroCard` went with it. What remains here is only what `contact-card.tsx` still compiles
+   against.
    ════════════════════════════════════════════════════════════════════════════════════════ */
 
 /**
+ * ⚠ THE FIVE ROW STATES BELOW BELONG TO THE RETIRED `<ContactCard>` RENDITION
+ * (`contact-card.tsx`), which nothing on the page renders any more. They are kept only so that
+ * file still compiles; the hero's beats no longer use them.
+ *
  * What is happening to one row at one beat.
  *
  * - `stable`   — nothing. The row is simply true.
@@ -245,127 +238,7 @@ export interface LiveCardRow {
   readonly was?: string;
 }
 
-export interface LiveCardBeat {
-  readonly id: string;
-  /** Milliseconds this beat is held before the next one begins. */
-  readonly hold: number;
-  /**
-   * Suppresses row transitions for this beat only.
-   *
-   * Set on the beat the loop returns to. Without it the corrected values visibly slide
-   * *backwards* into their old selves on every repeat, which reads as the animation breaking
-   * rather than restarting.
-   */
-  readonly reset?: boolean;
-  readonly rows: readonly LiveCardRow[];
-}
-
-export interface LiveCardCopy {
-  readonly name: string;
-  readonly role: string;
-  readonly mark: string;
-  /** Announced once to assistive technology in place of the loop. */
-  readonly caption: string;
-  readonly beats: readonly LiveCardBeat[];
-}
-
-const EMAIL_OLD = "priyanka@fernwood.example";
-const EMAIL_NEW = "p.raghunathan@haldenroe.example";
-const FIRM_OLD = "Fernwood Studio";
-const FIRM_NEW = "Halden & Roe";
-const MOBILE = "+91 98201 15577";
-
-export const liveCard = {
-  /* ⚠ THE IDENTITY IS `FIXTURE_DB.user`'s, AND IT HAS TO BE. This card is the BACK of the
-     hero's flip; the front is a real `<ShareFace>` resolved from `heroCard`, which takes its
-     name and role from the fixture user. A card whose two faces show two different people is
-     not a card. Change one of these and you must change the fixture user. */
-  name: "Priyanka Rao",
-  role: "Head of Partnerships",
-  mark: "CB",
-  caption:
-    "A contact card updating itself: two details go out of date and are corrected, one is " +
-    "revoked by its owner, and a new one takes its place.",
-  beats: [
-    {
-      id: "settle",
-      hold: 2400,
-      reset: true,
-      rows: [
-        { id: "mobile", label: "Mobile", value: MOBILE, state: "stable" },
-        { id: "email", label: "Work email", value: EMAIL_OLD, state: "stable" },
-        { id: "company", label: "Company", value: FIRM_OLD, state: "stable" },
-        { id: "role", label: "Role", value: "Head of Partnerships", state: "stable" },
-        { id: "home", label: "Home", value: "Bandra West, Mumbai", state: "stable" },
-      ],
-    },
-    {
-      /* She changed firm. Three rows are now wrong and nothing in the world has told you. This
-         is the beat that has to land — it is the reader's own address book. */
-      id: "stale",
-      hold: 1600,
-      rows: [
-        { id: "mobile", label: "Mobile", value: MOBILE, state: "stable" },
-        { id: "email", label: "Work email", value: EMAIL_OLD, state: "stale" },
-        { id: "company", label: "Company", value: FIRM_OLD, state: "stale" },
-        { id: "role", label: "Role", value: "Head of Partnerships", state: "stable" },
-        { id: "home", label: "Home", value: "Bandra West, Mumbai", state: "stable" },
-      ],
-    },
-    {
-      id: "update",
-      hold: 2000,
-      rows: [
-        { id: "mobile", label: "Mobile", value: MOBILE, state: "stable" },
-        { id: "email", label: "Work email", value: EMAIL_NEW, state: "updated", was: EMAIL_OLD },
-        { id: "company", label: "Company", value: FIRM_NEW, state: "updated", was: FIRM_OLD },
-        { id: "role", label: "Role", value: "Head of Partnerships", state: "stable" },
-        { id: "home", label: "Home", value: "Bandra West, Mumbai", state: "stable" },
-      ],
-    },
-    {
-      /* Revoked, not deleted from the world: she took her home address off this card and the
-         page it points at stopped showing it.
-
-         ⚠ THE LEAVING ROW KEEPS ITS OWN SLOT. A row's slot is its index in this list, so
-         promoting the row below it here would have the two trade places mid-fade — one sliding
-         up through the other sliding down, which reads as a shuffle rather than a removal. */
-      id: "revoke",
-      hold: 1500,
-      rows: [
-        { id: "mobile", label: "Mobile", value: MOBILE, state: "stable" },
-        { id: "email", label: "Work email", value: EMAIL_NEW, state: "stable" },
-        { id: "company", label: "Company", value: FIRM_NEW, state: "stable" },
-        { id: "role", label: "Role", value: "Head of Partnerships", state: "stable" },
-        { id: "home", label: "Home", value: "Bandra West, Mumbai", state: "leaving" },
-      ],
-    },
-    {
-      /* A field the card did not have, arriving into the slot the revoked one vacated. */
-      id: "arrive",
-      hold: 1700,
-      rows: [
-        { id: "mobile", label: "Mobile", value: MOBILE, state: "stable" },
-        { id: "email", label: "Work email", value: EMAIL_NEW, state: "stable" },
-        { id: "company", label: "Company", value: FIRM_NEW, state: "stable" },
-        { id: "role", label: "Role", value: "Head of Partnerships", state: "stable" },
-        { id: "site", label: "Website", value: "haldenroe.example", state: "arriving" },
-      ],
-    },
-    {
-      id: "settled",
-      hold: 2200,
-      rows: [
-        { id: "mobile", label: "Mobile", value: MOBILE, state: "stable" },
-        { id: "email", label: "Work email", value: EMAIL_NEW, state: "stable" },
-        { id: "company", label: "Company", value: FIRM_NEW, state: "stable" },
-        { id: "role", label: "Role", value: "Head of Partnerships", state: "stable" },
-        { id: "site", label: "Website", value: "haldenroe.example", state: "stable" },
-      ],
-    },
-  ],
-} as const satisfies LiveCardCopy;
-
+/** Only `contact-card.tsx`'s retired rendition reads this. See the note on `LiveRowState`. */
 export const LIVE_CARD_SLOTS = 5;
 
 /* ════════════════════════════════════════════════════════════════════════════════════════
@@ -415,19 +288,22 @@ export const problem = {
   beforeLabel: "Saved in your phone",
   afterLabel: "The same person, on Contact Book",
   staleTag: "out of date",
-  /* Priyanka's entry as it sits in your phone two years after you saved it. The SAME person as
-     the hero's card — which is the fixture user, because the hero's front face is a real
-     `<ShareFace>` and takes its identity from the resolved card. One person, one thread down the
-     page, rather than three unrelated examples. */
+  /* Maya Laurent's entry as it sits in your phone two years after you saved it — the one person
+     the whole landing page is about (`fixtures/marketing-identity.ts`; 2026-09-28 moved the
+     Indian number and Mumbai details out, 2026-09-29 made her the hero's person). The mobile is
+     still true; the three work rows are what she had before she founded Maya Partners.
+
+     ⚠ NOT RENDERED TODAY — `problem.tsx`'s header explains why these five fields outlived the
+     before/after device. Kept current anyway so no Indian number survives in the fixture. */
   beforeRows: [
     /* `stale: false` is written out rather than omitted. With `as const satisfies`, an absent
        optional field is absent from that member's literal type, so a consumer reading
        `row.stale` gets a type error on this row alone — the narrowing is the point of
        `as const` and this is the cost of it. */
-    { id: "mobile", label: "Mobile", value: "+91 98201 15577", stale: false },
-    { id: "email", label: "Work email", value: "priyanka@fernwood.example", stale: true },
-    { id: "company", label: "Company", value: "Fernwood Studio", stale: true },
-    { id: "role", label: "Role", value: "Head of Partnerships", stale: true },
+    { id: "mobile", label: "Mobile", value: mayaFacts.MAYA.mobile, stale: false },
+    { id: "email", label: "Work email", value: "maya@harbourline.example", stale: true },
+    { id: "company", label: "Company", value: "Harbourline Networks", stale: true },
+    { id: "role", label: "Role", value: "Partnerships Lead", stale: true },
   ],
   caption:
     "Three of these four were true when you saved them. Nothing told you when they stopped being true.",
@@ -436,15 +312,17 @@ export const problem = {
 /* ════════════════════════════════════════════════════════════════════════════════════════
    SECTION 3 — THE SOLUTION.  Brief Section 3, and the section that carries the product idea.
 
-   `heading` and the first line are the client's. The last paragraph is ours and it is the most
-   important sentence on the page — see the note on `honesty` below.
+   ## ⚠ COPY REWRITTEN 2026-09-28, IN THE CLIENT'S OWN VOICE
+   The client: *"'Live contact' copy: rewrite in direct voice, e.g. 'Create a contact card with
+   info you want to share, for work, personal, or family'"*. So `lead` is now that sentence,
+   second person, naming the three cards the exhibit shows, and the two explanatory paragraphs
+   are one short one. "A card is a filter over your profile, not a second copy of it" is cut:
+   it explained the product to its own reader, which is the filler the client asked to strip.
+   `heading` is still the client's and is untouched.
 
    ## The exhibit is the argument, not an illustration of it
-   One profile on the left, three cards on the right. Choose a card and the profile dims to the
-   fields that card actually carries. "A card is a filter over your profile, not a second copy
-   of it" is a sentence a visitor has to take on trust; the same claim as something they can
-   press is a claim they can check. That is why the deleted `trust` section's four panels are
-   not four panels any more.
+   One profile band above a deck of three real cards. The front card's fields light up in the
+   band, so "one profile, many cards" is performed rather than asserted — see `solution.tsx`.
 
    ⚠ THE PRIVATE FIELD IS IN THE PROFILE ON PURPOSE. `bank` is marked private and appears on
    NO card, and cannot be put on one — that is a real product rule (§7.3: a private field is
@@ -461,7 +339,11 @@ export interface ProfileField {
 
 export interface SolutionCard {
   readonly id: string;
+  /** The card's own name, as the owner would call it. Used in the chips' screen-reader line. */
   readonly name: string;
+  /** The bold label shown while this card is at the front of the deck. */
+  readonly title: string;
+  /** One line: what is on it, and who it is for. */
   readonly note: string;
   readonly paletteId: string;
   /** Ids from `profile`. A private field id here is a bug the component cannot express. */
@@ -473,11 +355,15 @@ export interface SolutionCopy {
   readonly accent: string;
   readonly lead: string;
   readonly paragraphs: readonly string[];
-  readonly honesty: { readonly term: string; readonly detail: string };
+  /** Plain sentences under the exhibit. No headed block — see the note on the value. */
+  readonly honesty: string;
   readonly profileLabel: string;
   readonly cardsLabel: string;
   readonly privateTag: string;
   readonly allLabel: string;
+  /** The deck's pause control (WCAG 2.2.2): its label while running, and once paused. */
+  readonly pauseLabel: string;
+  readonly pausedLabel: string;
   readonly profile: readonly ProfileField[];
   readonly cards: readonly SolutionCard[];
 }
@@ -485,63 +371,73 @@ export interface SolutionCopy {
 export const solution = {
   heading: "Live contact cards, shared your way.",
   accent: "shared your way.",
-  lead: "A card is a filter over your profile, not a second copy of it.",
+  lead: "Create a contact card with only the details you want to share, for work, for recruiters or for family.",
   paragraphs: [
-    "Make a work card, a family card, a side-project card, or one that carries nothing but a name and a number for someone you have just met. Each one shows only the fields you put on it.",
-    "Sharing a card is not sending your details. It is giving someone access to the fields you chose \u2014 and when those change, what they are looking at changes with them.",
+    "Share it as a link. When a detail changes, everyone you sent it to sees the new one.",
   ],
-  /* ⚠ THIS PARAGRAPH MAY NOT BE CUT, AND IT IS THE ONE PLACE THIS PAGE ARGUES WITH ITS OWN
-     BRIEF. The brief says, twice, that recipients "receive the updated information
-     automatically". The product deliberately does not do that, and the previous page had a
-     whole section explaining why. The claim is split rather than dropped: the *card* is always
-     current, because the page resolves from live data at request time; the copy *inside
-     someone's address book* changes when you send an update and they accept it. Raised with the
-     client as an open question — if they insist on "automatically", that is theirs to decide
-     knowingly. It is also the only thing on this page a competitor cannot say. */
-  honesty: {
-    term: "What that does not mean",
-    detail:
-      "No app can reach into someone else's phone and rewrite your entry \u2014 not on iPhone, not on Android, and be suspicious of any product implying it can. The card at your link is always current. To update the copy in their address book, you send the change and they tap once to save it.",
-  },
+  /* ⚠ THIS MAY NOT BE CUT, AND IT IS THE ONE PLACE THIS PAGE ARGUES WITH ITS OWN BRIEF. The
+     brief says, twice, that recipients "receive the updated information automatically". The
+     product deliberately does not do that. The claim is split rather than dropped: the *card*
+     is always current, because the page resolves from live data at request time; the copy
+     *inside someone's address book* changes when you send an update and they accept it. Raised
+     with the client as an open question — if they insist on "automatically", that is theirs to
+     decide knowingly.
+
+     2026-09-28: kept, but as two plain sentences under the exhibit rather than a headed block
+     ("What that does not mean" + three sentences). Same two facts, a third of the words. */
+  honesty:
+    "No app can edit a contact already saved in someone else's phone. Your link is always current, and when you send an update, they save it with one tap.",
   profileLabel: "Your profile",
   cardsLabel: "Your cards",
   privateTag: "Private",
   allLabel: "Everything you have added",
+  pauseLabel: "Pause",
+  pausedLabel: "Paused",
+  /* ⚠ THESE LABELS MIRROR `exampleCardSpecs`' REAL FIELDS, one chip per field of Maya's profile
+     the three cards draw on. If a card's `fields` below changes, change that card's `fieldIds`
+     in `exampleCardSpecs` with it, or the band lights chips the card beside it does not show. */
   profile: [
     { id: "mobile", label: "Mobile" },
     { id: "work-email", label: "Work email" },
     { id: "personal-email", label: "Personal email" },
-    { id: "company", label: "Company" },
     { id: "title", label: "Job title" },
+    { id: "company", label: "Company" },
     { id: "office", label: "Office address" },
     { id: "home", label: "Home address" },
-    { id: "site", label: "Website" },
     { id: "social", label: "LinkedIn" },
-    { id: "whatsapp", label: "WhatsApp" },
+    { id: "experience", label: "Experience" },
     { id: "birthday", label: "Birthday" },
+    { id: "site", label: "Website" },
     { id: "bank", label: "Bank account", private: true },
   ],
+  /* ⚠ ORDER IS THE DECK'S ROTATION: Work at the front, Family next, CV last. Not the client's
+     listing order (work, CV, family) — this order puts the light clay card directly behind the
+     dark sapphire one at rest, so the first thing anyone sees is a deck whose back edges read as
+     two different cards rather than one dark smudge. */
   cards: [
     {
       id: "work",
       name: "Work",
-      note: "The one you hand out at a conference.",
+      title: "Your Work Contact Card",
+      note: "Your role, number and office. For clients and colleagues.",
       paletteId: "sapphire",
-      fields: ["mobile", "work-email", "company", "title", "office", "social"],
+      fields: ["mobile", "work-email", "title", "company", "office", "social"],
     },
     {
       id: "family",
       name: "Family",
-      note: "People who already know where you live.",
+      title: "Your Family Contact Card",
+      note: "Your home address, birthday and mobile. For the people closest to you.",
       paletteId: "clay",
-      fields: ["mobile", "personal-email", "home", "birthday", "whatsapp"],
+      fields: ["mobile", "personal-email", "home", "birthday"],
     },
     {
-      id: "just-met",
-      name: "Just met",
-      note: "Enough to be reachable, and nothing else.",
+      id: "cv",
+      name: "CV",
+      title: "Your CV Contact Card",
+      note: "Your experience, LinkedIn and personal email. For recruiters and headhunters.",
       paletteId: "onyx",
-      fields: ["mobile", "work-email"],
+      fields: ["mobile", "personal-email", "title", "social", "experience"],
     },
   ],
 } as const satisfies SolutionCopy;
@@ -572,6 +468,10 @@ export interface HowItWorksCopy {
   readonly heading: string;
   readonly accent: string;
   readonly steps: readonly Step[];
+  /** The world-map band under the three frames. `label` sits in the frames' own label
+   *  register; `alt` is the map's accessible name. The cities come from
+   *  `fixtures/marketing-identity.ts`, never from here. */
+  readonly map: { readonly label: string; readonly alt: string };
 }
 
 export const howItWorks = {
@@ -581,7 +481,9 @@ export const howItWorks = {
     {
       ordinal: "01",
       title: "Create your details",
-      body: "Add your contact information once \u2014 personal, professional, digital, and anything custom you need.",
+      /* 2026-09-28: the em-dash aside became a colon (the client's "strip AI filler" pass).
+         Same words otherwise. */
+      body: "Add your contact information once: personal, professional, digital, and anything custom you need.",
     },
     {
       ordinal: "02",
@@ -604,6 +506,12 @@ export const howItWorks = {
       body: "Expand, restrict or revoke what any one person can see, whenever you want.",
     },
   ],
+  /* 2026-09-28, the client: *"Consider adding a global map element to reinforce international
+     feel."* The map is Maya's four cities; the label says so in four words, no sentence. */
+  map: {
+    label: "One profile, four cities",
+    alt: "World map marking London, Dubai, New York and Singapore",
+  },
 } as const satisfies HowItWorksCopy;
 /* ════════════════════════════════════════════════════════════════════════════════════════
    EXAMPLE CARDS — brief Section 5.
@@ -738,7 +646,10 @@ export interface CloseCopy {
 export const close = {
   headline: "Never lose contact.",
   body: "Make one card, hand it over, and keep it true for as long as you need it.",
-  cta: { href: "/waitlist", label: "Join the waitlist" },
+  /* ⚠ 2026-09-28: was "Join the waitlist" → `/waitlist`, plus an inline waitlist form. Both
+     went with the client's "join the waitlist copy … need removing"; the close now sends a
+     reader to the same front door as the hero and the nav. */
+  cta: { href: "/signin/phone", label: "Create your card" },
 } as const satisfies CloseCopy;
 
 export const pageMeta = {
@@ -949,279 +860,359 @@ export const contactPage = {
 const CARD_OWNER = "user_prya";
 
 /**
- * The person every card on this page belongs to.
+ * The person every card on this page belongs to — Maya Laurent, the hero's person, since
+ * 2026-09-29 (Maya Lauren from 2026-09-28).
  *
- * ⚠ IT IS `FIXTURE_DB.user` WITH TWO CHANGES:
+ * ⚠ IT IS `FIXTURE_DB.user`'S SHAPE WITH MAYA'S FACTS. The spread keeps the id (`CARD_OWNER`)
+ * and the account flags; everything a reader can see — name, email, number — comes from
+ * `marketing-identity.ts`. `fixtures/user.ts` stays Priyanka: that user is threaded through
+ * the whole app's tests, and the landing page changing person is not a reason to move them.
  *
- *   · **A surname that fits.** Shortened here rather than in `fixtures/user.ts`, because that
- *     user is threaded through the whole app's tests and a rename there is a change to surfaces
- *     this work is not touching. This no longer guards a hard one-line clamp — `<CardPage>`'s
- *     name wraps to two lines by design (`textWrap: "balance"`), unlike the old `<ShareFace>`
- *     this comment used to describe — but there is no reason to prefer the longer form either,
- *     so it stays.
- *   · **No avatar.** See {@link HERO_COVER_URL} below for where a real photograph plugs in, and
- *     why `avatarUrl` is deliberately not it: `avatarUrl` is profile-wide (every card this user
- *     owns), while a card page's cover is a decision made about *one* card — `ContactCard
- *     .coverUrl`, which `resolveCover` (`@/card/resolve-card`) already ranks ahead of it for
- *     exactly that reason. `null` here leaves the badge on its monogram fallback, which is
- *     shipped behaviour and reads as designed rather than as a missing image — see
- *     `resolveBadge`, which never falls back to a photograph at all: the badge is the brand
- *     mark, not the face, by the product's own two-slot design (`ResolvedCover` vs.
- *     `ResolvedBadge` in `@/types/domain`).
+ * The number and mailbox are her own, the ones the hero card prints.
+ *
+ * **No avatar**, deliberately: `avatarUrl` is profile-wide, while a card page's cover is a
+ * decision about one card (`ContactCard.coverUrl`). `null` leaves the badge on its logo or
+ * monogram, which is the product's own two-slot design.
  */
 export const marketingUser: User = {
   ...FIXTURE_DB.user,
-  lastName: "Rao",
+  firstName: MAYA.firstName,
+  lastName: MAYA.lastName,
+  email: MAYA.personalEmail,
+  phone: MAYA.mobile.replace(/[^\d+]/g, ""),
+  countryCode: "+44",
   avatarUrl: null,
 };
 
-/**
- * ⚠ NO PHOTOGRAPH ASSET EXISTS FOR THIS CARD, AND AN AUTHORED SVG NOW EXISTS AS ITS
- * UNDERSTUDY — BENCHED, NOT DELETED. Read this whole comment before flipping the constant below.
- *
- * `public/portraits/*.png` (what `fixtures/user.ts` points real fixture users at) are
- * procedurally generated silhouettes — green, and the wrong hue for Atelier's warm ground even
- * setting that aside. `public/templates/*.png` are blurred dark abstracts, wrong for the same
- * reason. There is no image-generation credential configured to make a better one, and this
- * file must not fake a face by guessing or fetching one from somewhere else.
- *
- * `public/marketing/hero-cover.svg` was authored to answer that (the client's own words: "why is
- * there no logo or cover images there?") — a small, hand-drawn abstract in the atelier skin's own
- * gold tokens, viewBox'd to `COVER_RATIO.photo`'s exact aspect so nothing crops. It is genuinely
- * ready: `resolveCover` already ranks `ContactCard.coverUrl` ahead of every other source, so
- * turning it on is truly the one-line change the comment below describes.
- *
- * ⚠ MEASURED 2026-09-20, AND IT IS OFF FOR A REASON A LOOK CANNOT SEE. Turning a cover on moves
- * `cardPageSurface`'s `coverRatio` from `COVER_RATIO.none` (0.3) to `COVER_RATIO.photo` (0.7) —
- * `@/card/card-page-rows` — which is `+134px` at this card's fixed 336px hero width
- * (`0.4 * 336 = 134.4`), before a single row changes. Measured with the cover ON and every other
- * trim on this page already applied (three PERSONAL rows, two WORK rows, the one-line `bio`
- * below, the logo badge): the SOCIAL strip's own bottom sat **~112px past** the 728px screen —
- * almost exactly what the earlier, unshortened two-line bio and the un-swapped `field_status`
- * row had cost between them, because the cover alone re-spent nearly everything those two trims
- * had bought back. Closing the rest, with the cover still ON, has no more free rows left to give:
- * by arithmetic (not separately re-measured), it needs the company wordmark gone AND the bio
- * gone entirely AND WORK down to one row, to land within single-digit pixels of clearing the
- * screen — three cuts nothing in this task asked for, to recover roughly 112px. That is a worse
- * card than a shorter one with no cover: it trades a real, requested complaint ("no social
- * visible") for an unrequested one ("no company, no bio"), to buy a decorative image.
- *
- * So the call made here is priority order, taken from this task's own wording: fitting the
- * social strip inside the screen was named "the single most important outcome"; the cover was
- * asked for afterwards, as its own numbered step. With the cover OFF and every other trim below
- * applied, the strip clears the screen with **23px to spare** (measured, `deviceScaleFactor: 2`,
- * 1440px and 375px viewports, both skins — see the report this pass shipped with for the exact
- * numbers). That is the shape shipped by default.
- *
- * ⚠ THIS IS A ONE-LINE, FULLY REVERSIBLE CALL, NOT A DELETED FEATURE. If the cover is wanted
- * live regardless of the height cost — a defensible, different call, since the client did ask
- * for it by name — changing the line below from `null` to `"/marketing/hero-cover.svg"` is the
- * entire change; nothing else in this file or in `src/card/**` needs to move with it. Re-measure
- * after: `tests/e2e/marketing.spec.ts` currently asserts the hero makes zero image requests
- * ("the fixture card carries no cover photo"), which turning this on makes stale and which its
- * owner would need to widen to allow exactly one request, for exactly this path.
- *
- * Whenever the client's own photograph arrives, it replaces the SVG at the same switch:
- *
- *   1. Drop the file at `apps/web/public/marketing/hero-cover.jpg` (served at
- *      `/marketing/hero-cover.jpg` — a new path, not a reuse of either unusable set above).
- *   2. Change the constant below to `"/marketing/hero-cover.jpg"`.
- *
- * `<CardCover>` reads `resolved.cover` straight through however it got there, already crops to
- * `objectPosition: "50% 28%"` (a portrait's upper third, not a centred crop that takes the chin
- * off), and already scrims its own lower edge for the curve underneath it — none of that is new
- * with this pass. What is new is that a real photograph reopens the same +134px question this
- * comment measures for the SVG, on whatever this card's row count is by then.
- */
-const HERO_COVER_URL: string | null = "/marketing/hero-cover.jpg";
+/* ════════════════════════════════════════════════════════════════════════════════════════
+   THE HERO PHONE'S CARD — the client's reference, word for word.
 
-/**
- * The hero's card — the same fixture triad every other real card on this page resolves through
- * (`marketingUser`, `FIXTURE_DB.groups`, `FIXTURE_DB.fields`), rendered by the product's own
- * `<CardPage>` with no hand-built stand-in for any of it (`hero-card.tsx`'s own header explains
- * why that file resolves this card itself rather than taking one as a prop).
- *
- * ⚠ ENRICHED 2026-09-20, THE SAME DAY THE CLIENT CALLED THE RESULT "VAGUE AND AI-MADE". The
- * card this fixture described before that day mapped five fields, every one of them `WORK` — so
- * the complaint was an accurate diagnosis of this exact object: one unlabelled section, no
- * social strip, and a bio that could never appear because nothing here supplied one distinct
- * from the role/company line already under the name. `<CardPage>` renders exactly what it is
- * handed; it was handed almost nothing. Nothing added by that pass invented a value — every id
- * already existed in `fixtures/profile.ts`, mapped to rows other real cards in this app already
- * render — and the shape it settled on was two labelled `FieldCategory` sections
- * (`resolveCard`'s `compareResolvedFields` sorts category first) plus a social strip, which is
- * the split the client's own reference shows and a single-category card cannot.
- *
- * ⚠ TRIMMED, LATER THE SAME DAY, AGAINST A MEASUREMENT RATHER THAN A LOOK. The enrichment above
- * was correct about *shape* and wrong about *size*: at this card's fixed 336px hero width
- * (`hero-card.tsx`'s `SCREEN_WIDTH`), fourteen mapped fields rendered the card at 1019px against
- * the hero's own 728px phone screen (`marketing-hero.css`'s `.mk-phone-frame__screen` — 336px
- * wide at a 9/19.5 device ratio) — 291px clipped, the social strip entirely inside that clip.
- * The client's reference fits a cover, a logo, a name, a role, a two-line bio, the action
- * button, three PERSONAL rows, two WORK rows and the full SOCIAL strip on one screen, so that is
- * the shape this card was cut back to:
- *
- *   · `field_job_title` and `field_company` are still consumed whole by `<CardPage>`'s own hero
- *     (`splitHeroFields`) into the wordmark and the name's role line, and still never become a
- *     stack row. `field_bio` is gone from this list entirely — see {@link heroCard.bio} below
- *     for what replaced it and why removing the id, not just shortening the field, was the
- *     correct fix.
- *   · PERSONAL keeps all three of its rows — it was already the reference's shape — though the
- *     third one changed identity; see the comment on `field_location` below `fieldIds`.
- *   · WORK drops from four rows to two. Gone: `field_work_phone` (a second phone number, and
- *     `field_mobile` above already puts one PHONE row on the card) and `field_work_address` (an
- *     `ADDRESS` row, which prints 1–2 lines and was the single tallest row in the old stack).
- *     Kept: `field_work_email` and `field_site_url` — one internal action (`mailto:`) and one
- *     external one (a website), which is more variety per row than a second phone would have
- *     been.
- *   · SOCIAL drops `field_github`. The remaining three owner-mapped platforms (`LinkedIn`, `X`,
- *     `Instagram`) each still have a real drawn mark in `social-glyphs.tsx` rather than falling
- *     back to the generic glyph, and — plus whichever `PHONE` row `whatsappActionFor` finds,
- *     which the strip appends as an undeclared fourth disc (`card-page.tsx`'s own note on why
- *     WhatsApp is derived from the card rather than mapped as a field) — that is four, matching
- *     the reference's own count and keeping the strip to one line at this card's width.
- *
- * ⚠ `logoUrl` TURNS ON IN THIS SAME PASS; `coverUrl` DOES NOT, AND THAT ASYMMETRY IS
- * DELIBERATE, NOT AN OMISSION. Both are the other half of the client's complaint ("why is there
- * no logo or cover images there?"), and both are backed by a real asset this pass authored
- * (`public/marketing/logo-mark.svg`, `public/marketing/hero-cover.svg`). The logo costs nothing —
- * it fills a badge that already reserves 64px whether it holds a mark or a monogram. The cover
- * costs `+134px` on its own (`COVER_RATIO.photo` vs `.none`, `@/card/card-page-rows` —
- * `0.4 * 336 = 134.4`) and, measured with it on, re-clips the SOCIAL strip almost back to where
- * this pass started. See `HERO_COVER_URL`'s own comment, above, for the full measurement and
- * exactly how to turn it on anyway.
- */
-export const heroCard = {
-  id: "card_marketing_hero",
-  userId: CARD_OWNER,
-  name: "Work",
-  type: "BUSINESS",
-  isSensitive: false,
-  publicUrl: "https://card.example/c/2mQ7wZ4nRt8Lp1XcVb3Hs9",
-  templateId: "meridian",
-  /* ⚠ WAS `emerald` UNTIL 2026-09-20, AND THE REASON IT MOVED IS NOT "gold is nicer".
-     The page around this card became Atelier — a warm off-white ground with a gold ladder — and
-     a deep green cover is then the single most saturated thing in the first viewport, pulling
-     the eye to the one element that is NOT the brand. `ivory` (#E7D6BA) is the warm ground in
-     the same nine-palette set, so the hero reads as one composition.
+   2026-09-29: the client rejected the hero's phone card as "just the opposite" of their
+   reference render and asked for the reference's own content, fonts, icons and spacing. So the
+   card is no longer the product's `<CardPage>` re-resolved per beat; it is a still drawing of
+   the reference's card, and this block is its copy — every string below is read off the
+   reference image, in its order.
 
-     THIS IS A FIXTURE CHOICE, NOT A SYSTEM CHANGE. All eleven palettes still exist and a real
-     owner still picks their own — `template-palettes.ts` is deliberately untouched, because a
-     card's colour belongs to the person who made it. What changed is which card this page holds
-     up as its example, which is exactly the kind of decision a fixture is for. */
-  paletteId: "ivory",
-  /**
-   * ⚠ ADDED 2026-09-20 — THE OTHER HALF OF "WHY IS THERE NO LOGO … THERE?". `resolveBadge`
-   * (`@/card/resolve-card`) puts a card's own `logoUrl` ahead of the owner's initials for the
-   * circular badge that straddles the curve, so this is what now shows in place of the "PR"
-   * monogram. `public/marketing/logo-mark.svg` is authored for this fixture — two interlocking
-   * rings in `--mk-accent-tint` (#C1A88A, the atelier skin's own decorative gold) rather than a
-   * literal letterform — see that file's own header for the shape and why it survives being
-   * clipped to a circle.
-   */
-  logoUrl: "/marketing/logo-mark.svg",
-  /**
-   * `HERO_COVER_URL` — see its own comment, above, for the full account. Short version: an
-   * authored SVG cover exists and is genuinely wired (`resolveCover` reads this straight
-   * through), but the constant it reads from is `null` by measurement, not by omission — turning
-   * it on costs `+134px` and re-clips the SOCIAL strip this pass exists to un-clip. One-line
-   * change if that trade is ever wanted the other way.
-   */
-  coverUrl: HERO_COVER_URL,
-  /**
-   * ⚠ ADDED 2026-09-20, AND THE REASON IS SUBTRACTION, NOT ADDITION. `field_bio`'s own text —
-   * "Builds the studio's telecom and fintech alliances across South Asia. Ex-product, still
-   * writes the deck." — wraps to three lines at this card's `32ch` bio width (the bio's own
-   * `maxWidth` in `card-page.tsx`), which was the single largest piece of the 291px this card
-   * had to lose. `ContactCard.bio` outranks `resolveBio`'s derivation entirely (`resolve-card
-   * .ts`'s own comment on the precedence), so writing a shorter one HERE — rather than trying to
-   * shorten `fixtures/profile.ts`'s `field_bio`, which other real cards in this app also read —
-   * is what let this card get a tagline without touching a shared fixture. `field_bio` is
-   * deliberately no longer in `fieldIds` below: this string replaces what it would have shown,
-   * so leaving the id mapped as well would have re-added the same sentence as a stray, unlabelled
-   * row the moment its wording stopped matching this one verbatim (`heroBio`'s suppression is
-   * exact-text, not "already covered").
-   *
-   * ⚠ ONE LINE, NOT THE TWO THE REFERENCE SHOWS — MEASURED, NOT ROUNDED DOWN FROM TASTE. A
-   * genuinely two-line version ("Partnerships across South Asia's telecom and fintech scene.",
-   * 61 characters) still measured 48px here; this 33-character line measures 24px, one line at
-   * this card's `text-lg`/1.42 metrics. The 24px was needed: see `HERO_COVER_URL`'s comment for
-   * the budget it closes. If the cover is ever turned back on, revisiting this line first is
-   * cheaper than cutting a row.
-   */
-  bio: "South Asia telecom partnerships.",
-  fieldIds: [
-    /* Consumed whole by the identity block — see the module note above. Never rendered as a
-       row. `field_bio` is NOT here — see the comment on `bio`, just above. */
-    "field_job_title",
-    "field_company",
-    /* PERSONAL — a phone, an inbox, and a third, unmasked note row. Section kept at three rows
-       throughout, per the reference's shape; which THIRD field fills it changed on 2026-09-20
-       (below).
-       ⚠ NOT `field_home_address`: it is `isSensitive: true` in `fixtures/profile.ts`, and
-       `isMaskedField` (`@/card/field-renderers`) masks on THAT flag as much as on field type —
-       "encrypted at rest" (CLAUDE.md's non-negotiable #6) names three financial types, but
-       masked-on-the-public-surface (§7.3) is broader and correctly catches anything an owner
-       marked sensitive. Rendered, it is a label plus `••••ndia` — a generic tail-reveal applied
-       to a full street address, which reads as a cut-off string to someone meeting this card
-       for the first time, not as a privacy feature. `field_home_landline` and `field_relation`
-       are `isSensitive: true` for the same reason and are excluded for the same one. */
-    "field_mobile",
-    "field_personal_email",
-    /* ⚠ WAS `field_status` ("Taking partnership intros this quarter") UNTIL 2026-09-20's height
-       pass. Both are unmasked `note` rows and neither is an ambiguous fourth button, which was
-       the whole case for this slot — but `field_status`'s 39-character value wraps to two lines
-       at this card's width (measured: a 56px row instead of the 44px floor), and that spare
-       12px was worth having once a photo-ratio cover made every pixel above the social strip
-       contested. `field_location`'s `LOCATION_TRACKING` value is a §7.3 status chip, never a
-       coordinate, and at 27 characters it clears one line. */
-    "field_location",
-    /* WORK — trimmed from four rows to two on 2026-09-20. Dropped: `field_work_phone` (a
-       second PHONE row when `field_mobile` above already carries one) and `field_work_address`
-       (an `ADDRESS` row, 1–2 lines, the tallest row in the section it left). Kept: one internal
-       action and one external one, which is more variety per row than the two dropped were
-       buying. */
-    "field_work_email",
-    "field_site_url",
-    /* SOCIAL — real per-platform marks only (see the module note above). `field_github` came
-       out on 2026-09-20: three owner-mapped platforms plus the strip's own derived WhatsApp
-       disc (`whatsappActionFor`, off `field_mobile` above) is four, matching the reference's
-       own count and keeping the strip to one line at this card's width. */
-    "field_linkedin",
-    "field_x",
-    "field_instagram",
+   ⚠ TWO DELIBERATE DEPARTURES, BOTH DOMAINS. The reference prints `maya@contactbook.com` and
+   `www.mayapartners.com`. Neither is ours (the client's domain is `contactbookapp.com`, in
+   `lib/site.ts`), and `tests/contract/fixture-hygiene.test.ts` admits only RFC 2606 reserved
+   domains in a fixture. The mailbox and site keep their shape and move to `.example`.
+
+   ⚠ The +44 7700 900123 number is the reference's own, and it is safe as printed: 07700 900xxx
+   is Ofcom's drama range and can never ring anyone.
+
+   2026-09-29, later: the identity file moved to this card's person, so every fact below — name,
+   role, company, bio, number, mailbox, home, site — is read from `marketing-identity.ts` and the
+   rest of the page draws the same Maya Laurent. What stays here is the reference's layout: its
+   script, its labels, its order, and where it breaks the bio.
+   ════════════════════════════════════════════════════════════════════════════════════════ */
+
+/** The row glyphs the reference draws, in the order it draws them. */
+export type HeroPhoneIcon = "phone" | "mail" | "pin" | "building" | "link";
+
+/** The four social marks under SOCIAL. */
+export type HeroPhoneSocial = "linkedin" | "instagram" | "x" | "youtube";
+
+export interface HeroPhoneRow {
+  readonly icon: HeroPhoneIcon;
+  readonly value: string;
+}
+
+export interface HeroPhoneSection {
+  readonly label: string;
+  readonly rows: readonly HeroPhoneRow[];
+}
+
+export interface HeroPhoneCopy {
+  /** Read to assistive technology in place of the drawing, which is `inert`. */
+  readonly caption: string;
+  /** The cover photograph, at 2× and 3× the card's 330px design width. */
+  readonly portrait: { readonly x2: string; readonly x3: string };
+  /** The handwritten lines over the photograph, one per line. */
+  readonly script: readonly string[];
+  readonly brand: string;
+  readonly name: string;
+  readonly role: string;
+  readonly company: string;
+  /** Two lines, broken where the reference breaks them. */
+  readonly bio: readonly [string, string];
+  readonly action: string;
+  readonly sections: readonly HeroPhoneSection[];
+  readonly socialLabel: string;
+  readonly social: readonly HeroPhoneSocial[];
+}
+
+export const heroPhone = {
+  caption:
+    `${MAYA.fullName}'s ContactBook card on a phone: her photo, ${MAYA.role} of ${MAYA.company}, a ` +
+    "Send to Phone button, and her personal, business and social details.",
+  portrait: {
+    x2: "/marketing/hero-portrait-2x.webp",
+    x3: "/marketing/hero-portrait-3x.webp",
+  },
+  script: ["Privacy", "Relationships", "Ideas"],
+  brand: "ContactBook",
+  name: MAYA.fullName,
+  role: MAYA.role,
+  company: MAYA.company,
+  bio: MAYA.bio,
+  action: "Send to Phone",
+  sections: [
+    {
+      label: "Personal",
+      rows: [
+        { icon: "phone", value: MAYA.mobile },
+        { icon: "mail", value: MAYA.personalEmail },
+        { icon: "pin", value: `${MAYA.home.city}, ${MAYA.home.country}` },
+      ],
+    },
+    {
+      label: "Business",
+      rows: [
+        { icon: "building", value: MAYA.company },
+        { icon: "link", value: MAYA.website },
+      ],
+    },
   ],
-  updatedAt: "2026-09-09T09:00:00.000Z",
-} as const satisfies ContactCard;
+  socialLabel: "Social",
+  social: ["linkedin", "instagram", "x", "youtube"],
+} as const satisfies HeroPhoneCopy;
+
+/* ════════════════════════════════════════════════════════════════════════════════════════
+   MAYA LAURENT'S PROFILE — the records the example cards resolve through.
+
+   2026-09-28, the client: the landing page moves from the app's fixture user (an Indian number,
+   a Mumbai address) to one person with details in London, Dubai, New York and Singapore;
+   2026-09-29 made her the hero's Maya Laurent. The FACTS live in `fixtures/marketing-identity.ts`
+   and nothing here restates one: every number, address and email below is read from it. What
+   this block adds is the SHAPE — which of those facts is a field, in which group, under which
+   label — because `resolveCard` needs real `ProfileField`s and `FIXTURE_DB.fields` (read-only,
+   threaded through the whole app's tests) is still Priyanka's.
+
+   How her details are cast, so every section tells one story:
+     · Lisbon is home — her mobile (+44 7700, the hero card's) and her home, city only.
+     · London is the office on her work card (the address).
+     · All four cities are Maya Partners' offices, one office line each.
+   Only her mobile reaches a rendered card; the office lines are drawn in how-it-works' profile
+   panel alone.
+
+   ⚠ FIELD IDS MATCH `FIXTURE_DB`'S where the meaning matches (`field_mobile`, `field_work_email`,
+   `field_linkedin`, …), so a card spec written against the app fixture resolves against this
+   set too; the office lines and `field_experience` are new ids with no app-side twin.
+   ════════════════════════════════════════════════════════════════════════════════════════ */
+
+const MAYA_HOME = mayaFacts.MAYA.home;
+const MAYA_OFFICE = mayaFacts.mayaCity("london");
+
+/** Display form → the stored E.164 form. The identity file carries the display form only. */
+function storedPhone(display: string): string {
+  return display.replace(/[^\d+]/g, "");
+}
+
+export interface MayaProfile {
+  readonly groups: readonly FieldGroup[];
+  readonly fields: readonly DomainProfileField[];
+}
+
+/** The four office lines, one per city, in the identity file's order. */
+const MAYA_OFFICE_LINES: readonly DomainProfileField[] = mayaFacts.MAYA_CITIES.map((city) => ({
+  id: `field_${city.id.replace("-", "_")}_office`,
+  groupId: "group_work",
+  type: "LANDLINE",
+  label: `${city.city} office`,
+  value: storedPhone(city.phone),
+  isSensitive: false,
+}));
+
+export const mayaProfile: MayaProfile = {
+  groups: [
+    {
+      id: "group_identity",
+      userId: CARD_OWNER,
+      category: "IDENTITY",
+      name: "Identity",
+      fieldIds: ["field_experience", "field_dob"],
+    },
+    {
+      id: "group_personal",
+      userId: CARD_OWNER,
+      category: "PERSONAL",
+      name: "Personal",
+      fieldIds: ["field_mobile", "field_personal_email", "field_home_address"],
+    },
+    {
+      id: "group_work",
+      userId: CARD_OWNER,
+      category: "WORK",
+      name: "Work",
+      fieldIds: [
+        "field_job_title",
+        "field_company",
+        "field_work_email",
+        "field_work_address",
+        ...MAYA_OFFICE_LINES.map((field) => field.id),
+        "field_site_url",
+      ],
+    },
+    {
+      id: "group_social",
+      userId: CARD_OWNER,
+      category: "SOCIAL",
+      name: "Social",
+      fieldIds: ["field_linkedin"],
+    },
+  ],
+  fields: [
+    /* ── IDENTITY ── the first mapped TEXT field is a card's bio, so this is the CV card's. */
+    {
+      id: "field_experience",
+      groupId: "group_identity",
+      type: "TEXT",
+      label: "Experience",
+      value: "Twelve years connecting people, ideas and opportunities across Europe, the Gulf, the US and Asia.",
+      isSensitive: false,
+    },
+    {
+      id: "field_dob",
+      groupId: "group_identity",
+      type: "DATE",
+      label: "Birthday",
+      value: "1990-06-14",
+      /* Shared on purpose: the family card exists to carry it. A sensitive field renders masked
+         on a public page, which would turn the family card's one personal row into "••••". */
+      isSensitive: false,
+    },
+
+    /* ── PERSONAL ── Lisbon is home. */
+    {
+      id: "field_mobile",
+      groupId: "group_personal",
+      type: "PHONE",
+      label: "Mobile",
+      value: storedPhone(mayaFacts.MAYA.mobile),
+      isSensitive: false,
+    },
+    {
+      id: "field_personal_email",
+      groupId: "group_personal",
+      type: "EMAIL",
+      label: "Personal email",
+      value: mayaFacts.MAYA.personalEmail,
+      isSensitive: false,
+    },
+    {
+      id: "field_home_address",
+      groupId: "group_personal",
+      type: "ADDRESS",
+      label: "Home",
+      value: `${MAYA_HOME.city}, ${MAYA_HOME.country}`,
+      isSensitive: false,
+      /* No street: the identity gives her home as a city, as the hero card does, and an empty
+         `line1` drops out of `formatAddressLines`, so the row prints "Lisbon, Portugal". */
+      detail: {
+        kind: "ADDRESS",
+        line1: "",
+        line2: null,
+        city: MAYA_HOME.city,
+        region: null,
+        postalCode: null,
+        country: MAYA_HOME.country,
+      },
+    },
+
+    /* ── WORK ── */
+    {
+      id: "field_job_title",
+      groupId: "group_work",
+      type: "JOB_TITLE",
+      label: "Role",
+      value: mayaFacts.MAYA.role,
+      isSensitive: false,
+    },
+    {
+      id: "field_company",
+      groupId: "group_work",
+      type: "COMPANY",
+      label: "Company",
+      value: mayaFacts.MAYA.company,
+      isSensitive: false,
+    },
+    {
+      id: "field_work_email",
+      groupId: "group_work",
+      type: "EMAIL",
+      label: "Work email",
+      value: mayaFacts.MAYA.workEmail,
+      isSensitive: false,
+    },
+    {
+      id: "field_work_address",
+      groupId: "group_work",
+      type: "ADDRESS",
+      label: "Office",
+      value: MAYA_OFFICE.address,
+      isSensitive: false,
+      detail: {
+        kind: "ADDRESS",
+        line1: "14 Wren Yard",
+        line2: null,
+        city: MAYA_OFFICE.city,
+        region: null,
+        postalCode: "EC2A 4NE",
+        country: MAYA_OFFICE.country,
+      },
+    },
+    ...MAYA_OFFICE_LINES,
+    {
+      id: "field_site_url",
+      groupId: "group_work",
+      type: "URL",
+      label: "Website",
+      value: `https://${mayaFacts.MAYA.website}`,
+      isSensitive: false,
+    },
+
+    /* ── SOCIAL ── */
+    {
+      id: "field_linkedin",
+      groupId: "group_social",
+      type: "SOCIAL_LINK",
+      label: "LinkedIn",
+      value: `https://www.${mayaFacts.MAYA.linkedin}`,
+      isSensitive: false,
+    },
+  ],
+};
 
 export interface ExampleCardSpec {
   readonly id: string;
-  /** What this card is for, shown under it. The card itself carries the fields. */
+  /** What this card is for. The card itself carries the fields. */
   readonly name: string;
   readonly card: ContactCard;
 }
 
 /**
- * The six example cards, as real cards.
+ * Maya's three cards, as real cards — the deck in `solution` and the deck in `how-it-works`.
  *
- * ⚠ THEY DIFFER IN CONTENT AS WELL AS COLOUR, and that is the whole argument of the section:
- * six tiles wearing six palettes over one identical field list would say the product is a
- * colour picker. Each `fieldIds` list is a genuinely different subset of the same profile —
- * "Limited" carries two fields, "Business" carries six — which is what "a card is a filter over
- * your profile" looks like when you can see it.
+ * ⚠ THREE, AND THEY ARE THE CLIENT'S THREE: work, CV (the headhunter card) and family
+ * (2026-09-28). The six-card set this replaces (business, personal, limited, side-project,
+ * family, corporate) fed a cards section removed on 2026-09-19; only three were still rendered,
+ * and "Just met" gives way to the CV card on the client's word.
+ *
+ * ⚠ THEY DIFFER IN CONTENT AS WELL AS COLOUR. Each `fieldIds` list is a different subset of
+ * `mayaProfile`, and `solution.cards[].fields` mirrors each one chip for chip — change both
+ * together.
  *
  * ⚠ AND THEY ALL USE ONE TEMPLATE (`meridian`). Colour and content vary; the FORMAT does not.
- * Someone handed one card should already know where to look on every other. The brief's phrase
- * "different cards with different designs" invites six compositions and must not get them.
  */
 export const exampleCardSpecs: readonly ExampleCardSpec[] = [
   {
-    id: "business",
-    name: "Business",
+    id: "work",
+    name: "Work",
     card: {
-      id: "card_mk_business",
+      id: "card_mk_work",
       userId: CARD_OWNER,
-      name: "Business",
+      name: "Work",
       type: "BUSINESS",
       isSensitive: false,
       publicUrl: "https://card.example/c/3nR8xA5oSu9Mq2YdWc4Jt0",
@@ -1230,72 +1221,12 @@ export const exampleCardSpecs: readonly ExampleCardSpec[] = [
       fieldIds: [
         "field_job_title",
         "field_company",
-        "field_work_phone",
+        "field_mobile",
         "field_work_email",
         "field_work_address",
         "field_linkedin",
       ],
-      updatedAt: "2026-09-09T09:00:00.000Z",
-    },
-  },
-  {
-    id: "personal",
-    name: "Personal",
-    card: {
-      id: "card_mk_personal",
-      userId: CARD_OWNER,
-      name: "Personal",
-      type: "PERSONAL",
-      isSensitive: true,
-      publicUrl: "https://card.example/c/4oS9yB6pTv0Nr3ZeXd5Ku1",
-      templateId: "meridian",
-      paletteId: "clay",
-      fieldIds: [
-        "field_mobile",
-        "field_personal_email",
-        "field_home_address",
-        "field_dob",
-      ],
-      updatedAt: "2026-09-09T09:00:00.000Z",
-    },
-  },
-  {
-    id: "limited",
-    name: "Limited",
-    card: {
-      id: "card_mk_limited",
-      userId: CARD_OWNER,
-      name: "Limited",
-      type: "CUSTOM",
-      isSensitive: false,
-      publicUrl: "https://card.example/c/5pT0zC7qUw1Os4AfYe6Lv2",
-      templateId: "meridian",
-      paletteId: "onyx",
-      /* Two fields. The card for somebody you have just met, and the clearest thing on the page
-         that a card is a subset rather than a copy. */
-      fieldIds: ["field_mobile", "field_work_email"],
-      updatedAt: "2026-09-09T09:00:00.000Z",
-    },
-  },
-  {
-    id: "side-project",
-    name: "Side project",
-    card: {
-      id: "card_mk_side",
-      userId: CARD_OWNER,
-      name: "Side project",
-      type: "CUSTOM",
-      isSensitive: false,
-      publicUrl: "https://card.example/c/6qU1aD8rVx2Pt5BgZf7Mw3",
-      templateId: "meridian",
-      paletteId: "pistachio",
-      fieldIds: [
-        "field_studio_handle",
-        "field_site_url",
-        "field_instagram",
-        "field_personal_email",
-      ],
-      updatedAt: "2026-09-09T09:00:00.000Z",
+      updatedAt: "2026-09-28T09:00:00.000Z",
     },
   },
   {
@@ -1307,40 +1238,35 @@ export const exampleCardSpecs: readonly ExampleCardSpec[] = [
       name: "Family",
       type: "PERSONAL",
       isSensitive: true,
-      publicUrl: "https://card.example/c/7rV2bE9sWy3Qu6ChAg8Nx4",
+      publicUrl: "https://card.example/c/4oS9yB6pTv0Nr3ZeXd5Ku1",
       templateId: "meridian",
-      paletteId: "rust",
-      fieldIds: [
-        "field_mobile",
-        "field_home_address",
-        "field_home_landline",
-        "field_relation",
-        "field_dob",
-      ],
-      updatedAt: "2026-09-09T09:00:00.000Z",
+      paletteId: "clay",
+      fieldIds: ["field_mobile", "field_personal_email", "field_home_address", "field_dob"],
+      updatedAt: "2026-09-28T09:00:00.000Z",
     },
   },
   {
-    id: "corporate",
-    name: "Corporate",
+    id: "cv",
+    name: "CV",
     card: {
-      id: "card_mk_corporate",
+      id: "card_mk_cv",
       userId: CARD_OWNER,
-      name: "Corporate",
-      type: "BUSINESS",
+      name: "CV",
+      type: "CUSTOM",
       isSensitive: false,
-      publicUrl: "https://card.example/c/8sW3cF0tXz4Rv7DiBh9Oy5",
+      publicUrl: "https://card.example/c/5pT0zC7qUw1Os4AfYe6Lv2",
       templateId: "meridian",
-      paletteId: "periwinkle",
+      paletteId: "onyx",
       fieldIds: [
+        "field_experience",
         "field_job_title",
-        "field_company",
-        "field_department",
-        "field_work_email",
-        "field_work_address",
+        "field_mobile",
+        "field_personal_email",
+        "field_linkedin",
       ],
-      updatedAt: "2026-09-09T09:00:00.000Z",
+      updatedAt: "2026-09-28T09:00:00.000Z",
     },
   },
 ];
+
 

@@ -1,70 +1,66 @@
 /* ============================================================================
    marketing-solution — owned by ONE section. See `docs/landing-integration.md`.
 
-   ⚠ REWRITTEN 2026-09-21 (FIFTH ATTEMPT). THE MATRIX IS GONE.
+   ⚠ SIXTH BUILD, 2026-09-28. THE TRIPTYCH IS A DECK.
 
-   The previous version of this file drove a 12 x 3 grid of coloured dots: a
-   spotlight walking three columns, a value flickering to an older one and
-   back, a cell dimming under a struck line and an "Off" pill. Eleven beats,
-   eight keyframe blocks, all of it performed on 8px dots — and the verdict
-   was *"what are these dots, why are the colours changing, how are these
-   dots connecting"*. `solution.tsx`'s module header carries the full account
-   of why a comparison grid was the wrong genre for this claim rather than a
-   badly drawn one.
+   The client asked for a more dramatic swap: one card large in front, two
+   slotted behind, rotating to the front with a bold label. `solution.tsx`'s
+   header has the account and how the deck keeps the rule five earlier builds
+   paid for (three real cards at once, no press, an object not a diagram).
 
-   What this file drives now is much smaller, because the exhibit is now made
-   of objects that explain themselves: a band of twelve labelled chips, three
-   real `<CardPage>` renders beneath it, and one 12s clock that walks the
-   three cards four seconds each — the lit card rises, and the chips it
-   carries light in that card's own colour.
+   What this file drives:
+     - the profile band — twelve chips; the front card's chips are lit;
+     - the deck — three real `<CardPage>` renders in one grid cell, posed as
+       front / first behind / second behind;
+     - the names — the bold label, one line and a count per card;
+     - ONE 12s clock, 4s per card, that every moving part reads.
 
    Read before touching anything below:
 
-     - every colour is an `--mk-*` token or the card's own `--c-*` — no
-       literal, on either skin;
-     - every animated property is `transform` or `opacity` — nothing else.
-       `tests/unit/marketing-solution.test.tsx` parses every `@keyframes`
-       block in this file and fails on anything else;
-     - the UN-animated default IS a finished, correct picture — twelve chips
-       and three visibly different cards. That is not a fallback, it is the
-       reason this pattern was chosen: a switcher or a scroll-morph says
-       NOTHING at rest, and this section has already failed twice by needing
-       the reader to act before it meant anything;
-     - every rule that moves anything lives inside
-       `@media (prefers-reduced-motion: no-preference)`. Nothing here listens
-       for a scroll, an intersection or a click.
+     - every colour is an `--mk-*` token or the card's own `--c-*`;
+     - every property inside a `@keyframes` block is `transform` or `opacity`.
+       `tests/unit/marketing-solution.test.tsx` parses them and fails on
+       anything else;
+     - the STACKING ORDER CHANGES WITHOUT Z-INDEX. `.mk-sol-deck` is a 3D
+       rendering context (`transform-style: preserve-3d`) and every pose
+       carries a `translateZ`, so the browser depth-sorts the cards. Do not
+       put `overflow`, `opacity`, `filter` or `isolation` on `.mk-sol-deck`
+       itself: any of them flattens the context and the front card can then
+       paint behind the others mid-swap;
+     - the UN-animated default IS the finished picture: Work in front, its
+       chips lit, all three names listed. Motion needs no-preference AND the
+       exhibit's own reveal (`data-mk-reveal`, set by `<MkReveal>`), so under
+       reduced motion, with scripting off, or before hydration, nothing moves
+       and nothing is hidden;
+     - the loop runs past 5s, so it has a visible pause control (WCAG 2.2.2).
 
-   ⚠ DELIBERATELY UNLAYERED — NOT INSIDE `@layer components`, and this is a
-   reversal of an older comment rather than an oversight. Tailwind v4 emits
-   utility classes UNLAYERED, and an unlayered rule beats a layered one for
-   the same property however specific the layered one is.
-   `marketing-steps.css` shipped the layered version the same week and caught
-   the reason not to: a layered `color` lost to `<Prose>`'s own
-   `text-mk-stone` on the same element, silently, and only the page-wide
-   contrast sweep caught it — happy-dom has no cascade, so nothing in the
-   unit suite could have.
+   ⚠ DELIBERATELY UNLAYERED — NOT INSIDE `@layer components`. Tailwind v4 emits
+   utilities unlayered, and an unlayered rule beats a layered one for the same
+   property however specific the layered one is (`marketing-steps.css` learned
+   this from a `color` that silently lost to `<Prose>`).
    ============================================================================ */
 
 [data-solution-exhibit] {
-  /* ⚠ ONE CLOCK, AND EVERYTHING READS IT. Two independent `infinite`
-     animations of different durations drift against each other, so the chips
-     would light under a card that is no longer the one rising. Every rule
-     below is a slice of this single number.
-
-     12s = three cards x 4s. Four seconds is about as fast as a reader can
-     notice a card rise, follow the colour to the chips, and read two of them
-     before it moves on. */
+  /* ⚠ ONE CLOCK, AND EVERYTHING READS IT. 12s = three cards x 4s: about 3s
+     at rest, then a 1s swap. Two independent loops of different lengths would
+     drift, and the chips would light under a card that is no longer in front. */
   --mk-solution-dur: 12s;
 
-  /* The card renders' width, as the ratio `<CardPageThumb>` reads. The card's
-     design width is 336px, so these are 101 / 141 / 168 / 195px.
+  /* The front card's width as the ratio `<CardPageThumb>` reads. The card's
+     design width is 336px: 222 / 242 / 269px across the breakpoints below. */
+  --card-thumb-scale: 0.66;
 
-     ⚠ THREE-UP AT EVERY WIDTH, INCLUDING THE SMALLEST — the comparison IS the
-     argument, and a stacked column of three cards is three cards, not a
-     comparison. At 101px a reader cannot read a row, and does not need to:
-     what carries at that size is that one card is deep, one is middling and
-     one is two rows tall. That is the claim. */
-  --card-thumb-scale: 0.3;
+  /* How far the two back cards show above the front one. */
+  --mk-sol-peek: 22px;
+
+  /* The swap's curve: in-out, so a card is seen to leave and seen to land.
+     The page's own `--mk-ease` is an expo-out, which does 70% of a move in
+     its first fifth — on a 700ms swap that read as a jump cut, not a swap. */
+  --mk-sol-ease: cubic-bezier(0.6, 0, 0.25, 1);
+
+  /* The bold label's size. One step under the section heading on phones, and
+     larger than a panel title from `lg`, where it sits beside a 269px card. */
+  --mk-sol-title: var(--mk-text-heading);
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -80,10 +76,8 @@
   list-style: none;
 }
 
-/* ⚠ `position: relative` is what the lit overlays are absolutely positioned
-   against, and `isolation` keeps them out of any stacking context a skin
-   might introduce above. The chip sizes itself to its own label; the overlay
-   inherits that box exactly, so the two can never disagree by a pixel. */
+/* ⚠ `position: relative` is what the lit overlays are positioned against, and
+   `isolation` keeps them out of any stacking context a skin might introduce. */
 .mk-sol-chip {
   position: relative;
   isolation: isolate;
@@ -99,9 +93,7 @@
   white-space: nowrap;
 }
 
-/* The private field is on no card and can never be on one. It reads quieter
-   than the rest and carries its own tag — the one chip whose state is a fact
-   about the field rather than about a card. */
+/* The private field is on no card and can never be on one. */
 .mk-sol-chip[data-field-state="private"] {
   border-style: dashed;
 }
@@ -111,10 +103,10 @@
   z-index: 1;
 }
 
-/* One per card that carries this field. Painted in that card's own ground,
-   sized to the chip it covers, and invisible until the walk reaches its
-   column. `inset: -1px` so the fill covers the chip's own hairline rather
-   than sitting inside it and leaving a grey ring. */
+/* One per card that carries this field, painted in that card's ground. At
+   rest only the front card's (column 0, Work) are lit, so the still picture
+   already says which fields the front card carries. `inset: -1px` so the fill
+   covers the chip's own hairline. */
 .mk-sol-chip__lit {
   position: absolute;
   inset: -1px;
@@ -127,8 +119,12 @@
   opacity: 0;
 }
 
+.mk-sol-chip__lit[data-mk-walk-col="0"] {
+  opacity: 1;
+}
+
 /* ══════════════════════════════════════════════════════════════════════════
-   THE DIVIDE, AND THE THREE CARDS
+   THE DIVIDE, AND THE PAUSE CONTROL
    ══════════════════════════════════════════════════════════════════════════ */
 
 .mk-sol-divide {
@@ -140,47 +136,105 @@
   border-top: 1px solid var(--mk-hairline);
 }
 
-.mk-sol-cards {
-  display: grid;
-  grid-template-columns: repeat(3, auto);
-  justify-content: center;
-  gap: 12px;
-  margin-top: 20px;
-  padding: 0;
-  list-style: none;
-}
-
-.mk-sol-card {
-  display: flex;
-  flex-direction: column;
+.mk-sol-pause {
+  margin-left: auto;
+  display: none;
   align-items: center;
-  min-width: 0;
-  text-align: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: var(--mk-radius-pill);
+  border: 1px solid var(--mk-hairline-strong);
+  background-color: var(--mk-white);
+  font-size: var(--mk-text-caption);
+  font-weight: var(--mk-weight-medium);
+  color: var(--mk-ink);
+  cursor: pointer;
+  user-select: none;
 }
 
-/* ⚠ The crop's container. `<CardPageThumb>` sizes itself from
-   `--card-thumb-scale` and clips its own overflow; this element exists to be
-   the positioning context for the veil and to give the card an edge and a
-   shadow, because a card is a physical object and an object on a page has
-   both. */
+.mk-sol-pause:hover {
+  border-color: var(--mk-ink);
+}
+
+.mk-sol-pause:has(.mk-sol-pause__input:focus-visible) {
+  outline: 2px solid var(--mk-ink);
+  outline-offset: 2px;
+}
+
+.mk-sol-pause:has(.mk-sol-pause__input:checked) {
+  border-color: var(--mk-ink);
+}
+
+.mk-sol-pause__icon {
+  display: inline-flex;
+}
+
+/* The visible word IS the accessible name, so the hidden one must be
+   `display: none` (which also drops it from the name), never just invisible. */
+.mk-sol-pause [data-when="paused"],
+.mk-sol-pause:has(.mk-sol-pause__input:checked) [data-when="running"] {
+  display: none;
+}
+
+.mk-sol-pause:has(.mk-sol-pause__input:checked) [data-when="paused"] {
+  display: inline-flex;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   THE STAGE — the deck, and the names beside it
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.mk-sol-stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  gap: 28px;
+  margin-top: 24px;
+}
+
+/* All three cards share one grid cell, so the deck is exactly as large as its
+   front card plus the two peeking edges above it. */
+.mk-sol-deck {
+  display: grid;
+  justify-items: center;
+  padding-top: calc(var(--mk-sol-peek) * 2);
+  transform-style: preserve-3d;
+}
+
+/* ⚠ THE THREE RESTING POSES. `transform-origin` is the card's top edge, so a
+   scaled-down back card keeps its top exactly `--mk-sol-peek` above the one in
+   front of it at every breakpoint, whatever the card's height. The function
+   list is identical in every pose and every keyframe below, so the browser
+   interpolates each term on its own rather than decomposing a matrix. */
+.mk-sol-deck__card {
+  grid-area: 1 / 1;
+  transform-origin: 50% 0;
+  transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+}
+
+.mk-sol-deck__card[data-mk-walk-col="1"] {
+  transform: translate3d(0, calc(var(--mk-sol-peek) * -1), -60px) rotate(0deg) scale(0.92);
+}
+
+.mk-sol-deck__card[data-mk-walk-col="2"] {
+  transform: translate3d(0, calc(var(--mk-sol-peek) * -2), -120px) rotate(0deg) scale(0.84);
+}
+
+/* The crop's container: the edge, the shadow, and the positioning context for
+   the veil. A card is a physical object, and an object on a page has both. */
 .mk-sol-card__frame {
   position: relative;
   display: block;
   overflow: hidden;
-  border-radius: var(--mk-radius-control);
+  border-radius: var(--mk-radius-block);
   border: 1px solid var(--mk-hairline);
-  box-shadow: var(--mk-shadow-card);
+  box-shadow: var(--mk-shadow-float);
 }
 
-/* ⚠ THE CROP NEEDS A BOTTOM DRAWN UNDER IT. The card is a document with no
-   fixed height, so a fixed window cuts it wherever that card's own content
-   happens to land — through the middle of a field row as often as not, which
-   reads as broken rather than as "there is more card". Same defect, same
-   treatment and same reasoning as `card-tile.css`.
-
-   ⚠ It fades to `--c-sheet`, the paper THAT card is printed on — set by
-   `paletteVars` on the frame in `solution.tsx`. Fading to the exhibit's own
-   white would leave a visible pale band across the clay card. */
+/* ⚠ THE CROP NEEDS A BOTTOM DRAWN UNDER IT, or the window cuts a field row in
+   half and reads as broken. It fades to `--c-sheet`, the paper THAT card is
+   printed on — set by `paletteVars` on the frame in `solution.tsx`. */
 .mk-sol-card__veil {
   position: absolute;
   inset-inline: 0;
@@ -196,149 +250,279 @@
   pointer-events: none;
 }
 
-.mk-sol-card__name {
+/* ── the names ──────────────────────────────────────────────────────────────
+   At rest: a list, Work first, every name readable. Once the rotation can run,
+   the three stack in one cell and only the front card's is shown (see THE
+   ROTATION below). */
+.mk-sol-names {
+  display: grid;
+  gap: 20px;
+  width: 100%;
+  max-width: 26rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mk-sol-name {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.mk-sol-name__swatch {
+  display: block;
+  width: 28px;
+  height: 4px;
+  border-radius: var(--mk-radius-pill);
+}
+
+.mk-sol-name__title {
   margin-top: 12px;
-  font-weight: var(--mk-weight-medium);
-  font-size: var(--mk-text-body-sm);
+  font-family: var(--mk-font-display);
+  font-weight: var(--mk-weight-display);
+  font-size: var(--mk-sol-title);
+  line-height: 1.12;
+  letter-spacing: var(--mk-text-heading-tracking);
   color: var(--mk-ink);
+  text-wrap: balance;
 }
 
-.mk-sol-card__note {
-  margin-top: 2px;
-  font-size: var(--mk-text-caption);
-  line-height: 1.45;
-  color: var(--mk-pebble);
-  /* The note is the only wrapping text in the column and the only thing that
-     can make three columns uneven. Held to the card's own width so a long
-     note lengthens its column instead of widening it. */
-  max-width: calc(336px * var(--card-thumb-scale));
+.mk-sol-name__note {
+  margin-top: 8px;
+  font-size: var(--mk-text-body-sm);
+  line-height: var(--mk-text-body-sm-lh);
+  color: var(--mk-stone);
+  max-width: 32ch;
 }
 
-.mk-sol-card__count {
-  margin-top: 6px;
+.mk-sol-name__count {
+  margin-top: 10px;
   font-size: var(--mk-text-caption);
   font-weight: var(--mk-weight-medium);
   font-variant-numeric: tabular-nums;
-  color: var(--mk-stone);
+  color: var(--mk-pebble);
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
-   BREAKPOINTS — the scale, and nothing else. One DOM at every width.
+   BREAKPOINTS — the scale and the stage's shape. One DOM at every width.
    ══════════════════════════════════════════════════════════════════════════ */
 
 @media (min-width: 640px) {
   [data-solution-exhibit] {
-    --card-thumb-scale: 0.42;
-  }
-
-  .mk-sol-cards {
-    gap: 16px;
+    --card-thumb-scale: 0.72;
+    --mk-sol-peek: 24px;
   }
 }
 
-@media (min-width: 768px) {
-  [data-solution-exhibit] {
-    --card-thumb-scale: 0.5;
-  }
-
-  .mk-sol-cards {
-    gap: 20px;
-  }
-}
-
+/* Side by side from `lg`: the deck on the left, its name beside it. */
 @media (min-width: 1024px) {
   [data-solution-exhibit] {
-    --card-thumb-scale: 0.58;
+    --card-thumb-scale: 0.8;
+    --mk-sol-peek: 26px;
+    --mk-sol-title: 2.5rem;
   }
 
-  .mk-sol-cards {
-    gap: 24px;
+  /* The deck and its name as one centred group, not a deck pinned left with
+     the right half of the panel empty. */
+  .mk-sol-stage {
+    grid-template-columns: auto minmax(0, 26rem);
+    justify-content: center;
+    align-items: center;
+    justify-items: start;
+    column-gap: 80px;
+    margin-top: 32px;
   }
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
-   THE WALK — the one beat.
+   THE ROTATION
 
-   ⚠ EVERY `0%` AND `100%` BELOW ARE IDENTICAL, AND THAT IS WHAT MAKES THE
-   STATIC PICTURE CORRECT RATHER THAN MERELY INTENDED. The un-animated
-   default is the finished exhibit; the loop only ever departs from it and
-   returns.
+   Gated twice: `prefers-reduced-motion: no-preference`, and the exhibit's own
+   `data-mk-reveal` (armed or in). Without the attribute nothing here applies,
+   which is the list-and-still-deck picture above.
 
-   ⚠ NOTHING IS DIMMED. The obvious walk recedes the two unlit cards. It is
-   not done: the page-wide AA sweep walks every text node against its
-   computed ground and a faded card render is exactly what fails it — and,
-   more to the point, the matrix's real sin was one colour channel meaning
-   three things at once. Here the lit card RISES, and colour only ever means
-   which card.
+   ⚠ NEGATIVE DELAYS ARE THE WHOLE SYNC. Every part runs the SAME keyframes on
+   the same 12s clock, and a negative delay starts an element that far into
+   its cycle. Column 0 (Work) starts in front; column 1 starts two thirds in,
+   which is the "first behind" pose; column 2 one third in, "second behind".
+   So Work goes, Family rises, CV moves up; four seconds later Family goes...
+
+   ⚠ The keyframes read in the card's own cycle:
+       0–25%      in front (3s)
+       25–28.5%   thrown out to the side, fading — still in front in depth,
+                  so it never passes behind a card while it can be seen
+       29–33%     reappears at the back, fading in
+       33–58%     second behind
+       58–67%     moves up to first behind
+       67–92.5%   first behind
+       92.5–100%  rises to the front a beat after the front card leaves,
+                  overshoots slightly, then settles
    ══════════════════════════════════════════════════════════════════════════ */
 
 @media (prefers-reduced-motion: no-preference) {
-  .mk-sol-chip__lit {
-    animation: mk-sol-chip-lit var(--mk-solution-dur) var(--mk-ease) infinite;
+  [data-solution-exhibit][data-mk-reveal] .mk-sol-pause {
+    display: inline-flex;
   }
 
-  .mk-sol-card {
-    animation: mk-sol-card-rise var(--mk-solution-dur) var(--mk-ease) infinite;
+  /* The names stack in one cell; only the front card's shows until the clock
+     runs. The two hidden ones are still in the accessibility tree. */
+  [data-solution-exhibit][data-mk-reveal] .mk-sol-names {
+    gap: 0;
   }
 
-  /* ⚠ NEGATIVE delays, and the sign is the whole mechanism: a negative delay
-     starts an element that far INTO its cycle, so all three run one clock and
-     simply read different points of it. Column 1 is one third behind, column
-     2 two thirds — which puts their lit windows at 4-8s and 8-12s.
+  [data-solution-exhibit][data-mk-reveal] .mk-sol-name {
+    grid-area: 1 / 1;
+  }
 
-     One selector for both the chips and the cards, because both carry
-     `data-mk-walk-col` and both want the same offset. */
-  [data-solution-exhibit] [data-mk-walk-col="1"] {
+  [data-solution-exhibit][data-mk-reveal] .mk-sol-name:not([data-mk-walk-col="0"]) {
+    opacity: 0;
+  }
+
+  [data-solution-exhibit][data-mk-reveal="in"] .mk-sol-deck__card {
+    animation: mk-sol-deck var(--mk-solution-dur) var(--mk-sol-ease) infinite;
+    will-change: transform, opacity;
+  }
+
+  [data-solution-exhibit][data-mk-reveal="in"] .mk-sol-name {
+    animation: mk-sol-name var(--mk-solution-dur) var(--mk-sol-ease) infinite;
+  }
+
+  [data-solution-exhibit][data-mk-reveal="in"] .mk-sol-chip__lit {
+    animation: mk-sol-front var(--mk-solution-dur) var(--mk-sol-ease) infinite;
+  }
+
+  [data-solution-exhibit][data-mk-reveal="in"] [data-mk-walk-col="1"] {
+    animation-delay: calc(var(--mk-solution-dur) / -3 * 2);
+  }
+
+  [data-solution-exhibit][data-mk-reveal="in"] [data-mk-walk-col="2"] {
     animation-delay: calc(var(--mk-solution-dur) / -3);
   }
 
-  [data-solution-exhibit] [data-mk-walk-col="2"] {
-    animation-delay: calc(var(--mk-solution-dur) / -3 * 2);
+  /* The pause. One switch for every moving part, so they stay on one clock. */
+  [data-solution-exhibit]:has(.mk-sol-pause__input:checked) :is(.mk-sol-deck__card, .mk-sol-name, .mk-sol-chip__lit) {
+    animation-play-state: paused;
   }
 }
 
-/* A third of the cycle lit, with a short fade at each end so a chip arrives
-   rather than blinks. 33.33% is the handover point to the next column. */
-@keyframes mk-sol-chip-lit {
+@keyframes mk-sol-deck {
   0% {
-    opacity: 0;
+    opacity: 1;
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
   }
 
-  4% {
+  25% {
     opacity: 1;
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+  }
+
+  /* Opacity only: the card stays solid for the first half of its throw, so
+     it is seen to leave instead of dissolving over the card rising behind it.
+     Transform interpolates straight from 25% to 28.5% past this keyframe. */
+  26.75% {
+    opacity: 1;
+  }
+
+  28.5% {
+    opacity: 0;
+    transform: translate3d(72%, 10%, 80px) rotate(14deg) scale(0.96);
   }
 
   29% {
-    opacity: 1;
+    opacity: 0;
+    transform: translate3d(0, calc(var(--mk-sol-peek) * -4), -160px) rotate(0deg) scale(0.84);
   }
 
-  33.33% {
-    opacity: 0;
+  33.333% {
+    opacity: 1;
+    transform: translate3d(0, calc(var(--mk-sol-peek) * -2), -120px) rotate(0deg) scale(0.84);
+  }
+
+  58.333% {
+    opacity: 1;
+    transform: translate3d(0, calc(var(--mk-sol-peek) * -2), -120px) rotate(0deg) scale(0.84);
+  }
+
+  66.667% {
+    opacity: 1;
+    transform: translate3d(0, calc(var(--mk-sol-peek) * -1), -60px) rotate(0deg) scale(0.92);
+  }
+
+  92.5% {
+    opacity: 1;
+    transform: translate3d(0, calc(var(--mk-sol-peek) * -1), -60px) rotate(0deg) scale(0.92);
+  }
+
+  98% {
+    opacity: 1;
+    transform: translate3d(0, 8px, 20px) rotate(-1.5deg) scale(1.025);
   }
 
   100% {
-    opacity: 0;
+    opacity: 1;
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
   }
 }
 
-@keyframes mk-sol-card-rise {
+/* The label leaves upward as its card is flicked out, and the next one rises
+   in as its card lands. */
+@keyframes mk-sol-name {
   0% {
+    opacity: 1;
     transform: translate3d(0, 0, 0);
   }
 
-  4% {
-    transform: translate3d(0, -10px, 0);
+  25% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
   }
 
-  29% {
-    transform: translate3d(0, -10px, 0);
+  27.5% {
+    opacity: 0;
+    transform: translate3d(0, -12px, 0);
   }
 
-  33.33% {
+  94% {
+    opacity: 0;
+    transform: translate3d(0, 16px, 0);
+  }
+
+  99% {
+    opacity: 1;
     transform: translate3d(0, 0, 0);
   }
 
   100% {
+    opacity: 1;
     transform: translate3d(0, 0, 0);
+  }
+}
+
+/* The chips a card carries are lit exactly while that card is in front. */
+@keyframes mk-sol-front {
+  0% {
+    opacity: 1;
+  }
+
+  25% {
+    opacity: 1;
+  }
+
+  27.5% {
+    opacity: 0;
+  }
+
+  95% {
+    opacity: 0;
+  }
+
+  99% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 1;
   }
 }

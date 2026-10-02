@@ -21,7 +21,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { contacts } from "@/lib/api/browser";
+import { cards, contacts } from "@/lib/api/browser";
 import { readAccessToken, writeAccessToken, clearAccessToken } from "@/lib/api/token-store";
 
 interface Recorded {
@@ -112,5 +112,45 @@ describe("direct mode (NEXT_PUBLIC_API_DIRECT=1)", () => {
     expect(calls[0]?.url.href).toBe("https://apistaging.getcontactbook.com/api/v1/contacts");
     expect(calls[0]?.authorization).toBe("Bearer from-otp-verify");
     expect(calls[0]?.credentials).toBe("omit");
+  });
+});
+
+/*
+ * `POST /cards` is multipart, and `fieldIds` is an array — a shape that cannot be `String()`d
+ * into a form field. It has to go out as repeated parts so Multer collects it back into an array
+ * (`@IsUUID('4', { each: true })` validates per id); a JSON string would fail validation whole.
+ * This is asserted at the transport boundary because that is exactly where it can silently break:
+ * the API accepts the create either way and no type catches a `"a,b"`-shaped value.
+ */
+describe("POST /cards carries fieldIds as repeated multipart parts", () => {
+  function recordForm(): FormData[] {
+    const bodies: FormData[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+        bodies.push(init?.body as FormData);
+        return new Response(JSON.stringify({ id: "card_1", name: "Work" }), {
+          status: 201,
+          headers: { "content-type": "application/json" },
+        });
+      }),
+    );
+    return bodies;
+  }
+
+  it("appends each id under the same key, so the server sees an array", async () => {
+    const bodies = recordForm();
+    await cards.create({ name: "Work", fieldIds: ["a", "b"] });
+
+    expect(bodies).toHaveLength(1);
+    const form = bodies[0]!;
+    expect(form.getAll("fieldIds")).toEqual(["a", "b"]);
+    expect(form.get("name")).toBe("Work");
+  });
+
+  it("omits the part entirely for an empty list rather than sending an empty string", async () => {
+    const bodies = recordForm();
+    await cards.create({ name: "Work", fieldIds: [] });
+    expect(bodies[0]!.getAll("fieldIds")).toEqual([]);
   });
 });

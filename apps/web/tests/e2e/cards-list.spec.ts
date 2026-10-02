@@ -4,6 +4,14 @@ import { fixtureCards } from "@/fixtures";
 import { LONG_NAME } from "@/fixtures/extremes";
 
 import { PROJECT_VIEWPORT, boxOf, gotoReady } from "../helpers/e2e";
+import { signIn } from "../helpers/session";
+
+/* ⚠ `/cards` is a gated route — without a session cookie `proxy.ts` bounces every test here to
+   `/signin/phone`, and the whole file was asserting against the sign-in screen. The same fix
+   `profile.spec.ts` carries. */
+test.beforeEach(async ({ context, baseURL }) => {
+  await signIn(context, baseURL!);
+});
 
 /**
  * `/cards` — the cards list (spec §8D.3 cards-list row, §6.1 R-10, AC-24, AC-09(h),
@@ -255,7 +263,7 @@ test.describe("E-09 — zero cards is the FIRST-RUN empty, never the filtered va
     await expect(firstRun).toHaveCount(1);
     await expect(page.locator('[data-empty-state="filtered"]')).toHaveCount(0);
 
-    await expect(firstRun.getByRole("heading")).toHaveText("You haven't made a card yet");
+    await expect(firstRun.getByRole("heading")).toHaveText("No cards yet");
     const cta = firstRun.getByRole("link", { name: "Create your first card" });
     await expect(cta).toHaveCount(1);
     await expect(cta).toHaveAttribute("href", "/cards/new");
@@ -356,27 +364,21 @@ test.describe("the field-count badge — the old build's worst bug (AC-36, §11.
     await expect(badge).toHaveCount(1);
     await expect(badge).toHaveAttribute("data-field-count", "0");
     await expect(badge).toHaveAttribute("data-field-count-state", "empty");
-    await expect(badge).toContainText("0 fields");
+    await expect(badge).toContainText("No fields yet");
     // Spoken, not merely coloured: a warning nobody can hear is not a warning.
     await expect(badge).toContainText(EMPTY_CARD_NOTE);
   });
 
-  test("exactly one tile is in the empty state and every other one says it shares", async ({
+  test("exactly one tile wears the warning, and no tile prints a count or a template name", async ({
     page,
   }) => {
     await gotoCards(page);
 
     await expect(page.locator('[data-field-count-state="empty"]')).toHaveCount(1);
-    await expect(page.locator('[data-field-count-state="sharing"]')).toHaveCount(
-      fixtureCards.length - 1,
-    );
-
-    // Every sharing badge states a real, non-zero count — never an invented one.
-    const sharing = page.locator('[data-field-count-state="sharing"]');
-    for (let index = 0; index < fixtureCards.length - 1; index += 1) {
-      const count = await sharing.nth(index).getAttribute("data-field-count");
-      expect(Number(count)).toBeGreaterThan(0);
-    }
+    /* Client, 2026-09-28: the "Meridian · 5 fields" caption was confusing. A card that shares
+       something carries neither, so the only badge in the grid is the warning above. */
+    await expect(page.locator("[data-field-count-meter]")).toHaveCount(1);
+    await expect(page.locator("[data-card-tile-template]")).toHaveCount(0);
   });
 });
 

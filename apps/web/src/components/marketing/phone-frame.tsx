@@ -1,148 +1,131 @@
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 
 /**
  * The hero's phone — a CSS-drawn iPhone around whatever it is handed, at every viewport.
  *
- * ## Why this is its own file rather than a class on `<HeroCard>`'s wrapper
- * This component knows nothing about the card at all — it draws a device around `children` and
- * nothing else. That separation is what let it survive the 2026-09-20 pass that replaced
- * `<HeroCard>`'s whole insides (the wallet pass and its flip came out; `<CardPage>` went in):
- * the brief has always asked for a frame AROUND whatever object the hero shows, not a new
- * object, and this file has never needed to know which object that is.
+ * ## ⚠ REBUILT 2026-09-29 — MEASURED OFF THE CLIENT'S REFERENCE, NOT DRAWN FROM MEMORY
  *
- * ## ⚠ REBUILT 2026-09-21 — THE FIFTH REVIEW REJECTED IT AS HARDWARE, NOT AS COMPOSITION
- * *"I want exactly this border of the design of the mobile, as you will be seeing this: the
- * design, the side buttons, and the upper bar of this iPhone."* The client attached a
- * photographic product render. Three structural things in it were missing here, and all three
- * are markup changes rather than restyles of what was already in the tree:
+ * The client's verdict on the previous device: not refined, not the reference. That device was
+ * a Dynamic Island phone with a 3px single-gradient rail, three keys and a status bar reduced to
+ * the time and a battery. The reference is a different phone, and every number in
+ * `marketing-hero.css` is now read off it (edge profiles and fitted curves, not eyeballing):
  *
- *   1. **A rail and a bezel, not one shell.** A real phone is machined metal with a black mask
- *      under the glass — two materials, and the hairline where the rail catches light is most
- *      of what makes a small picture read as a phone. `.mk-phone-frame` is the rail now and
- *      `.mk-phone-frame__body` (new) is the bezel inside it. `marketing-hero.css` has the
- *      measured thicknesses and why the rail alone carries a gradient.
- *   2. **Keys that protrude.** They were flush slivers at `left: 0` — a pixel of tint on a dark
- *      edge, invisible at any real size. They sit 2px proud of the silhouette now, in the
- *      rail's own metal. The three-key count (volume pair left, power right) is unchanged and
- *      is asserted by `tests/unit/marketing-hero.test.tsx`.
- *   3. **A lens in the island.** One faintly lighter disc at the right end, where the camera
- *      actually is. Without it the island is a plain pill, which is the shape of an older
- *      notch rather than the thing the reference draws.
- *
- * The status bar's glyphs also flipped from white-on-a-dark-scrim to ink-on-a-light-one, to
- * match the reference over a light cover photograph. That one is entirely a stylesheet change —
- * see `.mk-phone-frame__status` for why the scrim was inverted rather than deleted.
- *
- * ## ⚠ 2026-09-21, LATER THE SAME DAY — TWO FIXES, BOTH REPORTED AS GLITCHES
- *
- *   1. **The signal bars and the Wi-Fi fan are gone.** Removed at the client's instruction. They
- *      were four 2px bars and three stacked arcs drawn in CSS boxes, which at the size this
- *      device actually renders (`--mk-phone-zoom` takes it well under 1) resolved as a smear of
- *      grey pixels rather than as glyphs. **The status bar is the time and the battery now.** Do
- *      not put them back: a mockup's status bar is set dressing, and set dressing that does not
- *      resolve is noise. If they are ever wanted again they have to be drawn as vector paths,
- *      not as boxes.
- *   2. **The screen has a FOOT.** `<CardPage>` is taller than a 9/19.5 window and the clip is
- *      deliberate — see `.mk-phone-frame__screen` — but the clip was landing straight through
- *      the middle of the social strip's 36px icon discs, so four half-circles sat pressed
- *      against the bottom bezel. Reported as icons "overlapping with the frame", and that is
- *      exactly what it looked like. `.mk-phone-frame__veil` fades the card out before the bezel
- *      and `.mk-phone-frame__home` draws the home indicator over it, which is what the bottom of
- *      a real screen ends with. Together they turn a severed row into a screen with more page
- *      below it.
- *
- * ⚠ **The veil fades to the CARD's paper, not to white** — `screenTint`, below. The screen's own
- * background is `--mk-white` and the card on it is cream, so a veil that faded to white would
- * itself be a visible pale band across a warm card: the fix would have been the new glitch.
+ *   1. **A notch, not an island.** 156×27 with 13px bottom corners and concave 3.5px "ears"
+ *      where it meets the glass, a speaker slit and a camera. It is one SVG path, so its ears
+ *      stay exact at every zoom.
+ *   2. **A three-ring rail.** Dark hairline, graphite step, then a polished band brightest at
+ *      the lower left — one box whose background is the band and whose two thin rings are
+ *      inset shadows, which stay concentric round a 61px corner and are not snapped to device
+ *      pixels. Six antenna breaks cut the band.
+ *   3. **Four keys, not three.** Action, volume up and volume down on the left; power on the
+ *      right. Graphite with dark ends, painted UNDER the silhouette so only their proud 2px
+ *      show.
+ *   4. **The full status bar is back — as vector paths.** The signal bars and Wi-Fi fan were
+ *      removed on 2026-09-21 because they were drawn as 2px CSS boxes and smeared under
+ *      `zoom`. That was the right call for boxes; these are single filled paths fitted to the
+ *      reference's iOS glyphs, which resolve at any zoom.
+ *   5. **No veil, no home indicator.** The card now fits the screen exactly (the reference ends
+ *      on its social row with 24px of sheet below it), so there is no clip to disguise, and the
+ *      reference draws no home indicator.
  *
  * ## Why the card's own box is never touched
- * `<CardPage>` is real, fluid typography with no fixed aspect ratio, so a `transform: scale(...)`
- * on any ancestor would resample rasterised text against a width it never laid out at. This
- * component only ever adds PADDING around its child's box; the one thing that varies the
- * device's rendered size is `--mk-phone-zoom`, a real layout-and-rasterise operation that
- * `hero.tsx` sets per breakpoint. `tests/unit/marketing-hero.test.tsx` asserts the literal
- * absence of `scale(` in this file and in the stylesheet.
+ * This component only ever adds PADDING around its child. The one thing that varies the
+ * device's rendered size is `--mk-phone-zoom` (set in `hero.tsx`), a real layout-and-rasterise
+ * operation — never `transform: scale(...)`, which would resample rasterised text.
  *
- * Every element this file adds is `aria-hidden="true"`: none of it is content, all of it is the
- * same decorative case chrome the bezel already was, and `<CardPage>`'s own actionable rows stay
- * reachable-or-not through `inert` exactly as `hero-card.tsx` documents — nothing focusable is
- * added in front of them.
- *
- * ## Why the chrome is a CSS rule, not two render paths
- * This component always emits the same markup and `marketing-hero.css` alone decides how it
- * looks, at every width. There is no viewport-conditional rendering to keep in sync with a
- * stylesheet, which is what lets this stay a plain server component with no client boundary.
+ * Every element this file adds is `aria-hidden="true"`: none of it is content. It emits the
+ * same markup at every width and the stylesheet alone decides how it looks, so this stays a
+ * plain server component.
  */
 export interface PhoneFrameProps {
   children: ReactNode;
-  /**
-   * The colour the screen's bottom veil fades to — the paper of whatever is on the glass.
-   *
-   * ⚠ A prop rather than something this file derives, because this component has never known
-   * what it is framing and should not start: the caller holds the resolved card and therefore
-   * its palette's sheet. Defaults, through the stylesheet, to `--mk-white` — correct for a
-   * child with no paper of its own, and wrong for a card, which is why `hero-card.tsx` passes
-   * it. See the ⚠ in the module note.
-   */
-  screenTint?: string;
 }
 
-export function PhoneFrame({ children, screenTint }: PhoneFrameProps) {
+/** The four keys, top to bottom on the left edge, then the one on the right. */
+const KEYS = ["action", "volume-up", "volume-down", "power"] as const;
+
+/**
+ * Where the rail's antenna breaks sit — on straight runs only, as on the reference. The
+ * positions live in the stylesheet; these are just the six hooks.
+ */
+const ANTENNAS = ["top", "bottom", "left-upper", "left-lower", "right-upper", "right-lower"] as const;
+
+export function PhoneFrame({ children }: PhoneFrameProps) {
   return (
-    <div
-      className="mk-phone-frame"
-      data-hero-phone-frame=""
-      style={
-        screenTint === undefined
-          ? undefined
-          : ({ "--mk-phone-screen-tint": screenTint } as CSSProperties)
-      }
-    >
-      {/* The case's own hardware — siblings of the bezel, never in front of the screen, so they
-          can never occlude `children`. Volume up and down on the left edge, power opposite the
-          gap between them on the right (`marketing-hero.css` for the positions). */}
-      <span className="mk-phone-frame__button mk-phone-frame__button--volume-1" aria-hidden="true" />
-      <span className="mk-phone-frame__button mk-phone-frame__button--volume-2" aria-hidden="true" />
-      <span className="mk-phone-frame__button mk-phone-frame__button--power" aria-hidden="true" />
+    <div className="mk-phone-frame" data-hero-phone-frame="">
+      {/* The case's hardware — siblings of the silhouette and painted beneath it, so they can
+          never occlude the screen and only their proud edge shows. */}
+      {KEYS.map((key) => (
+        <span
+          key={key}
+          className={`mk-phone-frame__button mk-phone-frame__button--${key}`}
+          aria-hidden="true"
+        />
+      ))}
 
-      {/* THE BEZEL. The black mask between the rail and the glass — the layer that was missing
-          when the client said this did not read as an iPhone. It exists only to be a second,
-          darker material; it holds no content of its own. */}
-      <div className="mk-phone-frame__body">
-        {/*
-          THE SCREEN. A real phone's display is a FIXED window and its content scrolls behind
-          it; this element is that window, and without it the "phone" was simply as tall as
-          whatever it held — 1063px, once, when the fixture was enriched to look like a real
-          card. `marketing-hero.css` carries the aspect ratio and the clip, and the reason the
-          clip is the honest treatment: the reference shows a card continuing past the bottom
-          edge, not a frame stretched to contain it.
-        */}
-        <div className="mk-phone-frame__screen">
-          {/* The status bar and the island sit ON the glass, over the card's own surface — a
-              real phone draws both as part of the display, not as part of the case. */}
-          <div className="mk-phone-frame__status" aria-hidden="true">
-            <span className="mk-phone-frame__time">9:41</span>
-            {/* ⚠ The battery and nothing else. The signal bars and the Wi-Fi fan were removed
-                at the client's instruction — see the module note for why they must not be
-                reinstated as CSS boxes. */}
-            <span className="mk-phone-frame__glyphs">
-              <span className="mk-phone-frame__battery">
-                <span className="mk-phone-frame__battery-cell">
-                  <span className="mk-phone-frame__battery-fill" />
-                </span>
-                <span className="mk-phone-frame__battery-cap" />
-              </span>
-            </span>
+      {/* THE RAIL — the silhouette. Hairline, graphite step and polished band are ONE box: the
+          band is its background and the two thin rings are inset shadows, which paint with
+          anti-aliased edges instead of being snapped to device pixels (as nested boxes were —
+          at 2× the 1px graphite ring vanished top and bottom). */}
+      <div className="mk-phone-frame__rail">
+        {ANTENNAS.map((at) => (
+          <span
+            key={at}
+            className={`mk-phone-frame__antenna mk-phone-frame__antenna--${at}`}
+            aria-hidden="true"
+          />
+        ))}
+        {/* THE BEZEL — the black mask under the glass. */}
+        <div className="mk-phone-frame__body">
+          {/* THE SCREEN — a fixed window the size of the reference's display. */}
+          <div className="mk-phone-frame__screen">
+            {children}
+
+            {/* The notch and the status bar sit ON the glass, over the card — a real phone
+                draws both over whatever the display shows. */}
+            <svg
+              className="mk-phone-frame__notch"
+              viewBox="0 -1 163 28"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <path
+                className="mk-phone-frame__notch-body"
+                d="M0 -1H163V0A3.5 3.5 0 0 0 159.5 3.5V10A17 17 0 0 1 142.5 27H20.5A17 17 0 0 1 3.5 10V3.5A3.5 3.5 0 0 0 0 0Z"
+              />
+              <rect className="mk-phone-frame__speaker" x="62" y="8.2" width="39" height="4.4" rx="2.2" />
+              <circle className="mk-phone-frame__camera" cx="118.2" cy="10.4" r="3" />
+              <circle className="mk-phone-frame__lens" cx="118.2" cy="10.4" r="1.35" />
+            </svg>
+
+            <div className="mk-phone-frame__status" aria-hidden="true">
+              <span className="mk-phone-frame__time">9:41</span>
+              <svg className="mk-phone-frame__signal" viewBox="0 0 24 24" focusable="false">
+                <rect x="4.53" y="13.49" width="2.66" height="3.29" rx="0.65" />
+                <rect x="8.62" y="11.63" width="2.66" height="5.15" rx="0.65" />
+                <rect x="12.71" y="9.52" width="2.66" height="7.26" rx="0.65" />
+                <rect x="16.8" y="7.22" width="2.66" height="9.57" rx="0.65" />
+              </svg>
+              <svg className="mk-phone-frame__wifi" viewBox="0 0 24 24" focusable="false">
+                <path d="M12 16.12L10.83 14.89A2.55 2.55 0 0 1 13.17 14.89ZM8.49 12.44A5.88 5.88 0 0 1 15.51 12.44L15.08 12.89A5.25 5.25 0 0 0 8.92 12.89ZM6.16 10A9.23 9.23 0 0 1 17.84 10L17.39 10.47A8.59 8.59 0 0 0 6.61 10.47Z" />
+              </svg>
+              <svg className="mk-phone-frame__battery" viewBox="0 0 24 24" focusable="false">
+                <rect
+                  className="mk-phone-frame__battery-case"
+                  x="2.11"
+                  y="7.35"
+                  width="18.16"
+                  height="9.3"
+                  rx="1.5"
+                />
+                <rect x="3.37" y="8.61" width="15.64" height="6.78" rx="0.6" />
+                <path
+                  className="mk-phone-frame__battery-cap"
+                  d="M21.5 10.75h.35a.75.75 0 0 1 .75.75v1a.75.75 0 0 1-.75.75h-.35z"
+                />
+              </svg>
+            </div>
           </div>
-          <span className="mk-phone-frame__island" aria-hidden="true">
-            <span className="mk-phone-frame__island-lens" />
-          </span>
-          {children}
-
-          {/* THE FOOT. Both sit ON the glass, after the content, so they are over whatever the
-              screen is showing — and both are decorative chrome like everything else here. */}
-          <span className="mk-phone-frame__veil" aria-hidden="true" />
-          <span className="mk-phone-frame__home" aria-hidden="true" />
         </div>
       </div>
     </div>

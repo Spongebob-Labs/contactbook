@@ -12,7 +12,8 @@ import { SignOutButton } from "@/components/layout/sign-out-button";
 import { cn } from "@/lib/cn";
 import { formatPhoneDisplay } from "@/lib/format";
 
-import { APP_NAV_ITEMS, isNavItemActive } from "./sidebar";
+import { BrandLogo } from "./brand-logo";
+import { APP_NAV_ITEMS, isAppNavItemActive } from "./sidebar";
 
 /**
  * The way back out of focus mode — a hamburger that opens the app's own navigation as a drawer.
@@ -21,8 +22,8 @@ import { APP_NAV_ITEMS, isNavItemActive } from "./sidebar";
  *
  * Third consumer of that array, and the reason it is an array rather than three lists of JSX: a
  * fifth destination added to two of the three navigations is a bug nobody notices until they are
- * on the surface that lost it. The active rule is shared too — `isNavItemActive`, so
- * `/cards/{id}/edit` lights up "Cards" here exactly as it does on the rail.
+ * on the surface that lost it. The active rule is shared too — `isAppNavItemActive`, so
+ * `/cards/{id}/edit` lights up "Profile & Cards" here exactly as it does on the rail.
  *
  * ## Why a modal drawer and not "put the rail back"
  *
@@ -56,10 +57,15 @@ export function NavDrawer(): ReactElement {
       side="left"
       open={open}
       onOpenChange={setOpen}
-      /* The drawer's accessible name. Visible too — it is the product's own name and the
-         drawer is the only place in focus mode that carries it. */
-      title="Contact Book"
-      description="Go to another part of the app. Your card stays as you left it."
+      /* The drawer's accessible name, drawn as the logo: the image is decorative and the
+         sr-only text is what names the dialog. In focus mode this is the only place the
+         product's mark appears. */
+      title={
+        <span data-nav-drawer-logo="" className="flex items-center">
+          <BrandLogo variant="lockup" />
+          <span className="sr-only">Contact Book</span>
+        </span>
+      }
       /* ⚠ The close button stays. Escape and a scrim click both dismiss this, and both are
          invisible — a drawer whose only exits are two things you have to already know is a
          drawer some people cannot get out of. `Sheet` puts the control on the title's baseline,
@@ -88,7 +94,7 @@ export function NavDrawer(): ReactElement {
     >
       <nav data-nav-drawer="" aria-label="Primary" className="flex flex-col gap-1">
         {APP_NAV_ITEMS.map((item) => {
-          const active = isNavItemActive(pathname, item.href);
+          const active = isAppNavItemActive(pathname, item);
           const Icon = item.icon;
 
           return (

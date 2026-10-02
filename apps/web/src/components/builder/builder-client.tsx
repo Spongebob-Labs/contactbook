@@ -72,15 +72,15 @@ import {
  *
  * | Old failure | What answers it here |
  * |---|---|
- * | A card with 0 mappings shipped and produced a 73-byte name-only `.vcf` | the meter in the header, the persistent `EmptyCardWarning`, and Save gated on `canBuildVcf` — while the preview keeps rendering, so the consequence is visible |
+ * | A card with 0 mappings shipped and produced a 73-byte name-only `.vcf` | the persistent `EmptyCardWarning` and Save gated on `canBuildVcf` (the header meter was removed 2026-09-28) — while the preview keeps rendering, so the consequence is visible |
  * | Step 2 embedded a 12-row profile editor, so one screen had two competing commits | exactly one commit affordance. "Add a field" is a `<Link>` to `/profile`; there is no editor here and the only text input on the screen is the card's name |
  * | Step 3 taught a template choice and threw it away on Create | `templateId` and `paletteId` are reducer state, they go onto the card `builderCard` returns, and the pinned preview shows them from the first frame |
  * | The share dialog previewed nothing, so the previewed file could differ from the sent file | **one** `resolveCard` call, below, and every consumer takes that reference (I-5) |
  *
  * ## ⚠ The one architectural rule — invariant I-5
  *
- * `resolveCard` is called **once**, in `resolved`. The previewed card page, the field-count meter
- * and the Save gate all receive that same reference. `resolveCard` returns a
+ * `resolveCard` is called **once**, in `resolved`. The previewed card page, the Save gate and the
+ * warning bar all receive that same reference. `resolveCard` returns a
  * fresh object every call, so identity has to be *carried* — a second call anywhere below would
  * produce an object whose values match today and diverge the moment the two derivations
  * disagree, which is exactly the old build's "previewed file differs from sent file" bug.
@@ -458,10 +458,7 @@ function Builder({
         });
       }
 
-      toast({
-        title: `Added ${created.label}`,
-        description: "Saved to your profile and this card.",
-      });
+      toast({ title: `Added ${created.label}` });
       /* ⚠ `reload`, not `router.refresh()`. See the prop's own note: this screen's profile is a
          client fetch, and a router refresh would leave the new field ticked with no row to tick —
          which is precisely the "I added it and nothing happened" the dialog exists to avoid. */
@@ -750,13 +747,12 @@ function Builder({
       }))
       .filter((edit) => edit.label.length > 0);
 
-    const shares = resolved.fieldCount === 1 ? "1 field" : `${resolved.fieldCount} fields`;
-
     startSaving(async () => {
       try {
         if (state.cardId === null) {
-          // Two calls, because `POST /cards` starts a card with no fields — there is no way to
-          // create a populated one in a single request.
+          /* One call, not two. `fieldIds` rides the multipart create, so the card and its fields
+             land in a single server transaction — the old create-then-`setFields` pair could
+             half-fail and leave an empty card behind. */
           const created = await cardsApi.create(
             {
               name: state.name.trim(),
@@ -770,6 +766,7 @@ function Builder({
                  the create takes no cover, and it is uploaded below once there is an id. */
               headline: state.headline.trim() === "" ? null : state.headline.trim(),
               bio: state.bio.trim() === "" ? null : state.bio.trim(),
+              ...(state.fieldIds.length === 0 ? {} : { fieldIds: [...state.fieldIds] }),
             },
             /**
              * ⚠ **The logo rides the create, and that is the only way it can.**
@@ -786,11 +783,6 @@ function Builder({
              */
             state.logoFile ?? undefined,
           );
-          if (state.fieldIds.length > 0) {
-            await cardsApi.setFields(created.id, {
-              fields: toCardFieldEntries(state.fieldIds),
-            });
-          }
           /* ⚠ **The cover is a second request, always** — unlike the logo, which rides the
              multipart create. `POST /cards` has no cover part and `PATCH` rejects a URL string,
              so `POST /cards/{id}/cover` is the only door and this is the first moment there is
@@ -815,7 +807,7 @@ function Builder({
              nothing on any other screen — and `state.logoFile` would still be set, so a second
              Save would upload the same file again. */
           dispatch({ kind: "logo-saved", logoUrl: created.logoUrl ?? null });
-          toast({ title: "Card created", description: `"${state.name}" shares ${shares}.` });
+          toast({ title: "Card created" });
           // Leaves `/cards/new` for the card that now exists, so a second Save updates rather
           // than creating a duplicate.
           router.push(`/cards/${created.id}`);
@@ -853,10 +845,7 @@ function Builder({
         const edited = values.length;
         toast({
           title: "Card saved",
-          description:
-            edited === 0
-              ? `"${state.name}" shares ${shares}.`
-              : `"${state.name}" shares ${shares}. ${edited === 1 ? "1 value was" : `${edited} values were`} updated in your profile, on every card using ${edited === 1 ? "it" : "them"}.`,
+          ...(edited === 0 ? {} : { description: "Your profile was updated too." }),
         });
         router.refresh();
 
@@ -896,6 +885,10 @@ function Builder({
       as="section"
       aria-label={state.cardId === null ? "New card" : "Edit card"}
       data-builder=""
+      /* The count the header meter used to print, kept as state for the e2e suite now that the
+         meter is gone (client, 2026-09-28). Read off the one resolution; never shown. */
+      data-builder-field-count={resolved.fieldCount}
+      data-builder-field-count-state={canBuildVcf(resolved) ? "sharing" : "empty"}
       className="flex flex-col gap-4 pb-8"
     >
       <BuilderHeader
@@ -1119,10 +1112,12 @@ function Builder({
                       if (picked === null) removeCover();
                       else pickCover(picked.file, picked.previewUrl);
                     }}
-                    headline={state.headline}
-                    onHeadline={(headline) => dispatch({ kind: "headline", headline })}
-                    bio={state.bio}
-                    onBio={(bio) => dispatch({ kind: "bio", bio })}
+                    text={{
+                      headline: state.headline,
+                      onHeadline: (headline) => dispatch({ kind: "headline", headline }),
+                      bio: state.bio,
+                      onBio: (bio) => dispatch({ kind: "bio", bio }),
+                    }}
                     onLook={(look) => {
                       dispatch({ kind: "palette", paletteId: look.paletteId });
                       dispatch({ kind: "finish", finish: look.finish });

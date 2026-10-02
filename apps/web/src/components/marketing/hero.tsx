@@ -6,19 +6,48 @@ import {
   Undo2,
   type LucideIcon,
 } from "lucide-react";
-import { preload } from "react-dom";
 
-import { hero, heroCard } from "@/fixtures/marketing";
+import { hero } from "@/fixtures/marketing";
 
-import { HERO_CARD_SHEET, HeroCard } from "./hero-card";
+import { HeroCard } from "./hero-card";
 import { mkcn } from "./mk-cn";
 import { Arrival } from "./mk-motion";
-import { PhoneFrame } from "./phone-frame";
 import { CONTENT_COLUMN, Section } from "./section";
 import { accented, Display, Eyebrow, MkButtonLink, Prose } from "./type";
 
 /**
  * The first viewport.
+ *
+ * ## 2026-09-29 — the phone is the client's reference, measured
+ *
+ * The client rejected the phone card against their reference render — its font, content,
+ * icons, colours, spacing, photo, logo and device — and asked for the reference itself. The
+ * card is now a still drawing of that reference (`hero-card.tsx`), in a rebuilt device
+ * (`phone-frame.tsx`), and it no longer cycles or highlights anything. Two consequences here:
+ *
+ *   1. **No `preload()`.** It existed because `<CardCover>` drew the cover `<img>` and could not
+ *      carry `fetchPriority`. The card now draws its own `<img fetchPriority="high">`, which is
+ *      the direct form of the same hint.
+ *   2. **The phone is larger** (the client: "could be a little increased so that each and every
+ *      field is properly visible"). The device is 363×827 unzoomed; `--mk-phone-zoom` below.
+ *
+ * ## 2026-09-28 — the client's feedback pass, and what it changed here
+ *
+ *   1. **The controls.** "Join the waitlist" and "For companies" are gone from the homepage
+ *      (*"still showing old version … need removing"*). The primary is "Create your card" to
+ *      phone sign-in and the secondary is "See how it works", an in-page link. Both labels and
+ *      targets live in `hero.primary` / `hero.secondary`.
+ *   2. **The phone is smaller** (*"shrink the center phone graphic or remove it"*), and the whole
+ *      hero, card included, now fits a 13" laptop window: 1280×720 and 1440×700 as well as 900.
+ *      Two mechanisms, both in this file's classes: `--mk-phone-zoom` steps down at `lg`, and a
+ *      short-window band (`[@media(max-height:820px)]`, `lg` only) trims the headline size and
+ *      the vertical gaps. Still `zoom`, never `scale(` — see `phone-frame.tsx`.
+ *   3. **The card is Maya Lauren's and it moves.** `<HeroCard>` now owns the phone and the pause
+ *      control beside it; see that file and `live-card.tsx`. The card column is `relative` so
+ *      the control can sit beside the phone without taking any space.
+ *
+ * The notes below are the history of this section, kept because each one records a rejected
+ * version. Where one names the old controls or the old zoom factor, point 1 or 2 above wins.
  *
  * ## ⚠ THE RULED SHEET IS GONE, AND SO IS "THE HERO IS TYPE-ONLY"
  *
@@ -270,22 +299,6 @@ const PROOF_ICONS: Record<string, LucideIcon | undefined> = {
 };
 
 export function Hero() {
-  /**
-   * ⚠ ADDED 2026-09-21 — THE ONE RESOURCE HINT THIS FILE CAN OFFER AN IMAGE IT DOES NOT RENDER.
-   *
-   * `heroCard.coverUrl` (`fixtures/marketing.ts`) resolves through `resolveCard` into the real
-   * `<img>` `<CardCover>` (`@/card/card-page`) draws — a file this round does not own, and one
-   * whose `<img>` deliberately carries no `loading`/`fetchPriority` of its own (its own comment:
-   * exported to PNG, so `next/image`'s markup would not survive that export). `preload()` is
-   * `react-dom`'s own primitive for exactly this shape of problem — a resource this file KNOWS
-   * matters for LCP but does not draw the tag for — and calling it during a server component's
-   * render emits `<link rel="preload" as="image" fetchpriority="high">` into `<head>` regardless
-   * of where the eventual `<img>` lands in the tree. It is a no-op, not a dead branch, once
-   * `HERO_COVER_URL` is `null` again: `preload()` with an empty href is guarded against below.
-   */
-  if (heroCard.coverUrl) {
-    preload(heroCard.coverUrl, { as: "image", fetchPriority: "high" });
-  }
 
   return (
     <Section id="hero" bare tone="white" labelledBy="hero-headline" className="bg-mk-white">
@@ -331,6 +344,9 @@ export function Hero() {
           // the phone beside the copy, both are far taller than one screen, and a `min-height`
           // that can never bind is a lie in the markup.
           "relative pt-10 pb-20 md:pt-16 md:pb-28 lg:min-h-[calc(100svh-5rem)] lg:pt-10 lg:pb-12 lg:content-center",
+          // NOTE — 2026-09-28: a 13" laptop window (1280×720, 1440×700) is under 820px tall, and
+          // there the section's own padding is the first thing to give. See the module note.
+          "lg:[@media(max-height:820px)]:pt-6 lg:[@media(max-height:820px)]:pb-6",
           /* ⚠ WAS `items-center` UNTIL 2026-09-21 — SEE THE MODULE HEADER FOR THE OLD ARGUMENT
              AND WHY IT NO LONGER APPLIES. That comment protected against a card whose height was
              still unbounded (the 1019–2007px era the header's own numbers describe); the frame
@@ -403,7 +419,9 @@ export function Hero() {
           <Display
             id="hero-headline"
             data-hero-headline=""
-            className="max-w-mk-measure-display"
+            /* The short-window step (2026-09-28): 88px → 68px only where the window is under
+               820px tall. Still far above the large-text bar the accent clause needs. */
+            className="max-w-mk-measure-display lg:[@media(max-height:820px)]:text-[4.25rem]"
             style={{
               ["--mk-arrive-offset" as string]: "150ms",
               lineHeight: HEADLINE_LINE_HEIGHT,
@@ -452,7 +470,7 @@ export function Hero() {
                 step darker and one step down in size: the reference draws these two sentences
                 as a single sans paragraph, not a tagline over a caption, and `mt-2` (not the
                 previous `mt-4`) closes the gap between them to match. */}
-            <Arrival index={0} className="mt-6 md:mt-8">
+            <Arrival index={0} className="mt-6 md:mt-8 lg:[@media(max-height:820px)]:mt-5">
               <Prose size="lead" tone="stone" className="max-w-mk-measure">
                 {hero.subhead}
               </Prose>
@@ -468,7 +486,7 @@ export function Hero() {
               index={2}
               /* Stacked full-width on a phone: two buttons of different widths, one under the
                  other, read as a layout that ran out of room rather than a pair. */
-              className="mt-9 flex flex-wrap items-center gap-3 max-sm:flex-col max-sm:items-stretch md:mt-11 md:gap-4"
+              className="mt-9 flex flex-wrap items-center gap-3 max-sm:flex-col max-sm:items-stretch md:mt-11 md:gap-4 lg:[@media(max-height:820px)]:mt-7"
             >
               {/* ⚠ THE FILL IS `--mk-accent-deep`, NOT `variant="dark"`'S OWN `--mk-ink`.
                   Both are near-black; `--mk-accent-deep` (`--mk-green-deep`) is the one sampled
@@ -492,9 +510,10 @@ export function Hero() {
               {/* ⚠ NOT A PLAY BUTTON. The reference's own secondary control is a circled play
                   glyph plus a label — "Watch Video" — and this page has no video to open
                   (`public/hero/` holds a 5MB loop nothing in `src/` references; a control that
-                  opens nothing is worse than none). `hero.secondary` ("For companies") keeps
-                  this slot instead, and `variant="line"` is already the reference's REGISTER for
-                  it: no fill, a hairline ring, beside the pill rather than a second one of it.
+                  opens nothing is worse than none). `hero.secondary` ("See how it works", an
+                  in-page link since 2026-09-28) keeps this slot instead, and `variant="line"` is
+                  already the reference's REGISTER for it: no fill, a hairline ring, beside the
+                  pill rather than a second one of it.
                   `type.tsx`'s own comment on `line` explains it was added for exactly this
                   hero — a light-ground control a sighted reader can still find (WCAG 1.4.11) —
                   so this does not soften further to `ghost`, which has no boundary at rest. */}
@@ -551,7 +570,7 @@ export function Hero() {
           */}
           <ul
             data-hero-proof=""
-            className="mt-10 grid grid-cols-2 gap-x-6 gap-y-10 max-lg:order-2 lg:mt-14 lg:grid-cols-4 lg:gap-8"
+            className="mt-10 grid grid-cols-2 gap-x-6 gap-y-10 max-lg:order-2 lg:mt-14 lg:grid-cols-4 lg:gap-8 lg:[@media(max-height:820px)]:mt-9"
             style={{ ["--mk-arrive-offset" as string]: "900ms" }}
           >
             {hero.proof.map((item, i) => {
@@ -615,31 +634,24 @@ export function Hero() {
           is present and complete from the first frame exactly as before, because `<HeroCard>` is
           a plain server component with no client state to hydrate.
 
-          ⚠ `<HeroCard>` NOW RESOLVES AND RENDERS ITSELF — THIS FILE HANDS IT NOTHING.
-          Until 2026-09-20 this file resolved the fixture (`resolveCard`) and passed a rendered
-          `<ShareFace>` down as a `face` prop, because the old `<HeroCard>` had to cross a client
-          boundary for its flip's timer. Agent F's parallel pass
-          (`docs/landing-integration.md`) replaced the wallet pass and its flip with the real,
-          static `<CardPage>` and removed the client state along with it, so that boundary no
-          longer exists — `<HeroCard>` reads `heroCard`/`marketingUser`/`FIXTURE_DB` itself now
-          (see that file's own header, which names this exact edit). This file's `resolveCard`
-          call, and the `ShareFace`/`resolveCard`/`FIXTURE_DB`/`heroCard`/`marketingUser`/
-          `liveCard` imports it existed for, came out with it.
+          ⚠ `<HeroCard>` RENDERS ITSELF AND TAKES NO PROPS — since 2026-09-29 it is a still
+          drawing of the client's reference card (`hero-card.tsx`), so there is no pause control
+          to place beside it and nothing for this file to hand down.
         */}
         {/*
           ⚠ `-mx-6`, NOT `-mx-3` — CHANGED 2026-09-21, AND IT IS STILL THE CARD SCREEN'S OWN
           BUDGET RATHER THAN A NUDGE, JUST A CORRECTED ONE.
 
-          `<HeroCard>`'s screen is 336px wide (`hero-card.tsx`'s `SCREEN_WIDTH`) and the device
-          `phone-frame.tsx` draws adds 13px a side (a 10px bezel inside a 3px rail), so the
-          object this column has to hold is 362px before `--mk-phone-zoom` shrinks it. This
+          The screen is 330px wide and the device `phone-frame.tsx` draws adds 16.5px a side (an
+          11.85px bezel inside a 4.65px rail), so the object this column has to hold is 363px
+          before `--mk-phone-zoom` shrinks it. This
           column's own `px-6` costs it 24px a side. `-mx-3` used to give back only 12 of those
           24, leaving a box narrower than the frame it held — and `margin-inline: auto` cannot
           centre a box already wider than the room it is given, so at exactly 360px the whole
           deficit landed on ONE edge and the frame sat flush right with 12px on the left. That
           is the "edge to edge" the client's third rejection named. `-mx-6` cancels `px-6`
           outright: the box is the FULL viewport width below `md`, which is wider than the
-          ~290px the device now renders at, so there is real slack for it to centre inside.
+          ~305px the device now renders at, so there is real slack for it to centre inside.
 
           ⚠ `flex justify-center` IS THE BELT TO THAT BRACES, ADDED 2026-09-21 AFTER THE CLIENT
           REPORTED IT LEFT-ALIGNED ON A PHONE — AND IT IS NOT REDUNDANT WITH THE AUTO MARGIN.
@@ -656,10 +668,19 @@ export function Hero() {
           ⚠ `--mk-phone-zoom` IS SET HERE BECAUSE THE BREAKPOINT IS THIS FILE'S TO OWN.
           `marketing-hero.css` reads it and is otherwise free of media queries by contract
           (`tests/unit/marketing-hero.test.tsx` asserts it carries no `min-width` gate, after
-          one shipped that left mobile with an invisible wrapper). 0.8 renders the 362×754
-          device at ~290×603: small enough that 360px keeps ~35px of margin a side and even
-          320px keeps ~15px, and tall enough that it reads as the taller of the two columns
-          without being the thing that decides the section's height (the copy column is 638px).
+          one shipped that left mobile with an invisible wrapper). Four steps since 2026-09-29, when
+          the client asked for the phone to grow again so every field reads (the device is
+          363×827 unzoomed, the reference's own proportions):
+            · below `lg`, 0.84 — ~305×695. Stacked under the copy there is no fold to fit, and
+              360px still keeps ~27px of margin a side.
+            · at `lg`, 0.86 — ~312×711, which with the section's padding fits a 900px window.
+            · at `lg` in a window under 820px tall, 0.7 — ~254×579, so the hero still fits
+              1280×720 and 1440×700 with the section's short-window padding.
+            · at `lg` in a window 1000px or taller, 0.98 — ~356×810, near the reference's own
+              size, where there is room for it.
+
+          ⚠ `flex-col items-center` KEEPS THE CENTRING ABOVE. `align-items: center` centres an
+          overflowing item as symmetrically as `justify-content` did.
 
           ⚠ `lg:order-first` IS THE WHOLE COLUMN MIRROR. The DOM keeps type before card (mobile
           stacks type-first, unchanged, and a screen reader meets the sentence before the
@@ -667,15 +688,12 @@ export function Hero() {
           the `lg` grid, which is what makes it render in the grid's first five columns instead
           of its last. `lg:col-span-5` is untouched, so the type column still takes the wider
           seven.
+
+          The phone and its card both come from `<HeroCard>`, which renders no wrapper element of
+          its own — so `.mk-phone-frame`'s parent is still this column.
         */}
-        <div className="-mx-6 flex justify-center [--mk-phone-zoom:0.8] max-lg:order-1 max-lg:mt-12 md:mx-0 lg:order-first lg:col-span-5">
-          {/* ⚠ `screenTint` is the CARD's paper, not the screen's. The screen fades its own
-              bottom edge out so the clip cannot sever a row of icons against the bezel, and a
-              fade ending in `--mk-white` would be a pale band across this cream card — see
-              `phone-frame.tsx`. */}
-          <PhoneFrame screenTint={HERO_CARD_SHEET}>
-            <HeroCard />
-          </PhoneFrame>
+        <div className="relative -mx-6 flex flex-col items-center [--mk-phone-zoom:0.84] max-lg:order-1 max-lg:mt-12 md:mx-0 lg:order-first lg:col-span-5 lg:[--mk-phone-zoom:0.86] lg:[@media(max-height:820px)]:[--mk-phone-zoom:0.7] lg:[@media(min-height:1000px)]:[--mk-phone-zoom:0.98]">
+          <HeroCard />
           {/* 2026-09-20 — THE SIGHTED HINT BELOW THE CARD LEFT WITH THE FLIP IT DESCRIBED.
               `hero.cardHint` ("Turns on its own — or press it.") told a sighted reader they
               could press the card to flip it. Agent F's rewrite made the hero's card a single,

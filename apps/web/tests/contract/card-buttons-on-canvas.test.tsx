@@ -123,8 +123,28 @@ describe("a card-coloured button never stands on the app canvas", () => {
       "the wallet block grew a control back — read this test's header before adding one",
     ).toBe(0);
 
-    /* The eyebrow survived, because a 336x500 object with a QR on it still needs a name. */
-    expect(container.textContent).toBe("Wallet pass");
+    /* ⚠ 2026-09-28: no eyebrow by default. The client read "Wallet pass" above the face as a
+       mechanism rather than their card ("show the card with QR code, not just the pass"); the
+       wallet controls came back as `<WalletActions>`, OUTSIDE this block. */
+    expect(container.textContent).toBe("");
+  });
+
+  /**
+   * The wallet controls returned on 2026-09-28 (*"'Add to Wallet' must be functional and
+   * visible"*), and the rule above is exactly what they must obey: app chrome, never a card
+   * button, and never inside the face's rail.
+   */
+  it("the wallet row and the share blocks wear the app's chrome", () => {
+    for (const file of [
+      "src/components/share/wallet-actions.tsx",
+      "src/components/share/send-to-phone.tsx",
+      "src/components/share/card-link-block.tsx",
+    ]) {
+      const code = strip(readFileSync(resolve(process.cwd(), file), "utf8"));
+      expect(/<CardActionButton|card-action-button/.test(code), `${file} uses a card button`).toBe(
+        false,
+      );
+    }
   });
 
   it("the card-detail screen passes the face alone as children", () => {

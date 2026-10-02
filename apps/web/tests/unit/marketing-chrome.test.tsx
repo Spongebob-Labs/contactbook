@@ -8,8 +8,9 @@ import RootNotFound from "@/app/not-found";
 import MarketingError from "@/app/(marketing)/error";
 import MarketingLayout from "@/app/(marketing)/layout";
 import { boundaryScopeForPath } from "@/components/data/error-panel";
-import { PillNav } from "@/components/marketing/pill-nav";
+import { BRAND_NAME, PillNav } from "@/components/marketing/pill-nav";
 import { SiteFooter } from "@/components/marketing/site-footer";
+import { hero } from "@/fixtures/marketing";
 import { OVERLAY_CSS, OVERLAY_STYLE_HREF } from "@/components/overlay";
 
 /**
@@ -106,6 +107,20 @@ function servedRoutes(): Set<string> {
   return out;
 }
 
+/**
+ * A link's accessible name, as far as this chrome can produce one: its text, or — for the logo
+ * link, which has none since 2026-09-28 — the `alt` of the image inside it. happy-dom computes no
+ * accessible names, and `textContent` alone would call the logo link nameless.
+ */
+function linkName(link: HTMLElement): string {
+  return (
+    link.getAttribute("aria-label")?.trim() ||
+    link.textContent?.trim() ||
+    link.querySelector("img")?.getAttribute("alt")?.trim() ||
+    ""
+  );
+}
+
 /** An in-page hash, or a route the app serves. Dynamic segments are matched by shape. */
 function expectRoutable(href: string | null, routes: Set<string>) {
   expect(href, "a link with no href").toBeTruthy();
@@ -120,7 +135,7 @@ function expectRoutable(href: string | null, routes: Set<string>) {
 }
 
 describe("PillNav — the floating pill bar (spec §8D.6, §8.7)", () => {
-  it("renders one wordmark and two CTAs — three links, no more", () => {
+  it("renders one logo and two CTAs — three links, no more", () => {
     /* ⚠ WAS "one wordmark, three centre links and two CTAs — six links". The three centre
        links were removed on 2026-09-20 on the client's instruction ("just make it a bland nav
        bar"); see `SECTION_LINKS` in `pill-nav.tsx` for what they were and why the seam stayed.
@@ -134,13 +149,17 @@ describe("PillNav — the floating pill bar (spec §8D.6, §8.7)", () => {
     const links = within(nav).getAllByRole("link");
     expect(links).toHaveLength(3);
 
-    expect(within(nav).getByRole("link", { name: "Contact Book" })).toHaveAttribute(
+    /* 2026-09-28: the text wordmark became the logo image, so the home link's accessible name
+       is the image's alt — `BRAND_NAME`, read from the component rather than retyped. */
+    const home = within(nav).getByRole("link", { name: BRAND_NAME });
+    expect(home).toHaveAttribute("href", "/");
+    expect(within(home).getByRole("img", { name: BRAND_NAME })).toBeInTheDocument();
+
+    /* The bar's filled control is the homepage's own primary action — same words, same door —
+       so it is asserted against `hero.primary` rather than against a second copy of the label. */
+    expect(within(nav).getByRole("link", { name: hero.primary.label })).toHaveAttribute(
       "href",
-      "/",
-    );
-    expect(within(nav).getByRole("link", { name: "Join the waitlist" })).toHaveAttribute(
-      "href",
-      "/waitlist",
+      hero.primary.href,
     );
     expect(within(nav).getByRole("link", { name: "Log in" })).toHaveAttribute(
       "href",
@@ -150,9 +169,25 @@ describe("PillNav — the floating pill bar (spec §8D.6, §8.7)", () => {
     /* The routes themselves are NOT gone — only the nav entries. `/corporate` still backs the
        hero's secondary control and `/templates` is still in the footer, so neither is orphaned
        by this change. Asserting their absence HERE is what keeps the bar bland. */
-    for (const label of ["How it works", "Example cards", "For companies"]) {
+    for (const label of ["How it works", "Example cards", "For companies", "Join the waitlist"]) {
       expect(within(nav).queryByRole("link", { name: label })).toBeNull();
     }
+  });
+
+  it("links to neither the waitlist nor the companies page (client, 2026-09-28)", () => {
+    /* *"'join the waitlist' copy and 'for companies' tag need removing."* The routes stay on
+       disk; the chrome may not point at them. Asserted by href, so a relabelled link to either
+       still fails. */
+    renderWithProviders(
+      <>
+        <PillNav />
+        <SiteFooter />
+      </>,
+    );
+    for (const link of screen.getAllByRole("link")) {
+      expect(link.getAttribute("href")).not.toMatch(/^\/(waitlist|corporate)\b/);
+    }
+    expect(document.body.textContent ?? "").not.toMatch(/join the waitlist|for companies/i);
   });
 
   it("renders no empty list when the centre row is empty", () => {
@@ -167,7 +202,7 @@ describe("PillNav — the floating pill bar (spec §8D.6, §8.7)", () => {
     renderWithProviders(<PillNav />);
 
     for (const link of screen.getAllByRole("link")) {
-      expect(link.textContent?.trim()).not.toBe("");
+      expect(linkName(link)).not.toBe("");
     }
   });
 
@@ -197,14 +232,13 @@ describe("PillNav — the floating pill bar (spec §8D.6, §8.7)", () => {
 });
 
 describe("SiteFooter — the multi-column footer (spec §8D.6 M-9)", () => {
-  it("is the contentinfo landmark and carries the wordmark", () => {
+  it("is the contentinfo landmark and carries the logo, linking home", () => {
     renderWithProviders(<SiteFooter />);
 
     const footer = screen.getByRole("contentinfo");
-    expect(within(footer).getByRole("link", { name: "Contact Book" })).toHaveAttribute(
-      "href",
-      "/",
-    );
+    const home = within(footer).getByRole("link", { name: BRAND_NAME });
+    expect(home).toHaveAttribute("href", "/");
+    expect(within(home).getByRole("img", { name: BRAND_NAME })).toBeInTheDocument();
   });
 
   it("renders multiple labelled columns rather than one undifferentiated link list", () => {
@@ -256,7 +290,7 @@ describe("SiteFooter — the multi-column footer (spec §8D.6 M-9)", () => {
     renderWithProviders(<SiteFooter />);
 
     for (const link of within(screen.getByRole("contentinfo")).getAllByRole("link")) {
-      expect(link.textContent?.trim()).not.toBe("");
+      expect(linkName(link)).not.toBe("");
       expectRoutable(link.getAttribute("href"), servedRoutes());
     }
   });

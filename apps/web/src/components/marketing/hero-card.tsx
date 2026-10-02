@@ -1,227 +1,235 @@
 import type { ReactElement } from "react";
 
-import { ArrowRight, SmartphoneNfc } from "lucide-react";
+import { ChevronRight } from "lucide-react";
+import { DM_Sans, Inter, Libre_Caslon_Text, Yellowtail } from "next/font/google";
 
-import { canBuildVcf } from "@/card/build-vcf";
-import { CardActionButton } from "@/card/card-action-button";
-import { CardPage } from "@/card/card-page";
-import { paletteVars } from "@/card/template-palettes";
-import { resolveCard } from "@/card/resolve-card";
-import { FIXTURE_DB } from "@/fixtures";
-import { heroCard, marketingUser } from "@/fixtures/marketing";
+import { heroPhone } from "@/fixtures/marketing";
 
-import { mkcn } from "./mk-cn";
+import { ARROW_GLYPH, ROW_GLYPHS, SEND_GLYPH, SOCIAL_MARKS } from "./hero-phone-glyphs";
+import { HeroMedallion } from "./hero-medallion";
+import { PhoneFrame } from "./phone-frame";
 
 /**
- * THE HERO'S CARD — the real card page, not the wallet pass.
+ * THE HERO'S CARD — the client's reference card, drawn still, in the reference's phone.
  *
- * ## ⚠ Rebuilt 2026-09-20. `<ShareFace mode="full">` is gone from this file
+ * ## ⚠ 2026-09-29 — NO LONGER THE PRODUCT'S `<CardPage>`, AND NO LONGER MOVING
  *
- * The hero used to flip between a real `<ShareFace>` (the 336×500 wallet pass, QR included) and
- * `<LiveCard>`, an animated look-alike of the card the QR opens. Both are gone. The product's
- * own redesign moved the card's primary presentation to the **card page** (`@/card/card-page`)
- * — see that file's header — and `card-page-thumb.tsx`'s header makes the same argument for why
- * that page, not the wallet pass, belongs wherever a reader forms their first impression of a
- * card: "the card page is what a recipient actually opens and what an owner means by 'my card'."
- * That argument holds for the hero at least as much as it holds for a `/dashboard` tile.
+ * From 2026-09-20 this file rendered the real `<CardPage>`, and from 2026-09-28 it re-resolved
+ * that card once per city so it could animate — a cross-fade between cards, with changed lines
+ * tinted and tagged "Updated". The client rejected the result as "just the opposite" of their
+ * reference: a component built to lay out any card cannot also be one specific, crafted
+ * composition, and the automatic highlighting was never asked for. So this is now a bespoke,
+ * still drawing of the reference card, with every size, gap, ink and glyph read off the
+ * reference render (the measured specs are summarised in `marketing-hero.css`).
  *
- * Two things followed from that, not just one:
+ * What that costs, said plainly: this card no longer proves anything about `<CardPage>`. It is
+ * a picture of a card — which is also all the reference is.
  *
- *   1. **No QR.** `<CardPage>` has never carried one (see its own header) — a page reached by
- *      scanning a code has no reason to show that code again. So the flip's entire premise ("the
- *      thing you hand over" vs. "the thing it opens") collapsed to one object, because the card
- *      page IS both now: showing it directly is more honest than showing a pass for a QR this
- *      composition does not have. `tests/e2e/qr-scannability.spec.ts` restates the decode
- *      guarantee at `/cards/{id}`, where the wallet pass still lives, unchanged.
- *   2. **No flip.** A flip whose back is a live-updating card and whose front is now *also* a
- *      card is two near-identical objects trading places, not "what you hand over" vs. "what
- *      they see." The reference shows one still card. See "What this drops" below for the one
- *      piece of the old motion this file does not try to recreate, and why.
+ * ## Layout
+ * The card is laid out at a FIXED 330px design width (the reference's screen, 326px, ×1.012)
+ * and fills the screen exactly: the reference ends on its social row with 24px of sheet below
+ * it, so nothing is clipped. The device's rendered size comes only from `--mk-phone-zoom`
+ * (`hero.tsx`), so this layout is never reflowed — it is re-rasterised at the target size.
  *
- * ## Why this component resolves its own fixture instead of taking `resolved` as a prop
- *
- * The previous version took a server-rendered `<ShareFace>` as a `face` prop, because it had to
- * cross a client boundary — `<FlipCard>` owned a timer and a press, so `<HeroCard>` was a client
- * component and `resolveCard`/the QR had to run upstream, in `hero.tsx`, on the server. There is
- * no client state left in this file at all (no flip, no timer), so that boundary does not exist
- * any more. Resolving `heroCard` here — the exact fixture triad `docs/landing-integration.md`
- * names (`marketingUser`, `heroCard`, `FIXTURE_DB`), through the product's own `resolveCard` —
- * keeps every fact about *which* card the hero shows inside the one file that owns the hero's
- * card, instead of spread across this file and `hero.tsx`. `hero.tsx` (Agent E's file, a
- * parallel pass this round) now only needs `<HeroCard />`; see the note at the bottom of this
- * file for the small edit that leaves for it to make.
- *
- * ## Why the card is wrapped `inert` rather than `aria-hidden`
- *
- * The wallet pass had no interactive content, so wrapping it in `aria-hidden` (as `<FlipCard>`
- * did to both of its faces) was safe. `<CardPage>` is not decorative — it renders a real `<a>`
- * per actionable field and a real "Send to Phone" button. `aria-hidden` on an ancestor of a
- * focusable element is a WCAG violation in its own right (a keyboard user tabs into a control no
- * screen reader announces), which is exactly the trap `card-page-thumb.tsx` documents and avoids
- * with `inert`. This hero card is a preview of the product on fixture data, not a real card a
- * visitor can save or message — so it takes the same fix: `inert` removes the whole subtree from
- * both the tab order and the accessibility tree, and a sighted-only `<figcaption>` describes the
- * picture in its place.
- *
- * ## The width, and why it is 336px again without being coupled to `<ShareFace>`
- *
- * `<CardPage>` is fluid (`width: 100%`) — it has no format of its own the way the wallet pass
- * did, so *something* between the phone frame and the card has to give it a definite width.
- * 336 is not reused because it was the wallet pass's — importing `FACE_WIDTH` here would say
- * this card is still shaped by the QR's format, which is precisely what stopped being true. It
- * is reused because `hero.tsx`'s own `-mx-3` compensation (see its comment on the card's column)
- * already budgets exactly 336px of a 360px mobile viewport for whatever this file renders, and
- * that budget belongs to `hero.tsx`, which is not this round's file to move. Changing this
- * number without changing that one reopens the sideways-scroll defect the compensation exists to
- * close.
- *
- * ## What this drops, on purpose, and the one thing it might be worth keeping
- *
- * The auto-cycling flip is gone outright — a still card is what the reference shows, and this
- * file does not try to recreate the "corrected in place" motion `<LiveCard>` performed, because
- * doing so honestly would mean animating a row inside `<CardPage>` itself, which this round's
- * contract holds read-only ("read it, render it, never edit it"). Faking that motion from
- * outside — reaching into the rendered DOM to mutate a row's text — is the "hand-built fake
- * card" this file is specifically told not to be, aimed at a component that can be rebuilt under
- * it at any time. If the single field-updating claim is still wanted here, it is a `<CardPage>`
- * feature (an optional "just changed" row treatment) for whoever owns `src/card/**` to add, not
- * something this file should simulate from the outside.
- *
- * ## The action button is a look-alike, not the real one
- *
- * Same reasoning as `card-page-thumb.tsx` and `builder-preview.tsx`'s `InertActions`: the real
- * `<PublicCardActions>` writes a `.vcf` through a blob URL on click, which has no honest meaning
- * against fixture data on the marketing site. This renders the same `<CardActionButton>` the
- * product ships, with the product's own current label ("Send to Phone", `public-card-actions.tsx`),
- * so the hero shows what the button looks like without pretending a click does anything — and the
- * whole card being `inert` means nobody can try.
+ * ## Why `inert`, and the caption
+ * It draws a button and tappable rows that do nothing. `inert` removes the whole subtree from
+ * the tab order and the accessibility tree (`aria-hidden` over focusable content would be a
+ * WCAG failure of its own), and the `<figcaption>` describes the card in its place.
  */
+/*
+  THE REFERENCE CARD'S OWN TYPE — four faces, chosen by rendering every plausible Google face over
+  a grid of sizes and tracking values in Chrome and scoring each against the reference's pixels
+  (normalised cross-correlation), then checking the letters that tell faces apart:
 
-/**
- * The phone screen's content width, in px.
- *
- * ⚠ See the module note above: this is `hero.tsx`'s mobile budget, not the wallet pass's format.
- * If that file's `-mx-3` compensation is ever re-derived, this constant has to move with it.
- */
-const SCREEN_WIDTH = 336;
+    · the name and bio — Libre Caslon Text 400 (0.914; the reference reads like Klim's Tiempos,
+      which is commercial, and this matches its x-height, ball terminals and colour);
+    · every sans line — Inter, variable (450 / 500 / 600), which alone of the close scorers
+      matches the reference's 0.755 x-height-to-cap ratio;
+    · "CONTACTBOOK" — DM Sans, whose round C and O won on the larger header wordmark (set at
+      700: at 9px its 500 carried only 0.70× the reference's ink);
+    · the handwriting — Yellowtail, the best pixel match of ~90 scripts (the reference's own
+      signature brush is unidentified).
 
-/**
- * A hand-written description, not fixture copy. `fixtures/marketing.ts` is locked for this round
- * ("the copy you need exists... if you need a new field, STOP and report it"), and every string
- * it already carries for this card (`hero.cardFrontLabel`, `cardBackLabel`, `cardHint`,
- * `liveCard.caption`) describes the flip this file no longer has. This is the one honest
- * sentence a screen-reader user needs in its place; promoting it into the fixture (so copy edits
- * do not require a code change) is a reasonable follow-up for whoever owns that file next.
- */
-const CAPTION = "An example contact card, showing the fields its owner has chosen to share.";
+  ⚠ LOADED HERE, NOT IN A LAYOUT, AND THE VARIABLES LAND ON THIS CARD'S OWN `<figure>`. Only the
+  landing hero draws this card, so only its route should fetch the faces. And `marketing.css`
+  records why a route-scoped face must be READ on the element that carries it: a custom
+  property's `var()` resolves where it is declared, so `marketing-hero.css` declares
+  `--mk-phone-font-*` on `.mk-hc` — the same element these classes are on.
+*/
+const heroSerif = Libre_Caslon_Text({
+  weight: "400",
+  subsets: ["latin"],
+  variable: "--font-hero-serif",
+  display: "swap",
+});
+const heroSans = Inter({
+  subsets: ["latin"],
+  axes: ["opsz"],
+  variable: "--font-hero-sans",
+  display: "swap",
+});
+const heroCaps = DM_Sans({
+  weight: "700",
+  subsets: ["latin"],
+  variable: "--font-hero-caps",
+  display: "swap",
+});
+const heroScript = Yellowtail({
+  weight: "400",
+  subsets: ["latin"],
+  variable: "--font-hero-script",
+  display: "swap",
+});
 
-export interface HeroCardProps {
-  className?: string;
-}
+const FONT_VARIABLES = [heroSerif, heroSans, heroCaps, heroScript].map((f) => f.variable).join(" ");
 
-/**
- * One resolve, at module scope — the same triad `hero.tsx` used to assemble upstream.
- *
- * ⚠ Hoisted out of the component so {@link HERO_CARD_SHEET} can read it. The fixture is static
- * and `resolveCard` is pure, so this is the same work done once per process instead of once per
- * render — and, more to the point, it means the card and the phone around it cannot come to
- * different answers about what colour this card's paper is.
- */
-const HERO_RESOLVED = resolveCard(heroCard, marketingUser, FIXTURE_DB.groups, FIXTURE_DB.fields);
-
-/**
- * The hero card's own paper, exported for `<PhoneFrame screenTint>`.
- *
- * The phone's screen fades its bottom edge out so the clip does not sever a row of icons
- * against the bezel (see `phone-frame.tsx`), and that fade has to end in **this** colour: the
- * screen's own background is `--mk-white` while this card is cream, so a veil ending in white
- * would paint a pale band across a warm card.
- *
- * Read through `paletteVars` rather than off the palette object, because `--c-sheet` is a
- * *resolved* value — the palette's own `sheet` when it states one, else white carrying 3% of its
- * ground — and that rule lives in exactly one place (`template-palettes.ts`). Reaching past it
- * to `palette.sheet` would be right for this fixture and silently wrong for eight of the nine.
- */
-export const HERO_CARD_SHEET = paletteVars(HERO_RESOLVED.palette)["--c-sheet"];
-
-export function HeroCard({ className }: HeroCardProps): ReactElement {
-  const resolved = HERO_RESOLVED;
-  const shape = resolved.template.shape.buttonShape;
-
-  /* `h-full` on the figure exists only so the `minHeight: "100%"` on the card box below has a
-     definite height to resolve against: this figure is the one box between
-     `.mk-phone-frame__screen` — which has a definite height, from its aspect ratio — and the
-     card. Without it the percentage resolves against an auto-height parent and does nothing. */
+export function HeroCard(): ReactElement {
+  const c = heroPhone;
   return (
-    <figure className={mkcn("mx-auto h-full", className)}>
-      <div
-        /* The stable hook other code locates the hero's card by. Kept from the flip era on
-           purpose (see the report on this round) — it used to mark a `<button>`; it marks a
-           plain, `inert` box now, which is the honest shape of a non-interactive preview. */
-        data-hero-card=""
-        inert
-        className="overflow-hidden rounded-mk-block"
-        /**
-         * ⚠ `minHeight: "100%"` + `display: "grid"` IS A SEAM FIX, NOT A LAYOUT OPINION —
-         * ADDED 2026-09-21.
-         *
-         * `<CardPage>` is fluid, so its height is whatever the fixture's row count makes it,
-         * and `.mk-phone-frame__screen` (`marketing-hero.css`) is a FIXED 9/19.5 window. Those
-         * two numbers used to be 810 and 728 — the card overflowed, the screen clipped it, and
-         * the clip was the intended reading ("there is more card"). The 2026-09-20 trim took
-         * the card to ~724px, four pixels UNDER the window, and the difference showed as a
-         * hairline of `--mk-white` between the card's warm ground and the bottom bezel: a seam
-         * across the glass, which is exactly what a device must not have.
-         *
-         * A grid container with one child stretches its auto row to the container's height
-         * (`align-content: stretch`, the initial value), and the child stretches with it. So
-         * the card's own `<article>` — and therefore its own ground — reaches the bottom of the
-         * screen whatever its content height is, with no assumption here about what colour that
-         * ground is (a palette this file does not own) and no change to `<CardPage>`, which
-         * this round still holds read-only. It is also the correct behaviour in BOTH
-         * directions: a taller fixture overflows and clips exactly as before, because
-         * `min-height` cannot shrink anything.
-         */
-        style={{ width: `${SCREEN_WIDTH}px`, minHeight: "100%", display: "grid" }}
-      >
-        <CardPage
-          resolved={resolved}
-          showCredit={false}
-          actions={
-            !canBuildVcf(resolved) ? undefined : (
-              <div data-card-actions="" data-card-action-count={1}>
-                <CardActionButton
-                  action="save"
-                  paletteId={resolved.palette.id}
-                  palette={resolved.palette}
-                  variant="primary"
-                  surface="canvas"
-                  shape={shape}
-                  icon={<SmartphoneNfc size={18} strokeWidth={1.75} />}
-                  trailing={<ArrowRight size={18} strokeWidth={1.75} />}
-                >
-                  Send to Phone
-                </CardActionButton>
-              </div>
-            )
-          }
-        />
-      </div>
+    <PhoneFrame>
+      <figure className={`mk-hc ${FONT_VARIABLES}`}>
+        <div data-hero-card="" inert className="mk-hc__card">
+          <div className="mk-hc__cover">
+            {/* The reference's portrait, lifted out of the render with the notch, status bar
+                and script removed (they are drawn live, on top) and upscaled 3×.
+                A plain `<img>` on purpose: the two files are hand-made at exactly 2× and 3×
+                the 330px design width, and `next/image` would re-encode them at its q75
+                default, softening an upscale that is already at the edge of its detail. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              className="mk-hc__photo"
+              src={c.portrait.x2}
+              srcSet={`${c.portrait.x2} 2x, ${c.portrait.x3} 3x`}
+              alt=""
+              width={330}
+              height={262}
+              fetchPriority="high"
+              decoding="async"
+            />
+            <p className="mk-hc__script">
+              {c.script.map((line) => (
+                <span key={line} className="mk-hc__script-line">
+                  {line}
+                </span>
+              ))}
+            </p>
+            {/* The underline flourish under the last script line. */}
+            <svg className="mk-hc__flourish" viewBox="0 0 32 9" aria-hidden="true" focusable="false">
+              <path d="M1.2 7.6C10.6 5.7 20.6 3.5 30.6 1.4" />
+            </svg>
 
-      <figcaption className="sr-only">{CAPTION}</figcaption>
-    </figure>
+            {/*
+              THE WAVE — photo edge, a cream lip, a 1px gold hairline, then the sheet. Paths are
+              Béziers fitted to the reference's traced edge (rms 0.11px), with the dome's two
+              interior knots shifted 3.4px right (the flanks keep their fitted knots): the
+              reference drew dome and badge off-centre, and a centred name under an off-centre
+              badge reads as a mistake. The lip and the hairline both
+              fade out across the dome, exactly as the reference does.
+            */}
+            <svg
+              className="mk-hc__wave"
+              viewBox="0 0 330 265"
+              preserveAspectRatio="none"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <defs>
+                <linearGradient id="mk-hc-lip-fade" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="330" y2="0">
+                  <stop offset="0" stopOpacity="0.85" />
+                  <stop offset="0.13" stopOpacity="0.81" />
+                  <stop offset="0.25" stopOpacity="0.61" />
+                  <stop offset="0.28" stopOpacity="0.31" />
+                  <stop offset="0.34" stopOpacity="0.18" />
+                  <stop offset="0.4" stopOpacity="0" />
+                  <stop offset="0.6" stopOpacity="0" />
+                  <stop offset="0.63" stopOpacity="0.05" />
+                  <stop offset="0.72" stopOpacity="0.23" />
+                  <stop offset="0.75" stopOpacity="0.5" />
+                  <stop offset="0.81" stopOpacity="0.63" />
+                  <stop offset="0.88" stopOpacity="0.72" />
+                  <stop offset="1" stopOpacity="1" />
+                </linearGradient>
+                <linearGradient id="mk-hc-gold-fade" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="330" y2="0">
+                  <stop offset="0" stopOpacity="1" />
+                  <stop offset="0.16" stopOpacity="0.9" />
+                  <stop offset="0.22" stopOpacity="0.65" />
+                  <stop offset="0.28" stopOpacity="0.45" />
+                  <stop offset="0.34" stopOpacity="0.33" />
+                  <stop offset="0.38" stopOpacity="0.2" />
+                  <stop offset="0.41" stopOpacity="0" />
+                  <stop offset="0.58" stopOpacity="0" />
+                  <stop offset="0.6" stopOpacity="0.25" />
+                  <stop offset="0.63" stopOpacity="0.4" />
+                  <stop offset="0.69" stopOpacity="0.65" />
+                  <stop offset="0.75" stopOpacity="0.8" />
+                  <stop offset="0.81" stopOpacity="1" />
+                  <stop offset="1" stopOpacity="1" />
+                </linearGradient>
+              </defs>
+              <path
+                className="mk-hc__sheet"
+                d="M0 248.19C32.28 248.87 64.55 241.67 96.83 228.77C110.67 223.25 127.90 219.29 141.74 208.55C155.75 197.68 169.76 196 183.77 205.58C196.80 214.48 206.43 212.79 219.46 209.89C256.31 201.68 293.15 191.05 330 197.5V265H0Z"
+              />
+              <path
+                className="mk-hc__lip"
+                d="M0.0 248.2L3.1 248.2 6.3 248.2 9.4 248.2 12.6 248.1 15.7 247.9 18.9 247.7 22.0 247.5 25.2 247.2 28.3 246.8 31.5 246.4 34.6 246.0 37.8 245.5 40.9 245.0 44.1 244.4 47.2 243.8 50.4 243.2 53.5 242.5 56.6 241.7 59.8 240.9 62.9 240.1 66.1 239.3 69.2 238.4 72.4 237.4 75.5 236.4 78.7 235.4 81.8 234.3 85.0 233.3 88.1 232.1 91.3 230.9 94.4 229.7 97.5 228.5 100.5 227.4 103.6 226.2 106.6 225.2 109.7 224.1 112.8 223.0 115.8 221.9 118.8 220.8 121.8 219.6 123.2 219.0 123.3 228.2 121.1 229.2 117.8 230.5 114.6 231.9 111.4 233.2 108.2 234.6 105.0 235.8 101.8 237.1 98.6 238.3 95.5 239.5 92.3 240.7 89.2 241.8 86.1 242.9 82.9 244.0 79.8 245.0 76.7 246.0 73.6 246.9 70.5 247.9 67.5 248.8 64.4 249.6 61.3 250.4 58.3 251.2 55.2 251.9 52.1 252.6 49.1 253.3 46.1 253.9 43.0 254.5 40.0 255.0 37.0 255.5 34.0 255.9 30.9 256.3 27.9 256.7 24.9 257.0 21.9 257.3 18.9 257.5 15.9 257.7 12.9 257.8 9.9 257.9 6.6 257.9 3.3 257.9 0.0 257.8ZM201.4 212.1L204.4 212.2 207.4 212.0 210.5 211.7 213.5 211.1 216.6 210.5 219.7 209.8 222.8 209.1 225.8 208.5 228.9 207.8 231.9 207.1 234.9 206.4 238.0 205.7 241.0 205.0 244.1 204.3 247.1 203.6 250.1 202.9 253.2 202.3 256.2 201.6 259.3 201.0 262.3 200.4 265.3 199.8 268.4 199.3 271.4 198.7 274.5 198.2 277.5 197.8 280.5 197.4 283.6 197.0 286.6 196.6 289.7 196.3 292.7 196.1 295.7 195.8 298.8 195.7 301.8 195.6 304.9 195.5 307.9 195.5 310.9 195.6 314.0 195.7 317.0 195.9 320.1 196.2 323.1 196.5 326.1 196.9 329.2 197.4 330.0 197.5 330.0 205.7 327.7 205.3 324.6 204.8 321.5 204.4 318.5 204.1 315.4 203.9 312.3 203.7 309.3 203.6 306.2 203.6 303.1 203.7 300.1 203.7 297.0 203.9 293.9 204.1 290.9 204.3 287.8 204.5 284.7 204.8 281.7 205.0 278.6 205.3 275.5 205.7 272.4 206.2 269.3 206.7 266.2 207.3 263.1 207.9 260.0 208.6 256.9 209.3 253.8 210.0 250.8 210.7 247.7 211.5 244.7 212.2 241.6 213.0 238.6 213.7 235.6 214.5 232.4 215.2 229.3 215.9 226.1 216.6 223.0 217.2 219.9 217.7 216.8 218.2 213.8 218.5 210.7 218.8 207.5 219.0 204.4 219.1 201.3 219.0Z"
+              />
+              <path
+                className="mk-hc__gold"
+                d="M0 257.77C39.98 259.29 79.96 247.14 123.34 228.16 M201.28 219C225.56 220.17 253.24 207.66 280.92 205.1C297.28 203.58 313.64 202.49 330 205.68"
+              />
+            </svg>
+
+            <HeroMedallion className="mk-hc__medallion" />
+          </div>
+
+          <div className="mk-hc__body">
+            <p className="mk-hc__brand">{c.brand}</p>
+            <p className="mk-hc__name">{c.name}</p>
+            <p className="mk-hc__role">
+              <span>{c.role}</span>
+              <span>{c.company}</span>
+            </p>
+            <p className="mk-hc__bio">
+              <span>{c.bio[0]}</span>
+              <span>{c.bio[1]}</span>
+            </p>
+
+            <div className="mk-hc__action">
+              {SEND_GLYPH}
+              <span className="mk-hc__action-label">{c.action}</span>
+              {ARROW_GLYPH}
+            </div>
+
+            {c.sections.map((section) => (
+              <section key={section.label} className="mk-hc__section">
+                <h3 className="mk-hc__label">{section.label}</h3>
+                <ul className="mk-hc__rows">
+                  {section.rows.map((row) => (
+                    <li key={row.value} className={`mk-hc__row mk-hc__row--${row.icon}`}>
+                      <span className="mk-hc__disc">{ROW_GLYPHS[row.icon]}</span>
+                      <span className="mk-hc__value">{row.value}</span>
+                      <ChevronRight className="mk-hc__chevron" aria-hidden="true" strokeWidth={1.85} />
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))}
+
+            <section className="mk-hc__section mk-hc__section--social">
+              <h3 className="mk-hc__label">{c.socialLabel}</h3>
+              <ul className="mk-hc__social">
+                {c.social.map((platform) => (
+                  <li key={platform} className="mk-hc__social-disc">
+                    {SOCIAL_MARKS[platform]}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          </div>
+        </div>
+        <figcaption className="sr-only">{c.caption}</figcaption>
+      </figure>
+    </PhoneFrame>
   );
 }
-
-/**
- * ⚠ `hero.tsx`'s call site changed WITH this file, not after it.
- *
- * This component used to take `face`/`frontLabel`/`backLabel`/`caption` and `hero.tsx` built the
- * first from a server-rendered `<ShareFace>`. The moment this file started resolving and
- * rendering its own card (above), that shape stopped compiling — Agent E reconciled `hero.tsx`
- * to `<HeroCard />` with no props in the same round, in parallel, and removed the imports that
- * call site existed for (`ShareFace`, its own `resolveCard` call, `FIXTURE_DB`, `heroCard`,
- * `marketingUser`, `liveCard`). `hero.cardHint`, `cardFrontLabel` and `cardBackLabel` stay in the
- * fixture, unrendered, for the reason `hero.tsx`'s own comment at that call site gives — they
- * described a press this card no longer offers.
- */

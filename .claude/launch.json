@@ -23,6 +23,16 @@
       ],
       "port": 3100,
       "url": "http://localhost:3100"
+    },
+    {
+      "name": "app-stub-dev",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "cd apps/web && (STUB_API_PORT=8788 node tests/stubs/api.mjs &) && API_BASE_URL=http://localhost:8788 NEXT_PUBLIC_API_DIRECT=0 exec pnpm exec next dev --port 3101"
+      ],
+      "port": 3101,
+      "url": "http://localhost:3101"
     }
   ]
 }

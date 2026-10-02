@@ -117,20 +117,21 @@ describe("API coverage", () => {
   const spec = specOperations();
   const client = clientOperations();
 
-  it("the snapshot holds the 44 operations this integration was scoped against", () => {
+  it("the snapshot holds the 46 operations this integration was scoped against", () => {
     // A guard on the guard: if the snapshot is refreshed and the count moves, every
     // assertion below is measuring a different API than the one the UI was mapped to.
     // 36 -> 38 when card-update notifications landed: /cards/{id}/audience and /notify.
     // 38 -> 39 with GET /inbound-messages, the raw inbound WhatsApp capture.
     // 39 -> 41 with the card logo pair: POST and DELETE /cards/{id}/logo.
     // 41 -> 44 with the card cover pair (POST and DELETE /cards/{id}/cover) and GET /dashboard.
+    // 44 -> 46 with the profile company-logo pair (POST and DELETE /profile/company-logo).
     //
     // ⚠ That one is NOT ownership-scoped — the API's own description says so, and it is tagged
     // `webhooks`. It is implemented in `endpoints/inbound-messages.ts` (`server-only`) and has
     // exactly one consumer: `app/api/inbound/connects/route.ts`, which joins it against the
     // caller's own contacts on the server. Nothing in the browser may call it directly; see
     // that route's header for why.
-    expect(spec).toHaveLength(44);
+    expect(spec).toHaveLength(46);
   });
 
   it("implements every operation in the spec", () => {

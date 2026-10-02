@@ -203,6 +203,7 @@ export function categoryOfSyntheticGroup(groupId: string): ApiFieldCategory | nu
 const CATEGORY_NAMES: Readonly<Record<ApiFieldCategory, string>> = {
   IDENTITY: "Identity",
   PERSONAL: "Personal",
+  FAMILY: "Family",
   WORK: "Work",
   BUSINESS: "Business",
   SOCIAL: "Social",
@@ -221,11 +222,12 @@ const CATEGORY_NAMES: Readonly<Record<ApiFieldCategory, string>> = {
 const CATEGORY_ORDER: Readonly<Record<ApiFieldCategory, number>> = {
   IDENTITY: 0,
   PERSONAL: 1,
-  WORK: 2,
-  BUSINESS: 3,
-  SOCIAL: 4,
-  FINANCIAL: 5,
-  CUSTOM: 6,
+  FAMILY: 2,
+  WORK: 3,
+  BUSINESS: 4,
+  SOCIAL: 5,
+  FINANCIAL: 6,
+  CUSTOM: 7,
 };
 
 export interface MappedProfile {

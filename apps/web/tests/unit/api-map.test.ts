@@ -476,6 +476,52 @@ describe("toProfile", () => {
     expect(groups[0]?.fieldIds).toEqual([]);
     expect(fields).toEqual([]);
   });
+
+  it("maps a FAMILY group and a COMPANY_LOGO field without dropping either", () => {
+    // The two enum members the family/logo feature added. A FAMILY group must survive as a real
+    // group (not be rehomed to a synthetic one), and a COMPANY_LOGO field is an ordinary field
+    // here — the profile workspace is what decides to render it as the logo slot.
+    const { groups, fields } = toProfile(
+      [
+        apiField({ category: "FAMILY", type: "RELATION", groupId: "fam", value: "Rohan" }),
+        apiField({
+          category: "WORK",
+          type: "COMPANY_LOGO",
+          groupId: "work",
+          value: "https://cdn.example/logo.png",
+        }),
+      ],
+      [
+        apiGroup({ id: "fam", category: "FAMILY", tag: "Rohan", position: 0 }),
+        apiGroup({ id: "work", category: "WORK", tag: "Kestrel", position: 0 }),
+      ],
+      "u1",
+    );
+
+    expect(groups.map((g) => [g.id, g.category, g.name])).toEqual([
+      ["fam", "FAMILY", "Rohan"],
+      ["work", "WORK", "Kestrel"],
+    ]);
+    expect(fields.find((f) => f.type === "COMPANY_LOGO")?.value).toBe(
+      "https://cdn.example/logo.png",
+    );
+  });
+
+  it("sorts FAMILY after PERSONAL and before WORK", () => {
+    const { groups } = toProfile(
+      [
+        apiField({ category: "WORK", type: "COMPANY", groupId: "w" }),
+        apiField({ category: "FAMILY", type: "RELATION", groupId: "fam" }),
+        apiField({ category: "PERSONAL", type: "PHONE" }),
+      ],
+      [
+        apiGroup({ id: "w", category: "WORK", tag: "Work" }),
+        apiGroup({ id: "fam", category: "FAMILY", tag: "Rohan" }),
+      ],
+      "u1",
+    );
+    expect(groups.map((g) => g.category)).toEqual(["PERSONAL", "FAMILY", "WORK"]);
+  });
 });
 
 /* ── toContactCard ───────────────────────────────────────────────────────────────────── */

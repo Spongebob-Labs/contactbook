@@ -357,11 +357,13 @@ test.describe("GET /dashboard", () => {
 
     expect(payload).toBeDefined();
     /* Read off the screen and compared to the wire, so a screen that renders a plausible number
-       it derived itself fails. Every count here is the API's answer or it is wrong. */
-    const shown = await counts.innerText();
-    expect(shown).toContain(String(payload!.totals.cards));
-    expect(shown).toContain(String(payload!.totals.contacts));
-    expect(shown).toContain(String(payload!.totals.peopleReached));
+       it derived itself fails. Every count here is the API's answer or it is wrong. Since
+       2026-09-28 the card and contact counts lead their summary tiles instead of the strip. */
+    const tileCount = (region: string) =>
+      page.locator(`[data-dashboard-region="${region}"] [data-summary-tile-count]`).innerText();
+    expect(await tileCount("cards")).toContain(String(payload!.totals.cards));
+    expect(await tileCount("contacts")).toContain(String(payload!.totals.contacts));
+    expect(await counts.innerText()).toContain(String(payload!.totals.peopleReached));
   });
 
   /**
@@ -387,7 +389,10 @@ test.describe("GET /dashboard", () => {
     });
 
     await gotoReady(page, "/dashboard");
-    await expect(page.locator('[data-dashboard-region="attention"]')).toBeVisible();
+    /* The ROWS, not the region: the loading bones carry the same region handle, so the region is
+       visible before the response has even been parsed. */
+    await expect(page.locator("[data-attention-row]").first()).toBeVisible();
+    await expect.poll(() => kinds.length).toBeGreaterThan(0);
 
     /* The fixture has an empty card and no share links at all, so both zero-activity kinds are
        present — which is the case a filter-the-boring-rows implementation would drop. */
@@ -469,6 +474,8 @@ test.describe("GET /dashboard", () => {
     });
 
     await gotoReady(page, "/dashboard");
+    /* The response listener parses asynchronously, so wait for it rather than racing it. */
+    await expect.poll(() => totals).toBeDefined();
 
     /* One person now holds a link, nobody has opened it, and the API — not this test — is what
        decided all three of these numbers. */

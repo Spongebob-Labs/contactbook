@@ -366,7 +366,7 @@ describe("the fields panel", () => {
 
     expect(onCreateField, "a blank value reached the API").not.toHaveBeenCalled();
     expect(container.querySelector("[data-create-field-form]")?.textContent).toMatch(
-      /give the field a value/i,
+      /enter a value/i,
     );
   });
 

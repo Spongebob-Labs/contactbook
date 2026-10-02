@@ -142,3 +142,33 @@ export function uploadPhoto(file: File): Promise<PhotoResponseDto> {
 export function deletePhoto(): Promise<void> {
   return authed({ method: "DELETE", path: "/profile/photo" });
 }
+
+/**
+ * Upload or replace the profile-level company logo.
+ *
+ * JPEG / PNG / WebP, up to 20 MB. Stored as a `WORK`-category `COMPANY_LOGO` field, so any card
+ * that includes the owner's work fields carries the mark automatically — upload once, appears
+ * everywhere. Replacing an existing logo deletes the old object from storage as part of the
+ * same request, so a caller never has to remove before it uploads.
+ *
+ * ⚠ **A profile logo is the only way this field is ever written.** `POST /profile/fields` with
+ * `type: "COMPANY_LOGO"` is rejected (`COMPANY_LOGO_VIA_UPLOAD_ONLY`), same as `PHOTO`.
+ *
+ * @throws `PHOTO_STORAGE_NOT_CONFIGURED` (409), `PHOTO_TOO_LARGE` (413),
+ * `PHOTO_TYPE_UNSUPPORTED` (415).
+ */
+export function uploadCompanyLogo(file: File): Promise<PhotoResponseDto> {
+  const form = new FormData();
+  form.set("file", file);
+  return authed({ method: "POST", path: "/profile/company-logo", form });
+}
+
+/**
+ * Remove the profile-level company logo. `204`, no body.
+ *
+ * @throws `COMPANY_LOGO_NOT_FOUND` (404 — there was no logo to remove, reachable by a double-tap
+ * or a second tab and a state the owner already wanted).
+ */
+export function deleteCompanyLogo(): Promise<void> {
+  return authed({ method: "DELETE", path: "/profile/company-logo" });
+}

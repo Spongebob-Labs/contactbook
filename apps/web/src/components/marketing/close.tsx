@@ -1,46 +1,28 @@
-import Link from "next/link";
+import { ArrowRight } from "lucide-react";
 
-import { close, waitlistPage } from "@/fixtures/marketing";
-import { contactDetails } from "@/lib/site";
+import { close } from "@/fixtures/marketing";
 
-import { LeadForm } from "./lead-form";
 import { mkcn } from "./mk-cn";
 import { Section } from "./section";
-import { Heading, Prose } from "./type";
+import { Heading, MkButtonLink, Prose } from "./type";
 
 /**
  * Section 5 — the close.
  *
- * ## From one button to an inline capture
- * The close used to be a headline and a single link out to `/waitlist`. It is the emptiest
- * surface on the page and, with `belief` cut (2026-09-19), it now also has to carry the ending —
- * so the capture moves onto the page itself rather than staying one click away. `close.cta`
- * survives underneath as the plain-text path to the full page, for anyone who would rather not
- * fill in a field here.
+ * ## 2026-09-28 — the waitlist form is gone, and the close is one button again
+ * The client: *"Still showing old version: 'join the waitlist' copy … need removing."* The
+ * inline capture that lived here (a name-and-email `<LeadForm>` on its own white surface, plus a
+ * "Join the waitlist" link under it) went with that. The product is open, so there is no list to
+ * join: the close sends a reader to the same front door as the hero and the nav, phone sign-in
+ * (`close.cta`). `lead-form.tsx` and `/waitlist` are untouched and still work; nothing on the
+ * homepage points at them.
  *
- * ## Reusing `lead-form.tsx`, and the one thing it cannot do unwrapped
- * `<LeadForm>` already owns the real pipeline — `POST /api/leads`, the 422/503 split, the email
- * fallback instead of a fake tick — and none of that is duplicated here. But it is written for a
- * LIGHT ground: its labels are `text-mk-ink` and its submit button is `bg-mk-ink text-mk-white`,
- * both illegal or invisible on `--mk-accent-deep` for the same reason `<Heading>` needed an
- * explicit `text-mk-white` a few lines below — Onyx ink on a dark ground measures under 2:1. The
- * form is not modified; it is set inside its own white surface instead, which is what makes
- * every one of its built-in states (idle, done, the failed/fallback box) correct again with no
- * edit to that file.
- *
- * ## Why the form asks for a name it does not need to show
- * An email-only capture cannot be validated through the existing pipeline: `parseLead`
- * (`src/lib/leads.ts`) requires `name` unconditionally, and that file is not mine to loosen for
- * one call site. Two fields — name, email — is still far lighter than `/waitlist`'s three plus
- * an audience question, and it is the smallest field set that a real submission can pass without
- * duplicating that route's validation here.
- *
- * ## Copy: borrowed, not invented
- * `submitLabel`/`successHeading`/`successBody`/`fallbackBody`/`privacyNote` all come from
- * `waitlistPage` — the same action, said once, rather than a second set of sentences for what is
- * still literally "join the waitlist". The one visible side effect: `close.cta`'s label and the
- * form's own submit button both read "Join the waitlist", because that is the fixture's actual
- * copy for both destinations and this file does not add words that are not there.
+ * ## The one dark ground, and the one light control on it
+ * The section keeps `tone="deep"` and its headline. `white` is the button treatment `type.tsx`
+ * defines for a dark ground — white fill, ink label — so the control is the brightest thing in
+ * the band without needing a colour of its own. The trailing arrow matches the hero's primary,
+ * so the two read as the same action; it is `aria-hidden` because the label already says what a
+ * press does.
  */
 export function Close() {
   return (
@@ -58,38 +40,18 @@ export function Close() {
         {close.body}
       </Prose>
 
-      <div className="mx-auto mt-10 max-w-sm rounded-mk-block bg-mk-white p-6 text-left md:mt-12 md:p-8">
-        <LeadForm
-          kind="waitlist"
-          fields={[
-            { name: "name", label: "Name", autoComplete: "name" },
-            { name: "email", label: "Email", type: "email", autoComplete: "email" },
-          ]}
-          submitLabel={waitlistPage.submitLabel}
-          successHeading={waitlistPage.successHeading}
-          successBody={waitlistPage.successBody}
-          fallbackBody={waitlistPage.fallbackBody}
-          fallbackEmail={contactDetails.email}
-          privacyNote={waitlistPage.privacyNote}
-        />
-      </div>
-
-      {/* The brief's second control, kept — `close.cta` unchanged, now secondary to the form
-          above rather than the section's only action. Still exactly one link in this section at
-          rest: the form's own control is a `<button>`, and its mailto fallback only renders
-          after a failed submit. */}
-      <p className="mt-8 text-mk-body-sm">
-        <Link
+      <div className="mt-10 flex justify-center md:mt-12">
+        <MkButtonLink
           href={close.cta.href}
-          className={mkcn(
-            "font-mk-sans font-mk-medium underline decoration-1 underline-offset-2",
-            "transition-colors duration-[var(--mk-dur-tap)]",
-            "mk-close-link",
-          )}
+          variant="white"
+          size="lg"
+          data-close-cta=""
+          className="gap-2"
         >
           {close.cta.label}
-        </Link>
-      </p>
+          <ArrowRight aria-hidden="true" size={18} strokeWidth={2} />
+        </MkButtonLink>
+      </div>
     </Section>
   );
 }

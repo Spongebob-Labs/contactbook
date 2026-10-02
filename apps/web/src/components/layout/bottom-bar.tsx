@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { cn } from "@/lib/cn";
-import { APP_NAV_ITEMS, isNavItemActive } from "./sidebar";
+import { APP_NAV_ITEMS, isAppNavItemActive } from "./sidebar";
 
 /**
  * The ≤767px navigation (spec §8D.3): 64px tall off `--bottombar-height`, fixed to the
@@ -19,8 +19,8 @@ import { APP_NAV_ITEMS, isNavItemActive } from "./sidebar";
  * one is ever in the accessibility tree.
  *
  * The label under the icon is not decoration. §8.8: no meaning is carried by an icon
- * alone (AC-25), and a four-icon bar with no words is the least legible surface in a
- * product where "Cards" and "Contacts" are different things.
+ * alone (AC-25), and an icon bar with no words is the least legible surface in a
+ * product where "Profile & Cards" and "Contacts" are different things.
  */
 export interface BottomBarProps {
   className?: string;
@@ -49,7 +49,7 @@ export function BottomBar({ className }: BottomBarProps) {
     >
       <ul className="flex h-full items-stretch">
         {APP_NAV_ITEMS.map((item) => {
-          const active = isNavItemActive(pathname, item.href);
+          const active = isAppNavItemActive(pathname, item);
           const Icon = item.icon;
 
           return (

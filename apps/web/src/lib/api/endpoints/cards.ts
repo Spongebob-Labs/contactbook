@@ -76,6 +76,12 @@ function toCreateCardForm(body: CreateCardDto, logo?: File): FormData {
   const form = new FormData();
   for (const [key, value] of Object.entries(body)) {
     if (value === undefined || value === null) continue;
+    /* ⚠ An array is appended key-by-key, never stringified — `fieldIds` is a repeated part that
+       Multer collects back into an array. See `CreateCardDto.fieldIds`. */
+    if (Array.isArray(value)) {
+      for (const item of value) form.append(key, String(item));
+      continue;
+    }
     form.set(key, String(value));
   }
   if (logo !== undefined) form.set("file", logo);

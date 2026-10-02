@@ -309,7 +309,6 @@ function ContactDetailScreen({
         <NotFoundPanel
           headingLevel={1}
           title="We couldn't find that contact"
-          detail="It may have been removed, or the link may be wrong. Everyone you can send a card to is on your contacts list."
           backHref="/contacts"
           backLabel="Go to contacts"
         />
@@ -406,8 +405,7 @@ function ContactDetailScreen({
               <EmptyState
                 headingLevel={3}
                 overline="Nothing sent yet"
-                title="You haven't sent this contact a card"
-                description="Share one from the card itself. They get a WhatsApp message with a link that always shows your current details."
+                title="Send them a card"
                 action={{ label: "Go to your cards", href: "/cards" }}
               />
             ) : (

@@ -281,7 +281,7 @@ export function NewFieldRow({
               if (value.trim().length === 0) {
                 /* Checked here rather than at the API: a blank value is rejected upstream too,
                    but a round trip to be told so reports a local mistake as a server failure. */
-                setError("Give the field a value — a blank one would not show on the card.");
+                setError("Enter a value.");
                 return;
               }
               setError(null);
@@ -388,10 +388,12 @@ export function NewFieldRow({
         )}
       </div>
 
-      {/* One line, and only while the composer is open — a closed row has nothing to explain. */}
+      {/* The composer's accessible description, kept for screen readers only: the sighted
+          reader sees the field land on the card beside it (client, 2026-09-28: strip the
+          explanatory copy). */}
       {open ? (
-        <p id={hintId} data-prose className="text-xs text-ink-3">
-          Saved to your profile and ticked onto this card, in one step.
+        <p id={hintId} className="sr-only">
+          Adds the field to your profile and ticks it onto this card.
         </p>
       ) : null}
     </div>

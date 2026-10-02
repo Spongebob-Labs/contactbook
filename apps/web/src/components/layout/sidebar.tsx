@@ -8,10 +8,13 @@ import {
   LayoutDashboard,
   PanelLeftClose,
   PanelLeftOpen,
+  Send,
   UserRound,
   Users,
   type LucideIcon,
 } from "lucide-react";
+
+import { BrandLogo } from "@/components/layout/brand-logo";
 
 import { SignOutButton } from "@/components/layout/sign-out-button";
 import { cn } from "@/lib/cn";
@@ -50,19 +53,29 @@ export interface AppNavItem {
   href: string;
   label: string;
   icon: LucideIcon;
+  /** Other route roots that belong to the same section and light this item up. */
+  also?: readonly string[];
 }
 
 /**
- * The four destinations of the authenticated product (§8D.3). `<BottomBar>` renders the
- * same array, which is the whole reason it lives here rather than being written twice:
- * a fifth item added to one navigation and not the other is a bug nobody notices until a
+ * The four destinations of the authenticated product. `<BottomBar>` and `<NavDrawer>` render
+ * the same array, which is the whole reason it lives here rather than being written three
+ * times: an item added to one navigation and not the others is a bug nobody notices until a
  * phone is in their hand.
+ *
+ * ⚠ **Profile and Cards are one section** (client, 2026-09-28: *"merge them"*). The item goes
+ * to the `/profile` workspace, and every `/cards` route — the list, a card's own page, the
+ * builder — still lights it up, because those are the same section seen from another door.
+ *
+ * **Share is its own item** (client, same day: *"the phone-number-entry route should be the
+ * primary quick-share"*). It sits after the cards it sends and before the contacts it creates,
+ * which is the order the flow runs in.
  */
 export const APP_NAV_ITEMS: readonly AppNavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/cards", label: "Cards", icon: IdCard },
+  { href: "/profile", label: "Profile & Cards", icon: IdCard, also: ["/cards"] },
+  { href: "/share", label: "Share", icon: Send },
   { href: "/contacts", label: "Contacts", icon: Users },
-  { href: "/profile", label: "Profile", icon: UserRound },
 ];
 
 /**
@@ -73,6 +86,11 @@ export const APP_NAV_ITEMS: readonly AppNavItem[] = [
 export function isNavItemActive(pathname: string | null, href: string): boolean {
   if (!pathname) return false;
   return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+/** {@link isNavItemActive} for a whole item: its own route, or any root it lists in `also`. */
+export function isAppNavItemActive(pathname: string | null, item: AppNavItem): boolean {
+  return [item.href, ...(item.also ?? [])].some((href) => isNavItemActive(pathname, href));
 }
 
 /** `null` = follow the viewport (the CSS default); `true`/`false` = the user's override. */
@@ -92,6 +110,20 @@ const LABEL: Record<CollapseKey, string> = {
   auto: "hidden lg:block",
   true: "hidden",
   false: "block",
+};
+
+/** Shown when the rail is narrow — the mirror of `LABEL`, for the logo's square mark. */
+const NARROW_ONLY: Record<CollapseKey, string> = {
+  auto: "block lg:hidden",
+  true: "block",
+  false: "hidden",
+};
+
+/** The header stacks mark-over-toggle in a 64px rail and runs logo-then-toggle in a wide one. */
+const HEADER: Record<CollapseKey, string> = {
+  auto: "flex-col lg:flex-row lg:justify-between",
+  true: "flex-col",
+  false: "flex-row justify-between",
 };
 
 
@@ -145,21 +177,19 @@ export function Sidebar({ className }: SidebarProps) {
       )}
     >
       <div
-        className={cn(
-          "flex items-center gap-2 border-b border-line px-3 py-4",
-          // Collapsed, the wordmark is gone and only the toggle remains — so it centres in the
-          // rail rather than clinging to a left edge that no longer has anything beside it.
-          key === "true" ? "justify-center" : "justify-between",
-        )}
+        data-sidebar-header=""
+        className={cn("flex items-center gap-2 border-b border-line px-3 py-4", HEADER[key])}
       >
+        {/* The logo is the way home. Wide, the full lockup; narrow, the square mark — CSS picks,
+            so the server and the client always agree about which one is on screen. */}
         <Link
           href="/dashboard"
           aria-label="Contact Book"
-          className={cn("flex min-w-0 items-center gap-2 text-ink", LABEL[key])}
+          data-sidebar-logo=""
+          className="flex min-w-0 items-center rounded-md"
         >
-          <span aria-hidden="true" className="truncate font-sans text-lg">
-            Contact Book
-          </span>
+          <BrandLogo variant="lockup" className={cn("ml-1", LABEL[key])} />
+          <BrandLogo variant="mark" className={NARROW_ONLY[key]} />
         </Link>
         {/* ⚠ The collapse control belongs in the header, beside the wordmark — not at the foot.
             It is the convention every app with a rail follows (VS Code, Linear, Notion, Slack),
@@ -200,7 +230,7 @@ export function Sidebar({ className }: SidebarProps) {
         </button>
       </div>
 
-      {/* One `TooltipProvider` for the whole rail: running a pointer down four icons
+      {/* One `TooltipProvider` for the whole rail: running a pointer down three icons
           should not re-pay the open delay at each one. */}
       <TooltipProvider>
         <nav
@@ -208,7 +238,7 @@ export function Sidebar({ className }: SidebarProps) {
           className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-3 py-4"
         >
           {APP_NAV_ITEMS.map((item) => {
-            const active = isNavItemActive(pathname, item.href);
+            const active = isAppNavItemActive(pathname, item);
             const Icon = item.icon;
 
             const link = (

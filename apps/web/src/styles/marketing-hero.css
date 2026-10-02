@@ -1,411 +1,878 @@
 /* ============================================================================
    marketing-hero — owned by ONE section. See `docs/landing-integration.md`.
 
-   This file exists so that three parallel builds never edit `marketing.css`
-   at the same time. Everything here must:
-     - read `--mk-*` tokens, never a colour literal (both skins must work);
-     - animate transform/opacity only;
+   Everything here must:
+     - read `--mk-*` tokens, never a colour literal (the phone's own inks are
+       `--mk-phone-*`, declared once in `marketing.css`);
+     - move only transform/opacity;
      - keep its final state as the DEFAULT, with motion gated behind
        `@media (prefers-reduced-motion: no-preference)`.
    ============================================================================ */
 
 /* ────────────────────────────────────────────────────────────────────────────
-   THE DEVICE, REBUILT 2026-09-21 AGAINST THE CLIENT'S OWN RENDER.
+   THE DEVICE AND ITS CARD, REBUILT 2026-09-29 — MEASURED, NOT DRAWN.
 
-   The fifth review of this element rejected it as a device rather than as a
-   composition: *"I want exactly this border of the design of the mobile — the
-   design, the side buttons, and the upper bar of this iPhone."* The reference
-   they attached is a photographic product render, and the three things that
-   make it read as hardware were all missing or wrong here:
+   The client rejected the previous phone card point by point (fonts, icons,
+   colours, spacing, the photo, the logo, the device) against their reference
+   render. Five analyses were run on that render before a line of this was
+   written — typography, colour, geometry, glyphs/hardware and assets — each
+   measuring from pixel data: edge profiles for every box, medians over flat
+   regions for every colour, least-squares fits for the wave, the shadow and the
+   glyphs. Every number below comes from those specs, scaled from the
+   reference's 326px screen to a 330px design width (×1.012) and rounded to
+   0.05px. Where a number is a judgement rather than a measurement, it says so.
 
-     1. **There was one shell, not two.** A real phone is a machined RAIL with a
-        black BEZEL inside it — two materials, and the bright hairline where the
-        rail catches light is most of what the eye uses to decide "that is a
-        phone" at thumbnail size. This file drew a single flat `--mk-accent-deep`
-        rectangle. It is now `.mk-phone-frame` (the rail, 3px) wrapping
-        `.mk-phone-frame__body` (the bezel, 10px) wrapping the screen.
-     2. **The keys sat INSIDE the silhouette.** They were flush slivers at
-        `left: 0`, tinted 18% white — invisible at any real size. They protrude
-        2px now, in the rail's own metal, which is what the reference shows.
-     3. **The status bar was an ink scrim with white glyphs.** The reference
-        draws 9:41 and the glyphs in BLACK over the photograph, because the
-        photograph is light — which is also true of ours. See
-        `.mk-phone-frame__status` for the one thing that had to be kept from the
-        old treatment so the swap stays legible by construction rather than by
-        luck about the cover.
+   ⚠ FIXED DESIGN WIDTH, ZOOMED — NEVER SCALED. The screen is 330×793 at every
+   viewport and the card inside it is laid out once, at that size. The rendered
+   size comes only from `zoom: var(--mk-phone-zoom)` (set in `hero.tsx`), which
+   re-lays-out and re-rasterises at the target size. `transform: scale(...)`
+   would resample rasterised text; the test asserts it never appears here.
 
-   ⚠ THE OLD BANS STILL HOLD. No `width`/`height` on the frame or any ancestor
-   of the card, and no `transform: scale(...)` anywhere — `<CardPage>` is real,
-   fluid typography, and resampling a rasterised card is the defect both rules
-   exist to prevent. `tests/unit/marketing-hero.test.tsx` asserts the literal
-   absence of `scale(` in this file. `zoom` remains the one exception and
-   remains a different mechanism: it triggers a real layout pass at the target
-   size, so the card's text is rasterised natively small rather than shrunk.
-
-   ⚠ NO BREAKPOINT GATE LIVES IN THIS FILE. The chrome paints identically at
-   every viewport (the 2026-09-20 fix for *"in mobile view … it is not at all
-   visible or usable"*), and the ONE thing that varies by width — how large the
-   device renders — is read from `--mk-phone-zoom`, which `hero.tsx` sets with
-   its own responsive utilities. That keeps the two files from owning half a
-   breakpoint each.
+   ⚠ NO BREAKPOINT GATE LIVES IN THIS FILE. The device paints identically at
+   every viewport; `hero.tsx` owns the one thing that varies (the zoom).
    ──────────────────────────────────────────────────────────────────────────── */
 
 @layer components {
-  /* ── The rail ──────────────────────────────────────────────────────────────
-     The outer 3px of machined metal. The gradient is read left-to-right in
-     PIXELS, not percentages: the bright edge on a real phone is a fixed 1px of
-     specular highlight, and a percentage stop would widen it into a stripe as
-     the device grows.
+  /* ── The device ─────────────────────────────────────────────────────────── */
 
-     `width: fit-content` + `margin-inline: auto` is still what centres the
-     device, and `display: flex` + `justify-content: center` on the COLUMN
-     (`hero.tsx`) is the belt to that braces: a `fit-content` box cannot centre
-     itself inside a parent narrower than it is, which is the one way this has
-     ever landed off-centre.
+  /* The wrapper carries the shadow and the zoom, and isolates a stacking
+     context so the keys can sit UNDER the silhouette without falling behind
+     the section's own background.
 
-     ⚠ THE SHADOW IS TWO PIXELS OF CONTACT, NOT A PRODUCT-SHOT FLOAT. The 2026-
-     09-20 review killed `--mk-shadow-float` here for good reason ("it should not
-     have any of the effects … just the normal phone layout") and that stays
-     killed. What is here is the seam a dark object has against a light page:
-     a 1px contact edge and a wide, very low-alpha pool. Remove both before
-     reaching for a blur radius larger than the device. */
+     The shadow is one Gaussian fitted to ~200k px of the reference's falloff:
+     heavy below, lighter left, faint right, almost none on top. The white rim
+     is the reference's crisp 0.6px lit edge along the top and sides. */
   .mk-phone-frame {
     position: relative;
+    isolation: isolate;
     display: block;
     width: fit-content;
     margin-inline: auto;
-    padding: 3px;
-    border-radius: 59px;
-    background-color: var(--mk-ink);
+    border-radius: 61.5px;
+    box-shadow:
+      0 -0.6px 0 0.6px var(--mk-phone-rim-light),
+      -9px 28px 65px -5px var(--mk-phone-shadow);
+    zoom: var(--mk-phone-zoom, 0.84);
+  }
+
+  /* THE RAIL — three rings, measured outside in: a 1.35px dark hairline, a
+     1px graphite step, a 2.3px polished band brightest at the lower left
+     (214 lum) and dimmest upper right (187). One box: the band is its
+     background and the two thin rings are inset shadows. Nested padding boxes
+     drew the same rings but snapped each edge to a device pixel, and at 2× the
+     1px graphite ring vanished top and bottom; a shadow's edge is
+     anti-aliased instead. The bezel inside covers everything past 4.65px. */
+  .mk-phone-frame__rail {
+    position: relative;
+    z-index: 1;
+    padding: 4.65px;
+    border-radius: 61.5px;
     background-image: linear-gradient(
-      to right,
-      color-mix(in srgb, var(--mk-white) 72%, var(--mk-ink)) 0px,
-      color-mix(in srgb, var(--mk-white) 38%, var(--mk-ink)) 1.2px,
-      color-mix(in srgb, var(--mk-white) 17%, var(--mk-ink)) 3px,
-      color-mix(in srgb, var(--mk-white) 10%, var(--mk-ink)) 50%,
-      color-mix(in srgb, var(--mk-white) 17%, var(--mk-ink)) calc(100% - 3px),
-      color-mix(in srgb, var(--mk-white) 38%, var(--mk-ink)) calc(100% - 1.2px),
-      color-mix(in srgb, var(--mk-white) 72%, var(--mk-ink)) 100%
+      215deg,
+      var(--mk-phone-silver-dim) 0%,
+      var(--mk-phone-silver) 45%,
+      var(--mk-phone-silver-lit) 100%
     );
     box-shadow:
-      0 1px 2px color-mix(in srgb, var(--mk-ink) 14%, transparent),
-      0 22px 44px -30px color-mix(in srgb, var(--mk-ink) 55%, transparent);
-    zoom: var(--mk-phone-zoom, 0.8);
+      inset 0 0 0 1.35px var(--mk-phone-hairline),
+      inset 0 0 0 2.35px var(--mk-phone-graphite);
   }
 
-  /* ── The bezel ─────────────────────────────────────────────────────────────
-     Flat, uniform, and darker than the rail around it — a real bezel is the
-     black mask under the glass, not a second piece of metal, so it takes no
-     gradient of its own. 10px on all four edges: the 2026-09-20 review's
-     *"the iPhone kind of lining is not there"* was diagnosing the old
-     `26px 6px 18px`, and a Face ID phone has no thick top edge to cut a notch
-     into — the island lives on the display (below) precisely because it does
-     not. */
+  /* Six matte breaks in the band, on straight runs only — tiny, and most of
+     what makes the rail read as machined rather than drawn. */
+  .mk-phone-frame__antenna {
+    position: absolute;
+    z-index: 2;
+    background-color: var(--mk-phone-antenna);
+  }
+
+  .mk-phone-frame__antenna--top,
+  .mk-phone-frame__antenna--bottom {
+    width: 5.55px;
+    height: 3.35px;
+  }
+
+  .mk-phone-frame__antenna--top {
+    top: 1.35px;
+    left: 284.1px;
+  }
+
+  .mk-phone-frame__antenna--bottom {
+    bottom: 1.35px;
+    left: 74.6px;
+  }
+
+  .mk-phone-frame__antenna--left-upper,
+  .mk-phone-frame__antenna--left-lower,
+  .mk-phone-frame__antenna--right-upper,
+  .mk-phone-frame__antenna--right-lower {
+    width: 3.35px;
+    height: 5.55px;
+  }
+
+  .mk-phone-frame__antenna--left-upper,
+  .mk-phone-frame__antenna--left-lower {
+    left: 1.35px;
+  }
+
+  .mk-phone-frame__antenna--right-upper,
+  .mk-phone-frame__antenna--right-lower {
+    right: 1.35px;
+  }
+
+  .mk-phone-frame__antenna--left-upper,
+  .mk-phone-frame__antenna--right-upper {
+    top: 74.1px;
+  }
+
+  .mk-phone-frame__antenna--left-lower,
+  .mk-phone-frame__antenna--right-lower {
+    top: 749px;
+  }
+
+  /* THE BEZEL — flat black, 11.85px at the sides and 12.35px top and bottom
+     (the reference's is ~0.4px thicker top/bottom), with a faint seam where it
+     meets the band. Outer rail + bezel = 16.5 / 17px, matching the measured
+     total border within 0.1px. */
   .mk-phone-frame__body {
     position: relative;
-    padding: 10px;
-    border-radius: 56px;
-    background-color: var(--mk-ink);
+    padding: 12.35px 11.85px;
+    border-radius: 56.85px;
+    background-color: var(--mk-phone-bezel);
+    box-shadow: 0 0 0 0.9px var(--mk-phone-seam);
   }
 
-  /* ── The glass ─────────────────────────────────────────────────────────────
-     ⚠ IT IS NOT DECORATION — it is the only thing bounding the hero's height.
-     `<CardPage>` is the product's real component, so its height is a function of
-     how many fields the fixture carries; when that fixture was enriched to look
-     like a real card it measured 1019px and took the hero to 2007px at 375px.
-     `aspect-ratio` makes the device a device: content past the bottom is clipped
-     exactly as it is on hardware, which is what the reference shows too.
-
-     ⚠ NO SCROLLING, DELIBERATELY. `overflow: hidden`, never `auto` — a nested
-     scroll region inside a hero traps a phone user's thumb and steals the page
-     scroll. The clip IS the message: there is more card.
-
-     9 / 19.5 is the current iPhone display ratio, written against the card's own
-     UNZOOMED 336px (`hero-card.tsx`'s `SCREEN_WIDTH`) so that `zoom` shrinks the
-     result rather than the two rules needing to agree on a second number.
-
-     `background-color` is a backstop for a future fixture with fewer fields than
-     this screen is tall, nothing more — without it that case leaves a
-     transparent hole through to the page behind the phone. */
+  /* THE SCREEN — the reference's display, 330×793 (1 : 2.40, taller than a
+     real iPhone's 9/19.5; kept, because the card is laid out to fill it). */
   .mk-phone-frame__screen {
     position: relative;
-    aspect-ratio: 9 / 19.5;
+    width: 330px;
+    height: 793px;
     overflow: hidden;
-    background-color: var(--mk-white);
-    border-radius: 46px;
+    border-radius: 45px;
+    background-color: var(--mk-phone-sheet);
   }
 
-  /* ── The status bar ────────────────────────────────────────────────────────
-     ⚠ DARK GLYPHS OVER THE PHOTOGRAPH, 2026-09-21 — AND THE SCRIM THAT MAKES
-     THAT SAFE IS INVERTED, NOT DELETED.
-
-     This row has now been three things. First `--mk-ink` on nothing, which read
-     1.04:1 against the card and failed the page-wide AA sweep. Then white
-     glyphs on a dark gradient, which passed — and which covered the top 40px of
-     the cover photograph the moment one shipped, i.e. the subject's face, the
-     first thing anyone looks at. The reference resolves it the way iOS does:
-     the photograph is light, so the glyphs are BLACK and there is no bar at all.
-
-     Matching that literally would make legibility a bet on whatever cover a
-     future fixture picks, which is exactly the trap the second version was
-     written to escape. So the scrim survives with its polarity flipped — a
-     whisper of WHITE, fading out well before the curve. On the light cover this
-     card actually wears it is invisible; on a dark one it is the thing keeping
-     ink glyphs legible, and it is a glare highlight rather than a chrome bar
-     either way. The guarantee comes from the scrim, not from luck.
-
-     50px tall against a 728px screen, which is the same proportion iOS uses, and
-     it is pinned over the card rather than laid out with it — `<CardPage>`'s own
-     actionable rows stay exactly where they were. */
-  .mk-phone-frame__status {
-    position: absolute;
-    inset-inline: 0;
-    top: 0;
-    z-index: 2;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    height: 50px;
-    padding-inline: 24px;
-    background-image: linear-gradient(
-      to bottom,
-      color-mix(in srgb, var(--mk-white) 42%, transparent) 0%,
-      color-mix(in srgb, var(--mk-white) 18%, transparent) 58%,
-      transparent 100%
-    );
-    color: var(--mk-ink);
-    font-family: var(--mk-font-sans);
-  }
-
-  /* 14px is 17pt scaled by this screen's own 336/393 against a 6.1" phone —
-     derived, not eyeballed, so the row stays in proportion if the card's width
-     ever moves. */
-  .mk-phone-frame__time {
-    font-size: 14px;
-    font-weight: var(--mk-weight-strong);
-    letter-spacing: -0.01em;
-  }
-
-  .mk-phone-frame__glyphs {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  /* ⚠ THE SIGNAL BARS AND THE Wi-Fi FAN WERE HERE, AND THEY ARE NOT COMING BACK
-     AS CSS BOXES.
-
-     Four 2–3px bars and two `clip-path`-halved circles: correct geometry, and
-     unreadable at the size this device actually renders. `--mk-phone-zoom` takes
-     the whole frame well under 1, so a 1.4px arc border landed on a fraction of
-     a device pixel and resolved as a grey smudge beside the battery. Removed at
-     the client's instruction, who read exactly that.
-
-     A mockup's status bar is set dressing; set dressing that does not resolve is
-     noise, and the battery alone reads cleanly at every zoom this ships at. If
-     the pair is ever wanted again they have to be single vector paths, not boxes
-     whose sub-pixel borders are the whole glyph.
-
-     The remaining glyph still paints in `currentColor` rather than repeating the
-     token, so the cluster stays one ink by construction — including when the
-     row's own `color` changes. */
-
-  /* An outlined cell, a nub, and a fill stopping short of full so it reads as a
-     battery rather than a solid rounded rectangle. */
-  .mk-phone-frame__battery {
-    display: flex;
-    align-items: center;
-    gap: 1px;
-  }
-
-  .mk-phone-frame__battery-cell {
-    box-sizing: border-box;
-    width: 23px;
-    height: 11.5px;
-    padding: 1.5px;
-    border: 1.4px solid currentColor;
-    border-radius: 3.5px;
-  }
-
-  .mk-phone-frame__battery-fill {
-    display: block;
-    width: 84%;
-    height: 100%;
-    border-radius: 1px;
-    background-color: currentColor;
-  }
-
-  .mk-phone-frame__battery-cap {
-    width: 1.6px;
-    height: 4px;
-    border-radius: 0 2px 2px 0;
-    background-color: currentColor;
-  }
-
-  /* ── The dynamic island ────────────────────────────────────────────────────
-     It floats ON the glass, between the time and the glyphs, which is the whole
-     reason the bezel above can be thin and even: there is nothing left to cut a
-     notch into. Solid near-black rather than the old translucent tint of the
-     bezel — an island sits on a display and should read as hardware under either
-     skin, which only a solid does.
-
-     The lens is the detail that stops it reading as a plain pill. One faintly
-     lighter disc at the right end, where the camera actually is. */
-  .mk-phone-frame__island {
-    display: block;
-    position: absolute;
-    top: 12px;
-    left: 50%;
-    z-index: 3;
-    width: 88px;
-    height: 26px;
-    border-radius: var(--mk-radius-pill);
-    background-color: var(--mk-ink);
-    transform: translateX(-50%);
-  }
-
-  .mk-phone-frame__island-lens {
-    position: absolute;
-    top: 50%;
-    right: 7px;
-    width: 9px;
-    height: 9px;
-    border-radius: var(--mk-radius-pill);
-    background-color: color-mix(in srgb, var(--mk-white) 16%, var(--mk-ink));
-    transform: translateY(-50%);
-  }
-
-  /* ── The screen's foot ─────────────────────────────────────────────────────
-     ⚠ THE CLIP IS DELIBERATE. WHERE IT LANDED WAS NOT.
-
-     `.mk-phone-frame__screen` is a fixed 9/19.5 window and `<CardPage>` is
-     taller than it, on purpose — "there is more card" is the message, and the
-     reference shows a card running past the bottom edge too. What it was
-     actually doing was cutting straight through the middle of the social
-     strip's 36px icon discs, leaving four half-circles pressed flat against the
-     bottom bezel. Reported as the icons "overlapping with the frame", and that
-     is precisely how it read: not as a page continuing, as a broken row.
-
-     The veil is the same treatment the card tiles use (`card-tile.css`) and for
-     the same reason: a row at the boundary dissolves across its own height
-     instead of being severed. 96px is a little under three disc-heights, which
-     is enough for a whole row to go.
-
-     ⚠ **It fades to the CARD's paper, never to white.** The screen's own
-     background is `--mk-white` and the card standing on it is cream, so a veil
-     ending in white would be a pale band laid across a warm card — the fix
-     becoming the next glitch. `--mk-phone-screen-tint` is set by the caller that
-     knows the palette (`hero-card.tsx`); the fallback is only for a child with
-     no paper of its own. */
-  .mk-phone-frame__veil {
-    position: absolute;
-    inset-inline: 0;
-    bottom: 0;
-    z-index: 2;
-    height: 96px;
-    background-image: linear-gradient(
-      to bottom,
-      transparent 0%,
-      color-mix(in srgb, var(--mk-phone-screen-tint, var(--mk-white)) 55%, transparent) 42%,
-      color-mix(in srgb, var(--mk-phone-screen-tint, var(--mk-white)) 92%, transparent) 72%,
-      var(--mk-phone-screen-tint, var(--mk-white)) 88%
-    );
-    pointer-events: none;
-  }
-
-  /* The home indicator — what the bottom of a Face ID screen actually ends with,
-     and the thing that makes the veil read as "there is more page below" rather
-     than as a fade somebody added. Drawn over the veil so it stays legible
-     whatever the card's last row happened to be.
-
-     Proportions are the real one's against this screen's 336px: 134 × 5 at 8
-     from the bottom. Semi-transparent ink rather than a solid, because on
-     hardware it is a scrim over the content, not a painted bar. */
-  .mk-phone-frame__home {
-    position: absolute;
-    bottom: 8px;
-    left: 50%;
-    z-index: 3;
-    width: 134px;
-    height: 5px;
-    border-radius: var(--mk-radius-pill);
-    background-color: color-mix(in srgb, var(--mk-ink) 55%, transparent);
-    transform: translateX(-50%);
-    pointer-events: none;
-  }
-
-  /* ── The keys ──────────────────────────────────────────────────────────────
-     ⚠ THEY PROTRUDE NOW, AND THE 360px SCROLLBAR THAT ONCE FORBADE THAT IS GONE
-     WITH THE ARITHMETIC THAT CAUSED IT. The old note here recorded that `-1.5px`
-     reopened a horizontal scrollbar, because the frame measured 348px against a
-     column that offered exactly 336. `hero.tsx` now cancels its own gutter
-     outright (`-mx-6`) and the device renders through `--mk-phone-zoom`, so the
-     whole silhouette — keys included — is ~301px inside a 320px viewport. Two
-     protruding pixels are affordable there, and they are the difference between
-     a key and a scratch in the paint.
-
-     `left: -2px` against a 3px width leaves 1px sitting on the rail, so the key
-     reads as a machined part emerging from the case rather than a tag stuck to
-     it. The gradient is the rail's own metal, lit from above.
-
-     Positions are the real phone's, in the screen's own pre-zoom pixels: volume
-     up and down on the left, a longer power key opposite the gap between them. */
+  /* THE KEYS — four, not three: action, volume up, volume down on the left,
+     power on the right. Graphite with dark ends, 3.4px wide with 1.2px tucked
+     under the hairline, so 2.2px stand proud on the left and 2.7px on the right. Offsets are from the
+     silhouette's top edge. */
   .mk-phone-frame__button {
     position: absolute;
-    z-index: 1;
-    width: 3px;
-    border-radius: 2px;
+    z-index: 0;
+    width: 3.4px;
+    border-radius: 1.2px;
     background-image: linear-gradient(
       to bottom,
-      color-mix(in srgb, var(--mk-white) 38%, var(--mk-ink)),
-      color-mix(in srgb, var(--mk-white) 14%, var(--mk-ink))
+      var(--mk-phone-key-end) 0,
+      var(--mk-phone-key-shoulder) 2.5px,
+      var(--mk-phone-key-face) 5px,
+      var(--mk-phone-key-lit) 50%,
+      var(--mk-phone-key-face) calc(100% - 5px),
+      var(--mk-phone-key-shoulder) calc(100% - 2.5px),
+      var(--mk-phone-key-end) 100%
     );
+    box-shadow: inset 0 0 0 0.5px var(--mk-phone-key-edge);
   }
 
-  .mk-phone-frame__button--volume-1 {
-    left: -2px;
-    top: 148px;
-    height: 50px;
+  .mk-phone-frame__button--action {
+    left: -2.2px;
+    top: 107.3px;
+    height: 28.3px;
   }
 
-  .mk-phone-frame__button--volume-2 {
-    left: -2px;
-    top: 212px;
-    height: 50px;
+  .mk-phone-frame__button--volume-up {
+    left: -2.2px;
+    top: 159.4px;
+    height: 52.6px;
+  }
+
+  .mk-phone-frame__button--volume-down {
+    left: -2.2px;
+    top: 227.4px;
+    height: 52.6px;
   }
 
   .mk-phone-frame__button--power {
-    right: -2px;
-    top: 170px;
-    height: 80px;
+    right: -3.2px;
+    top: 192px;
+    height: 82px;
   }
 
-  /* ── The one load move ─────────────────────────────────────────────────────
-     Still the only animation on this element, still transform and opacity only,
-     still delayed 420ms so the device settles on the same beat `hero.tsx`'s copy
-     column lands its controls and proof row on. The card itself gets no move of
-     its own; it rides along as this element's child, which is what keeps one
-     effect from ever competing with anything inside it.
+  /* THE NOTCH — a 154 × 27 body with 17px bottom corners (a U, not a square),
+     and 3.5px concave ears flaring to 163 at the glass edge; drawn 1:1 with its
+     viewBox. One px rides above the screen into the bezel so no seam can open.
+     The speaker is centred (the reference's sits 2.7px right, which reads as a
+     mistake); the camera is 36.7px right of centre. */
+  .mk-phone-frame__notch {
+    position: absolute;
+    top: -1px;
+    left: 83.5px;
+    z-index: 3;
+    width: 163px;
+    height: 28px;
+    overflow: visible;
+  }
 
-     ⚠ THE FINAL STATE IS THE DEFAULT. Nothing above this query sets `opacity` or
-     `transform` on `.mk-phone-frame`, so with scripting off, or under
-     `prefers-reduced-motion: reduce`, the device is simply at rest. */
+  .mk-phone-frame__notch-body {
+    fill: var(--mk-phone-notch);
+  }
+
+  .mk-phone-frame__speaker {
+    fill: var(--mk-phone-speaker);
+  }
+
+  .mk-phone-frame__camera {
+    fill: var(--mk-phone-camera);
+  }
+
+  .mk-phone-frame__lens {
+    fill: var(--mk-phone-lens);
+  }
+
+  /* THE STATUS BAR — black on the light photograph, as the reference draws it.
+     The time is iOS's own face where the visitor has it. Signal, Wi-Fi and
+     battery are single filled paths fitted to the reference's iOS glyphs; each
+     sits in a 24.3px box at its measured centre. */
+  .mk-phone-frame__status {
+    position: absolute;
+    inset: 0 0 auto 0;
+    z-index: 3;
+    height: 42px;
+    color: var(--mk-phone-status);
+    pointer-events: none;
+  }
+
+  /* SF Pro Text Semibold at 13.4px (NCC 0.938 against the reference). Chrome
+     ignores `-apple-system`, so `BlinkMacSystemFont` must stay in the stack. */
+  .mk-phone-frame__time {
+    position: absolute;
+    left: 33.1px;
+    top: 15.9px;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    font-size: 13.4px;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: -0.2px;
+    text-box: trim-both cap alphabetic;
+  }
+
+  .mk-phone-frame__signal,
+  .mk-phone-frame__wifi,
+  .mk-phone-frame__battery {
+    position: absolute;
+    top: 8.75px;
+    width: 24.3px;
+    height: 24.3px;
+    fill: currentColor;
+  }
+
+  .mk-phone-frame__signal {
+    top: 8.1px;
+    left: 246.05px;
+  }
+
+  .mk-phone-frame__wifi {
+    top: 7.75px;
+    left: 265.45px;
+    stroke: currentColor;
+    stroke-width: 1.42;
+    stroke-linejoin: round;
+  }
+
+  .mk-phone-frame__battery {
+    left: 287.75px;
+  }
+
+  .mk-phone-frame__battery-case {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.42;
+    stroke-opacity: 0.25;
+  }
+
+  .mk-phone-frame__battery-cap {
+    fill-opacity: 0.5;
+  }
+
+  /* ── The card ───────────────────────────────────────────────────────────────
+     Every block is placed at its measured position on the 330×793 screen.
+     Text is placed by its CAP TOP with `text-box: trim-both cap alphabetic`, so
+     the number written is the number measured, whatever the face's ascent —
+     the fallback for engines without text-box-trim is at the end. */
+
+  /* The four faces `hero-card.tsx` loads, read on the element that carries
+     their next/font classes (see that file for why it must be this element). */
+  .mk-hc {
+    --mk-phone-font-serif: var(--font-hero-serif), Georgia, "Times New Roman", serif;
+    --mk-phone-font-sans: var(--font-hero-sans), -apple-system, BlinkMacSystemFont, system-ui,
+      sans-serif;
+    --mk-phone-font-caps: var(--font-hero-caps), var(--font-hero-sans), system-ui, sans-serif;
+    --mk-phone-font-script: var(--font-hero-script), cursive;
+
+    margin: 0;
+  }
+
+  .mk-hc__card {
+    position: relative;
+    width: 330px;
+    height: 793px;
+    overflow: hidden;
+    background-color: var(--mk-phone-sheet);
+    /* A `<button>`'s centring cascaded into the old card once; nothing here
+       inherits alignment from outside. */
+    text-align: left;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* `[data-mk-root]` sets tabular figures for the page's columns; the card is
+       set proportionally except where the reference is tabular (the phone row). */
+    font-variant-numeric: normal;
+  }
+
+  .mk-hc__card p,
+  .mk-hc__card h3,
+  .mk-hc__card ul {
+    margin: 0;
+    padding: 0;
+  }
+
+  .mk-hc__card ul {
+    list-style: none;
+  }
+
+  /* The cover: the photo, the script over it, the wave, the medallion. */
+  .mk-hc__cover {
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 265px;
+  }
+
+  /* The photo stops 3px short of the wave's box and is cropped rather than
+     squashed: its bottom edge must sit under OPAQUE sheet, or at a fractional
+     zoom the two anti-aliased edges coincide and a hairline of photo shows
+     through across the whole card. Its lowest visible pixel (the gold line's
+     left end) is at 258. */
+  .mk-hc__photo {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: block;
+    width: 330px;
+    height: 262px;
+    object-fit: cover;
+    object-position: top;
+  }
+
+  .mk-hc__wave {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: block;
+    width: 330px;
+    height: 265px;
+  }
+
+  .mk-hc__sheet {
+    fill: var(--mk-phone-sheet);
+  }
+
+  .mk-hc__lip {
+    fill: url(#mk-hc-lip-fade);
+  }
+
+  #mk-hc-lip-fade stop {
+    stop-color: var(--mk-phone-lip);
+  }
+
+  .mk-hc__gold {
+    fill: none;
+    stroke: url(#mk-hc-gold-fade);
+    stroke-width: 1.05;
+    stroke-linecap: round;
+  }
+
+  #mk-hc-gold-fade stop {
+    stop-color: var(--mk-phone-gold-line);
+  }
+
+  /* Ø40.5, centred (the reference's sat 2.6px left of centre), its top 9.4px
+     under the dome's apex. */
+  .mk-hc__medallion {
+    position: absolute;
+    top: 209px;
+    left: 144.75px;
+    display: block;
+    width: 40.5px;
+    height: 40.5px;
+  }
+
+  .mk-hc-medallion__disc {
+    fill: url(#mk-hc-medallion-disc);
+  }
+
+  .mk-hc-medallion__stop-0 {
+    stop-color: var(--mk-phone-disc-0);
+  }
+
+  .mk-hc-medallion__stop-1 {
+    stop-color: var(--mk-phone-disc-1);
+  }
+
+  .mk-hc-medallion__stop-2 {
+    stop-color: var(--mk-phone-disc-2);
+  }
+
+  .mk-hc-medallion__stop-3 {
+    stop-color: var(--mk-phone-disc-3);
+  }
+
+  .mk-hc-medallion__stop-4 {
+    stop-color: var(--mk-phone-disc-4);
+  }
+
+  .mk-hc-medallion__face {
+    fill: var(--mk-phone-mark-face);
+  }
+
+  .mk-hc-medallion__shade {
+    fill: var(--mk-phone-mark-shade);
+  }
+
+  .mk-hc-medallion__highlight {
+    fill: var(--mk-phone-mark-highlight);
+  }
+
+  .mk-hc-medallion__ink {
+    fill: var(--mk-phone-mark);
+  }
+
+  /* "Privacy / Relationships / Ideas" — Yellowtail, white, no shadow (the
+     reference's ground lightens toward the strokes; it does not darken). A
+     left-aligned block rotated −11° about its top-left, which is what steps
+     each lower line 3–5px right. The middle line really is ~14% smaller in the
+     reference, so the lines carry their own sizes. */
+  .mk-hc__script {
+    position: absolute;
+    top: 109px;
+    left: 243px;
+    display: flex;
+    flex-direction: column;
+    color: var(--mk-phone-script);
+    font-family: var(--mk-phone-font-script);
+    line-height: 22.15px;
+    white-space: nowrap;
+    rotate: -11deg;
+    transform-origin: left top;
+  }
+
+  .mk-hc__script-line:nth-child(1) {
+    font-size: 19px;
+  }
+
+  .mk-hc__script-line:nth-child(2) {
+    font-size: 16.4px;
+  }
+
+  /* "Ideas" sits a little right of where the block's rotation alone puts it
+     (measured +3.3 / −1.3px on screen; this is that, in the block's own frame). */
+  .mk-hc__script-line:nth-child(3) {
+    font-size: 20.1px;
+    translate: 3.5px -0.65px;
+  }
+
+  /* The flourish is drawn, not typed: a 2px round-capped stroke at −11.7°
+     under "deas", running ~12px past the "s". */
+  .mk-hc__flourish {
+    position: absolute;
+    top: 168.5px;
+    left: 274px;
+    width: 32px;
+    height: 9px;
+    overflow: visible;
+    fill: none;
+    stroke: var(--mk-phone-script);
+    stroke-width: 1.9;
+    stroke-linecap: round;
+  }
+
+  /* The body — everything under the wave. */
+  .mk-hc__body {
+    position: absolute;
+    inset: 0;
+  }
+
+  .mk-hc__brand,
+  .mk-hc__name,
+  .mk-hc__role,
+  .mk-hc__bio {
+    position: absolute;
+    inset-inline: 0;
+    text-align: center;
+    text-box: trim-both cap alphabetic;
+  }
+
+  /* DM Sans at +0.40em. Its optical size is pinned to 14: left to itself it
+     would pick opsz 9 at this size and draw a different C. The trailing
+     letter-space leaves the ink ~1.2px left of centre — as in the reference. */
+  .mk-hc__brand {
+    top: 262.5px;
+    color: var(--mk-phone-caps);
+    font-family: var(--mk-phone-font-caps);
+    font-size: 9.26px;
+    /* 700, not the 500 the letterforms were identified at: at 9px the 500
+       carried only 0.70× the reference's ink. */
+    font-weight: 700;
+    font-variation-settings: "opsz" 14;
+    line-height: 1;
+    letter-spacing: 0.4em;
+    text-transform: uppercase;
+  }
+
+  /* Centred 1.25px left of the screen's centre, where the reference's ink
+     sits — via the inset, so the text-box fallback's translate stays its own. */
+  .mk-hc__name {
+    top: 285.3px;
+    inset-inline: -1.25px 1.25px;
+    color: var(--mk-phone-ink);
+    font-family: var(--mk-phone-font-serif);
+    font-size: 32px;
+    font-weight: 400;
+    line-height: 1;
+    /* The reference is set ~0.03em tighter than any Google face's default —
+       real tracking, not a squashed image (its discs measure round). */
+    letter-spacing: -0.029em;
+  }
+
+  .mk-hc__role {
+    top: 324.5px;
+    color: var(--mk-phone-slate);
+    font-family: var(--mk-phone-font-sans);
+    font-size: 14.35px;
+    font-weight: 450;
+    line-height: 17.8px;
+    letter-spacing: -0.021em;
+  }
+
+  .mk-hc__bio {
+    top: 369px;
+    color: var(--mk-phone-bio);
+    font-family: var(--mk-phone-font-serif);
+    font-size: 13.75px;
+    font-weight: 400;
+    line-height: 17.2px;
+    letter-spacing: -0.041em;
+  }
+
+  /* One line per span. Block, not flex: `text-box-trim` applies to block
+     containers only, and a flex column silently drops the trim — which set
+     both blocks 3px low against the reference before it was caught. */
+  .mk-hc__role span,
+  .mk-hc__bio span {
+    display: block;
+  }
+
+  /* The pill — 292 × 46 with 19px gutters, a cool vertical gradient and a warm
+     glow on its left cap. */
+  .mk-hc__action {
+    position: absolute;
+    top: 410.5px;
+    left: 19px;
+    width: 292px;
+    height: 46px;
+    border-radius: 23px;
+    color: var(--mk-phone-button-ink);
+    background-image:
+      radial-gradient(
+        48px 40px at 0% 55%,
+        var(--mk-phone-button-sheen),
+        transparent
+      ),
+      linear-gradient(
+        180deg,
+        var(--mk-phone-button-top) 0%,
+        var(--mk-phone-button-upper) 30%,
+        var(--mk-phone-button-lower) 55%,
+        var(--mk-phone-button-bottom) 75%
+      );
+  }
+
+  /* Not centred on the pill — the reference sets it 7.6px right of centre. */
+  .mk-hc__action-label {
+    position: absolute;
+    top: 17px;
+    left: 102.5px;
+    font-family: var(--mk-phone-font-sans);
+    font-size: 16px;
+    font-weight: 430;
+    line-height: 1;
+    letter-spacing: -0.034em;
+    text-box: trim-both cap alphabetic;
+  }
+
+  .mk-hc-action__send,
+  .mk-hc-action__arrow {
+    position: absolute;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .mk-hc-action__send {
+    top: 8.85px;
+    left: 52.05px;
+    width: 28.3px;
+    height: 28.3px;
+  }
+
+  .mk-hc-action__dot {
+    fill: currentColor;
+    stroke: none;
+  }
+
+  .mk-hc-action__arrow {
+    top: 10.85px;
+    left: 245.35px;
+    width: 24.3px;
+    height: 24.3px;
+  }
+
+  /* The sections — a hairline, a tracked label, then rows at a 33px pitch.
+     Placed at their measured tops (the reference's own rhythm drifts by up to
+     2px between sections; the measurement is kept rather than normalised). */
+  .mk-hc__section {
+    position: absolute;
+    left: 21px;
+    right: 21.5px;
+    border-top: 1px solid var(--mk-phone-divider);
+  }
+
+  /* ⚠ The offsets are measured from INSIDE the 1px hairline: an absolutely
+     placed child starts at the padding box, below the border. */
+  .mk-hc__section:nth-of-type(1) {
+    top: 472px;
+    --mk-hc-label: 9.5px;
+    --mk-hc-rows: 23.5px;
+  }
+
+  .mk-hc__section:nth-of-type(2) {
+    top: 603.5px;
+    --mk-hc-label: 11.5px;
+    --mk-hc-rows: 26.5px;
+  }
+
+  .mk-hc__section--social {
+    top: 705px;
+    --mk-hc-label: 10.5px;
+    --mk-hc-rows: 23.75px;
+  }
+
+  .mk-hc__label {
+    position: absolute;
+    top: var(--mk-hc-label);
+    left: 3px;
+    color: var(--mk-phone-label);
+    font-family: var(--mk-phone-font-sans);
+    font-size: 10.1px;
+    font-weight: 540;
+    line-height: 1;
+    letter-spacing: 0.136em;
+    text-transform: uppercase;
+    text-box: trim-both cap alphabetic;
+  }
+
+  .mk-hc__rows {
+    position: absolute;
+    top: var(--mk-hc-rows);
+    left: 0;
+    right: 0;
+  }
+
+  .mk-hc__row {
+    position: relative;
+    height: 33px;
+  }
+
+  .mk-hc__disc {
+    position: absolute;
+    top: 1.25px;
+    left: 3.25px;
+    display: grid;
+    place-items: center;
+    width: 30.5px;
+    height: 30.5px;
+    border-radius: 50%;
+    background-color: var(--mk-phone-disc);
+  }
+
+  .mk-hc-glyph {
+    display: block;
+    width: 18.2px;
+    height: 18.2px;
+  }
+
+  .mk-hc-glyph--fill {
+    fill: var(--mk-phone-icon);
+  }
+
+  .mk-hc-glyph--line {
+    fill: none;
+    stroke: var(--mk-phone-icon-line);
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .mk-hc-glyph--light {
+    stroke: var(--mk-phone-icon);
+  }
+
+  .mk-hc-glyph__hole {
+    fill: var(--mk-phone-sheet);
+  }
+
+  .mk-hc-glyph--square {
+    stroke-linecap: butt;
+    stroke-linejoin: miter;
+  }
+
+  /* Baseline 4.5px below the disc centre; the value column starts at x 73. */
+  .mk-hc__value {
+    position: absolute;
+    top: 10.8px;
+    left: 51px;
+    color: var(--mk-phone-value);
+    font-family: var(--mk-phone-font-sans);
+    font-size: 13.8px;
+    font-weight: 450;
+    line-height: 1;
+    letter-spacing: -0.025em;
+    white-space: nowrap;
+    text-box: trim-both cap alphabetic;
+  }
+
+  /* The reference's number is tabular (a constant 7.3px digit pitch); Inter's
+     tabular digits are wider, so the row is tightened to the measured width. */
+  .mk-hc__row--phone .mk-hc__value {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.078em;
+  }
+
+  .mk-hc__chevron {
+    position: absolute;
+    top: 9.5px;
+    right: -1.9px;
+    width: 15.2px;
+    height: 15.2px;
+    color: var(--mk-phone-chevron);
+  }
+
+  /* The four marks — Ø39 discs at a 54.75px pitch. The group is NOT centred on
+     the screen: the reference aligns it to the value column (its left edge
+     sits 2px right of x 73), and that alignment is kept. */
+  .mk-hc__social {
+    position: absolute;
+    top: var(--mk-hc-rows);
+    left: 54px;
+    display: flex;
+    gap: 15.75px;
+  }
+
+  .mk-hc__social-disc {
+    display: grid;
+    place-items: center;
+    width: 39px;
+    height: 39px;
+    border-radius: 50%;
+    background-color: var(--mk-phone-social-disc);
+    color: var(--mk-phone-social-ink);
+  }
+
+  .mk-hc-mark {
+    display: block;
+    width: 24.3px;
+    height: 24.3px;
+    fill: currentColor;
+  }
+
+  .mk-hc-mark--line {
+    fill: none;
+    stroke: currentColor;
+  }
+
+  .mk-hc-mark__dot {
+    fill: currentColor;
+    stroke: none;
+  }
+
+  /* The X reads 6% larger than the other marks at the same box; drawn smaller. */
+  .mk-hc-mark--x {
+    width: 22.85px;
+    height: 22.85px;
+    stroke: currentColor;
+    stroke-width: 0.45;
+    stroke-linejoin: miter;
+  }
+
+  /* ── Engines without text-box-trim ────────────────────────────────────────
+     Every text block above is placed by its cap top. Where `text-box-trim` is
+     not supported the line box starts above the cap instead, so each block is
+     lifted by exactly that distance: half-leading + (ascent − cap height), from
+     each face's own metrics (Libre Caslon 0.97/0.26/0.77, Inter 0.969/0.241/
+     0.728, DM Sans 0.992/0.31/0.70, SF Pro 0.952/0.241/0.705). Verified in
+     Chrome by switching the trim off and comparing ink rows: within 1px. */
+  @supports not (text-box-trim: trim-both) {
+    .mk-phone-frame__time {
+      translate: 0 -2px;
+    }
+
+    .mk-hc__brand {
+      translate: 0 -1.3px;
+    }
+
+    .mk-hc__name {
+      translate: 0 -2.75px;
+    }
+
+    .mk-hc__role {
+      translate: 0 -3.7px;
+    }
+
+    .mk-hc__bio {
+      translate: 0 -2.9px;
+    }
+
+    .mk-hc__action-label {
+      translate: 0 -2.2px;
+    }
+
+    .mk-hc__label {
+      translate: 0 -1.4px;
+    }
+
+    .mk-hc__value {
+      translate: 0 -1.9px;
+    }
+  }
+
+  /* ── Motion ─────────────────────────────────────────────────────────────────
+     The device rises once on load, at `lg` and below alike. Nothing on the card
+     moves. */
   @media (prefers-reduced-motion: no-preference) {
     .mk-phone-frame {
       animation: mk-hero-phone-in 720ms var(--mk-ease) both;
       animation-delay: 420ms;
     }
-  }
 
-  @keyframes mk-hero-phone-in {
-    from {
-      opacity: 0;
-      transform: translate3d(0, 12px, 0);
-    }
+    @keyframes mk-hero-phone-in {
+      from {
+        opacity: 0;
+        transform: translate3d(0, 12px, 0);
+      }
 
-    to {
-      opacity: 1;
-      transform: none;
+      to {
+        opacity: 1;
+        transform: none;
+      }
     }
   }
 }

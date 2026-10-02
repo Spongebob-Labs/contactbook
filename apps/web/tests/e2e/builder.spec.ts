@@ -386,8 +386,8 @@ test("a new card still opens on the first template's preset, seeded from the pro
   await gotoReady(page, NEW);
 
   await expect(page.locator(PREVIEW_CARD)).toHaveAttribute("data-template-id", "meridian");
-  await expect(page.locator('[data-field-count-meter="meter"]')).toHaveAttribute(
-    "data-field-count",
+  await expect(page.locator("[data-builder]")).toHaveAttribute(
+    "data-builder-field-count",
     String(MERIDIAN_SEED.length),
   );
   // Not just the count: the *right* two fields are ticked…
@@ -725,8 +725,8 @@ test("adding a field updates the preview with no intermediate commit action (AC-
   await gotoReady(page, EDIT_EMPTY);
 
   // Start from the E-01 state and leave it.
-  await expect(page.locator('[data-field-count-meter="meter"]')).toHaveAttribute(
-    "data-field-count",
+  await expect(page.locator("[data-builder]")).toHaveAttribute(
+    "data-builder-field-count",
     "0",
   );
 
@@ -741,8 +741,8 @@ test("adding a field updates the preview with no intermediate commit action (AC-
      "Added" state are all gone — one list, one tick. */
   await expect(page.locator('[data-field-row="field_mobile"][data-field-on]')).toHaveCount(1);
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect(page.locator('[data-field-count-meter="meter"]')).toHaveAttribute(
-    "data-field-count",
+  await expect(page.locator("[data-builder]")).toHaveAttribute(
+    "data-builder-field-count",
     "1",
   );
   await expect(page.locator("[data-empty-card-warning]")).toHaveCount(0);
@@ -763,8 +763,8 @@ test("adding a field updates the preview with no intermediate commit action (AC-
 
   // Nothing was applied, submitted or advanced — closing the modal committed nothing, because
   // there was nothing left to commit.
-  await expect(page.locator('[data-field-count-meter="meter"]')).toHaveAttribute(
-    "data-field-count",
+  await expect(page.locator("[data-builder]")).toHaveAttribute(
+    "data-builder-field-count",
     "1",
   );
   expect(await cardFieldIds(page)).toEqual(["field_mobile"]);
@@ -1327,7 +1327,7 @@ test("ten colour clicks in two seconds settle on the last one (E-42)", async ({ 
 
 /* ── AC-36 / E-01: the card that maps nothing ────────────────────────────────────── */
 
-test("a zero-field card shows the warning bar, a zero meter and a blocked Save (AC-36, E-01)", async ({
+test("a zero-field card shows the warning bar, an empty state and a blocked Save (AC-36, E-01)", async ({
   page,
 }) => {
   await gotoReady(page, EDIT_EMPTY);
@@ -1336,7 +1336,7 @@ test("a zero-field card shows the warning bar, a zero meter and a blocked Save (
   const warning = page.locator("[data-empty-card-warning]");
   await expect(warning).toBeVisible();
   await expect(warning.locator("[data-empty-card-warning-text]")).toHaveText(
-    "This card maps 0 fields. Anyone who scans it will only get your name.",
+    "No fields on this card. Anyone who scans it will only get your name.",
   );
   // Persistent means persistent: there is no way to dismiss it.
   await expect(warning.getByRole("button", { name: /dismiss|close|hide|got it/i })).toHaveCount(0);
@@ -1349,10 +1349,12 @@ test("a zero-field card shows the warning bar, a zero meter and a blocked Save (
   );
   expect(occurrences).toBe(1);
 
-  // 2. the meter, in the header, which is the part of this screen that always exists
-  const meter = page.locator('[data-field-count-meter="meter"]');
-  await expect(meter).toHaveAttribute("data-field-count", "0");
-  await expect(meter).toHaveAttribute("data-field-count-state", "empty");
+  // 2. the screen's own state. The header meter that used to print "Field count 0" is gone
+  //    (client, 2026-09-28), so the count is read off the builder root instead.
+  const root = page.locator("[data-builder]");
+  await expect(root).toHaveAttribute("data-builder-field-count", "0");
+  await expect(root).toHaveAttribute("data-builder-field-count-state", "empty");
+  await expect(page.locator('[data-field-count-meter="meter"]')).toHaveCount(0);
 
   // 3. Save blocked, with a reason attached to the control rather than only to the page.
   //    `aria-disabled` rather than the `disabled` attribute is deliberate (T05): a natively
@@ -1371,9 +1373,7 @@ test("a zero-field card shows the warning bar, a zero meter and a blocked Save (
       .join(" ")
       .trim();
   });
-  expect(reason).toBe(
-    "You can't save a card that maps no fields — tick at least one field first.",
-  );
+  expect(reason).toBe("Tick at least one field to save this card.");
 
   // 4. and the preview STILL RENDERS — name only — so the consequence is visible, not hidden.
   //    This is the half of E-01 that is easiest to get wrong by "helpfully" swapping the card
@@ -1463,8 +1463,8 @@ test("a links-only card is not treated as empty (canBuildVcf, not a local count)
   // `fieldCount` counts `fields` **and** `socialFields` (§6.4). A card mapping only social links
   // shares plenty, and a call site that counted `fields` alone would warn on it.
   await expect(page.locator("[data-empty-card-warning]")).toHaveCount(0);
-  await expect(page.locator('[data-field-count-meter="meter"]')).toHaveAttribute(
-    "data-field-count",
+  await expect(page.locator("[data-builder]")).toHaveAttribute(
+    "data-builder-field-count",
     "1",
   );
   await expect(page.locator("[data-builder-save]")).not.toHaveAttribute("aria-disabled", "true");
@@ -1482,7 +1482,9 @@ test("Save is a simulated commit that announces itself (§3.1)", async ({ page }
      screen readers, so a bare `getByText` on it matches two nodes — the component's own comment
      flags this. */
   await expect(page.locator("[data-overlay-toast]").getByText("Card saved")).toBeVisible();
-  await expect(page.locator("[data-toast-description]")).toContainText("5 fields");
+  /* Title only (client, 2026-09-28: no counts as prose). A description appears only when the
+     save also wrote profile values, and this one wrote none. */
+  await expect(page.locator("[data-toast-description]")).toHaveCount(0);
 });
 
 test("a new card's Save says it is creating, not updating", async ({ page }) => {
@@ -1817,10 +1819,9 @@ test("the controls are a tab set — Fields, Design, one panel at a time", async
   await expect(page.locator("[data-template-option]")).toHaveCount(0);
   await expect(page.locator("[data-palette-picker]")).toHaveCount(0);
 
-  // The toolbar — meter and Save — sits above all three panels rather than inside any, so there
-  // is no state of this screen in which the commit affordance is absent. That is §8D.4's fourth
-  // recorded failure and it is the one thing about tabs that genuinely was dangerous.
-  await expect(page.locator('[data-field-count-meter="meter"]')).toBeVisible();
+  // The toolbar's Save sits above all three panels rather than inside any, so there is no state
+  // of this screen in which the commit affordance is absent. That is §8D.4's fourth recorded
+  // failure and it is the one thing about tabs that genuinely was dangerous.
   await expect(page.locator("[data-builder-save]")).toBeVisible();
   await expect(page.locator(PREVIEW_CARD)).toHaveCount(1);
 });
@@ -1914,8 +1915,8 @@ test("the Fields panel lists the whole profile, ticked — and the card keeps it
       "field_company",
     ].sort(),
   );
-  await expect(page.locator('[data-field-count-meter="meter"]')).toHaveAttribute(
-    "data-field-count",
+  await expect(page.locator("[data-builder]")).toHaveAttribute(
+    "data-builder-field-count",
     "5",
   );
 
@@ -1959,8 +1960,8 @@ test("the Fields panel lists the whole profile, ticked — and the card keeps it
     "field_job_title",
     "field_company",
   ]);
-  await expect(page.locator('[data-field-count-meter="meter"]')).toHaveAttribute(
-    "data-field-count",
+  await expect(page.locator("[data-builder]")).toHaveAttribute(
+    "data-builder-field-count",
     "6",
   );
 });
@@ -1968,8 +1969,8 @@ test("the Fields panel lists the whole profile, ticked — and the card keeps it
 test("unticking a field is live, and takes it off the card (AC-29)", async ({ page }) => {
   await gotoReady(page, EDIT_LEDGER);
 
-  await expect(page.locator('[data-field-count-meter="meter"]')).toHaveAttribute(
-    "data-field-count",
+  await expect(page.locator("[data-builder]")).toHaveAttribute(
+    "data-builder-field-count",
     "5",
   );
 
@@ -1982,8 +1983,8 @@ test("unticking a field is live, and takes it off the card (AC-29)", async ({ pa
   await expect(page.locator('[data-field-row="field_work_email"]')).toHaveCount(1);
   await expect(page.locator('[data-field-row="field_work_email"][data-field-on]')).toHaveCount(0);
 
-  await expect(page.locator('[data-field-count-meter="meter"]')).toHaveAttribute(
-    "data-field-count",
+  await expect(page.locator("[data-builder]")).toHaveAttribute(
+    "data-builder-field-count",
     "4",
   );
   expect(await cardFieldIds(page)).toEqual(
@@ -2084,8 +2085,8 @@ test("a new card on an empty profile opens at zero rather than inventing a seed"
 }) => {
   await gotoReady(page, withState(NEW, "empty"));
 
-  await expect(page.locator('[data-field-count-meter="meter"]')).toHaveAttribute(
-    "data-field-count",
+  await expect(page.locator("[data-builder]")).toHaveAttribute(
+    "data-builder-field-count",
     "0",
   );
   await expect(page.locator("[data-empty-card-warning]")).toBeVisible();

@@ -42,7 +42,6 @@ export default function ContactNotFound() {
         headingLevel={1}
         overline="Not found"
         title="We couldn't find that contact"
-        detail="It may have been removed, or the link may be wrong. Everyone you have saved is on your contacts list."
         backHref="/contacts"
         backLabel="Go to contacts"
       />

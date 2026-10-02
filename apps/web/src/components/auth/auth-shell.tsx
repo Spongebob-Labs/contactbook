@@ -126,7 +126,7 @@ export function AuthShell({ children }: AuthShellProps) {
  * for exactly this surface.
  */
 export function AuthShowcase({
-  caption = "A card is a filter over your profile: you pick the fields it carries. The QR is how someone else gets them.",
+  caption = "Pick what each card shares. Anyone who scans it sees only that.",
   className,
 }: {
   caption?: ReactNode;

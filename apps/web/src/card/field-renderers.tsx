@@ -308,7 +308,7 @@ function dialled(Icon: LucideIcon): FieldRenderer {
 /* ── The registry ───────────────────────────────────────────────────────────────────── */
 
 /**
- * All 21 members of `FieldType`, in §5.1 declaration order (AC-21).
+ * All 22 members of `FieldType`, in §5.1 declaration order (AC-21).
  *
  * The annotation is the contract. Do not replace it with `satisfies`, do not add an index
  * signature, and never introduce a `?? FALLBACK` at the lookup: each of those quietly
@@ -363,6 +363,10 @@ export const FIELD_RENDERERS: Record<FieldType, FieldRenderer> = {
 
   // §6.6: consumed by the avatar slot. Emitting a row here would give the card two avatars.
   PHOTO: () => null,
+
+  // The card's own logo slot consumes the profile-level mark; emitting a row would show the
+  // mark twice (once in the badge, once as a URL row). Never a text row.
+  COMPANY_LOGO: () => null,
 
   TEXT: verbatim(FileText),
 

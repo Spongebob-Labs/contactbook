@@ -214,17 +214,19 @@ test("an unrecognised ?state= falls back to success (E-34)", async ({ page }, te
 
 /* ── AC-24, the deciding pair: two empties, two components, two actions ──────────── */
 
-test("the first-run empty explains that contacts arrive by a scan, and offers no Clear filters", async ({
-  page,
-}) => {
+/* ⚠ 2026-09-28: the first-run empty no longer explains what a contact is. The client asked for
+   every line that explains the product to its own user to go, so the empty state is a label and
+   an action. What is asserted is the action (it opens the import panel), not the wording. */
+test("the first-run empty offers the import, and no Clear filters", async ({ page }) => {
   await gotoReady(page, withState(CONTACTS, "empty"));
   const root = await screenRoot(page);
   await expect(root).toHaveAttribute("data-screen-state", "empty");
 
   const empty = page.locator('[data-empty-state="first-run"]');
-  await expect(empty).toContainText("No saved contacts yet");
-  // §8D.3 requires the explanation of how a contact arrives, not just the absence of one.
-  await expect(empty).toContainText(/scan/i);
+  await expect(empty).toHaveCount(1);
+  await expect(empty.locator("p").filter({ hasText: /\w/ })).toHaveCount(1); // the overline, and no prose
+  await empty.getByRole("button").first().click();
+  await expect(page.locator("[data-import-contacts-form]")).toHaveCount(1);
 
   // It never offers to clear a filter nobody applied.
   await expect(page.getByRole("button", { name: /clear filters/i })).toHaveCount(0);

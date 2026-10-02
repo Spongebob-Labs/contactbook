@@ -33,7 +33,7 @@ export default function FieldGroupNotFound() {
         headingLevel={1}
         overline="Not found"
         title="We couldn't find that field group"
-        detail="Your groups are a fixed set, one per category — this link points at something that is not one of them."
+        detail="This link doesn't match any of your groups."
         backHref="/profile"
         backLabel="Back to profile"
       />

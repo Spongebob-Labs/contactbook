@@ -77,41 +77,45 @@ const COPY: Record<LeverId, { done: string; open: (l: MeasuredLever) => string; 
 export interface ReachPanelProps {
   score: ReachScore;
   totals: DashboardTotals;
+  /**
+   * `2` when the panel heads its own region, `3` inside the dashboard's "Sharing" section.
+   * Defaults to `2` so a caller that predates the section keeps a valid outline.
+   */
+  headingLevel?: 2 | 3;
 }
 
-export function ReachPanel({ score, totals }: ReachPanelProps): ReactElement {
+export function ReachPanel({ score, totals, headingLevel = 2 }: ReachPanelProps): ReactElement {
   const actions = openLevers(score);
   const done = score.levers.filter((l) => l.state === "done");
+  const Heading = headingLevel === 3 ? "h3" : "h2";
 
   return (
-    /* ⚠ **The one lifted object on the page, and only one.** Border, fill and radius each say
-       "separate object", and the previous design spent all three on five equal tiles — which
-       flattened the hierarchy rather than creating it, because when everything is a card
-       nothing is. The score is the page's headline, so it gets the surface and the charts
-       below it stay flat on the canvas. Adding a second panel here undoes the distinction. */
+    /* ⚠ **Flat on the canvas since 2026-09-28.** This panel used to be the one lifted object on
+       the page. The summary tiles above it are that object now (Profile, Cards, Contacts, in the
+       order the client asked for), and a second lifted level under them would flatten the
+       hierarchy again, because when everything is a card nothing is.
+
+       `@container`: the panel sits in a half-width column from `lg`, which is 349px at a 1024px
+       viewport. A viewport breakpoint would put the dial beside the levers there and truncate
+       every lever; the panel's own width decides instead. */
     <section
       data-reach-panel=""
       aria-labelledby="reach-score-heading"
-      className="flex flex-col gap-5 rounded-xl border border-line bg-surface p-5 sm:p-6"
+      className="@container flex flex-col gap-5"
     >
-      <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:gap-8">
+      <div className="flex flex-col gap-6 @md:flex-row @md:items-center @md:gap-8">
         <ScoreDial score={score.score} />
 
         <div className="flex min-w-0 flex-1 flex-col gap-2">
-          <h2 id="reach-score-heading" className="text-overline uppercase text-ink-3">
+          <Heading id="reach-score-heading" className="text-overline uppercase text-ink-3">
             {score.score === null
-              ? "Build a card to start"
+              ? "No score yet"
               : actions.length === 0
                 ? "Nothing is holding it back"
                 : "What's holding it back"}
-          </h2>
+          </Heading>
 
-          {score.score === null ? (
-            <p className="text-sm text-ink-2">
-              Your reach score appears here once you have a card. It measures whether the people
-              you share with actually open it — not how often you log in.
-            </p>
-          ) : (
+          {score.score === null ? null : (
             <ul className="flex flex-col gap-2">
               {actions.map((lever) => (
                 <li key={lever.id}>
@@ -249,18 +253,18 @@ function ScoreDial({ score: given }: { score: number | null }): ReactElement {
 }
 
 /**
- * The counts that used to be tiles.
+ * The two reach counts.
  *
- * "Not opened" and "Not told" are deliberately absent: both are now levers above, and printing a
- * number twice on one screen invites the reader to reconcile them — which is exactly the trap the
- * live data is already caught in, with `behind: 3` sitting beside `peopleReached: 2`.
+ * Every count appears once on the dashboard. "Cards" and "Contacts" left this strip on
+ * 2026-09-28 because the summary tiles above lead with them; "Not opened" and "Not told" are
+ * levers above. Printing a number twice on one screen invites the reader to reconcile the two,
+ * which is exactly the trap the live data is already caught in, with `behind: 3` sitting beside
+ * `peopleReached: 2`.
  */
 function CountStrip({ totals }: { totals: DashboardTotals }): ReactElement {
   const items = [
-    { label: "Cards", value: totals.cards },
     { label: "People reached", value: totals.peopleReached },
     { label: "Opens", value: totals.totalOpens },
-    { label: "Contacts", value: totals.contacts },
   ];
 
   return (

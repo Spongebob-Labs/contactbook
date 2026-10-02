@@ -17,9 +17,9 @@ import { ContactsListClient, ContactsListSkeleton } from "./contacts-list-client
  * 2. **The page heading.** It sits *outside* the boundary on purpose: the title of the page does
  *    not depend on the data, so it should never be a skeleton and never move.
  *
- * ⚠ The subtitle changed with the model. It used to read "Everyone who scanned one of your cards
- * and saved their details back to you" — which described inbound leads, a concept the API does
- * not have. A contact is now somebody you can send a card *to*.
+ * No subtitle (2026-09-28). It explained what a contact is to the person whose contacts these
+ * are; the client asked for that kind of line to go. The buttons under the header say what can
+ * be done here.
  *
  * There is no `<main>` here. `AppShell` (T09) renders the single `<main id="main">` that every
  * `(app)` screen renders into, and a second landmark fails `landmark-unique` (AC-25).
@@ -30,16 +30,13 @@ import { ContactsListClient, ContactsListSkeleton } from "./contacts-list-client
 
 export const metadata: Metadata = {
   title: "Contacts",
-  description: "The people you can send a card to, and what you have sent them.",
+  description: "People you can send a card to.",
 };
 
 export default function ContactsPage() {
   return (
     <div className="flex flex-col gap-8 pb-16">
-      <PageHeader
-        title="Contacts"
-        subtitle="Everyone you can send a card to. Import your address book, then choose which card each person gets."
-      />
+      <PageHeader title="Contacts" />
 
       <Suspense fallback={<ContactsListSkeleton />}>
         <ContactsListClient />

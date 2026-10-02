@@ -39,9 +39,15 @@ import type {
  * ⚠ happy-dom has no layout engine: nothing here asserts geometry (spec §14.6). Clamping
  * that is CSS (`line-clamp`, `overflow-wrap`) is asserted as a *class contract*; the pixels
  * are T27/T28/T31's job in a real browser.
+ *
+ * ⚠ `COMPANY_LOGO` joined `FieldType` with the profile company-logo feature, but it is
+ * upload-only and its renderer returns `null` (the card's logo slot consumes it, exactly as the
+ * avatar consumes `PHOTO`). So it is **not** in `FIELD_TYPES` below — that list is the types
+ * that produce a row, and every per-type assertion here needs one. The registry completeness
+ * check counts it separately.
  */
 
-/** §5.1, transcribed. The count is the assertion — 21, no more and no fewer. */
+/** §5.1, transcribed. The count is the assertion — 21 renderable types, no more and no fewer. */
 const FIELD_TYPES: readonly FieldType[] = [
   "PHONE",
   "LANDLINE",
@@ -65,6 +71,14 @@ const FIELD_TYPES: readonly FieldType[] = [
   "CRYPTO_WALLET",
   "CUSTOM",
 ];
+
+/**
+ * Types present in the registry but never producing a row — the upload-only kinds whose value is
+ * shown by a dedicated slot (the card's badge/logo slot for `COMPANY_LOGO`). `PHOTO` is also a
+ * null renderer but already sits in `FIELD_TYPES` above (it is asserted against elsewhere), so it
+ * is not repeated here.
+ */
+const NULL_RENDERER_TYPES: readonly FieldType[] = ["COMPANY_LOGO"];
 
 /** §6.6's "verbatim, clamped" row — one group of eight types with identical behaviour. */
 const VERBATIM_TYPES: readonly FieldType[] = [
@@ -144,9 +158,11 @@ function renderIcon(icon: ReactNode): SVGElement {
 }
 
 describe("FIELD_RENDERERS exhaustiveness (AC-21, spec §6.6)", () => {
-  it("has an entry for all 21 FieldType members", () => {
-    expect(Object.keys(FIELD_RENDERERS)).toHaveLength(21);
-    expect(Object.keys(FIELD_RENDERERS).sort()).toEqual([...FIELD_TYPES].sort());
+  it("has an entry for every one of the 22 FieldType members", () => {
+    expect(Object.keys(FIELD_RENDERERS)).toHaveLength(22);
+    expect(Object.keys(FIELD_RENDERERS).sort()).toEqual(
+      [...FIELD_TYPES, ...NULL_RENDERER_TYPES].sort(),
+    );
   });
 
   it("exposes every entry as a callable renderer", () => {

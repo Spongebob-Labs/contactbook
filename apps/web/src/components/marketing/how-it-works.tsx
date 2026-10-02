@@ -5,22 +5,43 @@ import {
   Link2,
   Mail,
   MapPin,
+  Phone,
   Smartphone,
   type LucideIcon,
 } from "lucide-react";
 
 import { resolveCard } from "@/card/resolve-card";
 import { ShareFace } from "@/card/share-face";
-import { FIXTURE_DB } from "@/fixtures";
 import { formatPhoneDisplay } from "@/lib/format";
-import { exampleCardSpecs, howItWorks, marketingUser, solution } from "@/fixtures/marketing";
+import {
+  exampleCardSpecs,
+  howItWorks,
+  marketingUser,
+  mayaProfile,
+  solution,
+} from "@/fixtures/marketing";
+import type { ProfileField } from "@/types/domain";
 
 import { MkReveal } from "./mk-reveal";
 import { Section } from "./section";
 import { accented, HEAD_TO_BODY, Prose, SectionHead } from "./type";
+import { WorldMap } from "./world-map";
 
 /**
  * Section 4 — how it works.
+ *
+ * ## 2026-09-28 — MAYA LAUREN, FOUR CITIES, AND A MAP
+ *
+ * The client: *"replace Indian numbers with London, Dubai, New York, Singapore addresses and
+ * numbers. Consider adding a global map element to reinforce international feel."* So every
+ * record here now resolves through `mayaProfile` (Maya Lauren, `fixtures/marketing-identity.ts`)
+ * rather than `FIXTURE_DB` (the app's Mumbai fixture user): step 01's profile lists her New York
+ * mobile and her London, Dubai and Singapore office lines, and steps 02 and 03 are her Work,
+ * Family and CV cards. The map is a band of its own under the three frames — `world-map.tsx`
+ * says why it is not behind step 03. Nothing else about the composition below changed.
+ *
+ * 2026-09-29: she is now the hero's Maya Laurent, so the mobile is the hero card's +44 one and
+ * the four cities are Maya Partners' offices — four office lines, New York's included.
  *
  * ## ⚠ REBUILT AGAIN 2026-09-21 — THE THIRD ATTEMPT, AND THE FIRST ONE MEASURED
  *
@@ -116,7 +137,7 @@ import { accented, HEAD_TO_BODY, Prose, SectionHead } from "./type";
  * on the page that do nothing. {@link ProfileFragment} is therefore drawn — but drawn to the
  * SAME grammar as the two renders beside it (the card's own row rhythm, icon disc left, label
  * and value in the card's own two ink levels, one hairline between rows), and filled with real
- * `FIXTURE_DB` fields rather than invented ones. That is exactly what Stripe does: its diagram
+ * `mayaProfile` fields rather than invented ones. That is exactly what Stripe does: its diagram
  * is a redraw of the real dashboard, not an abstraction of it. The test suite pins the grammar
  * so a future edit cannot quietly let it drift back into linework.
  *
@@ -160,23 +181,24 @@ const HERO_FACE_W = 240;
 const DECK_FACE_W = 200;
 const DECK_STEP = 22;
 
-/** The three cards in step 02's deck, front to back. Business is the front card AND the face
- *  in step 03, so the object a reader watches get built is the object they watch get shared.
- *  The other two are picked for palette contrast against Sapphire, not for content. */
-const DECK_CARD_IDS = ["business", "personal", "limited"] as const;
+/** The three cards in step 02's deck, front to back. Work is the front card AND the face in
+ *  step 03, so the object a reader watches get built is the object they watch get shared.
+ *  The other two are ordered for palette contrast against Sapphire, not for content. */
+const DECK_CARD_IDS = ["work", "family", "cv"] as const;
 
 /** The fields the profile fragment draws, in the order it draws them. Real ids from
- *  `fixtures/profile.ts` — the same records every card on this page resolves through — so the
- *  panel is a redraw of real data rather than a mock-up of plausible data. Two categories, so
- *  the fragment shows the grouping the copy promises ("personal, professional, digital"). */
+ *  `mayaProfile` — the same records every card in this section resolves through — so the panel
+ *  is a redraw of real data rather than a mock-up of plausible data. All four of Maya's cities
+ *  are here, as Maya Partners' four office lines in the map's order. */
 const PROFILE_FIELD_IDS = [
   "field_job_title",
   "field_company",
-  "field_work_phone",
+  "field_mobile",
   "field_work_email",
-  "field_work_address",
-  "field_linkedin",
-  "field_personal_email",
+  "field_london_office",
+  "field_dubai_office",
+  "field_new_york_office",
+  "field_singapore_office",
 ] as const;
 
 /**
@@ -189,12 +211,11 @@ const PROFILE_FIELD_IDS = [
  * showed a profile, then some cards, then a QR: three different nouns, with a numbered rail
  * asserting a relationship the pictures never demonstrated.
  *
- * So the profile now lists the fields that column 02's card *actually carries* —
- * `exampleCardSpecs`' "business" card is `work_phone`, `work_email`, `work_address` and
- * `linkedin` — plus exactly one it does not (`personal_email`). A reader can match the values
- * on the left against the values on the card beside it, row for row, and see the one that did
- * not make it. That is the filter claim and the continuity claim made at once, statically,
- * with no animation at all.
+ * So the profile lists the fields that column 02's card *actually carries* — the "work"
+ * card's role, company, mobile and work email — plus four it does not (the four office
+ * lines). A reader can match the values on the left against the card beside it, row for row,
+ * and see what did not make it. That is the filter claim and the continuity claim made at
+ * once, statically, with no animation at all.
  *
  * ⚠ IF THAT CARD'S `fieldIds` EVER CHANGE, CHANGE THESE WITH THEM, or the two columns quietly
  * stop being the same person's data and the section goes back to being three nouns.
@@ -211,6 +232,7 @@ const PROFILE_FIELD_IDS = [
  */
 const FIELD_ICON: Record<string, LucideIcon> = {
   PHONE: Smartphone,
+  LANDLINE: Phone,
   EMAIL: Mail,
   URL: Link2,
   JOB_TITLE: BriefcaseBusiness,
@@ -229,6 +251,10 @@ function exampleCard(id: string) {
   return spec.card;
 }
 
+function displayValue(field: ProfileField): string {
+  return field.type === "PHONE" || field.type === "LANDLINE" ? formatPhoneDisplay(field.value) : field.value;
+}
+
 /**
  * Step 01's fragment — the profile, redrawn.
  *
@@ -239,11 +265,11 @@ function exampleCard(id: string) {
  * two real card renders it should read as the same system seen from the owner's side, which is
  * exactly what it is.
  *
- * The values come from `FIXTURE_DB` untouched. Nothing here invents a phone number or an
- * address; `tests/unit/fixture-hygiene.test.ts` already holds that file to reserved domains.
+ * The values come from `mayaProfile` untouched. Nothing here invents a phone number or an
+ * address; `tests/contract/fixture-hygiene.test.ts` holds the fixtures to reserved domains.
  */
 function ProfileFragment() {
-  const fields = PROFILE_FIELD_IDS.map((id) => FIXTURE_DB.fields.find((f) => f.id === id)).filter(
+  const fields = PROFILE_FIELD_IDS.map((id) => mayaProfile.fields.find((f) => f.id === id)).filter(
     (field): field is NonNullable<typeof field> => field !== undefined,
   );
 
@@ -265,13 +291,8 @@ function ProfileFragment() {
               })()}
             </span>
             <span className="mk-steps-profile__name">{field.label}</span>
-            {/* The product's own formatter, not the raw column. `FIXTURE_DB` stores E.164
-                (`+919833004411`) and every real surface prints `formatPhoneDisplay`'s grouped
-                form — a redraw that shows the stored string instead of the rendered one is a
-                picture of the database, not of the product. */}
-            <span className="mk-steps-profile__value">
-              {field.type === "PHONE" ? formatPhoneDisplay(field.value) : field.value}
-            </span>
+            {/* A formatted number, never the stored E.164 column. */}
+            <span className="mk-steps-profile__value">{displayValue(field)}</span>
           </li>
         ))}
       </ul>
@@ -289,7 +310,7 @@ export function HowItWorks() {
 
   /* Resolved once each, against the page's one identity (`marketingUser`). */
   const deck = DECK_CARD_IDS.map((id) =>
-    resolveCard(exampleCard(id), marketingUser, FIXTURE_DB.groups, FIXTURE_DB.fields),
+    resolveCard(exampleCard(id), marketingUser, mayaProfile.groups, mayaProfile.fields),
   );
   const heroFace = deck[0]!;
 
@@ -400,6 +421,11 @@ export function HowItWorks() {
             </li>
           ))}
         </ol>
+
+        {/* ── the four cities ─────────────────────────────────────────────────────────────
+            Its own band, in the frames' grammar, between the three actions and the two
+            properties: it is about the profile in frame 01, so it sits directly under it. */}
+        <WorldMap label={howItWorks.map.label} alt={howItWorks.map.alt} />
 
         {/* ── and then it stays true ──────────────────────────────────────────────────────
             The fixture's steps 04 and 05, kept word for word and moved out of the rail. They

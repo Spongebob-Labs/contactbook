@@ -31,10 +31,11 @@
  * unaffected.
  */
 
-/** 7 members. `WORK` here aligns with the UI's `FieldCategory` of the same name. */
+/** 8 members. `WORK` here aligns with the UI's `FieldCategory` of the same name. */
 export const API_FIELD_CATEGORIES = [
   "IDENTITY",
   "PERSONAL",
+  "FAMILY",
   "WORK",
   "BUSINESS",
   "SOCIAL",
@@ -43,7 +44,7 @@ export const API_FIELD_CATEGORIES = [
 ] as const;
 export type ApiFieldCategory = (typeof API_FIELD_CATEGORIES)[number];
 
-/** 21 members — identical set and spelling to the UI's `FieldType`. */
+/** 22 members — identical set and spelling to the UI's `FieldType`. */
 export const API_FIELD_TYPES = [
   "PHONE",
   "LANDLINE",
@@ -53,6 +54,7 @@ export const API_FIELD_TYPES = [
   "URL",
   "SOCIAL_LINK",
   "PHOTO",
+  "COMPANY_LOGO",
   "TEXT",
   "DATE",
   "JOB_TITLE",
@@ -69,8 +71,13 @@ export const API_FIELD_TYPES = [
 ] as const;
 export type ApiFieldType = (typeof API_FIELD_TYPES)[number];
 
-/** Only these four can own a group — deliberately narrower than `ApiFieldCategory`. */
-export const API_GROUP_CATEGORIES = ["WORK", "BUSINESS", "SOCIAL", "FINANCIAL"] as const;
+/**
+ * Only these five can own a group — deliberately narrower than `ApiFieldCategory`.
+ *
+ * `FAMILY` joined the set with the family-groups feature: one group per family member,
+ * holding their name and birthday.
+ */
+export const API_GROUP_CATEGORIES = ["WORK", "BUSINESS", "SOCIAL", "FINANCIAL", "FAMILY"] as const;
 export type ApiGroupCategory = (typeof API_GROUP_CATEGORIES)[number];
 
 /**
@@ -625,6 +632,19 @@ export interface CreateCardDto extends CardAppearanceDto {
   headline?: string | null;
   /** ≤ 280 chars server-side; the builder holds a tighter 240 for composition reasons. */
   bio?: string | null;
+  /**
+   * Profile field ids to attach on creation, in display order — max 50.
+   *
+   * ⚠ **The atomic alternative to create-then-`PUT /cards/{id}/fields`.** Both writes happen in
+   * one server transaction, so a failure can no longer leave an empty card behind. Omit it for
+   * an empty card. Every id must be the caller's own, non-archived, non-`PHOTO` — a `PHOTO` gets
+   * `409 PHOTO_NOT_A_CARD_FIELD`, an unknown id `404 PROFILE_FIELD_NOT_FOUND`.
+   *
+   * ⚠ Serialized as **repeated `fieldIds` form parts**, not a JSON string: this endpoint is
+   * always `multipart/form-data` and Multer collects repeated keys into an array. See
+   * `toCreateCardForm`.
+   */
+  fieldIds?: string[];
   /* ⚠ No `coverUrl`. A cover cannot ride the create at all — unlike the logo, which can. It is
      always a second call, `POST /cards/{id}/cover`, once there is an id to address. */
 }

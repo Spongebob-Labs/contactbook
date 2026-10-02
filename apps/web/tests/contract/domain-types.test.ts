@@ -47,7 +47,7 @@ describe("module resolution", () => {
 });
 
 describe("domain enumerations (spec §5.1)", () => {
-  it("declares all 21 FieldTypes — every one needs a renderer (AC-21) and a vCard mapping", () => {
+  it("declares all 22 FieldTypes — every one needs a renderer (AC-21) and a vCard mapping", () => {
     const FIELD_TYPE_KEYS: Record<FieldType, true> = {
       PHONE: true,
       LANDLINE: true,
@@ -57,6 +57,7 @@ describe("domain enumerations (spec §5.1)", () => {
       URL: true,
       SOCIAL_LINK: true,
       PHOTO: true,
+      COMPANY_LOGO: true,
       TEXT: true,
       DATE: true,
       JOB_TITLE: true,
@@ -72,7 +73,7 @@ describe("domain enumerations (spec §5.1)", () => {
       CUSTOM: true,
     };
 
-    expect(Object.keys(FIELD_TYPE_KEYS)).toHaveLength(21);
+    expect(Object.keys(FIELD_TYPE_KEYS)).toHaveLength(22);
   });
 
   it("fails tsc when a Record over FieldType misses a member — AC-21's type half", () => {
@@ -91,6 +92,7 @@ describe("domain enumerations (spec §5.1)", () => {
       URL: true,
       SOCIAL_LINK: true,
       PHOTO: true,
+      COMPANY_LOGO: true,
       TEXT: true,
       DATE: true,
       JOB_TITLE: true,
@@ -105,13 +107,14 @@ describe("domain enumerations (spec §5.1)", () => {
       CRYPTO_WALLET: true,
     };
 
-    expect(Object.keys(INCOMPLETE)).toHaveLength(20);
+    expect(Object.keys(INCOMPLETE)).toHaveLength(21);
   });
 
-  it("declares all 7 FieldCategories, in the §6.4 ordering-line declaration order", () => {
+  it("declares all 8 FieldCategories, in the §6.4 ordering-line declaration order", () => {
     const FIELD_CATEGORY_KEYS: Record<FieldCategory, true> = {
       IDENTITY: true,
       PERSONAL: true,
+      FAMILY: true,
       WORK: true,
       BUSINESS: true,
       SOCIAL: true,
@@ -122,6 +125,7 @@ describe("domain enumerations (spec §5.1)", () => {
     expect(Object.keys(FIELD_CATEGORY_KEYS)).toEqual([
       "IDENTITY",
       "PERSONAL",
+      "FAMILY",
       "WORK",
       "BUSINESS",
       "SOCIAL",

@@ -4,6 +4,7 @@ import * as cards from "@/fixtures/cards";
 import * as contacts from "@/fixtures/contacts";
 import * as extremes from "@/fixtures/extremes";
 import * as marketing from "@/fixtures/marketing";
+import * as marketingIdentity from "@/fixtures/marketing-identity";
 import * as profile from "@/fixtures/profile";
 import * as user from "@/fixtures/user";
 import { SOCIAL_PLATFORMS } from "@/lib/format";
@@ -65,7 +66,15 @@ function isAllowed(host: string): boolean {
 
 /* ── walk every string in every fixture module ───────────────────────────────────────── */
 
-const MODULES: Record<string, unknown> = { cards, contacts, extremes, marketing, profile, user };
+const MODULES: Record<string, unknown> = {
+  cards,
+  contacts,
+  extremes,
+  marketing,
+  marketingIdentity,
+  profile,
+  user,
+};
 
 /**
  * One string found in the fixtures, with the `FieldType` of the nearest enclosing object.
@@ -177,6 +186,32 @@ describe("fixture data references no real domain", () => {
       if (!isAllowed(host)) offenders.push(`${path}: ${host}`);
     }
     expect(offenders, `real hostnames in fixture values:\n${offenders.join("\n")}`).toEqual([]);
+  });
+});
+
+/**
+ * The landing page's person, 2026-09-29: every number she carries must come from a range that
+ * cannot be allocated. `marketing-identity.ts` names the ranges; this holds every phone-shaped
+ * string in it and in `marketing.ts` (which derives from it) to them.
+ */
+const FICTION_RANGES: readonly RegExp[] = [
+  /^\+442079460\d{3}$/, // Ofcom drama, London: 020 7946 0000–0999
+  /^\+447700900\d{3}$/, // Ofcom drama, mobile: 07700 900000–900999
+  /^\+1\d{3}55501\d{2}$/, // NANP fiction: 555-0100–0199
+  /^\+971\d000\d{4}$/, // UAE: no fiction range, so an unallocated 000 exchange
+  /^\+656000\d{4}$/, // Singapore: likewise
+];
+
+describe("the landing page's numbers ring nobody", () => {
+  it("draws every Maya number from a fiction range", () => {
+    const found: Found[] = [];
+    collectStrings({ marketing, marketingIdentity }, "", null, found, new Set());
+    const phones = found.filter(({ value }) => /^\+\d[\d ]{6,}$/.test(value.trim()));
+    expect(phones.length, "found no numbers, so this check proves nothing").toBeGreaterThanOrEqual(5);
+    const offenders = phones
+      .filter(({ value }) => !FICTION_RANGES.some((range) => range.test(value.replace(/ /g, ""))))
+      .map(({ path, value }) => `${path}: ${value}`);
+    expect(offenders, `allocatable numbers:\n${offenders.join("\n")}`).toEqual([]);
   });
 });
 

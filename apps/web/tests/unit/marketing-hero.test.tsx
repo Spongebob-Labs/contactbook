@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { renderWithProviders, screen, within } from "../helpers/render";
 import { Hero } from "@/components/marketing/hero";
-import { hero, heroCard } from "@/fixtures/marketing";
+import { hero, heroPhone } from "@/fixtures/marketing";
 
 /**
  * The rebuilt hero (`docs/landing-integration.md`, agent A's pass).
@@ -36,9 +36,19 @@ function withoutComments(sourceText: string): string {
 
 const HERO_TSX = "components/marketing/hero.tsx";
 const PHONE_FRAME_TSX = "components/marketing/phone-frame.tsx";
+const HERO_CARD_TSX = "components/marketing/hero-card.tsx";
+const HERO_GLYPHS_TSX = "components/marketing/hero-phone-glyphs.tsx";
+const HERO_MEDALLION_TSX = "components/marketing/hero-medallion.tsx";
 const HERO_CSS = "styles/marketing-hero.css";
 
-const OWNED_SOURCES = [HERO_TSX, PHONE_FRAME_TSX, HERO_CSS] as const;
+const OWNED_SOURCES = [
+  HERO_TSX,
+  PHONE_FRAME_TSX,
+  HERO_CARD_TSX,
+  HERO_GLYPHS_TSX,
+  HERO_MEDALLION_TSX,
+  HERO_CSS,
+] as const;
 
 /** A hex triplet/sextet, or an `rgb(`/`rgba(`/`hsl(`/`hsla(` literal — never a `var(--mk-*)`. */
 const COLOUR_LITERAL = /#[0-9a-fA-F]{3,8}\b|(?<!--mk-\w*-)\b(?:rgb|rgba|hsl|hsla)\(/;
@@ -214,132 +224,90 @@ describe("Hero — structure", () => {
     expect(secondary.querySelector("video")).toBeNull();
   });
 
-  it("wraps the card in the phone frame, which wraps the real (static) card preview", () => {
-    // 2026-09-20: Agent F's parallel pass replaced the flip with a single, still `<CardPage>` —
-    // `[data-hero-card]` now marks a plain, `inert` box rather than a `<button>`
-    // (`hero-card.tsx`'s own header). `<Hero>` still owns nothing about that box's internals; it
-    // only has to still be inside the frame this file renders.
+  /**
+   * ⚠ REWRITTEN 2026-09-29 — THE DEVICE IS THE CLIENT'S REFERENCE PHONE, MEASURED.
+   *
+   * The client rejected the previous device (a Dynamic Island phone, three keys, a status bar cut
+   * down to the time and a battery) against their reference render, which is a different phone:
+   * a notch with a speaker and camera, four keys, a three-ring rail, and a full iOS status bar.
+   * These assert the STRUCTURE that makes it that phone — the parts a later "simplify this
+   * markup" pass would quietly undo because none of them holds content. Geometry is not asserted
+   * (happy-dom has no layout engine); the measured numbers live in `marketing-hero.css`.
+   */
+  it("wraps the reference card in the phone frame, inert and captioned", () => {
     renderWithProviders(<Hero />);
 
     const frame = document.querySelector("[data-hero-phone-frame]");
     expect(frame, "expected [data-hero-phone-frame]").not.toBeNull();
 
     const card = frame!.querySelector("[data-hero-card]");
-    expect(card, "the frame must wrap the real card preview, not a copy of it").not.toBeNull();
-    expect(card, "the card is a static preview now, not a press").not.toHaveAttribute(
-      "role",
-      "button",
+    expect(card, "the frame must wrap the card").not.toBeNull();
+    expect(card, "a picture of a card, removed from tab order and the a11y tree").toHaveAttribute(
+      "inert",
     );
+    expect(card).not.toHaveAttribute("role", "button");
 
-    // Decorative dynamic island: present, and inert to assistive tech.
-    const island = frame!.querySelector(".mk-phone-frame__island");
-    expect(island).not.toBeNull();
-    expect(island).toHaveAttribute("aria-hidden", "true");
+    const figure = card!.closest("figure");
+    expect(figure, "the card is a <figure>, so the caption can stand in for it").not.toBeNull();
+    expect(within(figure!).getByText(heroPhone.caption)).toHaveClass("sr-only");
+  });
+
+  it("draws a notch — not an island — with its speaker and camera, all decorative", () => {
+    renderWithProviders(<Hero />);
+    const frame = document.querySelector("[data-hero-phone-frame]")!;
+
+    expect(frame.querySelector(".mk-phone-frame__island"), "the reference has a notch").toBeNull();
+    const notch = frame.querySelector(".mk-phone-frame__notch");
+    expect(notch).toHaveAttribute("aria-hidden", "true");
+    expect(notch!.querySelector(".mk-phone-frame__speaker")).not.toBeNull();
+    expect(notch!.querySelector(".mk-phone-frame__camera")).not.toBeNull();
   });
 
   /**
-   * ⚠ ADDED 2026-09-20, THE CLIENT'S DEVICE PASS — *"the iPhone kind of lining is not there."*
+   * ⚠ THE SIGNAL BARS AND THE Wi-Fi FAN ARE BACK — AS VECTOR SHAPES, WHICH IS THE CLAIM.
    *
-   * `phone-frame.tsx` gained a status bar, three case buttons and the dynamic island above. All
-   * four are decorative case/glass chrome, not content, so the structural claim is the same one
-   * the island already made: present, and invisible to assistive tech. This does not assert
-   * geometry (happy-dom has no layout engine, per this file's own header) — the pixel proportions
-   * are verified against a real browser in this round's report instead.
+   * They were removed on 2026-09-21 because they were drawn as 2–3px CSS boxes, which smeared
+   * into grey under `--mk-phone-zoom`, and this test used to assert their absence with a note
+   * that they could return only as single vector paths. The reference draws the full bar, so
+   * they are back on exactly that condition: each glyph is an `<svg>`, never a stack of spans.
    */
-  it("draws the status bar and the case buttons, all decorative", () => {
+  it("draws the full status bar, every glyph an <svg> rather than CSS boxes", () => {
     renderWithProviders(<Hero />);
-
-    const frame = document.querySelector("[data-hero-phone-frame]")!;
-
-    const status = frame.querySelector(".mk-phone-frame__status");
-    expect(status, "expected a status bar on the screen").not.toBeNull();
+    const status = document.querySelector("[data-hero-phone-frame] .mk-phone-frame__status")!;
     expect(status).toHaveAttribute("aria-hidden", "true");
-    expect(status?.textContent?.trim()).toBe("9:41");
+    expect(status.textContent?.trim()).toBe("9:41");
 
-    /**
-     * ⚠ **THE SIGNAL BARS AND THE Wi-Fi FAN ARE GONE, AND THEY MUST NOT COME BACK AS BOXES.**
-     *
-     * They were four 2–3px bars and two `clip-path`-halved circles — correct geometry, and
-     * unreadable at the size this device renders: `--mk-phone-zoom` takes the frame well under
-     * 1, so a 1.4px arc border landed on a fraction of a device pixel and resolved as a grey
-     * smear beside the battery. Removed at the client's instruction, who read exactly that.
-     *
-     * Asserted because "add the missing status glyphs" is the obvious-looking improvement for
-     * anybody who has not seen it rendered. If they are ever genuinely wanted, they have to be
-     * single vector paths, at which point this assertion is the place to say so.
-     */
-    expect(frame.querySelector(".mk-phone-frame__signal")).toBeNull();
-    expect(frame.querySelector(".mk-phone-frame__wifi")).toBeNull();
-    expect(
-      frame.querySelector(".mk-phone-frame__battery"),
-      "the battery is the one glyph the row keeps",
-    ).not.toBeNull();
-
-    const buttons = frame.querySelectorAll(".mk-phone-frame__button");
-    expect(buttons, "expected the volume pair and the power key").toHaveLength(3);
-    for (const button of buttons) {
-      expect(button).toHaveAttribute("aria-hidden", "true");
+    for (const glyph of ["signal", "wifi", "battery"]) {
+      const node = status.querySelector(`.mk-phone-frame__${glyph}`);
+      expect(node?.tagName.toLowerCase(), `the ${glyph} glyph must be a vector`).toBe("svg");
     }
   });
 
-  /**
-   * ⚠ ADDED 2026-09-21, THE CLIENT'S FIFTH REVIEW — *"I want exactly this border of the design
-   * of the mobile … the design, the side buttons, and the upper bar of this iPhone."*
-   *
-   * The rebuild that answered it is mostly stylesheet work, but two parts of it are STRUCTURAL
-   * and are the parts a later "simplify this markup" pass would quietly undo, because neither
-   * holds content and both look like wrappers for nothing:
-   *
-   *   · **The rail/bezel pair.** A phone is metal around a black mask around glass. Collapsing
-   *     `.mk-phone-frame__body` back into its parent takes the two-material read with it and
-   *     returns the flat rounded rectangle the client rejected twice. The nesting ORDER is the
-   *     claim, not the element count — the keys have to be the rail's children (outside the
-   *     bezel) or they cannot protrude past the silhouette.
-   *   · **The lens.** One disc at the island's right end. Without it the island is a plain pill,
-   *     which is an older notch's shape rather than the thing the reference draws.
-   *
-   * Geometry is still not asserted here (happy-dom has no layout engine, per this file's own
-   * header); the measured footprint lives in `tests/e2e/marketing.spec.ts`'s "the hero's card
-   * holds a fixed, zoomed 269px width".
-   */
-  it("builds the device as a rail around a bezel around the glass, keys on the rail", () => {
+  it("builds the device as rail, bezel, glass — with four keys beside the rail", () => {
     renderWithProviders(<Hero />);
+    const frame = document.querySelector("[data-hero-phone-frame]")!;
 
-    const rail = document.querySelector("[data-hero-phone-frame]")!;
-    const bezel = rail.querySelector(":scope > .mk-phone-frame__body");
-    expect(bezel, "expected the bezel to be a direct child of the rail").not.toBeNull();
+    /* The nesting ORDER is the claim: metal around a black mask around glass. The rail's three
+       rings live on ONE box (band as background, hairline and graphite as inset shadows) —
+       nested ring boxes were tried and snapped to device pixels, losing the 1px graphite ring
+       top and bottom at 2×. */
+    const glass = frame.querySelector(
+      ":scope > .mk-phone-frame__rail > .mk-phone-frame__body > .mk-phone-frame__screen",
+    );
+    expect(glass, "expected the rail, then the bezel, then the glass").not.toBeNull();
 
-    const screen_ = bezel!.querySelector(":scope > .mk-phone-frame__screen");
-    expect(screen_, "expected the glass inside the bezel, not beside it").not.toBeNull();
-
-    // The keys sit on the rail. Inside the bezel they would be clipped to the black mask and
-    // could never read as hardware protruding from the case.
-    const keysOnRail = rail.querySelectorAll(":scope > .mk-phone-frame__button");
-    expect(keysOnRail, "the keys belong to the rail, not the bezel").toHaveLength(3);
-
-    const lens = rail.querySelector(".mk-phone-frame__island .mk-phone-frame__island-lens");
-    expect(lens, "expected the camera lens inside the island").not.toBeNull();
-
-    /**
-     * ⚠ **THE SCREEN HAS A FOOT, AND IT IS A FIX FOR A REPORTED DEFECT.**
-     *
-     * The screen is a fixed 9/19.5 window and `<CardPage>` is taller than it — the clip is the
-     * message ("there is more card") and is not the bug. Where it landed was: straight through
-     * the middle of the social strip's 36px icon discs, leaving four half-circles pressed flat
-     * against the bottom bezel. Reported as the icons "overlapping with the frame".
-     *
-     * The veil dissolves whatever row meets the boundary and the home indicator gives the
-     * screen the ending a real one has. Both are asserted because deleting either restores the
-     * severed row, and the failure looks like a styling choice rather than a regression.
-     */
+    /* Four keys, not three — the reference has an action key above the volume pair. They are
+       siblings of the rail so they can sit under the silhouette and show only their proud edge. */
+    const keys = [...frame.querySelectorAll(":scope > .mk-phone-frame__button")];
     expect(
-      rail.querySelector(".mk-phone-frame__veil"),
-      "expected the screen's bottom veil — without it the clip severs a row of icons",
-    ).not.toBeNull();
-    expect(
-      rail.querySelector(".mk-phone-frame__home"),
-      "expected the home indicator",
-    ).not.toBeNull();
+      keys.map((k) => [...k.classList].find((c) => c.includes("--"))?.split("--")[1]),
+    ).toEqual(["action", "volume-up", "volume-down", "power"]);
+    for (const key of keys) expect(key).toHaveAttribute("aria-hidden", "true");
+
+    /* The card fills the screen exactly now, so there is no clip to disguise — and the
+       reference draws no home indicator. */
+    expect(frame.querySelector(".mk-phone-frame__veil")).toBeNull();
+    expect(frame.querySelector(".mk-phone-frame__home")).toBeNull();
   });
 
   it("no longer renders the flip-era hint or labels, now that the card does not flip", () => {
@@ -355,31 +323,23 @@ describe("Hero — structure", () => {
   });
 
   /**
-   * ⚠ ADDED 2026-09-21 — THE COVER PHOTO'S LCP HINT.
+   * ⚠ REWRITTEN 2026-09-29 — THE CARD DRAWS ITS OWN `<img>`, SO THE HINT MOVED ONTO IT.
    *
-   * `<CardCover>` (`@/card/card-page`, read-only from here) draws the actual `<img>` with no
-   * `loading`/`fetchPriority` of its own — see `hero.tsx`'s own comment at the `preload()` call
-   * site for why that file cannot carry one. This is the one property this file CAN assert: the
-   * hint reaches `<head>` at all, points at the same URL the card resolves
-   * (`heroCard.coverUrl`), and asks for high priority rather than the browser's default guess.
+   * `hero.tsx` used to call `preload()` because `<CardCover>` drew the cover `<img>` and could not
+   * carry `fetchPriority`. The card now draws the portrait itself, which is the direct form of
+   * the same hint — and a preload as well would be the same request twice.
    */
-  it("preloads the card's cover photo as a high-priority image resource", () => {
+  it("loads the cover portrait at high priority, at 2× and 3× the design width", () => {
     renderWithProviders(<Hero />);
-    const link = document.head.querySelector('link[rel="preload"][as="image"]');
-    expect(link, "expected a <link rel=preload as=image> in <head>").not.toBeNull();
-    expect(link).toHaveAttribute("href", heroCard.coverUrl);
-    expect(link).toHaveAttribute("fetchpriority", "high");
+    const img = document.querySelector("[data-hero-card] img");
+    expect(img, "expected the cover portrait").not.toBeNull();
+    expect(img).toHaveAttribute("fetchpriority", "high");
+    expect(img, "decorative — the caption describes the card").toHaveAttribute("alt", "");
+    expect(img!.getAttribute("srcset")).toContain(`${heroPhone.portrait.x2} 2x`);
+    expect(img!.getAttribute("srcset")).toContain(`${heroPhone.portrait.x3} 3x`);
+    expect(document.head.querySelector('link[rel="preload"][as="image"]')).toBeNull();
   });
 
-  /**
-   * ⚠ ADDED 2026-09-21 — THE MARGIN FIX'S OWN REGRESSION GUARD.
-   *
-   * happy-dom cannot see that this closes the 360px flush-right defect (this file's own header
-   * has the measured before/after); it CAN see that the mechanism — a negative margin that fully
-   * cancels the column's own `px-6` rather than half-cancelling it — is still the one in the
-   * markup, and that is what a future "simplify this" edit would touch without necessarily
-   * re-deriving the arithmetic first.
-   */
   it("cancels the card column's own gutter outright on mobile, not by half", () => {
     renderWithProviders(<Hero />);
     // The frame's own root is `.mk-phone-frame` (`phone-frame.tsx`); its PARENT is the column
@@ -401,7 +361,7 @@ describe("Hero — source contracts", () => {
     expect(match, `found a colour literal in ${relative}: ${match?.[0]}`).toBeNull();
   });
 
-  it.each([HERO_TSX, PHONE_FRAME_TSX])("%s imports no animation runtime", (relative) => {
+  it.each([HERO_TSX, PHONE_FRAME_TSX, HERO_CARD_TSX])("%s imports no animation runtime", (relative) => {
     const src = source(relative);
     expect(src).not.toMatch(/from ["']motion(\/react)?["']/);
     expect(src, "the hero's load sequence is CSS-only").not.toMatch(/\buse client\b/);
@@ -417,12 +377,11 @@ describe("Hero — source contracts", () => {
   });
 
   it("never scales the card or an ancestor of it", () => {
-    // The hard constraint: a phone frame that shrinks the 336px face breaks the QR decode floor
-    // (`qr-geometry.ts`, `tests/e2e/qr-scannability.spec.ts`). `scale(` must not appear anywhere
-    // in the two files that can reach the card's ancestry.
-    expect(withoutComments(source(HERO_TSX))).not.toContain("scale(");
-    expect(withoutComments(source(PHONE_FRAME_TSX))).not.toContain("scale(");
-    expect(withoutComments(source(HERO_CSS))).not.toContain("scale(");
+    // The card is laid out once at its 330px design width and sized only through `zoom`, which
+    // re-rasterises; a `scale(` anywhere in its ancestry would resample rasterised text instead.
+    for (const file of [HERO_TSX, PHONE_FRAME_TSX, HERO_CARD_TSX, HERO_CSS]) {
+      expect(withoutComments(source(file)), file).not.toContain("scale(");
+    }
   });
 
   it("renders the phone frame's chrome at every viewport, with no breakpoint gate", () => {
@@ -452,5 +411,143 @@ describe("Hero — source contracts", () => {
     // reader with scripting off, or `prefers-reduced-motion: reduce`, must see it at rest.
     expect(unguarded).not.toContain("animation");
     expect(unguarded).not.toMatch(/opacity:\s*0\b/);
+  });
+});
+
+/* ── The hero card — the client's reference, 2026-09-29 ──────────────────────────────────── */
+
+/** Strips CSS comments, so a rule is only found where it is really declared. */
+function cssWithoutComments(css: string): string {
+  return css.replace(/\/\*[\s\S]*?\*\//g, "");
+}
+
+/** Every real `@media (prefers-reduced-motion: no-preference) { … }` block, comments excluded. */
+function guardedBlocks(css: string): string[] {
+  const clean = cssWithoutComments(css);
+  const marker = "@media (prefers-reduced-motion: no-preference)";
+  const blocks: string[] = [];
+  let from = 0;
+  for (;;) {
+    const at = clean.indexOf(marker, from);
+    if (at < 0) break;
+    const open = clean.indexOf("{", at);
+    let depth = 0;
+    let end = open;
+    for (let i = open; i < clean.length; i++) {
+      if (clean[i] === "{") depth++;
+      else if (clean[i] === "}" && --depth === 0) {
+        end = i;
+        break;
+      }
+    }
+    blocks.push(clean.slice(open, end + 1));
+    from = end + 1;
+  }
+  return blocks;
+}
+
+/** The glyphs the reference draws FILLED; the rest of its row icons are outline. */
+const FILLED_ROW_GLYPHS: ReadonlySet<string> = new Set(["phone", "pin"]);
+
+describe("the hero card — the client's reference, word for word", () => {
+  it("prints every line of the reference card, in the reference's order", () => {
+    renderWithProviders(<Hero />);
+    const text = document.querySelector("[data-hero-card]")!.textContent ?? "";
+    const lines = [
+      ...heroPhone.script,
+      heroPhone.brand,
+      heroPhone.name,
+      heroPhone.role,
+      heroPhone.company,
+      ...heroPhone.bio,
+      heroPhone.action,
+      ...heroPhone.sections.flatMap((s) => [s.label, ...s.rows.map((r) => r.value)]),
+      heroPhone.socialLabel,
+    ];
+    let at = 0;
+    for (const line of lines) {
+      const found = text.indexOf(line, at);
+      expect(found, `"${line}" is missing or out of order`).toBeGreaterThanOrEqual(0);
+      at = found + line.length;
+    }
+  });
+
+  /**
+   * The client asked for the reference's content exactly. Two strings cannot be exact: the
+   * reference prints `.com` domains that are not ours, and `fixture-hygiene.test.ts` admits only
+   * reserved ones. This pins the departure to exactly those two, and to the TLD alone — the
+   * reference's rows are transcribed here once, as the requirement, not restated from the fixture.
+   */
+  it("departs from the reference's rows only where a domain moves to .example", () => {
+    const REFERENCE_ROWS = [
+      "+44 7700 900123",
+      "maya@contactbook.com",
+      "Lisbon, Portugal",
+      "Maya Partners",
+      "www.mayapartners.com",
+    ];
+    const ours = heroPhone.sections.flatMap((s) => s.rows.map((r) => r.value));
+    expect(ours).toEqual(REFERENCE_ROWS.map((v) => v.replace(/\.com$/, ".example")));
+  });
+
+  /* 2026-09-29: `heroPhone` reads these from `marketing-identity.ts`, which every section below
+     shares, so an edit made there for another section must not quietly move the reference. */
+  it("keeps the reference's name, role, company and bio, whatever the identity file says", () => {
+    expect([heroPhone.name, heroPhone.role, heroPhone.company, ...heroPhone.bio]).toEqual([
+      "Maya Laurent",
+      "Founder & CEO",
+      "Maya Partners",
+      "Connecting people, ideas and opportunities",
+      "to create lasting impact.",
+    ]);
+  });
+
+  /* Drawing all five row icons in one monoline weight is what made the old rows read flat; the
+     reference mixes filled (phone, pin) with outline (envelope, building, link). */
+  it("mixes filled and outline row glyphs, as the reference does", () => {
+    renderWithProviders(<Hero />);
+    const drawn = [...document.querySelectorAll("[data-hero-card] .mk-hc__disc svg")].map((g) =>
+      g.classList.contains("mk-hc-glyph--fill") ? "fill" : "line",
+    );
+    const expected = heroPhone.sections.flatMap((s) =>
+      s.rows.map((r) => (FILLED_ROW_GLYPHS.has(r.icon) ? "fill" : "line")),
+    );
+    expect(drawn).toEqual(expected);
+  });
+
+  it("draws one filled brand mark per social platform", () => {
+    renderWithProviders(<Hero />);
+    const discs = document.querySelectorAll("[data-hero-card] .mk-hc__social-disc");
+    expect(discs).toHaveLength(heroPhone.social.length);
+    for (const disc of discs) expect(disc.querySelector("svg.mk-hc-mark")).not.toBeNull();
+  });
+
+  /**
+   * ⚠ THE CLIENT DID NOT ASK FOR THE CARD TO MOVE. From 2026-09-28 it cross-faded between four
+   * cities and tinted and tagged each changed line "Updated", on a timer, with a pause control.
+   * The client called that highlighting unrequested. Nothing on the card may move or mark itself.
+   */
+  it("never moves, cycles or marks anything on the card", () => {
+    renderWithProviders(<Hero />);
+    const card = document.querySelector("[data-hero-card]")!;
+    expect(card.querySelector("[data-changed], [data-hero-layer], [data-hero-enter]")).toBeNull();
+    expect(card.textContent).not.toContain("Updated");
+    expect(screen.queryByRole("button", { name: /animation/i }), "no pause control").toBeNull();
+
+    const guarded = guardedBlocks(source(HERO_CSS)).join("\n");
+    expect(guarded, "only the device's one-shot rise is animated").not.toContain(".mk-hc");
+  });
+
+  it("gates every animated rule behind prefers-reduced-motion: no-preference", () => {
+    /* Read with comments stripped, so a guard written in a comment cannot pass for a real one. */
+    const css = cssWithoutComments(source(HERO_CSS));
+    const blocks = guardedBlocks(source(HERO_CSS));
+    const outside = blocks.reduce((rest, block) => rest.replace(block, ""), css);
+    expect(blocks.join("\n"), "no real reduced-motion guard in marketing-hero.css").toContain(
+      "animation:",
+    );
+    expect(outside, "an animation is applied outside the reduced-motion guard").not.toMatch(
+      /animation\s*:/,
+    );
   });
 });

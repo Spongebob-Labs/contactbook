@@ -1,6 +1,8 @@
+import Image from "next/image";
 import Link from "next/link";
 
 import { mkcn } from "./mk-cn";
+import { BRAND_NAME } from "./pill-nav";
 import { Eyebrow } from "./type";
 
 /**
@@ -51,12 +53,20 @@ const PRODUCT_LINKS = [
   { href: "/templates", label: "All nine designs" },
 ] as const;
 
+/**
+ * NOTE - "Join the waitlist" and "For companies" left this column on 2026-09-28, on the client's
+ * word ("join the waitlist copy and 'for companies' tag need removing"). `/waitlist` and
+ * `/corporate` stay on disk; nothing in the chrome links to them. No "Create your card" was added
+ * in their place: it would be a second link to `/signin/phone` beside "Log in", under a second
+ * label, which is the duplicate the note above already ruled out.
+ */
 const ACCOUNT_LINKS = [
-  { href: "/waitlist", label: "Join the waitlist" },
-  { href: "/corporate", label: "For companies" },
-  { href: "/contact", label: "Contact us" },
   { href: "/signin/phone", label: "Log in" },
+  { href: "/contact", label: "Contact us" },
 ] as const;
+
+/** The full lockup, tagline included. The footer is the one place it has room to be read. */
+const FOOTER_LOGO = { src: "/brand/contactbook-logo.png", width: 470, height: 131 } as const;
 
 const COLUMN_LINK_CLASS = mkcn(
   "font-mk-sans text-mk-body-sm text-mk-stone",
@@ -72,20 +82,26 @@ export function SiteFooter() {
         {/* Asymmetric on purpose: the brand block takes half the width and the two link
             columns share the rest, rather than three equal thirds. */}
         <div className="grid gap-10 md:grid-cols-[2fr_1fr_1fr] md:gap-8">
+          {/* NOTE - The logo replaced the text wordmark on 2026-09-28 (see `pill-nav.tsx`). The
+              sentence that used to sit under it explained the product to someone who has
+              already scrolled past the whole page explaining it; the lockup's own tagline says
+              the one thing worth repeating here. */}
           <div>
             <Link
               href="/"
               className={mkcn(
-                "font-mk-display text-mk-heading-sm text-mk-ink",
-                "transition-colors duration-[var(--dur-fast)] hover:text-mk-sapphire-ink",
+                "inline-flex rounded-mk-control",
+                "transition-opacity duration-[var(--dur-fast)] hover:opacity-80",
               )}
             >
-              Contact Book
+              <Image
+                src={FOOTER_LOGO.src}
+                width={FOOTER_LOGO.width}
+                height={FOOTER_LOGO.height}
+                alt={BRAND_NAME}
+                className="h-12 w-auto"
+              />
             </Link>
-            <p className="mt-3 max-w-mk-measure-tight font-mk-sans text-mk-body-sm text-mk-stone">
-              A contact card built from your own profile, shared as a link and a QR, and kept
-              current by an update you send.
-            </p>
           </div>
 
           <nav aria-labelledby="footer-product-heading">
@@ -116,7 +132,7 @@ export function SiteFooter() {
         </div>
 
         <p className="mt-12 border-t border-mk-hairline pt-6 font-mk-sans text-mk-caption text-mk-stone">
-          © {new Date().getFullYear()} Contact Book
+          © {new Date().getFullYear()} {BRAND_NAME}
         </p>
       </div>
     </footer>

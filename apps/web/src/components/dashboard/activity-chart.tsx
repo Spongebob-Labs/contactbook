@@ -277,11 +277,18 @@ function trackSpan(run: QuietRun, count: number): { left: string; width: string 
  * shortest label at the narrowest card. Truncating instead would crop the one word explaining
  * the empty area, which is worse than no word at all.
  */
-function quietLabelFor(run: QuietRun, count: number): string {
-  if (run.span === count) return `No links shared in these ${count} weeks`;
+function quietLabelFor(run: QuietRun): string {
+  /* A run spanning every week cannot reach here: a chart with nothing in it is drawn as one
+     stated blank instead of a plot (see `ActivityChart`). */
   if (run.span >= 5) return `${run.span} quiet weeks`;
   return "Quiet";
 }
+
+/**
+ * Not "Sharing activity": the chart sits under the dashboard's "Sharing" heading, and it counts
+ * links created per week, which is what the heading now says.
+ */
+const ACTIVITY_HEADING = "Links shared per week";
 
 export interface ActivityChartProps {
   weeks: readonly WeekBucket[];
@@ -304,6 +311,23 @@ export function ActivityChart({ weeks }: ActivityChartProps) {
 
   const quiet = quietRuns(weeks);
 
+  /* ⚠ **Nothing shared in the whole range is one stated blank, not an empty plot.** Twelve
+     zero-height columns under a full-width quiet band drew a 190px object that said one thing,
+     beside a "Cards by opens" figure that already says the same thing in one line. The two
+     now share one treatment, so the row reads as two answers of equal weight. */
+  if (!hasData) {
+    return (
+      <figure data-activity-chart="" data-activity-chart-empty="" className="m-0 flex flex-col gap-3">
+        <figcaption className="flex flex-wrap items-baseline justify-between gap-x-4">
+          <h3 className="text-overline uppercase text-ink-3">{ACTIVITY_HEADING}</h3>
+        </figcaption>
+        <p className="rounded-md border border-line bg-surface px-4 py-6 text-center text-sm text-ink-3">
+          {`Nothing shared in the last ${weeks.length} weeks`}
+        </p>
+      </figure>
+    );
+  }
+
   return (
     <figure data-activity-chart="" className="m-0 flex flex-col gap-3">
       <style href={ACTIVITY_STYLE_HREF} precedence="default">
@@ -311,9 +335,9 @@ export function ActivityChart({ weeks }: ActivityChartProps) {
       </style>
 
       <figcaption className="flex flex-wrap items-baseline justify-between gap-x-4">
-        <h3 className="text-overline uppercase text-ink-3">Sharing activity</h3>
+        <h3 className="text-overline uppercase text-ink-3">{ACTIVITY_HEADING}</h3>
         <p className="text-sm text-ink-3 tabular-nums">
-          {hasData ? `${total} shared · ${max} in the busiest week` : "Nothing shared yet"}
+          {`${total} shared · ${max} in the busiest week`}
         </p>
       </figcaption>
 
@@ -389,7 +413,7 @@ export function ActivityChart({ weeks }: ActivityChartProps) {
                   style={{ height: BAR_MAX, left, width }}
                 >
                   <span className="px-2 text-center text-xs text-ink-3 tabular-nums">
-                    {quietLabelFor(run, weeks.length)}
+                    {quietLabelFor(run)}
                   </span>
                 </div>
               );

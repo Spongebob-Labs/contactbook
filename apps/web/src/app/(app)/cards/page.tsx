@@ -26,8 +26,7 @@ import { CardsListClient, CardsListSkeleton } from "./cards-list-client";
 
 export const metadata: Metadata = {
   title: "Cards",
-  description:
-    "Every card you've made, newest first, with the number of profile fields each one shares.",
+  description: "Your cards, newest first.",
 };
 
 export default function CardsPage() {

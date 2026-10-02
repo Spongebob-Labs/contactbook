@@ -3,11 +3,21 @@ import type { ReactNode } from "react";
 import { FACE_WIDTH } from "@/card/share-face";
 
 /**
- * **The wallet-pass block on `/cards/[cardId]` — the frame the share face is presented in.**
+ * **The frame the share face is presented in on `/cards/[cardId]` — the card with its QR.**
  *
- * It names the object and gives it a rail to sit in. That is the whole component, and the
- * shortness is the design: this is the OWNER's screen, and the owner already knows what their
- * own card is.
+ * It gives the face a rail to sit in. That is the whole component, and the shortness is the
+ * design: this is the OWNER's screen, and the owner already knows what their own card is.
+ *
+ * ## ⚠ 2026-09-28 — no "Wallet pass" eyebrow any more, and the wallet buttons are back
+ *
+ * Client review: *"Wallet pass: show the card with QR code, not just the pass"* and *"'Add to
+ * Wallet' must be functional and visible."* The page is share-first now and the face is the
+ * first thing on it: the card, in its own palette, with the QR someone scans. Labelling it
+ * "Wallet pass" named a mechanism instead of the card, so the caption is now optional and the
+ * page passes none. The wallet controls returned as `<WalletActions>` — **outside** this block,
+ * beneath it, for the rail reason below — wired to the intended pass endpoints behind a flag,
+ * with a working "Save QR to phone" beside them. The history that follows explains why they
+ * were removed on 2026-09-20; the lesson that survives is "never ship a control that pretends".
  *
  * ## ⚠ WHAT THIS BLOCK USED TO CARRY, AND WHY IT IS NOT COMING BACK
  *
@@ -99,10 +109,12 @@ import { FACE_WIDTH } from "@/card/share-face";
  * one screen whose module note exists to keep that word to a single definition.
  */
 
-/** The eyebrow that names the object, and the only copy left in the block. */
+/** The eyebrow a caller may pass. `/cards/[cardId]` passes none since 2026-09-28. */
 export const WALLET_PASS_OVERLINE = "Wallet pass";
 
 export interface WalletPassBlockProps {
+  /** An optional eyebrow above the face, in normal flow. Absent by default. */
+  caption?: ReactNode;
   /**
    * ⚠ **The `<ShareFace>` AND NOTHING ELSE.**
    *
@@ -118,7 +130,7 @@ export interface WalletPassBlockProps {
   children: ReactNode;
 }
 
-export function WalletPassBlock({ children }: WalletPassBlockProps) {
+export function WalletPassBlock({ caption, children }: WalletPassBlockProps) {
   return (
     <div
       data-wallet-pass=""
@@ -128,9 +140,11 @@ export function WalletPassBlock({ children }: WalletPassBlockProps) {
       style={{ width: `${FACE_WIDTH}px`, maxWidth: "100%" }}
     >
       {/* Above the face, not below it: a label has to arrive before the object it names. */}
-      <h2 data-wallet-pass-caption="" className="text-overline uppercase text-ink-3">
-        {WALLET_PASS_OVERLINE}
-      </h2>
+      {caption === undefined ? null : (
+        <h2 data-wallet-pass-caption="" className="text-overline uppercase text-ink-3">
+          {caption}
+        </h2>
+      )}
 
       {/**
        * ⚠ **The face's own rail — the one horizontal scroller on this screen, and it wraps the

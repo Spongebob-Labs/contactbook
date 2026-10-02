@@ -623,9 +623,8 @@ function ContactsListScreen({
   } else if (screenState === "empty") {
     body = (
       <EmptyState
-        overline="Nothing here yet"
-        title="No contacts yet"
-        description="A contact is a number you can send a card to. Import your address book in one go, or add the first one by hand — you decide which card each person gets."
+        overline="No contacts yet"
+        title="Add your first contact"
         action={{ label: "Import contacts", onClick: () => setPanel("import") }}
       />
     );
@@ -779,9 +778,7 @@ function ContactsListScreen({
               ? "1 person scanned your card"
               : `${unlinkedScans.length} people scanned your card`}
           </h2>
-          <p className="mt-1 text-sm text-ink-3">
-            They verified their number to get your card. They are not in your contacts yet.
-          </p>
+          <p className="mt-1 text-sm text-ink-3">Not in your contacts yet</p>
           <ul className="mt-3 flex flex-col divide-y divide-line">
             {unlinkedScans.map((scan) => (
               <li
@@ -815,9 +812,8 @@ function ContactsListScreen({
       {unknownCount > 0 ? (
         <p data-inbound-unknown={unknownCount} className="text-sm text-ink-3">
           {unknownCount === 1
-            ? "1 number that isn’t in your contacts has messaged you."
-            : `${unknownCount} numbers that aren’t in your contacts have messaged you.`}{" "}
-          Add them above to see what they sent and send them a card.
+            ? "1 number not in your contacts messaged you. Add it to see what they sent."
+            : `${unknownCount} numbers not in your contacts messaged you. Add them to see what they sent.`}
         </p>
       ) : null}
 
