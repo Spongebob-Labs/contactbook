@@ -318,6 +318,18 @@ export const profile = {
     return cb<PhotoResponseDto>({ method: "POST", path: "/profile/photo", form });
   },
   deletePhoto: () => cb<void>({ method: "DELETE", path: "/profile/photo" }),
+  /**
+   * Upload or replace the profile-level company logo — a `WORK`-category `COMPANY_LOGO` field, so
+   * it rides every card that includes the owner's work fields. Returns the field id and its
+   * storage URL, exactly like `uploadPhoto`.
+   */
+  uploadCompanyLogo: (file: File) => {
+    const form = new FormData();
+    form.set("file", file);
+    return cb<PhotoResponseDto>({ method: "POST", path: "/profile/company-logo", form });
+  },
+  /** 204, no body. `COMPANY_LOGO_NOT_FOUND` when there was nothing to remove — see `errors.ts`. */
+  deleteCompanyLogo: () => cb<void>({ method: "DELETE", path: "/profile/company-logo" }),
 };
 
 /* ── contacts (5) ────────────────────────────────────────────────────────────────────── */
@@ -348,6 +360,13 @@ function createCardForm(body: CreateCardDto, logo?: File): FormData {
   const form = new FormData();
   for (const [key, value] of Object.entries(body)) {
     if (value === undefined || value === null) continue;
+    /* ⚠ An array is appended key-by-key, never stringified. `fieldIds` is a repeated part that
+       Multer collects back into an array; `String([a, b])` would send "a,b" and fail `@IsUUID`
+       on the whole string rather than per id. */
+    if (Array.isArray(value)) {
+      for (const item of value) form.append(key, String(item));
+      continue;
+    }
     form.set(key, String(value));
   }
   if (logo !== undefined) form.set("file", logo);

@@ -13,7 +13,7 @@
 
 import type { FieldType } from "@/types/domain";
 
-/** All 21 `FieldType`s in the owner's language. Total by annotation, so none can be missed. */
+/** All 22 `FieldType`s in the owner's language. Total by annotation, so none can be missed. */
 export const FIELD_TYPE_LABELS: Record<FieldType, string> = {
   PHONE: "Mobile number",
   LANDLINE: "Landline",
@@ -23,6 +23,7 @@ export const FIELD_TYPE_LABELS: Record<FieldType, string> = {
   URL: "Website",
   SOCIAL_LINK: "Social link",
   PHOTO: "Photo",
+  COMPANY_LOGO: "Company logo",
   TEXT: "Note",
   DATE: "Date",
   JOB_TITLE: "Job title",
@@ -48,7 +49,9 @@ export const FIELD_TYPE_LABELS: Record<FieldType, string> = {
  *
  * ⚠ **The four structured kinds get no placeholder.** `BANK_ACCOUNT`, `DIGITAL_WALLET`,
  * `CRYPTO_WALLET` and `PHOTO` are not free text — they have their own editors, and a one-line
- * example would teach the wrong shape. Empty string means "no hint", not "no entry".
+ * example would teach the wrong shape. `COMPANY_LOGO` is the same: it is a file upload, never a
+ * typed value, and is never offered in a picker at all. Empty string means "no hint", not "no
+ * entry".
  */
 export const FIELD_TYPE_PLACEHOLDERS: Record<FieldType, string> = {
   PHONE: "+91 98765 43210",
@@ -59,6 +62,7 @@ export const FIELD_TYPE_PLACEHOLDERS: Record<FieldType, string> = {
   URL: "yourstudio.example",
   SOCIAL_LINK: "linkedin.com/in/yourname",
   PHOTO: "",
+  COMPANY_LOGO: "",
   TEXT: "Anything you want on the card",
   DATE: "8 March 1991",
   JOB_TITLE: "Head of Partnerships",
@@ -96,12 +100,13 @@ export const FIELD_TYPE_INPUT_MODES: Partial<
 };
 
 /**
- * ⚠ **`PHOTO` is not addable and is absent from every list below.**
+ * ⚠ **`PHOTO` and `COMPANY_LOGO` are not addable and are absent from every list below.**
  *
- * `POST /profile/fields` rejects it outright — `CreateProfileFieldDto`'s own note is *"`PHOTO`
- * is rejected here — use `POST /profile/photo`"* — and the avatar slot consumes it, so it never
- * renders as a row either (§6.6). Offering it in a picker was a guaranteed round-trip to a
- * server error for anyone who chose it. The one type a person might go looking for gets a
+ * `POST /profile/fields` rejects both outright — `CreateProfileFieldDto`'s own note is *"`PHOTO`
+ * is rejected here — use `POST /profile/photo`"*, and `COMPANY_LOGO` is `409
+ * COMPANY_LOGO_VIA_UPLOAD_ONLY` (it has its own endpoint, `POST /profile/company-logo`). The
+ * avatar slot consumes `PHOTO`, so it never renders as a row either (§6.6). Offering either in a
+ * picker was a guaranteed round-trip to a server error for anyone who chose it. `PHOTO` gets a
  * sentence pointing at the avatar instead; see {@link PHOTO_REDIRECT_HINT}.
  */
 export const PHOTO_REDIRECT_HINT =
@@ -124,7 +129,7 @@ export const COMMON_TYPES: readonly FieldType[] = [
   "TEXT",
 ];
 
-/** The remaining twelve, behind a disclosure. `PHOTO` is deliberately not among them. */
+/** The remaining twelve, behind a disclosure. `PHOTO` and `COMPANY_LOGO` are deliberately not among them. */
 export const MORE_TYPES: readonly FieldType[] = [
   "LANDLINE",
   "FAX",

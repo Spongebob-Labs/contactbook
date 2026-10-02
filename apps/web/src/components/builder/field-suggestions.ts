@@ -66,9 +66,14 @@ export interface ProfileSection {
 /* ── children ──────────────────────────────────────────────────────────────────────────── */
 
 /**
- * A child is two loose PERSONAL fields: a `RELATION` labelled "Child" holding the name, and a
- * `DATE` labelled "{name}'s birthday". Nothing upstream pairs them — there is no FAMILY group —
- * so the pairing below is by label, and it is a stopgap recorded as a backend ask.
+ * A child is a `FAMILY` group holding a `RELATION` named "Name" and a `DATE` named "Birthday".
+ *
+ * ## ⚠ This used to be a stopgap, and is not any more
+ * Children were previously two loose `PERSONAL` fields — a `RELATION` labelled "Child" and a
+ * `DATE` labelled "{name}'s birthday" — paired by label because *"there is no FAMILY group"*.
+ * `FieldGroupCategory.FAMILY` exists now, so a child is a real group, and the pairing is the
+ * group's own `fieldIds` rather than a regex over labels. The label constants below are kept
+ * because the legacy pairing still has to read pre-existing loose children.
  */
 export const CHILD_LABEL = "Child";
 
@@ -89,7 +94,10 @@ export interface ChildEntry {
 
 /**
  * The owner's children, each with the birthday stored under their name, in profile order.
- * A birthday whose name matches no child is left out and renders as an ordinary row.
+ *
+ * Handles both shapes: a child in a real `FAMILY` group (their fields arrive already paired by
+ * the group's own `fieldIds`) and a legacy loose child whose birthday matches by label. A
+ * birthday whose name matches no child is left out and renders as an ordinary row.
  */
 export function pairChildren(fields: readonly ProfileField[]): ChildEntry[] {
   const birthdays = fields.filter(
@@ -127,7 +135,7 @@ export const PROFILE_SECTIONS: readonly ProfileSection[] = [
   {
     id: "personal",
     label: "Personal",
-    categories: ["IDENTITY", "PERSONAL"],
+    categories: ["IDENTITY", "PERSONAL", "FAMILY"],
     createCategory: "PERSONAL",
     defaultOpen: true,
     children: true,

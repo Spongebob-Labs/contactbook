@@ -36,7 +36,7 @@ import { revalidatePath } from "next/cache";
 
 import { cards, profile, shareLinks } from "@/lib/api";
 import { toApiCardKind, toCardFieldEntries } from "@/lib/api/map";
-import type { ApiShareLinkStatus, CardResponseDto } from "@/lib/api/schema";
+import type { ApiShareLinkStatus } from "@/lib/api/schema";
 import type { CardType } from "@/types/domain";
 import { failFrom, failLocally, succeed, type ActionResult } from "@/lib/actions/result";
 
@@ -55,17 +55,13 @@ export interface CreateCardOutcome {
 }
 
 /**
- * Create a card, then give it its starting fields.
+ * Create a card, already carrying its starting fields.
  *
- * Two calls, because `POST /cards` is documented as starting with **no fields** — there is no way
- * to create a populated card in one request. The seed comes from the template's preset resolved
- * against the owner's profile, which is what makes a template's blurb ("starts with your work
- * number and work email") true rather than aspirational.
- *
- * ⚠ If the field write fails the card still exists, empty. That is deliberately not rolled back:
- * there is no transaction across two endpoints, and deleting a just-created card to tidy up a
- * partial failure risks destroying a card the user can see. The outcome reports the card id
- * either way, so the builder opens on it and the owner can finish the job.
+ * ⚠ **One call, not two.** `fieldIds` rides `POST /cards`, so the card and its `CardField` rows
+ * are written in a single server transaction — a failure can no longer produce an empty card
+ * while the field-attach call is still in flight. The seed comes from the template's preset
+ * resolved against the owner's profile, which is what makes a template's blurb ("starts with
+ * your work number and work email") true rather than aspirational.
  */
 export async function createCardAction(input: {
   name: string;
@@ -75,26 +71,17 @@ export async function createCardAction(input: {
   const name = input.name.trim();
   if (name.length === 0) return failLocally("Give the card a name.");
 
-  let created: CardResponseDto;
   try {
-    created = await cards.createCard({ name, kind: toApiCardKind(input.type) });
+    const created = await cards.createCard({
+      name,
+      kind: toApiCardKind(input.type),
+      ...(input.fieldIds.length === 0 ? {} : { fieldIds: [...input.fieldIds] }),
+    });
+    revalidateCard(created.id);
+    return succeed({ cardId: created.id });
   } catch (thrown) {
     return failFrom(thrown);
   }
-
-  if (input.fieldIds.length > 0) {
-    try {
-      await cards.setCardFields(created.id, { fields: toCardFieldEntries(input.fieldIds) });
-    } catch (thrown) {
-      // The card exists; only its fields did not land. Report the failure *and* the id, so the
-      // caller can navigate to a real card rather than losing it.
-      revalidateCard(created.id);
-      return failFrom(thrown);
-    }
-  }
-
-  revalidateCard(created.id);
-  return succeed({ cardId: created.id });
 }
 
 /* ── Save (the builder's one button) ─────────────────────────────────────────────────── */

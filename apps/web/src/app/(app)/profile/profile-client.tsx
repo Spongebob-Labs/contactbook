@@ -18,7 +18,7 @@ import { resolveCard } from "@/card/resolve-card";
 import { builderInitialState, type BuilderAction } from "@/components/builder/builder-reducer";
 import { DesignPanel } from "@/components/builder/design-panel";
 import { PanelHead } from "@/components/builder/panel-head";
-import { childBirthdayLabel, CHILD_LABEL, type ChildEntry } from "@/components/builder/field-suggestions";
+import { type ChildEntry } from "@/components/builder/field-suggestions";
 import {
   ErrorPanel,
   ScreenStateRoot,
@@ -35,11 +35,11 @@ import { useCardFieldSync, type CardSyncStatus } from "@/components/profile/use-
 import type { RowCardToggle } from "@/components/profile/workspace-field-row";
 import {
   carryOverFieldIds,
-  cardFieldPayload,
   groupIdForCreate,
   isLocalFieldId,
   workGroupTag,
   workspaceSections,
+  type FamilyEntry,
 } from "@/components/profile/workspace-model";
 import { WorkspaceCardIntro } from "@/components/profile/workspace-card-intro";
 import { WorkspacePreview } from "@/components/profile/workspace-preview";
@@ -342,6 +342,13 @@ function printedBio(resolved: ResolvedCard): string | null {
 /** The disclosure key for the Fields panel's Position & bio section. */
 const CARD_INTRO_SECTION = "card-intro";
 
+/**
+ * The two field labels a family member's `FAMILY` group holds: a `RELATION` "Name" and a `DATE`
+ * "Birthday". The skill prescribes exactly this shape, and the group's `tag` carries the person.
+ */
+const CHILD_NAME_LABEL = "Name";
+const CHILD_BIRTHDAY_LABEL = "Birthday";
+
 /** The one surface every panel sits on, so switching tab never moves the frame. */
 const PANEL_SURFACE =
   "flex flex-col rounded-xl border border-line bg-canvas shadow-[var(--elevation-1)]";
@@ -450,6 +457,7 @@ function Workspace({
   const [, startTransition] = useTransition();
   const [photoBusy, startPhotoTransition] = useTransition();
   const [logoBusy, setLogoBusy] = useState(false);
+  const [companyLogoBusy, setCompanyLogoBusy] = useState(false);
   const [coverBusy, setCoverBusy] = useState(false);
   const [creatingCard, setCreatingCard] = useState(false);
 
@@ -547,6 +555,54 @@ function Workspace({
     [],
   );
 
+  /**
+   * The owner's profile-level company logo, if they have uploaded one.
+   *
+   * It arrives as a `WORK`-category `COMPANY_LOGO` field (see `POST /profile/company-logo`), and
+   * is separate from a card's own logo: this one rides every card that includes work fields.
+   */
+  const companyLogoField = useMemo(
+    () => draft.fields.find((field) => field.type === "COMPANY_LOGO") ?? null,
+    [draft.fields],
+  );
+  const companyLogoUrl = companyLogoField?.value.trim() ?? "";
+
+  /**
+   * Upload or replace the profile-level company logo.
+   *
+   * ⚠ The endpoints return only `{ id, url }`, not a whole profile — so the field cannot be
+   * echoed from the response. The re-read brings the real `COMPANY_LOGO` row back; until then the
+   * row is left as it was rather than fabricating one.
+   */
+  function uploadCompanyLogo(file: File) {
+    setCompanyLogoBusy(true);
+    startTransition(async () => {
+      try {
+        await api.uploadCompanyLogo(file);
+        toast({ title: "Company logo saved" });
+      } catch (thrown) {
+        showError(thrown);
+      } finally {
+        setCompanyLogoBusy(false);
+        reload();
+      }
+    });
+  }
+
+  function removeCompanyLogo() {
+    setCompanyLogoBusy(true);
+    startTransition(async () => {
+      try {
+        await api.deleteCompanyLogo();
+      } catch (thrown) {
+        showError(thrown);
+      } finally {
+        setCompanyLogoBusy(false);
+        reload();
+      }
+    });
+  }
+
   /** The card as the owner sees it right now: the server's, plus design edits, plus uploads. */
   const present = useCallback(
     (card: ContactCard): ContactCard => {
@@ -632,6 +688,14 @@ function Workspace({
       const group = await api.createGroup({ category: "WORK", tag: workGroupTag(company) });
       groupId = group.id;
     }
+    return createFieldInGroup(groupId, input);
+  }
+
+  /** Create a field filed into a specific group id (or loose when it is `undefined`). */
+  async function createFieldInGroup(
+    groupId: string | undefined,
+    input: NewFieldInput,
+  ): Promise<string> {
     const created = await api.createField({
       category: input.category,
       type: input.type,
@@ -645,9 +709,14 @@ function Workspace({
   function echoCreate(input: NewFieldInput) {
     const group = echoGroupFor(input.category);
     dispatch({ kind: "ensure-group", group });
+    echoCreateInto(group.id, input);
+  }
+
+  /** Echo a field into a known group id — used by the family path, which owns its own group. */
+  function echoCreateInto(groupId: string, input: NewFieldInput) {
     dispatch({
       kind: "add-field",
-      groupId: group.id,
+      groupId,
       draft: {
         type: input.type,
         label: input.label.trim(),
@@ -672,20 +741,43 @@ function Workspace({
     mutate(() => api.updateField(field.id, { label: patch.label.trim(), value: patch.value.trim() }));
   }
 
+  /**
+   * A new child is a `FAMILY` group: the group's `tag` is the child's name, and its two fields
+   * are a `RELATION` "Name" and (when given) a `DATE` "Birthday". `FieldGroupCategory.FAMILY`
+   * is what makes the pairing real rather than a label convention.
+   *
+   * ⚠ The group is created first, then both fields are filed into it — the same order the
+   * field-create path uses, and the only way `groupId` can be sent on the field writes.
+   */
   function addChild(name: string, birthday: string) {
-    const nameInput: NewFieldInput = { category: "PERSONAL", type: "RELATION", label: CHILD_LABEL, value: name };
+    const childName = name.trim();
+    const group: FieldGroup = {
+      id: syntheticGroupId("FAMILY"),
+      userId: draft.user?.id ?? "",
+      category: "FAMILY",
+      name: childName,
+      fieldIds: [],
+    };
+    dispatch({ kind: "ensure-group", group });
+    const nameInput: NewFieldInput = {
+      category: "FAMILY",
+      type: "RELATION",
+      label: CHILD_NAME_LABEL,
+      value: childName,
+    };
     const birthdayInput: NewFieldInput | null =
       birthday.trim() === ""
         ? null
-        : { category: "PERSONAL", type: "DATE", label: childBirthdayLabel(name), value: birthday };
-    echoCreate(nameInput);
-    if (birthdayInput !== null) echoCreate(birthdayInput);
+        : { category: "FAMILY", type: "DATE", label: CHILD_BIRTHDAY_LABEL, value: birthday };
+    echoCreateInto(group.id, nameInput);
+    if (birthdayInput !== null) echoCreateInto(group.id, birthdayInput);
     const card = selected;
     mutate(async () => {
-      const nameId = await createUpstream(nameInput);
+      const created = await api.createGroup({ category: "FAMILY", tag: childName });
+      const nameId = await createFieldInGroup(created.id, nameInput);
       if (card !== null) sync.tickCreated(card, nameId);
       if (birthdayInput !== null) {
-        const birthdayId = await createUpstream(birthdayInput);
+        const birthdayId = await createFieldInGroup(created.id, birthdayInput);
         if (card !== null) sync.tickCreated(card, birthdayId);
       }
     });
@@ -701,15 +793,29 @@ function Workspace({
       dispatch({
         kind: "edit-field",
         fieldId: birthday.id,
-        label: childBirthdayLabel(trimmed),
+        label: birthday.label,
         value: birthday.value,
       });
     }
     mutate(async () => {
       await api.updateField(child.name.id, { label: child.name.label, value: trimmed });
       if (birthday !== null) {
-        await api.updateField(birthday.id, { label: childBirthdayLabel(trimmed), value: birthday.value });
+        await api.updateField(birthday.id, { label: birthday.label, value: birthday.value });
       }
+    });
+  }
+
+  /** Renames a family member: the group's tag is their name, and their RELATION field follows. */
+  function renameFamily(entry: FamilyEntry, name: string) {
+    const trimmed = name.trim();
+    if (trimmed === "") return;
+    dispatch({ kind: "rename-group", groupId: entry.group.id, name: trimmed });
+    if (isSyntheticGroupId(entry.group.id) || entry.nameField === null) return;
+    if (trimmed === entry.nameField.value.trim()) return;
+    dispatch({ kind: "edit-field", fieldId: entry.nameField.id, label: entry.nameField.label, value: trimmed });
+    mutate(async () => {
+      await api.updateGroup(entry.group.id, { tag: trimmed });
+      await api.updateField(entry.nameField!.id, { label: entry.nameField!.label, value: trimmed });
     });
   }
 
@@ -825,33 +931,27 @@ function Workspace({
 
   /**
    * New card: create it with the builder's default design, then put every filled-in field on it.
-   * Resolves `true` once the card exists, even if the field write failed — the card is real and
-   * the owner can switch fields on by hand.
+   *
+   * ⚠ **Atomic now.** `fieldIds` rides the create, so the card and its `CardField` rows land in
+   * one server transaction. The old create-then-`PUT /cards/{id}/fields` pair could half-fail and
+   * leave an empty card behind; `POST /cards` no longer can. The card overlay reads the whole
+   * created card back, so there is no second `setFields` and no second response to reconcile.
    */
   async function createCard(name: string): Promise<boolean> {
     if (draft.user === null) return false;
     setCreatingCard(true);
     try {
       const base = builderInitialState({ card: null, userId: draft.user.id, seed: [] });
+      const ids = carryOverFieldIds(draft.fields);
       const dto = await cardsApi.create({
         name,
         kind: toApiCardKind(base.cardType),
         ...toAppearanceDto(base),
         headline: null,
         bio: null,
+        ...(ids.length === 0 ? {} : { fieldIds: ids }),
       });
-      let card = toContactCard(dto, draft.user.id);
-      const ids = carryOverFieldIds(draft.fields);
-      if (ids.length > 0) {
-        try {
-          const withFields = await cardsApi.setFields(dto.id, {
-            fields: cardFieldPayload(ids, draft.fields),
-          });
-          card = toContactCard(withFields, draft.user.id);
-        } catch (thrown) {
-          showError(thrown);
-        }
-      }
+      const card = toContactCard(dto, draft.user.id);
       setCreatedCards((current) => [...current, card]);
       select(card.id);
       reload();
@@ -982,15 +1082,16 @@ function Workspace({
                   onCreate={createField}
                   onAddChild={addChild}
                   onRenameChild={renameChild}
+                  onRenameFamily={renameFamily}
                   logo={
                     selected === null || shown === null
                       ? null
                       : {
                           cardName: shown.name,
-                          logoUrl: shown.logoUrl ?? null,
-                          busy: logoBusy,
-                          onPick: (file) => pickLogo(selected, file),
-                          onRemove: () => removeLogo(selected),
+                          logoUrl: companyLogoUrl === "" ? null : companyLogoUrl,
+                          busy: companyLogoBusy,
+                          onPick: uploadCompanyLogo,
+                          onRemove: removeCompanyLogo,
                         }
                   }
                 />

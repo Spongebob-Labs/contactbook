@@ -210,7 +210,7 @@ export function splitHeroFields(
 /**
  * What each `FieldCategory` is called on the card.
  *
- * Two of the seven are deliberately NOT their enum spelling. `FINANCIAL` reads as PAYMENT
+ * Two of the eight are deliberately NOT their enum spelling. `FINANCIAL` reads as PAYMENT
  * because that is what a reader is looking for when they scan a card for where to send money,
  * and `CUSTOM` reads as OTHER because "custom" describes how the field was authored, which is
  * the owner's concern and not the reader's.
@@ -221,6 +221,7 @@ export function splitHeroFields(
 export const SECTION_LABELS: Record<FieldCategory, string> = {
   IDENTITY: "Details",
   PERSONAL: "Personal",
+  FAMILY: "Family",
   WORK: "Work",
   BUSINESS: "Business",
   SOCIAL: "Social",

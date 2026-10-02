@@ -37,10 +37,11 @@ import type { FieldCategory, ResolvedField } from "@/types/domain";
  * value (E-07). Those fields contribute no row rather than an empty one.
  */
 
-/** The seven §5.1 categories in the owner's language, keyed so a new one cannot be missed. */
+/** The eight §5.1 categories in the owner's language, keyed so a new one cannot be missed. */
 export const FIELD_CATEGORY_LABELS: Record<FieldCategory, string> = {
   IDENTITY: "Identity",
   PERSONAL: "Personal",
+  FAMILY: "Family",
   WORK: "Work",
   BUSINESS: "Business",
   SOCIAL: "Social",
@@ -55,11 +56,12 @@ export const FIELD_CATEGORY_LABELS: Record<FieldCategory, string> = {
 const CATEGORY_RANK: Record<FieldCategory, number> = {
   IDENTITY: 0,
   PERSONAL: 1,
-  WORK: 2,
-  BUSINESS: 3,
-  SOCIAL: 4,
-  FINANCIAL: 5,
-  CUSTOM: 6,
+  FAMILY: 2,
+  WORK: 3,
+  BUSINESS: 4,
+  SOCIAL: 5,
+  FINANCIAL: 6,
+  CUSTOM: 7,
 };
 
 /* ── rendering ──────────────────────────────────────────────────────────────────────── */

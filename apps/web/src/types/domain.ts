@@ -23,6 +23,7 @@ export type CardType = "BUSINESS" | "PERSONAL" | "PAYMENT" | "CUSTOM";
 export type FieldCategory =
   | "IDENTITY"
   | "PERSONAL"
+  | "FAMILY"
   | "WORK"
   | "BUSINESS"
   | "SOCIAL"
@@ -30,7 +31,7 @@ export type FieldCategory =
   | "CUSTOM";
 
 /**
- * 21 members. Every one needs a renderer (§6.6, AC-21) and a vCard mapping (§6.7); a missing
+ * 22 members. Every one needs a renderer (§6.6, AC-21) and a vCard mapping (§6.7); a missing
  * renderer is a build-time type error, not a runtime blank.
  */
 export type FieldType =
@@ -42,6 +43,7 @@ export type FieldType =
   | "URL"
   | "SOCIAL_LINK"
   | "PHOTO"
+  | "COMPANY_LOGO"
   | "TEXT"
   | "DATE"
   | "JOB_TITLE"

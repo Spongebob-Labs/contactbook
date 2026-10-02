@@ -16,7 +16,7 @@ import type { ApiFieldCategory } from "@/lib/api/schema";
 import type { FieldCategory, FieldType, ProfileField } from "@/types/domain";
 
 import { WorkspaceFieldRow, type RowCardToggle } from "./workspace-field-row";
-import type { WorkspaceSectionModel } from "./workspace-model";
+import type { FamilyEntry, WorkspaceSectionModel } from "./workspace-model";
 
 /**
  * One collapsible category of the workspace — Personal, Work, Socials, Business, Payment, Other.
@@ -55,6 +55,8 @@ export interface WorkspaceSectionProps {
   onAddChild: (name: string, birthday: string) => void;
   /** Renames a child and keeps their birthday's label in step. */
   onRenameChild: (child: ChildEntry, name: string) => void;
+  /** Renames a family member: the FAMILY group's tag and its RELATION field follow. */
+  onRenameFamily: (entry: FamilyEntry, name: string) => void;
   /** Work only, and only when there is a card for the logo to go on. */
   logo?: LogoRowProps | null;
 }
@@ -82,6 +84,7 @@ export function WorkspaceSection({
   onCreate,
   onAddChild,
   onRenameChild,
+  onRenameFamily,
   logo,
 }: WorkspaceSectionProps): ReactElement {
   const { section } = model;
@@ -90,7 +93,8 @@ export function WorkspaceSection({
   const [drafts, setDrafts] = useState<readonly DraftRow[]>([]);
   const [nextKey, setNextKey] = useState(1);
 
-  const hasToggles = model.fields.length > 0 || model.children.length > 0;
+  const hasToggles =
+    model.fields.length > 0 || model.children.length > 0 || model.families.length > 0;
 
   function pick(offer: FieldOffer) {
     setDrafts((current) => [...current, { key: nextKey, offer }]);
@@ -194,6 +198,10 @@ export function WorkspaceSection({
             />
           ) : null}
 
+          {model.families.length > 0 ? (
+            <FamiliesBlock entries={model.families} row={row} onRenameFamily={onRenameFamily} />
+          ) : null}
+
           {section.companyLogo === true && logo !== undefined && logo !== null ? (
             <li
               data-workspace-logo=""
@@ -201,7 +209,9 @@ export function WorkspaceSection({
             >
               <div className="min-w-0 flex-1">
                 <p className="text-xs text-ink-3">Company logo</p>
-                <p className="truncate text-sm text-ink-2">On the {logo.cardName} card only</p>
+                <p className="truncate text-sm text-ink-2">
+                  Shown on every card with your work details
+                </p>
               </div>
               <LogoPicker
                 logoUrl={logo.logoUrl}
@@ -465,5 +475,59 @@ function AddChildForm({
         </Button>
       </div>
     </form>
+  );
+}
+
+/* ── family ────────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * One `FAMILY` group per family member — the person's name and their birthday, side by side.
+ *
+ * Unlike `ChildrenBlock`, which pairs legacy loose fields by label, this reads a real group: the
+ * member's name is the group's `tag` (falling back to the RELATION field's value), and the two
+ * fields are rendered in the group's own order.
+ */
+function FamiliesBlock({
+  entries,
+  row,
+  onRenameFamily,
+}: {
+  entries: readonly FamilyEntry[];
+  row: (field: ProfileField, extra?: RowExtra) => ReactElement;
+  onRenameFamily: (entry: FamilyEntry, name: string) => void;
+}): ReactElement {
+  return (
+    <li data-workspace-family="" className="border-t border-line">
+      <p className="px-3 pb-1 pt-3 text-overline font-medium uppercase text-ink-2 sm:px-4">
+        Family
+      </p>
+      <ul className="flex flex-col">
+        {entries.map((entry) => (
+          <li
+            key={entry.group.id}
+            data-workspace-family-member={entry.group.id}
+            className="border-t border-line first:border-t-0"
+          >
+            <ul className="flex flex-col">
+              {entry.nameField === null ? null : (
+                <WorkspaceFieldRow
+                  key={entry.nameField.id}
+                  field={entry.nameField}
+                  category="FAMILY"
+                  label={entry.nameField.label}
+                  type={entry.nameField.type}
+                  labelEditable={false}
+                  revealed={false}
+                  onToggleReveal={() => undefined}
+                  onSave={(patch) => onRenameFamily(entry, patch.value)}
+                  toggle={null}
+                />
+              )}
+              {entry.birthdayField === null ? null : row(entry.birthdayField, { labelEditable: false })}
+            </ul>
+          </li>
+        ))}
+      </ul>
+    </li>
   );
 }

@@ -1233,6 +1233,16 @@
                     "type": "string",
                     "format": "binary",
                     "description": "Optional logo — omit for no logo."
+                  },
+                  "fieldIds": {
+                    "type": "array",
+                    "description": "Profile field IDs to attach atomically on creation. All must belong to the caller; PHOTO fields are rejected.",
+                    "example": [
+                      "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+                    ],
+                    "items": {
+                      "type": "string"
+                    }
                   }
                 }
               }
@@ -2304,6 +2314,117 @@
           "dashboard"
         ]
       }
+    },
+    "/api/v1/profile/company-logo": {
+      "post": {
+        "description": "JPEG, PNG, or WebP, up to 20 MB. Stored as a WORK-category field so it carries over to any card that includes your work fields. Replacing an existing logo deletes the old one from storage.",
+        "operationId": "ProfileController_uploadCompanyLogo_v1",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PhotoResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "PHOTO_STORAGE_NOT_CONFIGURED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "PHOTO_TOO_LARGE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "PHOTO_TYPE_UNSUPPORTED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cb_access_token": []
+          },
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Upload or replace your profile-level company logo",
+        "tags": [
+          "profile"
+        ]
+      },
+      "delete": {
+        "operationId": "ProfileController_removeCompanyLogo_v1",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": "Removed."
+          },
+          "404": {
+            "description": "COMPANY_LOGO_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cb_access_token": []
+          },
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Remove your profile-level company logo",
+        "tags": [
+          "profile"
+        ]
+      }
     }
   },
   "info": {
@@ -2521,6 +2642,7 @@
             "enum": [
               "IDENTITY",
               "PERSONAL",
+              "FAMILY",
               "WORK",
               "BUSINESS",
               "SOCIAL",
@@ -2540,6 +2662,7 @@
               "URL",
               "SOCIAL_LINK",
               "PHOTO",
+              "COMPANY_LOGO",
               "TEXT",
               "DATE",
               "JOB_TITLE",
@@ -2610,7 +2733,8 @@
               "WORK",
               "BUSINESS",
               "SOCIAL",
-              "FINANCIAL"
+              "FINANCIAL",
+              "FAMILY"
             ],
             "example": "WORK"
           },

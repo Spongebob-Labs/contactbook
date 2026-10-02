@@ -72,8 +72,9 @@ interface VcfProperty {
  * parameter — so the file can be read back to the exact set of field types that produced it,
  * which is what AC-22 asserts.
  *
- * `PHOTO` is `null`: the avatar slot consumes it and it is never a row (§6.6), so it is in
- * neither `ResolvedCard.fields` nor the file.
+ * `PHOTO` and `COMPANY_LOGO` are both `null`: the avatar slot consumes the photo and the card's
+ * own logo slot consumes the profile mark, and neither is ever a row (§6.6), so neither is in
+ * `ResolvedCard.fields` nor the file.
  */
 const PROPERTIES: Record<FieldType, VcfProperty | null> = {
   JOB_TITLE: { name: "TITLE", rank: 1 },
@@ -98,6 +99,7 @@ const PROPERTIES: Record<FieldType, VcfProperty | null> = {
   /** Last, so a user's own notes sit directly above the provenance footer. */
   TEXT: { name: "NOTE", rank: 20 },
   PHOTO: null,
+  COMPANY_LOGO: null,
 };
 
 /** The `TYPE` parameter that keeps the three telephone-shaped types distinguishable. */

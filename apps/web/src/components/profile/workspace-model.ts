@@ -18,12 +18,29 @@ import type { FieldGroup, ProfileField } from "@/types/domain";
 /** `PUT /cards/{id}/fields` accepts at most this many entries. */
 export const CARD_FIELD_LIMIT = 200;
 
+/**
+ * One family member: the `FAMILY` group that owns them, and the two fields inside it.
+ *
+ * A member is a group rather than a pair of loose fields now that `FieldGroupCategory.FAMILY`
+ * exists. `name` is the group's `RELATION` and `birthday` its `DATE`; either may be absent on a
+ * half-filled group, and `tag` is the member's own name.
+ */
+export interface FamilyEntry {
+  group: FieldGroup;
+  /** The member's name — the group's `tag`, or the RELATION field's value as a fallback. */
+  name: string;
+  nameField: ProfileField | null;
+  birthdayField: ProfileField | null;
+}
+
 export interface WorkspaceSectionModel {
   section: ProfileSection;
   /** Filled fields listed as ordinary rows, in profile order. Children are not among them. */
   fields: ProfileField[];
   /** Personal only: each child with the birthday stored under their name. */
   children: ChildEntry[];
+  /** Personal only: each `FAMILY` group as one family member. */
+  families: FamilyEntry[];
   /** Suggestions nothing answers yet — drawn as blank rows. */
   suggestions: readonly FieldSuggestion[];
   /** Real groups in this section, for the "Reorder or delete" links. */
@@ -31,11 +48,31 @@ export interface WorkspaceSectionModel {
 }
 
 /**
+ * A real `FAMILY` group resolved into a family member: its name and its two fields, in the
+ * group's own order. A member with neither field is dropped — an empty group renders nothing.
+ */
+function toFamilyEntry(group: FieldGroup, byId: ReadonlyMap<string, ProfileField>): FamilyEntry {
+  const members = group.fieldIds
+    .map((id) => byId.get(id))
+    .filter((field): field is ProfileField => field !== undefined);
+  const nameField = members.find((field) => field.type === "RELATION") ?? null;
+  const birthdayField = members.find((field) => field.type === "DATE") ?? null;
+  const tag = group.name.trim();
+  return {
+    group,
+    name: tag.length > 0 ? tag : (nameField?.value.trim() ?? ""),
+    nameField,
+    birthdayField,
+  };
+}
+
+/**
  * Every section with its rows.
  *
  * Membership is by the owning group's category and the order is the groups' own (they arrive
  * sorted by category, then position), so a section lists fields exactly as the profile holds
- * them. `PHOTO` is skipped everywhere: the avatar at the top of the panel is its only control.
+ * them. `PHOTO` and `COMPANY_LOGO` are skipped everywhere: the avatar and the card logo slots
+ * are their only controls.
  */
 export function workspaceSections(
   groups: readonly FieldGroup[],
@@ -49,21 +86,43 @@ export function workspaceSections(
     for (const group of sectionGroups) {
       for (const id of group.fieldIds) {
         const field = byId.get(id);
-        if (field !== undefined && field.type !== "PHOTO") listed.push(field);
+        if (field !== undefined && field.type !== "PHOTO" && field.type !== "COMPANY_LOGO") {
+          listed.push(field);
+        }
       }
     }
 
-    const children = section.children === true ? pairChildren(listed) : [];
+    /* Family members are real FAMILY groups and render as their own block. A legacy loose child
+       (two PERSONAL fields paired by label) is left to `pairChildren`. */
+    const familyGroups = sectionGroups.filter((group) => group.category === "FAMILY");
+    const families = section.children === true
+      ? familyGroups
+          .map((group) => toFamilyEntry(group, byId))
+          .filter((entry) => entry.nameField !== null || entry.birthdayField !== null)
+      : [];
+    const inFamilies = new Set(
+      families.flatMap((entry) =>
+        [entry.nameField?.id, entry.birthdayField?.id].filter(
+          (id): id is string => id !== undefined,
+        ),
+      ),
+    );
+
+    const childCandidates = listed.filter((field) => !inFamilies.has(field.id));
+    const children = section.children === true ? pairChildren(childCandidates) : [];
     const inChildren = new Set(
       children.flatMap((child) => [child.name.id, ...(child.birthday ? [child.birthday.id] : [])]),
     );
 
     return {
       section,
-      fields: listed.filter((field) => !inChildren.has(field.id)),
+      fields: childCandidates.filter((field) => !inChildren.has(field.id)),
       children,
+      families,
       suggestions: openSuggestions(section, listed),
-      groups: sectionGroups.filter((group) => !isSyntheticGroupId(group.id)),
+      groups: sectionGroups.filter(
+        (group) => !isSyntheticGroupId(group.id) && group.category !== "FAMILY",
+      ),
     };
   });
 }

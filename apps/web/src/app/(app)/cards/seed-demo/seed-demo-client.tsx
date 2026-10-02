@@ -5,7 +5,6 @@ import { useState, type ReactElement } from "react";
 
 import { Button } from "@/components/primitives";
 import { cards as cardsApi, profile as profileApi } from "@/lib/api/browser";
-import { toCardFieldEntries } from "@/lib/api/map";
 import { dataUrlToFile, imageToDataUrl } from "@/lib/image-to-data-url";
 
 /** ⚠ Development utility — see the route's own note. Delete with it. */
@@ -44,8 +43,10 @@ export function SeedDemoCard(): ReactElement {
       const fields = await profileApi.listFields();
       say(`Found ${fields.length} profile fields.`);
 
-      /* 2 — the card, on Ivory, wearing a logo. The logo rides along on `POST /cards` because
-            that is the only way it can be set at creation (see `cards.ts`). */
+      /* 2 — the card, on Ivory, wearing a logo and all the fields at once. Both the logo and
+            `fieldIds` ride `POST /cards`: the logo because a create is the only door for it, and
+            the fields because the create attaches them atomically rather than as a second call
+            that could half-fail. */
       const logo = await fileFrom(LOGO_SRC, "logo.png");
       const created = await cardsApi.create(
         {
@@ -56,18 +57,13 @@ export function SeedDemoCard(): ReactElement {
           /* Real columns, so they ride the create. Only the cover cannot — see step 4. */
           headline: HEADLINE,
           bio: BIO,
+          fieldIds: fields.map((field: { id: string }) => field.id),
         },
         logo,
       );
-      say(`Created "${CARD_NAME}" with a logo, position and bio.`);
+      say(`Created "${CARD_NAME}" with a logo, position, bio and ${fields.length} fields.`);
 
-      /* 3 — tick all of them onto it. */
-      await cardsApi.setFields(created.id, {
-        fields: toCardFieldEntries(fields.map((field: { id: string }) => field.id)),
-      });
-      say(`Shared all ${fields.length} fields on the card.`);
-
-      /* 4 — the cover, which is always its own call: `POST /cards` carries no cover part and
+      /* 3 — the cover, which is always its own call: `POST /cards` carries no cover part and
             `PATCH` rejects a URL string, so the upload is the only door and it needs the id.
 
             Downscaled first, exactly as the builder's picker does, so the seeded card carries

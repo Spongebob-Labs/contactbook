@@ -42,6 +42,8 @@ export type ApiErrorCode =
   | "PROFILE_FIELD_NOT_OWNED"
   | "PROFILE_FIELD_GROUP_NOT_FOUND"
   | "PHOTO_VIA_UPLOAD_ONLY"
+  | "COMPANY_LOGO_VIA_UPLOAD_ONLY"
+  | "COMPANY_LOGO_NOT_FOUND"
   | "FIELD_ENCRYPTION_NOT_CONFIGURED"
   | "PHOTO_STORAGE_NOT_CONFIGURED"
   | "PHOTO_TOO_LARGE"
@@ -163,6 +165,8 @@ const KNOWN_CODES = new Set<string>([
   "PROFILE_FIELD_NOT_OWNED",
   "PROFILE_FIELD_GROUP_NOT_FOUND",
   "PHOTO_VIA_UPLOAD_ONLY",
+  "COMPANY_LOGO_VIA_UPLOAD_ONLY",
+  "COMPANY_LOGO_NOT_FOUND",
   "FIELD_ENCRYPTION_NOT_CONFIGURED",
   "PHOTO_STORAGE_NOT_CONFIGURED",
   "PHOTO_TOO_LARGE",
@@ -305,6 +309,21 @@ const COPY: Readonly<Record<ApiErrorCode, Copy>> = {
     kind: "unknown",
     title: "Photos are added by uploading",
     detail: "Use the photo button on your profile instead.",
+    retryable: false,
+  },
+  COMPANY_LOGO_VIA_UPLOAD_ONLY: {
+    kind: "unknown",
+    title: "Company logos are added by uploading",
+    detail: "Use the logo button in your Work section instead.",
+    retryable: false,
+  },
+  COMPANY_LOGO_NOT_FOUND: {
+    /* Reachable by removing the logo twice — a double-tap, or two tabs. The profile is already
+       in the state the owner asked for, so the copy says that rather than apologising for a
+       failure that changed nothing. */
+    kind: "not-found",
+    title: "There's no company logo to remove",
+    detail: "Your Work section is already showing no logo.",
     retryable: false,
   },
   FIELD_ENCRYPTION_NOT_CONFIGURED: {

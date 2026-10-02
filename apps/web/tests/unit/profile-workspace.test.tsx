@@ -167,6 +167,45 @@ describe("workspaceSections", () => {
     expect(personal.fields.map((f) => f.id)).toEqual(["p1"]);
     expect(personal.groups).toEqual([]);
   });
+
+  it("renders a FAMILY group as one family member, not as loose rows", () => {
+    const group: FieldGroup = {
+      id: "fam-1",
+      userId: "u",
+      category: "FAMILY",
+      name: "Rohan",
+      fieldIds: ["n1", "b1"],
+    };
+    const [personal] = workspaceSections(
+      [group],
+      [
+        field({ id: "n1", type: "RELATION", label: "Name", value: "Rohan", groupId: "fam-1" }),
+        field({ id: "b1", type: "DATE", label: "Birthday", value: "2019-03-14", groupId: "fam-1" }),
+      ],
+    );
+
+    expect(personal.families.map((f) => [f.name, f.nameField?.id, f.birthdayField?.id])).toEqual([
+      ["Rohan", "n1", "b1"],
+    ]);
+    // Neither field leaks into the ordinary rows or the legacy child pairing.
+    expect(personal.fields.map((f) => f.id)).toEqual([]);
+    expect(personal.children).toEqual([]);
+  });
+
+  it("falls back to the RELATION value when a FAMILY group has no tag", () => {
+    const group: FieldGroup = {
+      id: "fam-2",
+      userId: "u",
+      category: "FAMILY",
+      name: "",
+      fieldIds: ["n2"],
+    };
+    const [personal] = workspaceSections(
+      [group],
+      [field({ id: "n2", type: "RELATION", label: "Name", value: "Mira", groupId: "fam-2" })],
+    );
+    expect(personal.families.map((f) => f.name)).toEqual(["Mira"]);
+  });
 });
 
 /* ── what a card is sent ──────────────────────────────────────────────────────────────── */
@@ -221,6 +260,13 @@ describe("groupIdForCreate / workGroupTag", () => {
     expect(groupIdForCreate("BUSINESS", groups)).toBe("g-biz");
     expect(groupIdForCreate("WORK", groups), "a synthetic group is not a group upstream").toBeUndefined();
     expect(groupIdForCreate("PERSONAL", groups), "PERSONAL cannot hold a groupId").toBeUndefined();
+  });
+
+  it("treats FAMILY as group-able — a family member is a real group", () => {
+    const family: FieldGroup[] = [
+      { id: "fam-1", userId: "u", category: "FAMILY", name: "Rohan", fieldIds: [] },
+    ];
+    expect(groupIdForCreate("FAMILY", family)).toBe("fam-1");
   });
 
   it("names a first WORK group after the company, else Work", () => {

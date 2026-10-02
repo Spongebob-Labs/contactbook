@@ -750,8 +750,9 @@ function Builder({
     startSaving(async () => {
       try {
         if (state.cardId === null) {
-          // Two calls, because `POST /cards` starts a card with no fields — there is no way to
-          // create a populated one in a single request.
+          /* One call, not two. `fieldIds` rides the multipart create, so the card and its fields
+             land in a single server transaction — the old create-then-`setFields` pair could
+             half-fail and leave an empty card behind. */
           const created = await cardsApi.create(
             {
               name: state.name.trim(),
@@ -765,6 +766,7 @@ function Builder({
                  the create takes no cover, and it is uploaded below once there is an id. */
               headline: state.headline.trim() === "" ? null : state.headline.trim(),
               bio: state.bio.trim() === "" ? null : state.bio.trim(),
+              ...(state.fieldIds.length === 0 ? {} : { fieldIds: [...state.fieldIds] }),
             },
             /**
              * ⚠ **The logo rides the create, and that is the only way it can.**
@@ -781,11 +783,6 @@ function Builder({
              */
             state.logoFile ?? undefined,
           );
-          if (state.fieldIds.length > 0) {
-            await cardsApi.setFields(created.id, {
-              fields: toCardFieldEntries(state.fieldIds),
-            });
-          }
           /* ⚠ **The cover is a second request, always** — unlike the logo, which rides the
              multipart create. `POST /cards` has no cover part and `PATCH` rejects a URL string,
              so `POST /cards/{id}/cover` is the only door and this is the first moment there is
