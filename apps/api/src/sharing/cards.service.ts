@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import {
   Card,
@@ -87,27 +88,75 @@ export class CardsService {
     dto: CreateCardDto,
     file?: { buffer: Buffer; mimetype: string; size: number },
   ): Promise<CardResponseDto> {
-    const row = await this.prisma.card.create({
-      data: {
-        userId,
-        name: dto.name,
-        kind: dto.kind,
-        // The card's own public URL, independent of any recipient — never
-        // client-suppliable (no field on CreateCardDto for it) and immutable
-        // for the card's life; update() below deliberately cannot touch it.
-        publicToken: generateShareToken(),
-        templateId: dto.templateId,
-        paletteId: dto.paletteId,
-        groundHex: dto.groundHex,
-        finish: dto.finish,
-        texture: dto.texture,
-        texturePresence: dto.texturePresence,
-        textureScale: dto.textureScale,
-        headline: dto.headline,
-        bio: dto.bio,
-      },
-      include: CARD_WITH_FIELDS_INCLUDE,
-    });
+    // Validate fieldIds up front, before opening any transaction, so we fail
+    // fast and cleanly without a half-created card to clean up.
+    if (dto.fieldIds && dto.fieldIds.length > 0) {
+      const owned = await this.prisma.profileField.findMany({
+        where: { id: { in: dto.fieldIds }, userId, archivedAt: null },
+        select: { id: true, type: true },
+      });
+      if (owned.length !== dto.fieldIds.length) {
+        throw ApiError.notFound(
+          'PROFILE_FIELD_NOT_FOUND',
+          'One or more field ids do not belong to you or do not exist.',
+        );
+      }
+      const photoField = owned.find((f) => f.type === FieldType.PHOTO);
+      if (photoField) {
+        throw ApiError.conflict(
+          'PHOTO_NOT_A_CARD_FIELD',
+          'A profile photo is shown on every card automatically — it cannot be added as a regular field.',
+        );
+      }
+    }
+
+    const cardId = randomUUID();
+    const cardData = {
+      id: cardId,
+      userId,
+      name: dto.name,
+      kind: dto.kind,
+      // The card's own public URL, independent of any recipient — never
+      // client-suppliable (no field on CreateCardDto for it) and immutable
+      // for the card's life; update() below deliberately cannot touch it.
+      publicToken: generateShareToken(),
+      templateId: dto.templateId,
+      paletteId: dto.paletteId,
+      groundHex: dto.groundHex,
+      finish: dto.finish,
+      texture: dto.texture,
+      texturePresence: dto.texturePresence,
+      textureScale: dto.textureScale,
+      headline: dto.headline,
+      bio: dto.bio,
+    };
+
+    let row: Card & { fields: (CardField & { field: ProfileField })[] };
+
+    if (dto.fieldIds && dto.fieldIds.length > 0) {
+      // Card creation + field attachment in a single transaction so a network
+      // failure between them can never leave an empty card in the database.
+      // cardId is generated before the transaction so CardField rows can
+      // reference it without waiting for the INSERT to return.
+      await this.prisma.$transaction([
+        this.prisma.card.create({ data: cardData }),
+        ...dto.fieldIds.map((fieldId, position) =>
+          this.prisma.cardField.create({
+            data: { cardId, fieldId, visible: true, position },
+          }),
+        ),
+      ]);
+      // Re-fetch with the full include so toResponseDto has all the joined data.
+      row = await this.prisma.card.findUniqueOrThrow({
+        where: { id: cardId },
+        include: CARD_WITH_FIELDS_INCLUDE,
+      });
+    } else {
+      row = await this.prisma.card.create({
+        data: cardData,
+        include: CARD_WITH_FIELDS_INCLUDE,
+      });
+    }
 
     if (!file) {
       return this.toResponseDto(userId, row);
