@@ -20,13 +20,19 @@ it to scroll away).
 · `useCardAudience` re-reads `GET /cards/:id/audience` whenever the profile is re-read (an edit
   landed) or the card's field selection finishes saving. The server decides who is behind; the
   client never keeps its own "dirty" flag.
-· ⚠ **What moves `currentVersion` (changed 2026-10-03).** It used to move only on
-  `PUT /cards/:id/fields`. It now also moves, in the same transaction, when
-  `PATCH /profile/fields/:id` changes a **non-financial value or any label**, and when
-  `DELETE /profile/fields/:id` archives a field — on every live card of that owner showing the
-  field visibly. A financial value edit does not move it (the public page masks it), and neither
-  does a resubmitted unchanged value or a position move. Without this a phone-number edit left
-  `versionsBehind` at 0 and `notify` (deduped on `(shareLink, currentVersion)`) a silent no-op.
+· ⚠ **What moves `currentVersion` today: only `PUT /cards/:id/fields`** (the field *selection*,
+  visibility, order or label-override changing). Editing a profile field's **value** or label
+  (`PATCH /profile/fields/:id`), or archiving one, does **not** move it. So the Send update
+  button lights up when the owner turns fields on/off a card, but **not yet for a changed
+  phone number** — and `notify` is deduped on `(shareLink, currentVersion)`, so sending without a
+  bump would be a silent no-op anyway.
+· **Backend ask (not done — the web PR is frontend-only):** in `ProfileService.update/archive`,
+  bump `Card.currentVersion` (`card.updateMany({ where: { userId, archivedAt: null, fields: { some:
+  { fieldId, visible: true } } }, data: { currentVersion: { increment: 1 } } })`) in the same
+  transaction as the field write, for a non-financial value change, any label change, and an
+  archive. Skip financial value edits (masked publicly), unchanged resubmits and position moves.
+  `CardVersion` rows are not needed — nothing reads them. A reverted, tested implementation is in
+  git history: `git show 8324011`.
 · Not yet counted: an owner's name or photo change, a company-logo change, appearance edits.
 
 ## The mental model, in one paragraph

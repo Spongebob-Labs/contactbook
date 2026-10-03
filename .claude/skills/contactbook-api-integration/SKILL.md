@@ -113,7 +113,7 @@ there is no "fetch user X's cards" surface anywhere in this API.
 - `GET /cards/:id/audience`, `POST /cards/:id/notify` — the "tell recipients this card changed"
   flow. Built into the Profile & Cards workspace as the **Send update** button (2026-10-03) —
   request/response shapes, the gotcha about what the `notify` response does and doesn't confirm,
-  and which profile edits now move `currentVersion`: **`contactbook-card-notifications`**.
+  and what moves `currentVersion` (only the field selection today): **`contactbook-card-notifications`**.
 - Card appearance now persists (`templateId`/`paletteId`/`groundHex`/`finish`/`texture`/etc,
   `coverUrl`, `headline`, `bio`), `PATCH /cards/:id` has real omitted-vs-`null` semantics, and
   `POST/DELETE /cards/:id/cover` exists — plus a new single-call `GET /dashboard`. Not built into
