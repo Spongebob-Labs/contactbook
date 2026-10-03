@@ -99,6 +99,13 @@ function renderSend(
 }
 
 const numberField = () => screen.getByRole("textbox", { name: /^number$/i });
+const nameField = () => screen.getByRole("textbox", { name: /^name/i });
+
+/** Both are required, so almost every send types a name as well as the number. */
+async function fill(number: string, name = "Priya"): Promise<void> {
+  await userEvent.type(numberField(), number);
+  await userEvent.type(nameField(), name);
+}
 const sendButton = () => screen.getByRole("button", { name: /send on whatsapp/i });
 
 beforeAll(() => {
@@ -146,8 +153,7 @@ describe("sending to a typed number", () => {
   it("upserts the contact, then shares the card to the id that came back", async () => {
     const { onSent } = renderSend();
 
-    await userEvent.type(numberField(), "98200 00000");
-    await userEvent.type(screen.getByRole("textbox", { name: /^name$/i }), "Priya");
+    await fill("98200 00000");
     await userEvent.click(sendButton());
 
     await waitFor(() => expect(share).toHaveBeenCalled());
@@ -167,7 +173,7 @@ describe("sending to a typed number", () => {
   it("replaces the form with 'Sent to …' and the recipient's own link", async () => {
     renderSend();
 
-    await userEvent.type(numberField(), "9820000000");
+    await fill("9820000000");
     await userEvent.click(sendButton());
 
     expect(await screen.findByRole("heading", { name: "Sent to Priya" })).toBeInTheDocument();
@@ -180,7 +186,7 @@ describe("sending to a typed number", () => {
     share.mockResolvedValue({ ...LINK, contactDisplayName: null });
     renderSend();
 
-    await userEvent.type(numberField(), "9820000000");
+    await fill("9820000000");
     await userEvent.click(sendButton());
 
     expect(
@@ -191,7 +197,7 @@ describe("sending to a typed number", () => {
   it("goes back to an empty form for the next person", async () => {
     renderSend();
 
-    await userEvent.type(numberField(), "9820000000");
+    await fill("9820000000");
     await userEvent.click(sendButton());
     await userEvent.click(await screen.findByRole("button", { name: /send to someone else/i }));
 
@@ -199,20 +205,72 @@ describe("sending to a typed number", () => {
     expect(sendButton()).toBeInTheDocument();
   });
 
-  it("omits an empty name rather than sending a blank one", async () => {
+  it("requires a name: a valid number alone is refused, with no round trip", async () => {
     renderSend();
 
     await userEvent.type(numberField(), "9820000000");
     await userEvent.click(sendButton());
 
+    expect(await screen.findByText("Enter their name.")).toBeInTheDocument();
+    expect(nameField()).toHaveAttribute("aria-invalid", "true");
+    expect(nameField()).toHaveFocus();
+    expect(upsert).not.toHaveBeenCalled();
+    expect(share).not.toHaveBeenCalled();
+  });
+
+  it("treats a name of only spaces as missing", async () => {
+    renderSend();
+
+    await userEvent.type(numberField(), "9820000000");
+    await userEvent.type(nameField(), "   ");
+    await userEvent.click(sendButton());
+
+    expect(await screen.findByText("Enter their name.")).toBeInTheDocument();
+    expect(upsert).not.toHaveBeenCalled();
+  });
+
+  it("shows the number and the name problems together, and focuses the number first", async () => {
+    renderSend();
+
+    await userEvent.click(sendButton());
+
+    expect(await screen.findByText("Enter a phone number.")).toBeInTheDocument();
+    expect(screen.getByText("Enter their name.")).toBeInTheDocument();
+    expect(numberField()).toHaveFocus();
+    expect(upsert).not.toHaveBeenCalled();
+  });
+
+  it("clears the name error as soon as they start typing", async () => {
+    renderSend();
+
+    await userEvent.type(numberField(), "9820000000");
+    await userEvent.click(sendButton());
+    expect(await screen.findByText("Enter their name.")).toBeInTheDocument();
+
+    await userEvent.type(nameField(), "P");
+    expect(screen.queryByText("Enter their name.")).not.toBeInTheDocument();
+  });
+
+  it("marks both fields required", () => {
+    renderSend();
+    expect(numberField()).toBeRequired();
+    expect(nameField()).toBeRequired();
+  });
+
+  it("sends the name trimmed", async () => {
+    renderSend();
+
+    await fill("9820000000", "  Priya  ");
+    await userEvent.click(sendButton());
+
     await waitFor(() => expect(upsert).toHaveBeenCalled());
-    expect(upsert).toHaveBeenCalledWith({ phoneE164: "+919820000000", displayName: undefined });
+    expect(upsert).toHaveBeenCalledWith({ phoneE164: "+919820000000", displayName: "Priya" });
   });
 
   it("drops a trunk zero, the way the number is dialled at home", async () => {
     renderSend();
 
-    await userEvent.type(numberField(), "09820000000");
+    await fill("09820000000");
     await userEvent.click(sendButton());
 
     await waitFor(() => expect(upsert).toHaveBeenCalled());
@@ -228,6 +286,7 @@ describe("sending to a typed number", () => {
     expect(screen.getByRole("combobox", { name: /country code/i })).toHaveTextContent("+44");
     expect(numberField()).toHaveValue("7979080009");
 
+    await userEvent.type(nameField(), "Priya");
     await userEvent.click(sendButton());
     await waitFor(() => expect(upsert).toHaveBeenCalled());
     expect(upsert).toHaveBeenCalledWith(expect.objectContaining({ phoneE164: "+447979080009" }));
@@ -240,6 +299,7 @@ describe("sending to a typed number", () => {
     expect(await screen.findByText("Enter a phone number.")).toBeInTheDocument();
 
     await userEvent.type(numberField(), "123");
+    await userEvent.type(nameField(), "Priya");
     await userEvent.click(sendButton());
     expect(await screen.findByText(/too short/i)).toBeInTheDocument();
 
@@ -253,7 +313,7 @@ describe("sending to a typed number", () => {
     );
     const { onSent } = renderSend();
 
-    await userEvent.type(numberField(), "9820000000");
+    await fill("9820000000");
     await userEvent.click(sendButton());
 
     expect(await screen.findByRole("alert")).toBeInTheDocument();
@@ -267,7 +327,7 @@ describe("when WhatsApp sending is not switched on", () => {
     share.mockRejectedValue(TEMPLATE_MISSING());
     const { onSent } = renderSend();
 
-    await userEvent.type(numberField(), "9820000000");
+    await fill("9820000000");
     await userEvent.click(sendButton());
 
     expect(await screen.findByRole("heading", { name: "Not sent to Priya" })).toBeInTheDocument();
@@ -302,7 +362,7 @@ describe("when WhatsApp sending is not switched on", () => {
     ]);
     const { onSent } = renderSend();
 
-    await userEvent.type(numberField(), "9820000000");
+    await fill("9820000000");
     await userEvent.click(sendButton());
 
     await waitFor(() => expect(onSent).toHaveBeenCalled());
@@ -314,7 +374,7 @@ describe("when WhatsApp sending is not switched on", () => {
     listLinks.mockRejectedValue(new Error("network"));
     const { onSent } = renderSend();
 
-    await userEvent.type(numberField(), "9820000000");
+    await fill("9820000000");
     await userEvent.click(sendButton());
 
     expect(await screen.findByRole("alert")).toBeInTheDocument();
@@ -391,7 +451,7 @@ describe("which card", () => {
     await userEvent.click(picker);
     await userEvent.click(await screen.findByRole("option", { name: "Work" }));
 
-    await userEvent.type(numberField(), "9820000000");
+    await fill("9820000000");
     await userEvent.click(sendButton());
 
     await waitFor(() => expect(share).toHaveBeenCalledWith("card-1", { contactId: CONTACT.id }));
