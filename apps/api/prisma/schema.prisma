@@ -316,13 +316,31 @@ model Card {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  fields     CardField[]
-  shareLinks ShareLink[]
-  scans      CardScan[]
-  versions   CardVersion[]
+  fields              CardField[]
+  shareLinks          ShareLink[]
+  scans               CardScan[]
+  versions            CardVersion[]
+  walletRegistrations WalletRegistration[]
 
   @@index([userId, archivedAt])
   @@map("cards")
+}
+
+/// One Apple device that has added one card's pass. Created by Apple's
+/// registration call, deleted by its unregister call or when APNs returns 410
+/// (token expired). pushToken is a device credential — never logged.
+model WalletRegistration {
+  id              String   @id @default(uuid())
+  cardId          String
+  card            Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  deviceLibraryId String
+  pushToken       String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([deviceLibraryId, cardId])
+  @@index([cardId])
+  @@map("wallet_registrations")
 }
 
 /// Membership of one ProfileField on one Card, plus card-scoped presentation.

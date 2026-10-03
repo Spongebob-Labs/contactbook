@@ -195,29 +195,42 @@ export class CardsService {
     dto: UpdateCardDto,
   ): Promise<CardResponseDto> {
     const existing = await this.findOwned(userId, id);
-    const row = await this.prisma.card.update({
-      where: { id },
-      data: {
-        ...(dto.name !== undefined && { name: dto.name }),
-        ...(dto.kind !== undefined && { kind: dto.kind }),
-        ...(dto.templateId !== undefined && { templateId: dto.templateId }),
-        ...(dto.paletteId !== undefined && { paletteId: dto.paletteId }),
-        ...(dto.groundHex !== undefined && { groundHex: dto.groundHex }),
-        ...(dto.finish !== undefined && { finish: dto.finish }),
-        ...(dto.texture !== undefined && { texture: dto.texture }),
-        ...(dto.texturePresence !== undefined && {
-          texturePresence: dto.texturePresence,
-        }),
-        ...(dto.textureScale !== undefined && {
-          textureScale: dto.textureScale,
-        }),
-        ...(dto.headline !== undefined && { headline: dto.headline }),
-        ...(dto.bio !== undefined && { bio: dto.bio }),
-        // dto.coverUrl, when present at all, is always exactly null (the
-        // DTO rejects anything else) — this is a clear, never a set.
-        ...(dto.coverUrl !== undefined && { coverUrl: null }),
-      },
-      include: CARD_WITH_FIELDS_INCLUDE,
+
+    const row = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.card.update({
+        where: { id },
+        data: {
+          ...(dto.name !== undefined && { name: dto.name }),
+          ...(dto.kind !== undefined && { kind: dto.kind }),
+          ...(dto.templateId !== undefined && { templateId: dto.templateId }),
+          ...(dto.paletteId !== undefined && { paletteId: dto.paletteId }),
+          ...(dto.groundHex !== undefined && { groundHex: dto.groundHex }),
+          ...(dto.finish !== undefined && { finish: dto.finish }),
+          ...(dto.texture !== undefined && { texture: dto.texture }),
+          ...(dto.texturePresence !== undefined && {
+            texturePresence: dto.texturePresence,
+          }),
+          ...(dto.textureScale !== undefined && {
+            textureScale: dto.textureScale,
+          }),
+          ...(dto.headline !== undefined && { headline: dto.headline }),
+          ...(dto.bio !== undefined && { bio: dto.bio }),
+          // dto.coverUrl, when present at all, is always exactly null (the
+          // DTO rejects anything else) — this is a clear, never a set.
+          ...(dto.coverUrl !== undefined && { coverUrl: null }),
+        },
+        include: CARD_WITH_FIELDS_INCLUDE,
+      });
+
+      // Enqueue wallet push in the same transaction so it cannot be lost if
+      // the card update commits but the push never fires.
+      await this.outbox.enqueue(tx, {
+        dedupeKey: `wallet-push:${id}:${updated.updatedAt.getTime()}`,
+        kind: 'wallet_push',
+        payload: { cardId: id },
+      });
+
+      return updated;
     });
 
     if (dto.coverUrl === null && existing.coverUrl) {
@@ -237,16 +250,23 @@ export class CardsService {
    */
   async archive(userId: string, id: string): Promise<void> {
     await this.findOwned(userId, id);
-    await this.prisma.$transaction([
-      this.prisma.card.update({
+    const archivedAt = new Date();
+    await this.prisma.$transaction(async (tx) => {
+      await tx.card.update({
         where: { id },
-        data: { archivedAt: new Date() },
-      }),
-      this.prisma.shareLink.updateMany({
+        data: { archivedAt },
+      });
+      await tx.shareLink.updateMany({
         where: { cardId: id, status: 'ACTIVE' },
-        data: { status: 'REVOKED', revokedAt: new Date() },
-      }),
-    ]);
+        data: { status: 'REVOKED', revokedAt: archivedAt },
+      });
+      // Wallet push so installed passes display as voided (greyed-out) in Wallet.
+      await this.outbox.enqueue(tx, {
+        dedupeKey: `wallet-push:${id}:${archivedAt.getTime()}`,
+        kind: 'wallet_push',
+        payload: { cardId: id },
+      });
+    });
   }
 
   /**
