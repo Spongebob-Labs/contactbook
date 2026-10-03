@@ -482,3 +482,65 @@
 [data-reach-dial-arc] {
   animation: cb-dial-draw var(--dur-slow) var(--ease-out) both;
 }
+
+/* ── 7. The Send update nudge ────────────────────────────────────────────────
+   A short side-to-side jitter on the workspace's Send update button each time a
+   field edit lands and leaves more recipients unannounced. It is a *nudge*, not an
+   alert: it asks to be noticed and never moves layout (transform only) or opens
+   anything.
+
+   ⚠ **Two identical keyframes, on purpose.** A CSS animation only restarts when
+   its `animation-name` changes, and the alternative — remounting the button with a
+   new `key` — would drop keyboard focus in the middle of an edit. The component
+   alternates `data-nudge="a"` / `"b"` by counter parity; the two blocks below are
+   the same motion under two names.
+
+   ⚠ **No `prefers-reduced-motion` block, deliberately** — same reasoning as §6. The
+   duration is `var(--dur-slow)` × 2, and §3b zeroes that token centrally (`calc()` of
+   0ms is 0ms), so a reduced-motion user gets the count change and no movement. */
+
+@keyframes cb-nudge-a {
+  0%,
+  100% {
+    transform: translateX(0) rotate(0deg);
+  }
+  15% {
+    transform: translateX(-4px) rotate(-1.5deg);
+  }
+  35% {
+    transform: translateX(4px) rotate(1.5deg);
+  }
+  55% {
+    transform: translateX(-3px) rotate(-1deg);
+  }
+  75% {
+    transform: translateX(2px) rotate(0.5deg);
+  }
+}
+
+@keyframes cb-nudge-b {
+  0%,
+  100% {
+    transform: translateX(0) rotate(0deg);
+  }
+  15% {
+    transform: translateX(-4px) rotate(-1.5deg);
+  }
+  35% {
+    transform: translateX(4px) rotate(1.5deg);
+  }
+  55% {
+    transform: translateX(-3px) rotate(-1deg);
+  }
+  75% {
+    transform: translateX(2px) rotate(0.5deg);
+  }
+}
+
+[data-send-update][data-nudge="a"] {
+  animation: cb-nudge-a calc(var(--dur-slow) * 2) var(--ease-out);
+}
+
+[data-send-update][data-nudge="b"] {
+  animation: cb-nudge-b calc(var(--dur-slow) * 2) var(--ease-out);
+}

@@ -1,9 +1,39 @@
 ---
 name: contactbook-card-notifications
-description: How to build the "this card was updated — notify recipients" flow in apps/web's authenticated dashboard — the audience picker/banner on a card's detail screen and the send action behind it. Load this before wiring GET /cards/:id/audience or POST /cards/:id/notify, or before building any "N recipients are behind" UI. Backend shipped and verified live (including a real WhatsApp send) as of 2026-09-02; nothing on the frontend consumes these two endpoints yet — this is the build guide, not a description of shipped FE code.
+description: How to build the "this card was updated — notify recipients" flow in apps/web's authenticated dashboard — the audience picker/banner on a card's detail screen and the send action behind it. Load this before wiring GET /cards/:id/audience or POST /cards/:id/notify, or before building any "N recipients are behind" UI. Backend shipped and verified live (including a real WhatsApp send) as of 2026-09-02. As of 2026-10-03 the Profile & Cards workspace consumes both endpoints through its Send update button (see "As built" below); the card-detail banner and the builder's post-save prompt use them too.
 ---
 
 # Card-update notifications — FE integration guide
+
+## As built (2026-10-03) — the workspace's Send update button
+
+`/profile` carries a **Send update** button at the right end of the Fields / Design / Share row
+(`components/profile/send-update-button.tsx`, wired in `profile-client.tsx`). It is **one button
+that is always there** — never added or removed as the owner edits, on a new card too. Quiet
+states are a disabled "✓ All up to date" (everyone told, or nobody holds the card yet, with the
+reason announced). When somebody is behind it becomes the primary button with a badge counting
+**unshared changes** (the largest `versionsBehind`, not the number of people) and jitters each time
+an edit lands. Pressing it opens `NotifyRecipients` with **only the people who are behind ticked**
+(`preselect="behind"`); nothing opens or sends by itself. The row is not sticky (client asked for
+it to scroll away).
+
+· `useCardAudience` re-reads `GET /cards/:id/audience` whenever the profile is re-read (an edit
+  landed) or the card's field selection finishes saving. The server decides who is behind; the
+  client never keeps its own "dirty" flag.
+· ⚠ **What moves `currentVersion` today: only `PUT /cards/:id/fields`** (the field *selection*,
+  visibility, order or label-override changing). Editing a profile field's **value** or label
+  (`PATCH /profile/fields/:id`), or archiving one, does **not** move it. So the Send update
+  button lights up when the owner turns fields on/off a card, but **not yet for a changed
+  phone number** — and `notify` is deduped on `(shareLink, currentVersion)`, so sending without a
+  bump would be a silent no-op anyway.
+· **Backend ask (not done — the web PR is frontend-only):** in `ProfileService.update/archive`,
+  bump `Card.currentVersion` (`card.updateMany({ where: { userId, archivedAt: null, fields: { some:
+  { fieldId, visible: true } } }, data: { currentVersion: { increment: 1 } } })`) in the same
+  transaction as the field write, for a non-financial value change, any label change, and an
+  archive. Skip financial value edits (masked publicly), unchanged resubmits and position moves.
+  `CardVersion` rows are not needed — nothing reads them. A reverted, tested implementation is in
+  git history: `git show 8324011`.
+· Not yet counted: an owner's name or photo change, a company-logo change, appearance edits.
 
 ## The mental model, in one paragraph
 
@@ -74,9 +104,12 @@ the *whole call* with `404 SHARE_LINK_NOT_FOUND` — not a partial success. Vali
 against the `audience` response you already have before sending, so this is unreachable in
 normal use.
 
-**Default selection**: every active recipient, not just the ones behind — mirrors how the
-original share flow works (an owner can always deliberately re-notify someone already caught
-up). Let the owner deselect, don't pre-filter to only `versionsBehind > 0`.
+**Default selection**: `NotifyRecipients` defaults to every active recipient (`preselect="all"`) —
+mirrors how the original share flow works (an owner can always deliberately re-notify someone
+already caught up). List everyone either way and let the owner untick. The workspace's Send
+update button passes `preselect="behind"` instead, because re-notifying someone already told
+about this version is a server-side no-op and ticking them would print "Send 3 updates" and
+deliver one; it falls back to everyone when nobody is behind.
 
 ## ⚠ The response does not mean delivered — read this before wiring a success toast
 

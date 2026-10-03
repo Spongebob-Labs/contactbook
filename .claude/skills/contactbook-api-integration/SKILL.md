@@ -111,9 +111,9 @@ there is no "fetch user X's cards" surface anywhere in this API.
   inline phone number. Enqueues the actual WhatsApp send; the returned `url` is real and live
   either way, independent of whether the send itself succeeds.
 - `GET /cards/:id/audience`, `POST /cards/:id/notify` — the "tell recipients this card changed"
-  flow. Not built into any FE screen yet — full integration guide, request/response shapes, and
-  the important gotcha about what the `notify` response does and doesn't confirm:
-  **`contactbook-card-notifications`**.
+  flow. Built into the Profile & Cards workspace as the **Send update** button (2026-10-03) —
+  request/response shapes, the gotcha about what the `notify` response does and doesn't confirm,
+  and what moves `currentVersion` (only the field selection today): **`contactbook-card-notifications`**.
 - Card appearance now persists (`templateId`/`paletteId`/`groundHex`/`finish`/`texture`/etc,
   `coverUrl`, `headline`, `bio`), `PATCH /cards/:id` has real omitted-vs-`null` semantics, and
   `POST/DELETE /cards/:id/cover` exists — plus a new single-call `GET /dashboard`. Not built into

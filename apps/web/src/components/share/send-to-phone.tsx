@@ -112,6 +112,14 @@ function countryForDial(dial: string, current?: string): string | null {
 
 const FALLBACK_COUNTRY = "IN";
 
+/** The API's cap on `displayName` (`UpsertContactDto`). Checked here so a long paste is a message, not a 400. */
+const NAME_MAX = 120;
+
+/** A local fact, like {@link numberProblem}. `null` means the name is usable. */
+function nameProblem(name: string): string | null {
+  return name.trim().length === 0 ? "Enter their name." : null;
+}
+
 /** A local fact, so it is decided before any round trip. `null` means the number is usable. */
 function numberProblem(country: string, digits: string): string | null {
   if (digits.length === 0) return "Enter a phone number.";
@@ -157,12 +165,14 @@ export function SendToPhone({
       : (cards[0]?.id ?? ""),
   );
   const [numberError, setNumberError] = useState<string | null>(null);
+  const [nameError, setNameError] = useState<string | null>(null);
   const [failure, setFailure] = useState<{ title: string; detail?: string } | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [pending, startTransition] = useTransition();
 
   const root = useRef<HTMLElement>(null);
   const numberInput = useRef<HTMLInputElement>(null);
+  const nameInput = useRef<HTMLInputElement>(null);
   const resultHeading = useRef<HTMLHeadingElement>(null);
 
   const headingId = useId();
@@ -218,13 +228,18 @@ export function SendToPhone({
 
     let target: Parameters<typeof shareCardWith>[1];
     if (mode === "number") {
+      /* Both fields are required, and both are checked before either error is shown, so an
+         owner who left the form empty sees everything wrong with it at once rather than
+         fixing the number only to be told about the name. Focus goes to the first problem. */
       const problem = numberProblem(country, digits);
-      if (problem !== null) {
-        setNumberError(problem);
-        numberInput.current?.focus();
+      const missingName = nameProblem(name);
+      setNumberError(problem);
+      setNameError(missingName);
+      if (problem !== null || missingName !== null) {
+        (problem !== null ? numberInput : nameInput).current?.focus();
         return;
       }
-      target = { phoneE164: toE164(country, digits), displayName: name };
+      target = { phoneE164: toE164(country, digits), displayName: name.trim() };
     } else {
       if (contactId.length === 0) {
         setFailure({ title: "Choose who to send it to." });
@@ -259,6 +274,7 @@ export function SendToPhone({
     setName("");
     setContactId("");
     setNumberError(null);
+    setNameError(null);
     setFailure(null);
     window.requestAnimationFrame(() => numberInput.current?.focus());
     setMode("number");
@@ -291,6 +307,10 @@ export function SendToPhone({
               <fieldset className="flex min-w-0 flex-col gap-2">
                 <legend className="mb-2 text-sm font-medium text-ink">
                   Phone number
+                  <span aria-hidden="true" className="text-danger">
+                    {" "}
+                    *
+                  </span>
                 </legend>
                 <div className="flex min-w-0 items-start gap-2">
                   <CountrySelect
@@ -305,6 +325,7 @@ export function SendToPhone({
                     ref={numberInput}
                     label="Number"
                     hideLabel
+                    required
                     data-send-phone=""
                     type="tel"
                     inputMode="tel"
@@ -323,12 +344,20 @@ export function SendToPhone({
               </fieldset>
 
               <Input
+                ref={nameInput}
                 label="Name"
+                required
                 data-send-name=""
                 autoComplete="off"
-                placeholder="Optional"
+                maxLength={NAME_MAX}
+                placeholder="Who is this for?"
                 value={name}
-                onChange={(event) => setName(event.target.value)}
+                error={nameError}
+                onChange={(event) => {
+                  setName(event.target.value);
+                  setNameError(null);
+                  setFailure(null);
+                }}
               />
             </>
           ) : (
