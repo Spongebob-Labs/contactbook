@@ -31,7 +31,7 @@ export async function sendApnsPush(
       passphrase: signerKeyPassphrase,
     });
 
-    client.on('error', (err) => {
+    client.on('error', (err: Error) => {
       client.destroy();
       resolve({ ok: false, tokenExpired: false, body: err.message });
     });
@@ -73,7 +73,7 @@ export async function sendApnsPush(
       });
     });
 
-    req.on('error', (err) => {
+    req.on('error', (err: Error) => {
       client.destroy();
       resolve({ ok: false, tokenExpired: false, body: err.message });
     });
