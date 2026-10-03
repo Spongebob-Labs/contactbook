@@ -10,7 +10,6 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AppConfigService } from '../config/app-config.service';
 import { AppLogger } from '../common/logging/app-logger.service';
 import { ApiError } from '../common/errors/api-error';
-import { isFinancialFieldType } from '../crypto/field-encryption.util';
 import {
   decryptFieldValueForRead,
   prepareFieldValueForWrite,
@@ -151,11 +150,6 @@ export class ProfileService {
       position: dto.position,
     };
 
-    // What a recipient can actually perceive changing. Financial values are
-    // masked on the public page, so editing one is invisible to them and must
-    // not make anyone "behind"; a label edit is visible for every type.
-    let perceivable = dto.label !== undefined && dto.label !== existing.label;
-
     if (dto.value !== undefined) {
       const prepared = prepareFieldValueForWrite(
         this.config.fieldEncryptionKey,
@@ -164,51 +158,14 @@ export class ProfileService {
       );
       data.value = prepared.value;
       data.isEncrypted = prepared.isEncrypted;
-      if (
-        !isFinancialFieldType(existing.type) &&
-        prepared.value !== existing.value
-      ) {
-        perceivable = true;
-      }
     }
 
-    // One transaction: the edit and the version bump land together or not at
-    // all, so a recipient can never be "behind" on a change that didn't save.
-    const [row] = await this.prisma.$transaction([
-      this.prisma.profileField.update({ where: { id: existing.id }, data }),
-      ...(perceivable ? [this.bumpCardsShowing(userId, existing.id)] : []),
-    ]);
-    this.logger.info('profile.field_updated', {
-      userId,
-      fieldId: id,
-      cardsVersionBumped: perceivable,
+    const row = await this.prisma.profileField.update({
+      where: { id: existing.id },
+      data,
     });
+    this.logger.info('profile.field_updated', { userId, fieldId: id });
     return this.toResponseDto(userId, row);
-  }
-
-  /**
-   * Bumps `Card.currentVersion` on every live card of this owner that shows
-   * the field, which is what makes "N recipients are behind" true after a
-   * profile edit.
-   *
-   * Before this, only `PUT /cards/:id/fields` (the selection changing) moved
-   * the version. Editing a phone number's *value* changed what every
-   * recipient sees through their link while `versionsBehind` stayed 0, and
-   * `notify` dedupes on `(shareLink, currentVersion)`: the owner pressing
-   * Send would have been a silent no-op.
-   *
-   * Counter only, no `CardVersion` row: that table is a selection-change
-   * audit (field ids, labels, never values) and nothing reads it.
-   */
-  private bumpCardsShowing(userId: string, fieldId: string) {
-    return this.prisma.card.updateMany({
-      where: {
-        userId,
-        archivedAt: null,
-        fields: { some: { fieldId, visible: true } },
-      },
-      data: { currentVersion: { increment: 1 } },
-    });
   }
 
   /** Soft delete. A PHOTO field's GCS object is also removed (best-effort) —
@@ -225,15 +182,10 @@ export class ProfileService {
         'No such profile field.',
       );
 
-    // Archiving removes the field from every card that showed it, which is a
-    // change recipients can see. Bump before it leaves, in the same transaction.
-    await this.prisma.$transaction([
-      this.bumpCardsShowing(userId, existing.id),
-      this.prisma.profileField.update({
-        where: { id: existing.id },
-        data: { archivedAt: new Date() },
-      }),
-    ]);
+    await this.prisma.profileField.update({
+      where: { id: existing.id },
+      data: { archivedAt: new Date() },
+    });
 
     if (
       existing.type === FieldType.PHOTO ||
