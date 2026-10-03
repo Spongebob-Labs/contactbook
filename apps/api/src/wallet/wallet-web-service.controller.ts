@@ -56,7 +56,7 @@ export class WalletWebServiceController {
       return;
     }
 
-    const created = await this.walletPass.registerDevice(
+    const result = await this.walletPass.registerDevice(
       passTypeId,
       serial,
       deviceId,
@@ -64,12 +64,12 @@ export class WalletWebServiceController {
       body.pushToken,
     );
 
-    if (created === false) {
+    if (result === 'unauthorized') {
       res.status(401).end();
       return;
     }
 
-    res.status(created ? 201 : 200).end();
+    res.status(result === 'created' ? 201 : 200).end();
   }
 
   /** Apple calls this when the user removes the pass from Wallet. */
@@ -161,8 +161,10 @@ export class WalletWebServiceController {
 
     const ifModifiedSince = req.headers['if-modified-since'];
     if (ifModifiedSince) {
-      const sinceMs = new Date(ifModifiedSince).getTime();
-      const lastModifiedMs = parseInt(result.lastModifiedTag, 10);
+      // Normalize to whole seconds: Last-Modified is second-precision, so
+      // comparing raw ms would give false negatives when stored tag has sub-ms.
+      const sinceMs = Math.floor(new Date(ifModifiedSince).getTime() / 1000) * 1000;
+      const lastModifiedMs = Math.floor(parseInt(result.lastModifiedTag, 10) / 1000) * 1000;
       if (
         !isNaN(sinceMs) &&
         !isNaN(lastModifiedMs) &&

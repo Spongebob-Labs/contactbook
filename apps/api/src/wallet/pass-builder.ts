@@ -8,7 +8,6 @@ import {
 } from './pass-colors.util';
 import { deriveAuthToken } from './pass-auth.util';
 
-// Loaded once at module init — a missing icon is a 500, not a 404.
 const ASSETS_DIR = join(__dirname, 'assets');
 
 function loadAsset(name: string): Buffer {
@@ -21,11 +20,22 @@ function loadAsset(name: string): Buffer {
   }
 }
 
-const ICON = loadAsset('icon.png');
-const ICON_2X = loadAsset('icon@2x.png');
-const ICON_3X = loadAsset('icon@3x.png');
-const LOGO = loadAsset('logo.png');
-const LOGO_2X = loadAsset('logo@2x.png');
+// Loaded lazily on first pass generation so a missing PNG does not crash
+// startup when WALLET_* vars are absent and the feature is off.
+let ICON: Buffer | undefined;
+let ICON_2X: Buffer | undefined;
+let ICON_3X: Buffer | undefined;
+let LOGO: Buffer | undefined;
+let LOGO_2X: Buffer | undefined;
+
+function getAssets() {
+  ICON ??= loadAsset('icon.png');
+  ICON_2X ??= loadAsset('icon@2x.png');
+  ICON_3X ??= loadAsset('icon@3x.png');
+  LOGO ??= loadAsset('logo.png');
+  LOGO_2X ??= loadAsset('logo@2x.png');
+  return { ICON, ICON_2X, ICON_3X, LOGO, LOGO_2X };
+}
 
 export interface PassCard {
   id: string;
@@ -111,6 +121,8 @@ export function buildPass(
     },
     ...(card.archivedAt ? { voided: true } : {}),
   };
+
+  const { ICON, ICON_2X, ICON_3X, LOGO, LOGO_2X } = getAssets();
 
   // PKPass constructor: (fileBuffers, certificates, overrideProps)
   const pass = new PKPass(

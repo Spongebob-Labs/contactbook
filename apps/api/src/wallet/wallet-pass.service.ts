@@ -158,25 +158,28 @@ export class WalletPassService {
     return { buffer, lastModifiedTag };
   }
 
-  /** Registers or updates a device's push token for a card. Returns true if newly created. */
+  /**
+   * Registers or updates a device's push token for a card.
+   * Returns 'created' (new registration), 'updated' (already existed), or 'unauthorized'.
+   */
   async registerDevice(
     passTypeId: string,
     serialNumber: string,
     deviceLibraryId: string,
     authToken: string,
     pushToken: string,
-  ): Promise<boolean> {
-    if (!this.walletConfig) return false;
-    if (passTypeId !== this.walletConfig.passTypeId) return false;
+  ): Promise<'created' | 'updated' | 'unauthorized'> {
+    if (!this.walletConfig) return 'unauthorized';
+    if (passTypeId !== this.walletConfig.passTypeId) return 'unauthorized';
     if (!verifyAuthToken(this.walletConfig.authSecret, serialNumber, authToken)) {
-      return false;
+      return 'unauthorized';
     }
 
     const card = await this.prisma.card.findUnique({
       where: { id: serialNumber },
       select: { id: true },
     });
-    if (!card) return false;
+    if (!card) return 'unauthorized';
 
     const existing = await this.prisma.walletRegistration.findUnique({
       where: {
@@ -197,7 +200,7 @@ export class WalletPassService {
       deviceLibraryId,
     });
 
-    return !existing;
+    return existing ? 'updated' : 'created';
   }
 
   /** Removes a device registration. Idempotent. */
@@ -296,7 +299,11 @@ export class WalletPassService {
       );
 
       if (result.tokenExpired) {
-        await this.prisma.walletRegistration.delete({ where: { id: reg.id } });
+        // Conditional on pushToken so a concurrent re-registration (new token
+        // on same row) is not deleted by a stale 410 for the old token.
+        await this.prisma.walletRegistration.deleteMany({
+          where: { id: reg.id, pushToken: reg.pushToken },
+        });
         this.logger.info('wallet.token_expired_removed', { cardId });
       } else if (!result.ok) {
         this.logger.warn('wallet.push_failed', {
