@@ -152,6 +152,32 @@ export interface NotifyRecipientsProps {
    * production default keeps the timing real where it matters and deterministic where it does not.
    */
   reconcileDelayMs?: number;
+  /**
+   * Who starts ticked each time the dialog opens.
+   *
+   * `"all"` (the default) is the original share-flow behaviour and what the builder and the
+   * Share banner rely on. **`"behind"`** ticks only the people who have not been told about the
+   * current version, and falls back to everyone when nobody is behind. The workspace's Send
+   * update button uses it: re-notifying someone already told about this version is a server-side
+   * no-op, so ticking them by default would print "Send 3 updates" and deliver one.
+   */
+  preselect?: "all" | "behind";
+  /**
+   * Called as soon as the queue accepts the send, with the ids it accepted — before the
+   * {@link RECONCILE_DELAY_MS} wait. For a caller that wants to say "sending" immediately; it
+   * must not treat this as delivery (see the note at the top of this file).
+   */
+  onSent?: (shareLinkIds: readonly string[]) => void;
+}
+
+/** The ids ticked when the dialog opens. See {@link NotifyRecipientsProps.preselect}. */
+export function initialSelection(
+  rows: readonly NotifyTarget[],
+  preselect: "all" | "behind",
+): ReadonlySet<string> {
+  const behind = rows.filter((row) => (row.versionsBehind ?? 0) > 0);
+  const chosen = preselect === "behind" && behind.length > 0 ? behind : rows;
+  return new Set(chosen.map((row) => row.shareLinkId));
 }
 
 /**
@@ -172,6 +198,8 @@ export function NotifyRecipients({
   reconcileDelayMs = RECONCILE_DELAY_MS,
   open: openProp,
   onOpenChange,
+  preselect = "all",
+  onSent,
 }: NotifyRecipientsProps) {
   const { toast } = useToast();
   const notifiable = notifiableRows(shares);
@@ -185,8 +213,8 @@ export function NotifyRecipients({
     if (!controlled) setOpenSelf(next);
     onOpenChange?.(next);
   };
-  const [selected, setSelected] = useState<ReadonlySet<string>>(
-    () => new Set(notifiable.map((s) => s.shareLinkId)),
+  const [selected, setSelected] = useState<ReadonlySet<string>>(() =>
+    initialSelection(notifiable, preselect),
   );
   const [sending, startSend] = useTransition();
 
@@ -196,8 +224,8 @@ export function NotifyRecipients({
 
   function openChanged(next: boolean) {
     setOpen(next);
-    // Reopening starts from "everyone" again rather than from a stale deselection.
-    if (next) setSelected(new Set(notifiable.map((s) => s.shareLinkId)));
+    // Reopening starts from the default again rather than from a stale deselection.
+    if (next) setSelected(initialSelection(notifiable, preselect));
   }
 
   function toggle(shareLinkId: string) {
@@ -226,6 +254,7 @@ export function NotifyRecipients({
       }
 
       setOpen(false);
+      onSent?.(ids);
       /* Deliberately not "Sent". The queue accepted it; nobody has received anything yet. */
       toast({
         title: ids.length === 1 ? "Sending one update" : `Sending ${ids.length} updates`,

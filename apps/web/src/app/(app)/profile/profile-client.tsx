@@ -30,6 +30,8 @@ import { Skeleton } from "@/components/primitives/skeleton";
 import type { NewFieldDraft } from "@/components/profile/add-field-dialog";
 import { isAlwaysMasked } from "@/components/profile/field-types";
 import { IdentityBlock } from "@/components/profile/identity-block";
+import { SendUpdateButton } from "@/components/profile/send-update-button";
+import { useCardAudience } from "@/components/profile/use-card-audience";
 import { useCardDesign } from "@/components/profile/use-card-design";
 import { useCardFieldSync, type CardSyncStatus } from "@/components/profile/use-card-field-sync";
 import type { RowCardToggle } from "@/components/profile/workspace-field-row";
@@ -511,6 +513,15 @@ function Workspace({
   const sync = useCardFieldSync({ fields: draft.fields, onError: showError });
   const design = useCardDesign({ onError: showError });
   const { panel, setPanel } = useWorkspacePanel();
+
+  /* Who holds the selected card and has not been told it changed — read from the server, and
+     re-read whenever a field edit has landed (`data` is a fresh object after every write) or the
+     card's field selection finishes saving. It feeds the Send update button and nothing else. */
+  const audience = useCardAudience(
+    selected?.id ?? null,
+    data,
+    selected === null ? "idle" : sync.statusFor(selected.id),
+  );
 
   /**
    * A logo or cover picked a moment ago, shown on the card while it uploads and until the re-read
@@ -1032,7 +1043,27 @@ function Workspace({
           activationMode="automatic"
           className="flex min-w-0 flex-col gap-3 lg:gap-4"
         >
-          <WorkspaceTabList />
+          {/* The tabs, and — at the right end of the same row, on every panel — the Send update
+              button. It scrolls away with the row like anything else on the page: pinning it
+              made the fields slide under it and read as a glitch (client, 2026-10-03). Wrapping:
+              on a phone the tabs fill the row and the button drops under them at full width,
+              where a thumb reaches it. */}
+          <div
+            data-workspace-toolbar=""
+            className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2"
+          >
+            <WorkspaceTabList />
+            {selected === null ? null : (
+              <SendUpdateButton
+                key={selected.id}
+                cardId={selected.id}
+                targets={audience.targets}
+                ready={audience.ready}
+                nudge={audience.nudge}
+                onChanged={audience.reload}
+              />
+            )}
+          </div>
 
           <TabsPrimitive.Content value="fields" data-workspace-panel="fields" className="outline-none">
             <div data-workspace-fields="" className={PANEL_SURFACE}>
