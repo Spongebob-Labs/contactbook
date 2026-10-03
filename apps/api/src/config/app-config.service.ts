@@ -120,4 +120,38 @@ export class AppConfigService {
   get sentryDsn(): string | undefined {
     return this.env.SENTRY_DSN;
   }
+
+  /**
+   * Apple Wallet pass config. Returns `undefined` when no WALLET_* vars are
+   * set (feature off). When set, the all-or-none superRefine in env.schema.ts
+   * guarantees every required field is present, so the non-null assertions
+   * below are safe — the process would already have exited on boot if any were
+   * missing.
+   */
+  get wallet():
+    | {
+        passTypeId: string;
+        teamId: string;
+        orgName: string;
+        webServiceUrl: string;
+        signerCertB64: string;
+        signerKeyB64: string;
+        signerKeyPassphrase: string | undefined;
+        wwdrCertB64: string;
+        authSecret: string;
+      }
+    | undefined {
+    if (!this.env.WALLET_PASS_TYPE_ID) return undefined;
+    return {
+      passTypeId: this.env.WALLET_PASS_TYPE_ID!,
+      teamId: this.env.WALLET_TEAM_ID!,
+      orgName: this.env.WALLET_ORG_NAME!,
+      webServiceUrl: this.env.WALLET_WEB_SERVICE_URL!,
+      signerCertB64: this.env.WALLET_SIGNER_CERT_B64!,
+      signerKeyB64: this.env.WALLET_SIGNER_KEY_B64!,
+      signerKeyPassphrase: this.env.WALLET_SIGNER_KEY_PASSPHRASE,
+      wwdrCertB64: this.env.WALLET_WWDR_CERT_B64!,
+      authSecret: this.env.WALLET_AUTH_SECRET!,
+    };
+  }
 }

@@ -95,6 +95,29 @@ const base = z.object({
   AUTH_COOKIE_DOMAIN: z.string().optional(),
 
   SENTRY_DSN: z.string().optional(),
+
+  // Apple Wallet pass signing. All optional, all-or-none: if any WALLET_* var
+  // is set, all required ones must be present (superRefine below). If none are
+  // set the feature is silently off; the owner endpoint returns 409
+  // WALLET_NOT_CONFIGURED. Base64-encoded because GitHub secrets mangle
+  // multi-line PEMs.
+  WALLET_PASS_TYPE_ID: z.string().optional(),
+  WALLET_TEAM_ID: z.string().length(10).optional(),
+  WALLET_ORG_NAME: z.string().optional(),
+  // Public HTTPS base of the Apple web service, e.g. https://<api-host>/api/wallet.
+  // Not SHARE_BASE_URL — that is the web domain, not the API host.
+  WALLET_WEB_SERVICE_URL: z.string().url().optional(),
+  // base64(pass.pem) — signing cert
+  WALLET_SIGNER_CERT_B64: z.string().optional(),
+  // base64(passkey.pem) — private key
+  WALLET_SIGNER_KEY_B64: z.string().optional(),
+  // Only needed if the key is passphrase-protected. Usually empty.
+  WALLET_SIGNER_KEY_PASSPHRASE: z.string().optional(),
+  // base64(wwdr.pem) — Apple WWDR G4 intermediate cert
+  WALLET_WWDR_CERT_B64: z.string().optional(),
+  // ≥32 random chars. Derives authenticationToken = base64url(HMAC-SHA256(secret, serialNumber)).
+  // Non-rotatable once passes ship: rotating strands every installed pass.
+  WALLET_AUTH_SECRET: z.string().min(32).optional(),
 });
 
 /** Required once NODE_ENV=production — absence is a boot failure, not a runtime 500. */
@@ -118,6 +141,32 @@ const REQUIRED_IN_PRODUCTION = [
 ] as const;
 
 export const envSchema = base.superRefine((env, ctx) => {
+  // Apple Wallet: all-or-none in any environment. If any WALLET_* var is set,
+  // all required ones must be present — partial config fails the boot rather
+  // than silently disabling some but not all wallet behaviour.
+  const WALLET_REQUIRED = [
+    'WALLET_PASS_TYPE_ID',
+    'WALLET_TEAM_ID',
+    'WALLET_ORG_NAME',
+    'WALLET_WEB_SERVICE_URL',
+    'WALLET_SIGNER_CERT_B64',
+    'WALLET_SIGNER_KEY_B64',
+    'WALLET_WWDR_CERT_B64',
+    'WALLET_AUTH_SECRET',
+  ] as const;
+  const anyWalletSet = WALLET_REQUIRED.some((k) => !!env[k]);
+  if (anyWalletSet) {
+    for (const key of WALLET_REQUIRED) {
+      if (!env[key]) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [key],
+          message: `${key} is required when any WALLET_* var is set (all-or-none)`,
+        });
+      }
+    }
+  }
+
   if (env.NODE_ENV !== 'production') return;
 
   for (const key of REQUIRED_IN_PRODUCTION) {

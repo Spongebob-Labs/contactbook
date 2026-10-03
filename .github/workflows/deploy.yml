@@ -143,6 +143,15 @@ jobs:
           GCS_PROFILE_PHOTOS_BUCKET: ${{ secrets.GCS_PROFILE_PHOTOS_BUCKET }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           SWAGGER_ENABLED: ${{ secrets.SWAGGER_ENABLED }}
+          WALLET_PASS_TYPE_ID: ${{ secrets.WALLET_PASS_TYPE_ID }}
+          WALLET_TEAM_ID: ${{ secrets.WALLET_TEAM_ID }}
+          WALLET_ORG_NAME: ${{ secrets.WALLET_ORG_NAME }}
+          WALLET_WEB_SERVICE_URL: ${{ secrets.WALLET_WEB_SERVICE_URL }}
+          WALLET_SIGNER_CERT_B64: ${{ secrets.WALLET_SIGNER_CERT_B64 }}
+          WALLET_SIGNER_KEY_B64: ${{ secrets.WALLET_SIGNER_KEY_B64 }}
+          WALLET_SIGNER_KEY_PASSPHRASE: ${{ secrets.WALLET_SIGNER_KEY_PASSPHRASE }}
+          WALLET_WWDR_CERT_B64: ${{ secrets.WALLET_WWDR_CERT_B64 }}
+          WALLET_AUTH_SECRET: ${{ secrets.WALLET_AUTH_SECRET }}
         run: OUTPUT_PATH=./rendered.env bash scripts/render-api-env.sh
 
       - name: Append container-internal sslrootcert paths
