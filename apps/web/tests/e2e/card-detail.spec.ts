@@ -345,9 +345,10 @@ test("the page offers a link and no vCard at all (§4.2)", async ({ page }) => {
  * `qrPayload`, the card's own public `/c/{token}`. History, briefly: the two "Add to Wallet"
  * buttons were removed on 2026-09-20 because they did nothing but apologise for themselves, and
  * came back on 2026-09-28 because the client asked for them to be *"functional and visible"*.
- * They are now wired to the intended pass endpoints behind `NEXT_PUBLIC_WALLET_PASSES`, visibly
- * disabled with one line of explanation while it is unset, beside a "Save QR to phone" that
- * works today (`wallet-actions.tsx`).
+ * Apple's is now wired to the real `GET /cards/{id}/wallet-pass` — a live link on iPhone/iPad
+ * once the server answers a pass, and visibly disabled with one line of explanation anywhere else
+ * (this suite runs desktop Chrome, so it sees the disabled state) — beside a "Save QR to phone"
+ * that works everywhere (`wallet-actions.tsx`).
  *
  * What is asserted, and never about decoration:
  *
@@ -367,8 +368,8 @@ test("shows the card with its QR, and a wallet row outside the face's rail", asy
      their card — *"show the card with QR code, not just the pass"*. */
   await expect(block.locator("[data-wallet-pass-caption]")).toHaveCount(0);
 
-  /* *"'Add to Wallet' must be functional and visible."* Both buttons are visible. Without
-     `NEXT_PUBLIC_WALLET_PASSES` they are disabled and one line says why, and the control that
+  /* *"'Add to Wallet' must be functional and visible."* Both buttons are visible. On a desktop browser (not an iPhone)
+     they are disabled and one line says why, and the control that
      works today — the QR image — sits beside them. */
   const wallet = page.locator("[data-wallet-actions]");
   await expect(wallet.locator('[data-wallet-add="apple"]')).toBeVisible();

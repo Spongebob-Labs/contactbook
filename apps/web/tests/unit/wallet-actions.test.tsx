@@ -1,12 +1,15 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { renderWithProviders, screen, userEvent, waitFor } from "../helpers/render";
+import { renderWithProviders, screen, waitFor } from "../helpers/render";
 import { ToastProvider } from "@/components/overlay/toast";
 import {
-  WALLET_OFF_NOTE,
+  GOOGLE_SOON_NOTE,
+  WALLET_NOT_IOS_NOTE,
+  WALLET_UNAVAILABLE_NOTE,
   WalletActions,
   applePassHref,
-  walletPassesEnabled,
+  checkWalletPass,
+  detectIOS,
 } from "@/components/share/wallet-actions";
 import { resolveCard } from "@/card/resolve-card";
 import { cardLedgerDemo } from "@/fixtures/cards";
@@ -16,118 +19,155 @@ import { fixtureUser } from "@/fixtures/user";
 /**
  * **Add to Apple Wallet · Add to Google Wallet · Save QR to phone.**
  *
- * Client review 2026-09-28: *"'Add to Wallet' must be functional and visible."* The API has no
- * pass endpoint yet, so these tests hold the honest version of that: with the flag off the two
- * pass buttons are visible, disabled, and explained in one line, and the one control that works
- * today — the QR image — is right beside them. With the flag on they reach the intended
- * endpoints and nothing else.
+ * Apple Wallet is wired to the real `GET /cards/{id}/wallet-pass`. What these hold:
+ *
+ * · the Apple control is a plain `<a href>` (never `fetch`, never a `download` attribute) so
+ *   iOS Safari hands the response to Wallet;
+ * · it is only a live link on iPhone/iPad AND only once the endpoint has actually answered a pass —
+ *   a server without the signing secrets (`409 WALLET_NOT_CONFIGURED`) leaves it disabled with one
+ *   line, never a link that lands on a JSON error page;
+ * · elsewhere it stays visible and disabled, saying it works on iPhone;
+ * · Google has no backend, so it is visible, disabled, and makes no request.
  */
 
 const resolved = resolveCard(cardLedgerDemo, fixtureUser, fixtureGroups, fixtureFields);
 
-function renderWallet(enabled: boolean) {
+const PKPASS = "application/vnd.apple.pkpass";
+
+function pass(status: number, type: string): Response {
+  return new Response(status === 200 ? new Uint8Array([1, 2, 3]) : JSON.stringify({ code: "X" }), {
+    status,
+    headers: { "content-type": type },
+  });
+}
+
+function renderWallet(ios: boolean) {
   renderWithProviders(
     <ToastProvider>
-      <WalletActions cardId="card-1" resolved={resolved} enabled={enabled} />
+      <WalletActions cardId="card-1" resolved={resolved} ios={ios} />
     </ToastProvider>,
   );
 }
 
+const apple = () => document.querySelector<HTMLElement>('[data-wallet-add="apple"]');
+const section = () => document.querySelector<HTMLElement>("[data-wallet-actions]");
+
+beforeEach(() => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(pass(200, PKPASS)));
+});
+
 afterEach(() => {
-  vi.unstubAllEnvs();
   vi.unstubAllGlobals();
 });
 
-describe("the flag", () => {
-  it("is off unless NEXT_PUBLIC_WALLET_PASSES is set", () => {
-    vi.stubEnv("NEXT_PUBLIC_WALLET_PASSES", "");
-    expect(walletPassesEnabled()).toBe(false);
-    vi.stubEnv("NEXT_PUBLIC_WALLET_PASSES", "1");
-    expect(walletPassesEnabled()).toBe(true);
+describe("detectIOS", () => {
+  const nav = (userAgent: string, platform = "", maxTouchPoints = 0) => ({ userAgent, platform, maxTouchPoints });
+
+  it("recognises an iPhone and an older iPad by user agent", () => {
+    expect(detectIOS(nav("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)"))).toBe(true);
+    expect(detectIOS(nav("Mozilla/5.0 (iPad; CPU OS 12_0 like Mac OS X)"))).toBe(true);
+  });
+
+  it("recognises iPadOS 13+, which reports itself as a Mac with a touch screen", () => {
+    expect(detectIOS(nav("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", "MacIntel", 5))).toBe(true);
+  });
+
+  it("does not mistake a real Mac, Android or Windows for iOS", () => {
+    expect(detectIOS(nav("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", "MacIntel", 0))).toBe(false);
+    expect(detectIOS(nav("Mozilla/5.0 (Linux; Android 14; Pixel 8)", "Linux armv8l", 5))).toBe(false);
+    expect(detectIOS(nav("Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "Win32", 0))).toBe(false);
   });
 });
 
-describe("while the passes are off", () => {
-  it("shows both wallet buttons, disabled, with one line saying why", () => {
+describe("checkWalletPass", () => {
+  it("is ready only for a 200 whose content type is a pkpass", async () => {
+    await expect(checkWalletPass("card-1")).resolves.toBe("ready");
+    const call = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(String(call[0])).toBe(applePassHref("card-1"));
+  });
+
+  it("is unavailable for 409 WALLET_NOT_CONFIGURED, 404, 401 and a network failure", async () => {
+    for (const status of [409, 404, 401]) {
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(pass(status, "application/json")));
+      await expect(checkWalletPass("card-1")).resolves.toBe("unavailable");
+    }
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
+    await expect(checkWalletPass("card-1")).resolves.toBe("unavailable");
+  });
+
+  it("is unavailable when a 200 is not a pass (a proxy that rewrote the type)", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(pass(200, "text/plain")));
+    await expect(checkWalletPass("card-1")).resolves.toBe("unavailable");
+  });
+});
+
+describe("on an iPhone", () => {
+  it("becomes a plain link to the pass endpoint once the pass is available", async () => {
+    renderWallet(true);
+
+    const link = await screen.findByRole("link", { name: /add to apple wallet/i });
+    expect(link).toHaveAttribute("href", applePassHref("card-1"));
+    expect(link.getAttribute("href")).toMatch(/\/cards\/card-1\/wallet-pass$/);
+    /* ⚠ A `download` attribute turns the tap into a file download instead of the Wallet sheet. */
+    expect(link).not.toHaveAttribute("download");
+    expect(section()).toHaveAttribute("data-wallet-state", "ready");
+  });
+
+  it("stays a disabled button with one line when the server cannot make a pass", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(pass(409, "application/json")));
+    renderWallet(true);
+
+    expect(await screen.findByText(WALLET_UNAVAILABLE_NOTE)).toBeVisible();
+    expect(screen.queryByRole("link", { name: /add to apple wallet/i })).not.toBeInTheDocument();
+    expect(apple()).toHaveAttribute("aria-disabled", "true");
+    expect(apple()).toHaveAccessibleDescription(WALLET_UNAVAILABLE_NOTE);
+  });
+
+  it("is disabled and busy (no link, no note) while it checks", () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    renderWallet(true);
+
+    expect(apple()).toHaveAttribute("aria-disabled", "true");
+    expect(apple()).toHaveAttribute("aria-busy", "true");
+    expect(screen.queryByText(WALLET_UNAVAILABLE_NOTE)).not.toBeInTheDocument();
+    expect(screen.queryByText(WALLET_NOT_IOS_NOTE)).not.toBeInTheDocument();
+  });
+});
+
+describe("anywhere that is not an iPhone", () => {
+  it("keeps the button visible, disabled, saying it works on iPhone — and asks the server nothing", () => {
     renderWallet(false);
 
-    const apple = screen.getByRole("button", { name: /add to apple wallet/i });
-    const google = screen.getByRole("button", { name: /add to google wallet/i });
-    expect(apple).toBeVisible();
+    expect(apple()).toBeVisible();
+    expect(apple()).toHaveAttribute("aria-disabled", "true");
+    expect(apple()).toHaveAccessibleDescription(WALLET_NOT_IOS_NOTE);
+    expect(screen.getByText(WALLET_NOT_IOS_NOTE)).toBeVisible();
+    expect(fetch).not.toHaveBeenCalled();
+    expect(section()).toHaveAttribute("data-wallet-state", "not-ios");
+  });
+});
+
+describe("Google Wallet", () => {
+  it("is visible, disabled and 'coming soon' — and never makes a request", async () => {
+    renderWallet(true);
+    await waitFor(() => expect(section()).toHaveAttribute("data-wallet-state", "ready"));
+
+    const google = document.querySelector<HTMLElement>('[data-wallet-add="google"]');
     expect(google).toBeVisible();
-    expect(apple).toHaveAttribute("aria-disabled", "true");
     expect(google).toHaveAttribute("aria-disabled", "true");
-
-    // One visible line, and the disabled buttons are described by it.
-    const note = screen.getByText(WALLET_OFF_NOTE);
-    expect(apple).toHaveAccessibleDescription(WALLET_OFF_NOTE);
-    expect(google).toHaveAccessibleDescription(WALLET_OFF_NOTE);
-    expect(note).toBeVisible();
+    expect(google).toHaveAccessibleDescription(GOOGLE_SOON_NOTE);
+    // The only request ever made is the pass probe.
+    for (const call of (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls) {
+      expect(String(call[0])).toMatch(/wallet-pass$/);
+    }
   });
+});
 
-  it("does nothing when a disabled pass button is pressed", async () => {
-    const fetchSpy = vi.fn();
-    vi.stubGlobal("fetch", fetchSpy);
+describe("Save QR to phone", () => {
+  it("is still beside them and is never disabled", () => {
     renderWallet(false);
-
-    await userEvent.click(screen.getByRole("button", { name: /add to google wallet/i }));
-    expect(fetchSpy).not.toHaveBeenCalled();
-  });
-
-  it("keeps a working Save QR to phone beside them", () => {
-    renderWallet(false);
-
     const save = screen.getByRole("button", { name: /save qr to phone/i });
     expect(save).not.toHaveAttribute("aria-disabled");
     expect(save).toHaveAttribute("data-export-png");
-  });
-});
-
-describe("once the passes are on", () => {
-  it("sends Apple Wallet to the pkpass endpoint with a plain navigation", () => {
-    renderWallet(true);
-
-    const apple = screen.getByRole("link", { name: /add to apple wallet/i });
-    expect(apple).toHaveAttribute("href", applePassHref("card-1"));
-    expect(apple.getAttribute("href")).toMatch(/\/cards\/card-1\/wallet\/apple$/);
-    expect(screen.queryByText(WALLET_OFF_NOTE)).not.toBeInTheDocument();
-  });
-
-  it("asks the API for Google's save URL and opens it", async () => {
-    const assign = vi.fn();
-    vi.stubGlobal("location", { ...window.location, assign });
-    const fetchSpy = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ saveUrl: "https://pay.google.com/gp/v/save/abc" }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      }),
-    );
-    vi.stubGlobal("fetch", fetchSpy);
-    renderWallet(true);
-
-    await userEvent.click(screen.getByRole("button", { name: /add to google wallet/i }));
-
-    await waitFor(() => expect(assign).toHaveBeenCalledWith("https://pay.google.com/gp/v/save/abc"));
-    expect(String(fetchSpy.mock.calls[0][0])).toMatch(/\/cards\/card-1\/wallet\/google$/);
-  });
-
-  it("reports a failure instead of navigating anywhere", async () => {
-    const assign = vi.fn();
-    vi.stubGlobal("location", { ...window.location, assign });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ statusCode: 404, code: "NOT_FOUND", message: "Cannot GET" }), {
-          status: 404,
-          headers: { "content-type": "application/json" },
-        }),
-      ),
-    );
-    renderWallet(true);
-
-    await userEvent.click(screen.getByRole("button", { name: /add to google wallet/i }));
-
-    expect(await screen.findByText(/couldn't open google wallet/i)).toBeInTheDocument();
-    expect(assign).not.toHaveBeenCalled();
   });
 });
