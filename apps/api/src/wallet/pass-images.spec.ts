@@ -1,8 +1,12 @@
 import sharp from 'sharp';
 import {
   BACKGROUND_FILES,
+  BRAND_GOLD,
   fetchPhoto,
+  logoColor,
+  LOGO_FILES,
   renderBackgrounds,
+  renderLogos,
   renderThumbnails,
   THUMBNAIL_FILES,
 } from './pass-images';
@@ -144,5 +148,76 @@ describe('renderBackgrounds', () => {
     // The ends are the palette's own stops (Sapphire #1B3B80 -> #0C1D45), within a few levels.
     expect(Math.abs(topLeft.b - 0x80)).toBeLessThan(14);
     expect(Math.abs(bottomRight.b - 0x45)).toBeLessThan(14);
+  });
+});
+
+describe('renderLogos — the header mark', () => {
+  const SAPPHIRE = { backgroundHex: '#142C63', inkHex: '#FFFFFF' };
+
+  async function stats(buf: Buffer) {
+    const { data, info } = await sharp(buf)
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    let opaque = 0;
+    let transparent = 0;
+    for (let i = 3; i < data.length; i += 4) {
+      if (data[i] > 200) opaque++;
+      else if (data[i] < 10) transparent++;
+    }
+    return { total: info.width * info.height, opaque, transparent };
+  }
+
+  it('renders the three Wallet sizes as transparent PNGs', async () => {
+    const out = await renderLogos(SAPPHIRE);
+    for (const [name, px] of Object.entries(LOGO_FILES)) {
+      const meta = await sharp(out[name as keyof typeof LOGO_FILES]).metadata();
+      expect(meta.format).toBe('png');
+      expect(meta.width).toBe(px);
+      expect(meta.height).toBe(px);
+      expect(meta.hasAlpha).toBe(true);
+    }
+  });
+
+  it('has NO background: most of the logo is fully transparent and the mark is solid', async () => {
+    const { total, opaque, transparent } = await stats(
+      (await renderLogos(SAPPHIRE))['logo@3x.png'],
+    );
+    expect(transparent / total).toBeGreaterThan(0.5); // the old logo was an opaque box
+    expect(opaque / total).toBeGreaterThan(0.1); // and the mark itself is really there
+    expect(
+      await pixel((await renderLogos(SAPPHIRE))['logo@3x.png'], 1, 1),
+    ).toMatchObject({ a: 0 });
+  });
+
+  it('is brand gold where gold is readable, and the card ink where it would vanish', () => {
+    expect(logoColor(SAPPHIRE)).toBe(BRAND_GOLD);
+    // Amber ground: gold on gold would disappear — use the card's dark ink instead.
+    expect(logoColor({ backgroundHex: '#E1AA40', inkHex: '#0F1114' })).toBe(
+      '#0F1114',
+    );
+    // Pale pink / ivory: gold is under 3:1 there too.
+    expect(logoColor({ backgroundHex: '#EBDADD', inkHex: '#0F1114' })).toBe(
+      '#0F1114',
+    );
+  });
+
+  it('actually paints the chosen colour into the mark', async () => {
+    const gold = await renderLogos(SAPPHIRE);
+    const ink = await renderLogos({
+      backgroundHex: '#E1AA40',
+      inkHex: '#0F1114',
+    });
+    const find = async (buf: Buffer) => {
+      const { data } = await sharp(buf)
+        .ensureAlpha()
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+      for (let i = 0; i < data.length; i += 4)
+        if (data[i + 3] === 255) return [data[i], data[i + 1], data[i + 2]];
+      return null;
+    };
+    expect(await find(gold['logo@3x.png'])).toEqual([0xae, 0x81, 0x40]);
+    expect(await find(ink['logo@3x.png'])).toEqual([0x0f, 0x11, 0x14]);
   });
 });

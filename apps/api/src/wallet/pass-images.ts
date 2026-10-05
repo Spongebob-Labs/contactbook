@@ -1,5 +1,7 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import sharp from 'sharp';
-import type { PassTheme } from './pass-colors.util';
+import { contrastRatio, type PassTheme } from './pass-colors.util';
 
 /**
  * The portrait on the pass: a round thumbnail on the right of the name, exactly where the share
@@ -74,6 +76,64 @@ export async function renderBackgrounds(
     keyof typeof BACKGROUND_FILES,
     Buffer
   >;
+}
+
+/**
+ * The brand mark in the pass header (`logo.png`, up to 160 × 50 points; the mark is square so 50).
+ *
+ * ## Why this is rendered, not shipped as a picture
+ *
+ * The first version shipped the FULL logo (mark plus the "CONTACTBOOK / NEVER LOSE CONTACT"
+ * wordmark) as a 160 × 50 JPEG with an opaque off-white background: the wordmark was unreadable
+ * at that size and the background showed as a box on every coloured pass.
+ *
+ * What ships now is only a transparent *mask* of the mark (`assets/logo-mark.png`: the gold "C"
+ * and the two bars of the "B" — the B's body is the same colour as the logo's own background, so
+ * there is nothing else to keep), at 450 px so the 3x file is a clean downscale. It is coloured
+ * per pass: brand gold where gold is readable on the card's ground (>= 3:1, the WCAG bar for
+ * graphics), otherwise the card's own dark/light ink — gold would vanish on an amber or
+ * pale-pink card.
+ */
+export const LOGO_FILES = {
+  'logo.png': 50,
+  'logo@2x.png': 100,
+  'logo@3x.png': 150,
+} as const;
+
+export const BRAND_GOLD = '#AE8140';
+
+export function logoColor(
+  theme: Pick<PassTheme, 'backgroundHex' | 'inkHex'>,
+): string {
+  return contrastRatio(theme.backgroundHex, BRAND_GOLD) >= 3
+    ? BRAND_GOLD
+    : theme.inkHex;
+}
+
+let LOGO_MASK: Buffer | undefined;
+
+export async function renderLogos(
+  theme: Pick<PassTheme, 'backgroundHex' | 'inkHex'>,
+): Promise<Record<keyof typeof LOGO_FILES, Buffer>> {
+  LOGO_MASK ??= readFileSync(join(__dirname, 'assets', 'logo-mark.png'));
+  const mask = LOGO_MASK;
+  const color = logoColor(theme);
+
+  const entries = await Promise.all(
+    (
+      Object.entries(LOGO_FILES) as Array<[keyof typeof LOGO_FILES, number]>
+    ).map(async ([name, px]) => {
+      const alpha = await sharp(mask).resize(px, px).png().toBuffer();
+      const png = await sharp({
+        create: { width: px, height: px, channels: 4, background: color },
+      })
+        .composite([{ input: alpha, blend: 'dest-in' }])
+        .png()
+        .toBuffer();
+      return [name, png] as const;
+    }),
+  );
+  return Object.fromEntries(entries) as Record<keyof typeof LOGO_FILES, Buffer>;
 }
 
 export const THUMBNAIL_FILES = {

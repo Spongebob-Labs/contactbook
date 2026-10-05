@@ -3,7 +3,12 @@ import { join } from 'node:path';
 import { PKPass } from 'passkit-generator';
 import { resolvePassTheme } from './pass-colors.util';
 import { deriveAuthToken } from './pass-auth.util';
-import { fetchPhoto, renderBackgrounds, renderThumbnails } from './pass-images';
+import {
+  fetchPhoto,
+  renderBackgrounds,
+  renderLogos,
+  renderThumbnails,
+} from './pass-images';
 
 const ASSETS_DIR = join(__dirname, 'assets');
 
@@ -22,18 +27,12 @@ function loadAsset(name: string): Buffer {
 let ICON: Buffer | undefined;
 let ICON_2X: Buffer | undefined;
 let ICON_3X: Buffer | undefined;
-let LOGO: Buffer | undefined;
-let LOGO_2X: Buffer | undefined;
-let LOGO_3X: Buffer | undefined;
 
 function getAssets() {
   ICON ??= loadAsset('icon.png');
   ICON_2X ??= loadAsset('icon@2x.png');
   ICON_3X ??= loadAsset('icon@3x.png');
-  LOGO ??= loadAsset('logo.png');
-  LOGO_2X ??= loadAsset('logo@2x.png');
-  LOGO_3X ??= loadAsset('logo@3x.png');
-  return { ICON, ICON_2X, ICON_3X, LOGO, LOGO_2X, LOGO_3X };
+  return { ICON, ICON_2X, ICON_3X };
 }
 
 export interface PassCard {
@@ -139,7 +138,7 @@ export function selectPassContent(
  * ## The layout — the share face, in Wallet's vocabulary
  *
  *     ┌──────────────────────────────────┐
- *     │ [logo]  FERNWOOD STUDIO          │  brand mark + the company
+ *     │ [mark]  FERNWOOD STUDIO          │  brand mark + the company
  *     │                                  │
  *     │ HEAD OF PARTNERSHIPS      ( ◯ )  │  the role, small, above…
  *     │ Priyanka Raghunathan             │  …the name, large; round portrait right
@@ -213,7 +212,7 @@ export function buildPassJson(
 }
 
 /**
- * Builds a signed .pkpass for a card: the `pass.json`, the fixed brand images (icon, logo chip),
+ * Builds a signed .pkpass for a card: the `pass.json`, the fixed brand images (icon, plus the logo mark coloured per card),
  * the card's gradient background, and a per-owner portrait thumbnail. Async only because of the portrait (a photo fetch and an
  * image render); a missing or slow photo falls back to a silhouette and never fails the pass.
  */
@@ -233,8 +232,9 @@ export async function buildPass(
   const photo = owner.photoUrl ? await fetchPhoto(owner.photoUrl) : null;
   const thumbnails = await renderThumbnails(photo, theme);
   const backgrounds = await renderBackgrounds(theme);
+  const logos = await renderLogos(theme);
 
-  const { ICON, ICON_2X, ICON_3X, LOGO, LOGO_2X, LOGO_3X } = getAssets();
+  const { ICON, ICON_2X, ICON_3X } = getAssets();
 
   // PKPass constructor: (fileBuffers, certificates, overrideProps)
   const pass = new PKPass(
@@ -243,9 +243,7 @@ export async function buildPass(
       'icon.png': ICON,
       'icon@2x.png': ICON_2X,
       'icon@3x.png': ICON_3X,
-      'logo.png': LOGO,
-      'logo@2x.png': LOGO_2X,
-      'logo@3x.png': LOGO_3X,
+      ...logos,
       ...thumbnails,
       ...backgrounds,
     },

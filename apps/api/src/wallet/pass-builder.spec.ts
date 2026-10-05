@@ -294,16 +294,14 @@ describe('buildPass — a real signed pkpass', () => {
       'icon.png',
       'icon@2x.png',
       'icon@3x.png',
-      'logo.png',
-      'logo@2x.png',
-      'logo@3x.png',
+      'logo-mark.png',
     ]) {
       const meta = await sharp(join(__dirname, 'assets', f)).metadata();
       expect(meta.format).toBe('png');
     }
-    const logo = await sharp(
-      join(__dirname, 'assets', 'logo@3x.png'),
+    const mark = await sharp(
+      join(__dirname, 'assets', 'logo-mark.png'),
     ).metadata();
-    expect(logo.hasAlpha).toBe(true); // rounded corners are transparent
+    expect(mark.hasAlpha).toBe(true); // a transparent mask, not a picture with a background
   });
 });
