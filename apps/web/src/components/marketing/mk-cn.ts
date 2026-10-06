@@ -70,6 +70,7 @@ const twMergeMk = extendTailwindMerge({
             "mk-stone",
             "mk-pebble",
             "mk-pebble-mute",
+            "mk-slate",
             "mk-white",
             "mk-paper",
             "mk-wash",

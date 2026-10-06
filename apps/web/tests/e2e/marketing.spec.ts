@@ -1176,10 +1176,14 @@ test.describe("craft", () => {
    * because the bar is `position: fixed`: fixed overflow does not extend the document's scroll
    * width, so "never scrolls sideways" stayed green throughout. The only way to catch it is to
    * measure the controls against the bar's padding box, which is what this does.
+   *
+   * 2026-10-06: the bar is a full-width `<nav>` now, with its content on an inner row laid out
+   * on the page's content column (`[data-pill-nav-row]`). The row's padding box is the thing the
+   * logo and the controls must fit inside, so that is what is measured.
    */
   test("the pill bar keeps its controls inside its own padding box", async ({ page }) => {
     await gotoMarketing(page);
-    const fit = await page.locator("[data-pill-nav]").evaluate((nav) => {
+    const fit = await page.locator("[data-pill-nav] [data-pill-nav-row]").evaluate((nav) => {
       const c = getComputedStyle(nav);
       const box = nav.getBoundingClientRect();
       const inner = {

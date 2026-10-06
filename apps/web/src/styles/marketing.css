@@ -171,6 +171,12 @@
   --mk-pebble-mute: #8c8a88;  /*  3.15:1 — DECORATIVE + DISABLED ONLY.
                                  Forbidden as a text colour, exactly as
                                  tokens.css forbids --ink-4. */
+  --mk-slate: #4b5563;        /*  7.56:1 on white, 7.32:1 on atelier paper,
+                                 6.50:1 on the wash — the hero proof row's
+                                 captions (2026-10-06). The client's reference
+                                 sets them in a cool slate, darker than pebble,
+                                 so they do not fade into the ground. Skin-
+                                 agnostic: neither skin overrides it. */
 
   /* ── Lines ─────────────────────────────────────────────────────────────
      design.md asks for "1px solid #27272a at low opacity". Expressed as two
@@ -720,7 +726,6 @@
   --mk-phone-sheet: #fcfaf8;
   --mk-phone-lip: #efe5d4;
   --mk-phone-gold-line: #c7bda6;
-  --mk-phone-script: #ffffff;
   --mk-phone-caps: #b7ab96;
   --mk-phone-ink: #06080b;
   --mk-phone-slate: #7a7c82;
@@ -743,17 +748,31 @@
   --mk-phone-chevron: #9c9d9a;
   --mk-phone-social-ink: #0d0c07;
 
-  /* The medallion: a radial disc (no border, no shadow), the monogram's one
-     bronze ink, the B's lighter face and the stem's engraving. */
+  /* The medallion: a radial disc (no border, no shadow). The mark on it is
+     the brand PNG, carrying its own colour (2026-10-06; see hero-medallion.tsx). */
   --mk-phone-disc-0: #efe3d0;
   --mk-phone-disc-1: #ebdecb;
   --mk-phone-disc-2: #e6d9c5;
   --mk-phone-disc-3: #dfd1bb;
   --mk-phone-disc-4: #ddcfb9;
-  --mk-phone-mark: #3f2d14;
-  --mk-phone-mark-face: #f2e7d5;
-  --mk-phone-mark-shade: #d4cabe;
-  --mk-phone-mark-highlight: #fffbe9;
+
+  /* The Apple Wallet pass in How-it-works frame 03 (2026-10-06). Copied from
+     the API, which is what signs the real pass — keep them in step with it:
+     the Work card's palette is sapphire, and `apps/api/src/wallet/
+     pass-colors.util.ts` gives its gradient stops (from/to, drawn at 155°
+     by `pass-images.ts`), its ink and its muted label ink; `BRAND_GOLD` in
+     `pass-images.ts` is the logo mark's colour on a ground it clears 3:1 on.
+     The QR plate is Wallet's own white, and the alt text under the symbol is
+     Wallet's own secondary grey. */
+  --mk-pass-sapphire-from: #1b3b80;
+  --mk-pass-sapphire-to: #0c1d45;
+  --mk-pass-sapphire-ink: #ffffff;
+  --mk-pass-sapphire-label: #a2abc1;
+  --mk-pass-gold: #ae8140;
+  --mk-pass-plate: #ffffff;
+  --mk-pass-module: #000000;
+  --mk-pass-alt: #8a8a8e;
+  --mk-pass-shadow: rgb(12 29 69 / 0.28);
 }
 
 /* ── Tailwind bridge — the marketing half ────────────────────────────────────
@@ -778,6 +797,7 @@
   --color-mk-stone: var(--mk-stone);
   --color-mk-pebble: var(--mk-pebble);
   --color-mk-pebble-mute: var(--mk-pebble-mute);
+  --color-mk-slate: var(--mk-slate);
   --color-mk-wash: var(--mk-wash);
   --color-mk-green: var(--mk-green);
   --color-mk-green-display: var(--mk-green-display);

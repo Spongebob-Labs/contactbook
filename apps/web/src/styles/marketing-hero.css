@@ -301,14 +301,13 @@
      the number written is the number measured, whatever the face's ascent —
      the fallback for engines without text-box-trim is at the end. */
 
-  /* The four faces `hero-card.tsx` loads, read on the element that carries
+  /* The three faces `hero-card.tsx` loads, read on the element that carries
      their next/font classes (see that file for why it must be this element). */
   .mk-hc {
     --mk-phone-font-serif: var(--font-hero-serif), Georgia, "Times New Roman", serif;
     --mk-phone-font-sans: var(--font-hero-sans), -apple-system, BlinkMacSystemFont, system-ui,
       sans-serif;
     --mk-phone-font-caps: var(--font-hero-caps), var(--font-hero-sans), system-ui, sans-serif;
-    --mk-phone-font-script: var(--font-hero-script), cursive;
 
     margin: 0;
   }
@@ -340,7 +339,7 @@
     list-style: none;
   }
 
-  /* The cover: the photo, the script over it, the wave, the medallion. */
+  /* The cover: the photo, the wave, the medallion. */
   .mk-hc__cover {
     position: absolute;
     inset: 0 0 auto 0;
@@ -376,22 +375,20 @@
     fill: var(--mk-phone-sheet);
   }
 
-  .mk-hc__lip {
-    fill: url(#mk-hc-lip-fade);
-  }
-
-  #mk-hc-lip-fade stop {
+  /* The lip's fill and the gold line's stroke are `url(#…)` ATTRIBUTES on the paths
+     (`brand-card.tsx`), not declarations here: since 2026-10-06 several cards share a page and
+     each carries its own gradient ids, so the stop colours are matched by class, not by id. */
+  .mk-hc__lip-stop {
     stop-color: var(--mk-phone-lip);
   }
 
   .mk-hc__gold {
     fill: none;
-    stroke: url(#mk-hc-gold-fade);
     stroke-width: 1.05;
     stroke-linecap: round;
   }
 
-  #mk-hc-gold-fade stop {
+  .mk-hc__gold-stop {
     stop-color: var(--mk-phone-gold-line);
   }
 
@@ -404,10 +401,6 @@
     display: block;
     width: 40.5px;
     height: 40.5px;
-  }
-
-  .mk-hc-medallion__disc {
-    fill: url(#mk-hc-medallion-disc);
   }
 
   .mk-hc-medallion__stop-0 {
@@ -430,70 +423,6 @@
     stop-color: var(--mk-phone-disc-4);
   }
 
-  .mk-hc-medallion__face {
-    fill: var(--mk-phone-mark-face);
-  }
-
-  .mk-hc-medallion__shade {
-    fill: var(--mk-phone-mark-shade);
-  }
-
-  .mk-hc-medallion__highlight {
-    fill: var(--mk-phone-mark-highlight);
-  }
-
-  .mk-hc-medallion__ink {
-    fill: var(--mk-phone-mark);
-  }
-
-  /* "Privacy / Relationships / Ideas" — Yellowtail, white, no shadow (the
-     reference's ground lightens toward the strokes; it does not darken). A
-     left-aligned block rotated −11° about its top-left, which is what steps
-     each lower line 3–5px right. The middle line really is ~14% smaller in the
-     reference, so the lines carry their own sizes. */
-  .mk-hc__script {
-    position: absolute;
-    top: 109px;
-    left: 243px;
-    display: flex;
-    flex-direction: column;
-    color: var(--mk-phone-script);
-    font-family: var(--mk-phone-font-script);
-    line-height: 22.15px;
-    white-space: nowrap;
-    rotate: -11deg;
-    transform-origin: left top;
-  }
-
-  .mk-hc__script-line:nth-child(1) {
-    font-size: 19px;
-  }
-
-  .mk-hc__script-line:nth-child(2) {
-    font-size: 16.4px;
-  }
-
-  /* "Ideas" sits a little right of where the block's rotation alone puts it
-     (measured +3.3 / −1.3px on screen; this is that, in the block's own frame). */
-  .mk-hc__script-line:nth-child(3) {
-    font-size: 20.1px;
-    translate: 3.5px -0.65px;
-  }
-
-  /* The flourish is drawn, not typed: a 2px round-capped stroke at −11.7°
-     under "deas", running ~12px past the "s". */
-  .mk-hc__flourish {
-    position: absolute;
-    top: 168.5px;
-    left: 274px;
-    width: 32px;
-    height: 9px;
-    overflow: visible;
-    fill: none;
-    stroke: var(--mk-phone-script);
-    stroke-width: 1.9;
-    stroke-linecap: round;
-  }
 
   /* The body — everything under the wave. */
   .mk-hc__body {
@@ -811,6 +740,122 @@
     stroke: currentColor;
     stroke-width: 0.45;
     stroke-linejoin: miter;
+  }
+
+  /* ── The flow layout — the brand card outside the hero (2026-10-06) ────────
+     `brand-card.tsx` has the why. Everything above is the measured hero and is
+     untouched; these rules apply only under `.mk-hc--flow`, which the hero
+     never carries. The header keeps its measured positions (they are absolute
+     inside the body, and the body is the containing block either way); only
+     the field sections leave them, stacking in normal flow below the pill so a
+     card is exactly as tall as the rows it holds. The rhythm is the hero's
+     own: a 33px row pitch, a 25px label-to-rows drop (the mean of the hero's
+     three measured drops), 9px between sections (the hero's measured gap
+     under PERSONAL) and 24px of sheet under the last one. Must come AFTER the
+     measured rules: `.mk-hc__section:nth-of-type(n)` has the same specificity
+     and source order is what lets these win. */
+  .mk-hc--flow .mk-hc__card {
+    height: auto;
+  }
+
+  .mk-hc--flow .mk-hc__body {
+    position: relative;
+    inset: auto;
+    padding: 472px 21.5px 24px 21px;
+  }
+
+  .mk-hc--flow .mk-hc__section {
+    --mk-hc-label: 10.5px;
+    --mk-hc-rows: 25px;
+    position: relative;
+    top: auto;
+    left: auto;
+    right: auto;
+    padding-top: var(--mk-hc-rows);
+  }
+
+  .mk-hc--flow .mk-hc__section + .mk-hc__section {
+    margin-top: 9px;
+  }
+
+  .mk-hc--flow .mk-hc__rows {
+    position: static;
+  }
+
+  /* The measured 54px inset as a margin, not `left`: a relatively positioned
+     full-width list shifted right ran 54px past the card's edge (clipped, but
+     a box wider than its card all the same). Same pixels, contained box. */
+  .mk-hc--flow .mk-hc__social {
+    position: relative;
+    top: 0;
+    left: auto;
+    margin-left: 54px;
+  }
+
+  /* A cover in the card's own colour instead of the portrait, under the same
+     wave, lip, hairline and badge. */
+  .mk-hc__photo--tone {
+    background-color: var(--mk-hc-tone);
+  }
+
+  /* A card's own colour laid over the top of the portrait: solid at the very
+     edge, gone a third of the way down, so the face stays clean. It is what
+     tells a stack of identical portraits apart by the strip that shows. */
+  .mk-hc__tint {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 330px;
+    height: 262px;
+    background-image: linear-gradient(
+      to bottom,
+      var(--mk-hc-tone) 0%,
+      var(--mk-hc-tone) 9%,
+      color-mix(in srgb, var(--mk-hc-tone) 40%, transparent) 20%,
+      transparent 32%
+    );
+    pointer-events: none;
+  }
+
+  /* "Updated" — the mark an update leaves on the row it changed. A small
+     gold-lipped pill where the chevron was, and the row sits on the lip's
+     cream: the card's own two warm tones, not a new signal colour. */
+  .mk-hc__row[data-updated]::before {
+    content: "";
+    position: absolute;
+    inset: -1px -6px -1px -3px;
+    border-radius: 17.25px;
+    background-color: var(--mk-phone-lip);
+  }
+
+  .mk-hc__row[data-updated] > * {
+    z-index: 1;
+  }
+
+  .mk-hc__updated {
+    position: absolute;
+    top: 8.5px;
+    right: 2px;
+    height: 16px;
+    padding: 0 7px;
+    border-radius: 8px;
+    background-color: var(--mk-phone-sheet);
+    color: var(--mk-phone-icon-line);
+    font-family: var(--mk-phone-font-sans);
+    font-size: 9px;
+    font-weight: 600;
+    line-height: 16px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  /* The share section's QR, under its link row: the product's own QR plate,
+     at 0.8 so the section stays the height of the rows it replaced. */
+  .mk-hc__qr {
+    display: flex;
+    justify-content: center;
+    margin-top: 8px;
+    zoom: 0.8;
   }
 
   /* ── Engines without text-box-trim ────────────────────────────────────────

@@ -50,13 +50,13 @@ describe("Solution", () => {
     }
   });
 
-  /** 2026-09-28: the headed block ("What that does not mean" + three sentences) became two
-   *  plain sentences. The claim it carries is the one that may not be cut. */
-  it("keeps the honesty line — the fixture marks it load-bearing", () => {
-    renderWithProviders(<Solution />);
-    expect(screen.getByText(solution.honesty)).toBeInTheDocument();
-    expect(solution.honesty).toMatch(/no app can edit a contact/i);
-    expect(solution.honesty).toMatch(/always current/i);
+  /** 2026-10-06: the sentence under the exhibit ("No app can edit a contact already saved in
+   *  someone else's phone…") was removed on the client's instruction. The section ends on the
+   *  exhibit; this keeps it from coming back by accident. */
+  it("no longer renders the line under the exhibit", () => {
+    const { container } = renderWithProviders(<Solution />);
+    expect(container.textContent).not.toMatch(/no app can edit a contact/i);
+    expect("honesty" in solution).toBe(false);
   });
 
   /** The client's own example sentence is the model: direct, second person, and naming the
@@ -66,7 +66,7 @@ describe("Solution", () => {
     for (const kind of ["work", "recruiters", "family"]) {
       expect(solution.lead).toContain(kind);
     }
-    const copy = [solution.lead, ...solution.paragraphs, solution.honesty].join(" ");
+    const copy = [solution.lead, ...solution.paragraphs].join(" ");
     expect(copy).not.toMatch(/filter over your profile/i);
     expect(copy, "no em-dash asides").not.toMatch(/\u2014|—/);
   });
@@ -141,17 +141,32 @@ describe("Solution", () => {
   it("renders three real, genuinely different card pages — not a diagram of them", () => {
     renderWithProviders(<Solution />);
     const cards = [...document.querySelectorAll("[data-solution-card]")];
+    expect(cards).toHaveLength(solution.cards.length);
 
-    const palettes = cards.map((card) => {
-      const root = card.querySelector("[data-card-root]");
-      expect(root, "a card column rendered no real card page").not.toBeNull();
-      expect(root).toHaveAttribute("data-card-variant", "page");
-      return root!.getAttribute("data-palette-id");
-    });
+    /* ⚠ REWRITTEN 2026-10-07. This asserted `<CardPage>`'s `[data-card-root]` and its
+       `data-palette-id`; the deck now draws the brand card (the hero phone's design), which has
+       neither. What it guarded is unchanged: a real card in every column, and three that differ.
+       A real card is the brand card's own root wearing the portrait; "different" is three tints
+       and three distinct sets of field rows, because three repaints of one card would satisfy
+       every count above while showing nothing. */
+    const tints = new Set<string>();
+    const rowSets = new Set<string>();
+    for (const card of cards) {
+      const root = card.querySelector(".mk-hc__card");
+      expect(root, "a card column rendered no real card").not.toBeNull();
+      expect(card.querySelector("img.mk-hc__photo"), "the card must wear the portrait").not.toBeNull();
 
-    expect(new Set(palettes).size, "three repaints of one card is not three cards").toBe(
-      solution.cards.length,
-    );
+      const tint = card.querySelector<HTMLElement>(".mk-hc__tint");
+      expect(tint, "each card's own colour must be laid over its portrait").not.toBeNull();
+      tints.add(tint!.style.getPropertyValue("--mk-hc-tone"));
+
+      const rows = [...card.querySelectorAll(".mk-hc__value")].map((v) => v.textContent).join("|");
+      expect(rows, "a card must carry its fields").not.toBe("");
+      rowSets.add(rows);
+    }
+
+    expect(tints.size, "three repaints of one card is not three cards").toBe(solution.cards.length);
+    expect(rowSets.size, "three cards must carry three different subsets").toBe(solution.cards.length);
   });
 
   /**
