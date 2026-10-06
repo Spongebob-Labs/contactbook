@@ -149,10 +149,10 @@ describe('buildPassJson — the layout', () => {
     ]);
   });
 
-  it('shows the company, uppercased, beside the logo — and nothing when there is none', () => {
+  it('shows the company, uppercased, beside the logo — and falls back to the org name when there is none', () => {
     expect(json.logoText).toBe('FERNWOOD STUDIO');
     const none = buildPassJson(CARD, OWNER, BASE_CONFIG, []);
-    expect(none).not.toHaveProperty('logoText');
+    expect(none.logoText).toBe('CONTACTBOOK');
   });
 
   it('has no empty rows when the card shares no details', () => {

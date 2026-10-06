@@ -170,11 +170,11 @@ describe('renderLogos — the header mark', () => {
 
   it('renders the three Wallet sizes as transparent PNGs', async () => {
     const out = await renderLogos(SAPPHIRE);
-    for (const [name, px] of Object.entries(LOGO_FILES)) {
+    for (const [name, { w, h }] of Object.entries(LOGO_FILES)) {
       const meta = await sharp(out[name as keyof typeof LOGO_FILES]).metadata();
       expect(meta.format).toBe('png');
-      expect(meta.width).toBe(px);
-      expect(meta.height).toBe(px);
+      expect(meta.width).toBe(w);
+      expect(meta.height).toBe(h);
       expect(meta.hasAlpha).toBe(true);
     }
   });
@@ -184,7 +184,9 @@ describe('renderLogos — the header mark', () => {
       (await renderLogos(SAPPHIRE))['logo@3x.png'],
     );
     expect(transparent / total).toBeGreaterThan(0.5); // the old logo was an opaque box
-    expect(opaque / total).toBeGreaterThan(0.1); // and the mark itself is really there
+    // The mark occupies ~31% of the 480×150 landscape canvas (mark is 150×150, rest is transparent
+    // padding). Even with a sparse mark, the opaque fraction of the full canvas is ~4–7%.
+    expect(opaque / total).toBeGreaterThan(0.04); // the mark is really there
     expect(
       await pixel((await renderLogos(SAPPHIRE))['logo@3x.png'], 1, 1),
     ).toMatchObject({ a: 0 });

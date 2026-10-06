@@ -186,7 +186,7 @@ export function buildPassJson(
     serialNumber: card.id,
     authenticationToken: deriveAuthToken(config.authSecret, card.id),
     webServiceURL: config.webServiceUrl,
-    ...(company ? { logoText: company.toUpperCase() } : {}),
+    logoText: (company ?? config.orgName).toUpperCase(),
     backgroundColor: theme.backgroundColor,
     foregroundColor: theme.foregroundColor,
     labelColor: theme.labelColor,

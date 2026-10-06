@@ -95,9 +95,9 @@ export async function renderBackgrounds(
  * pale-pink card.
  */
 export const LOGO_FILES = {
-  'logo.png': 50,
-  'logo@2x.png': 100,
-  'logo@3x.png': 150,
+  'logo.png': { w: 160, h: 50 },
+  'logo@2x.png': { w: 320, h: 100 },
+  'logo@3x.png': { w: 480, h: 150 },
 } as const;
 
 export const BRAND_GOLD = '#AE8140';
@@ -121,11 +121,30 @@ export async function renderLogos(
 
   const entries = await Promise.all(
     (
-      Object.entries(LOGO_FILES) as Array<[keyof typeof LOGO_FILES, number]>
-    ).map(async ([name, px]) => {
-      const alpha = await sharp(mask).resize(px, px).png().toBuffer();
+      Object.entries(LOGO_FILES) as Array<
+        [keyof typeof LOGO_FILES, { w: number; h: number }]
+      >
+    ).map(async ([name, { w, h }]) => {
+      // Fit the square mark to the logo height, then pad the right side with
+      // transparency to reach the full 160×50 pt landscape canvas. This
+      // prevents Apple Wallet from stretching a square image to fill the
+      // wider header area.
+      const alpha = await sharp(mask)
+        .resize(h, h, {
+          fit: 'contain',
+          background: { r: 0, g: 0, b: 0, alpha: 0 },
+        })
+        .extend({
+          top: 0,
+          bottom: 0,
+          left: 0,
+          right: w - h,
+          background: { r: 0, g: 0, b: 0, alpha: 0 },
+        })
+        .png()
+        .toBuffer();
       const png = await sharp({
-        create: { width: px, height: px, channels: 4, background: color },
+        create: { width: w, height: h, channels: 4, background: color },
       })
         .composite([{ input: alpha, blend: 'dest-in' }])
         .png()
