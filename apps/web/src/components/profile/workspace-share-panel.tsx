@@ -113,7 +113,7 @@ export function WorkspaceSharePanel({
             <QrZone payload={resolved.qrPayload} cardWidth={QR_CARD_WIDTH} mode="full" />
           </div>
           <div className="min-w-0 flex-1">
-            <WalletActions cardId={cardId} resolved={resolved} />
+            <WalletActions cardId={cardId} />
           </div>
         </div>
       </section>

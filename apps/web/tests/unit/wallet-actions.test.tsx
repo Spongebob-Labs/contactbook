@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, screen, waitFor } from "../helpers/render";
 import { ToastProvider } from "@/components/overlay/toast";
 import {
-  GOOGLE_SOON_NOTE,
   WALLET_NOT_IOS_NOTE,
   WALLET_UNAVAILABLE_NOTE,
   WalletActions,
@@ -11,13 +10,10 @@ import {
   checkWalletPass,
   detectIOS,
 } from "@/components/share/wallet-actions";
-import { resolveCard } from "@/card/resolve-card";
-import { cardLedgerDemo } from "@/fixtures/cards";
-import { fixtureFields, fixtureGroups } from "@/fixtures/profile";
-import { fixtureUser } from "@/fixtures/user";
 
 /**
- * **Add to Apple Wallet · Add to Google Wallet · Save QR to phone.**
+ * **Add to Apple Wallet** — the only control in the block (Google Wallet and Save QR to phone
+ * were removed 2026-10-06).
  *
  * Apple Wallet is wired to the real `GET /cards/{id}/wallet-pass`. What these hold:
  *
@@ -27,10 +23,8 @@ import { fixtureUser } from "@/fixtures/user";
  *   a server without the signing secrets (`409 WALLET_NOT_CONFIGURED`) leaves it disabled with one
  *   line, never a link that lands on a JSON error page;
  * · elsewhere it stays visible and disabled, saying it works on iPhone;
- * · Google has no backend, so it is visible, disabled, and makes no request.
+ * · nothing else is rendered beside it.
  */
-
-const resolved = resolveCard(cardLedgerDemo, fixtureUser, fixtureGroups, fixtureFields);
 
 const PKPASS = "application/vnd.apple.pkpass";
 
@@ -44,7 +38,7 @@ function pass(status: number, type: string): Response {
 function renderWallet(ios: boolean) {
   renderWithProviders(
     <ToastProvider>
-      <WalletActions cardId="card-1" resolved={resolved} ios={ios} />
+      <WalletActions cardId="card-1" ios={ios} />
     </ToastProvider>,
   );
 }
@@ -147,27 +141,16 @@ describe("anywhere that is not an iPhone", () => {
   });
 });
 
-describe("Google Wallet", () => {
-  it("is visible, disabled and 'coming soon' — and never makes a request", async () => {
+describe("the rest of the block", () => {
+  it("is Apple Wallet alone — no Google Wallet, no Save QR — and makes no request but the pass probe", async () => {
     renderWallet(true);
     await waitFor(() => expect(section()).toHaveAttribute("data-wallet-state", "ready"));
 
-    const google = document.querySelector<HTMLElement>('[data-wallet-add="google"]');
-    expect(google).toBeVisible();
-    expect(google).toHaveAttribute("aria-disabled", "true");
-    expect(google).toHaveAccessibleDescription(GOOGLE_SOON_NOTE);
-    // The only request ever made is the pass probe.
+    expect(document.querySelector('[data-wallet-add="google"]')).not.toBeInTheDocument();
+    expect(screen.queryByText(/google wallet/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /save qr to phone/i })).not.toBeInTheDocument();
     for (const call of (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls) {
       expect(String(call[0])).toMatch(/wallet-pass$/);
     }
-  });
-});
-
-describe("Save QR to phone", () => {
-  it("is still beside them and is never disabled", () => {
-    renderWallet(false);
-    const save = screen.getByRole("button", { name: /save qr to phone/i });
-    expect(save).not.toHaveAttribute("aria-disabled");
-    expect(save).toHaveAttribute("data-export-png");
   });
 });

@@ -1087,22 +1087,6 @@ function Builder({
                     paletteId={state.paletteId}
                     groundHex={state.groundHex}
                     finish={state.finish}
-                    texture={state.texture}
-                    texturePresence={state.texturePresence}
-                    textureScale={state.textureScale}
-                    /* ⚠ I-5: the palette off the one resolution, never a second lookup.
-                       Curated when the card is on a preset, derived when the owner picked
-                       their own colour — either way it is the palette the card in the pane is
-                       wearing, so the panel's cells and the preview cannot disagree about the
-                       colour of the same card. */
-                    palette={resolved.palette}
-                    onPreset={(paletteId) => dispatch({ kind: "palette", paletteId })}
-                    /* ⚠ Two dispatches rather than a new `look` reducer action.
-                       They are the two transitions the reducer already defines, and `palette`
-                       carries the load-bearing half — it unsets `groundHex`, so picking a look
-                       cannot leave a custom colour rendering behind a ticked cell. React batches
-                       both into one render, so the preview never shows the intermediate state.
-                       A dedicated action would add a third way to write the same two columns. */
                     /* The composed crop while one is pending, else the URL the server holds —
                        the same precedence `builderCard` applies, so the panel's thumbnail and
                        the preview pane cannot show two different covers. */
@@ -1118,15 +1102,15 @@ function Builder({
                       bio: state.bio,
                       onBio: (bio) => dispatch({ kind: "bio", bio }),
                     }}
+                    /* ⚠ Two dispatches rather than a new `look` reducer action.
+                       They are the two transitions the reducer already defines, and `palette`
+                       carries the load-bearing half — it unsets `groundHex`, so picking a look
+                       cannot leave a custom colour rendering behind a ticked cell. React batches
+                       both into one render, so the preview never shows the intermediate state. */
                     onLook={(look) => {
                       dispatch({ kind: "palette", paletteId: look.paletteId });
                       dispatch({ kind: "finish", finish: look.finish });
                     }}
-                    onGround={(hex) => dispatch({ kind: "ground", hex })}
-                    onFinish={(finish) => dispatch({ kind: "finish", finish })}
-                    onTexture={(texture) => dispatch({ kind: "texture", texture })}
-                    onPresence={(texturePresence) => dispatch({ kind: "presence", texturePresence })}
-                    onScale={(textureScale) => dispatch({ kind: "scale", textureScale })}
                   />
                 )}
 

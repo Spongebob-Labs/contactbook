@@ -426,7 +426,7 @@ function CardDetailScreen({
               </div>
 
               <div className="order-4 min-w-0">
-                <WalletActions cardId={cardId} resolved={resolved} />
+                <WalletActions cardId={cardId} />
               </div>
             </div>
 

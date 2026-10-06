@@ -1,16 +1,15 @@
 "use client";
 
-import { Download, Wallet } from "lucide-react";
+import { Wallet } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 
 import { Button, buttonClassName } from "@/components/primitives/button";
-import { ExportPngButton } from "@/components/share/export-png-button";
 import { browserApiBase } from "@/lib/api/mode";
-import type { ResolvedCard } from "@/types/domain";
 
 /**
- * **Add to Apple Wallet · Add to Google Wallet · Save QR to phone** — the Share panel of
- * Profile & Cards and the `/cards/[cardId]` screen, next to the QR.
+ * **Add to Apple Wallet** — the Share panel of Profile & Cards and the `/cards/[cardId]` screen,
+ * next to the QR. (Add to Google Wallet and Save QR to phone were removed 2026-10-06: client
+ * wanted Apple Wallet only.)
  *
  * ## Apple Wallet is live
  *
@@ -43,11 +42,6 @@ import type { ResolvedCard } from "@/types/domain";
  *   saying it works on iPhone. Client, 2026-09-28: *"'Add to Wallet' must be functional and
  *   visible."*
  *
- * ## Google Wallet is not built
- *
- * The backend has no Google endpoint, so that button is visible, disabled and says "coming soon".
- * It makes no request — an earlier version called an endpoint that never existed.
- *
  * ⚠ These are the app's own chrome (`components/primitives/button`), never `<CardActionButton>`:
  * a card-coloured control under a card on the app canvas fuses with it
  * (`tests/contract/card-buttons-on-canvas.test.tsx`).
@@ -68,9 +62,7 @@ export function applePassHref(cardId: string): string {
 /** Shown where Apple Wallet cannot be used from this device. */
 export const WALLET_NOT_IOS_NOTE = "Add to Apple Wallet works on iPhone. Open this page on your phone.";
 /** Shown on iPhone when the server cannot make a pass. */
-export const WALLET_UNAVAILABLE_NOTE = "Apple Wallet isn't available yet. Save the QR image instead.";
-/** Google Wallet has no backend yet. */
-export const GOOGLE_SOON_NOTE = "Google Wallet is coming soon.";
+export const WALLET_UNAVAILABLE_NOTE = "Apple Wallet isn't available yet.";
 
 /**
  * iPhone or iPad. iPadOS 13+ Safari reports itself as a Mac, so a "Mac" with a touch screen is an
@@ -108,13 +100,11 @@ export async function checkWalletPass(cardId: string): Promise<WalletPassAvailab
 
 export interface WalletActionsProps {
   cardId: string;
-  /** The screen's one `ResolvedCard` — the image is rasterised from it (I-5). */
-  resolved: ResolvedCard;
   /** Injected for tests. Omit to detect from the browser. */
   ios?: boolean;
 }
 
-export function WalletActions({ cardId, resolved, ios: iosProp }: WalletActionsProps) {
+export function WalletActions({ cardId, ios: iosProp }: WalletActionsProps) {
   /* `null` until the browser has been asked — the server render and first paint are identical. */
   const [detected, setDetected] = useState<boolean | null>(null);
   const [availability, setAvailability] = useState<
@@ -191,17 +181,6 @@ export function WalletActions({ cardId, resolved, ios: iosProp }: WalletActionsP
             Add to Apple Wallet
           </Button>
         )}
-
-        <Button
-          variant="secondary"
-          data-wallet-add="google"
-          disabled
-          aria-describedby={`${noteId}-google`}
-          className="justify-start"
-        >
-          <Wallet aria-hidden="true" size={16} strokeWidth={1.75} />
-          Add to Google Wallet
-        </Button>
       </div>
 
       {note === null ? null : (
@@ -209,21 +188,6 @@ export function WalletActions({ cardId, resolved, ios: iosProp }: WalletActionsP
           {note}
         </p>
       )}
-      <p id={`${noteId}-google`} data-wallet-google-note="" className="text-sm text-ink-3">
-        {GOOGLE_SOON_NOTE}
-      </p>
-
-      <ExportPngButton
-        resolved={resolved}
-        variant="secondary"
-        className="justify-start sm:self-start lg:self-stretch"
-        label={
-          <>
-            <Download aria-hidden="true" size={16} strokeWidth={1.75} />
-            Save QR to phone
-          </>
-        }
-      />
     </section>
   );
 }
