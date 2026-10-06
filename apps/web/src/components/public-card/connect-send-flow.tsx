@@ -68,8 +68,17 @@ export function ConnectSendFlow({ resolved, token }: ConnectSendFlowProps): Reac
      "Get 's card". */
   const ownerName = resolved.fullName.trim();
   const firstName = ownerName.split(" ")[0] ?? "";
+  /* Client, 2026-10-02: the panel read as if the reader should type the card owner's number — the
+     number asked for is the reader's OWN. So the heading says so outright, and the helper names
+     the owner as the number NOT to enter. */
   const askTitle =
-    firstName.length > 0 ? `Get ${firstName}'s card on WhatsApp` : "Get this card on WhatsApp";
+    firstName.length > 0
+      ? `Enter your own number to get ${firstName}'s card on WhatsApp`
+      : "Enter your own number to get this card on WhatsApp";
+  const askHelper =
+    firstName.length > 0
+      ? `Use your number, not ${firstName}'s. We'll message it on WhatsApp right away, so make sure it's yours. No account, no code.`
+      : "Use your number, not the card owner's. We'll message it on WhatsApp right away, so make sure it's yours. No account, no code.";
   /* "Sending", not "sent": the message goes out through the Postgres outbox, so a 200 here means
      it is queued, not delivered. A delivery claim would be a promise this page cannot keep. */
   const doneTitle =
@@ -146,7 +155,7 @@ export function ConnectSendFlow({ resolved, token }: ConnectSendFlowProps): Reac
           title={askTitle}
           /* Says plainly that nothing is checked, and asks the reader to do the checking — the
              only safeguard against a typo on this path is the person typing. */
-          helper="We'll message this number on WhatsApp right away, so make sure it's yours. No account, no code."
+          helper={askHelper}
         >
           <div style={{ display: "flex", gap: "var(--space-2)" }}>
             <select
