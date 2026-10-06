@@ -101,6 +101,27 @@ export const ROW_GLYPHS: Readonly<Record<HeroPhoneIcon, Glyph>> = {
       />
     </>,
   ),
+  /* 2026-10-06 — two glyphs the reference never drew, for the brand card's other uses (the
+     Solution deck and the How-it-works panels carry a birthday, a job title and experience).
+     Same construction as `link` and `building`: outline ink, ~1.8px strokes, 24-unit box. */
+  /* A wall calendar: a rounded sheet, a header rule and two binding rings. */
+  calendar: frame(
+    "mk-hc-glyph mk-hc-glyph--line",
+    <>
+      <rect x="3.6" y="5.2" width="16.8" height="15.2" rx="2.2" strokeWidth="1.8" />
+      <path d="M3.6 10h16.8" strokeWidth="1.6" />
+      <path d="M8.2 3.2v3.8M15.8 3.2v3.8" strokeWidth="1.8" />
+    </>,
+  ),
+  /* A briefcase: a body, a handle and the clasp line across the middle. */
+  briefcase: frame(
+    "mk-hc-glyph mk-hc-glyph--line",
+    <>
+      <rect x="3.2" y="7.2" width="17.6" height="12.6" rx="2" strokeWidth="1.8" />
+      <path d="M9 7.2V5.4a1.4 1.4 0 0 1 1.4-1.4h3.2A1.4 1.4 0 0 1 15 5.4v1.8" strokeWidth="1.7" />
+      <path d="M3.2 12.6h17.6" strokeWidth="1.5" />
+    </>,
+  ),
 };
 
 export const SOCIAL_MARKS: Readonly<Record<HeroPhoneSocial, Glyph>> = {

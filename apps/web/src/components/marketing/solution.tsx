@@ -2,10 +2,10 @@ import type { CSSProperties, ReactNode } from "react";
 
 import { Pause, Play } from "lucide-react";
 
-import { CardPageThumb } from "@/card/card-page-thumb";
-import { resolveCard } from "@/card/resolve-card";
-import { paletteVars } from "@/card/template-palettes";
-import { exampleCardSpecs, marketingUser, mayaProfile, solution } from "@/fixtures/marketing";
+import { heroPhone, solution } from "@/fixtures/marketing";
+
+import { BrandCard } from "./brand-card";
+import { brandCardContent } from "./brand-card-content";
 
 import { mkcn } from "./mk-cn";
 import { MkReveal } from "./mk-reveal";
@@ -58,26 +58,25 @@ import { accented, HEAD_TO_BODY, Prose, SectionHead } from "./type";
  * stylesheet must be `opacity` or `transform`.
  */
 
-/* ── the three cards, wired to the three renders that already exist ──────────────────────── */
-
-/**
- * Which `exampleCardSpecs` entry stands for each `solution.cards` entry. Mapped by id, never by
- * palette or index: two example cards could share a palette. Throws on a miss, the same
- * fail-loud convention `how-it-works.tsx` uses for the identical lookup.
- */
-function exampleCardFor(cardId: string) {
-  const spec = exampleCardSpecs.find((candidate) => candidate.id === cardId);
-  if (!spec) throw new Error(`solution: no example card fixture for "${cardId}"`);
-  return spec.card;
-}
+/* ── the three cards ─────────────────────────────────────────────────────────────────────── */
 
 /**
  * How far down each card the deck's window reaches, in the card's own design px.
  *
- * About 478px of a card is cover and identity, so a shorter window shows no field rows — and
- * the rows are what tell the three cards apart. 560 shows two or three before the veil.
+ * ⚠ 2026-10-06 (LATER) — 720 → 630, SO THE WHOLE EXHIBIT FITS ONE SCREEN. The client found it far
+ * taller than a viewport ("half cut off", visible only at 80% zoom). 630 keeps the cover, the
+ * name block, the Send to Phone pill and the first two or three rows; `marketing-solution.css` then steps the
+ * card's scale down with the viewport's HEIGHT from `lg`, so panel + deck stay inside one screen.
+ *
+ * ⚠ 2026-10-06 — 560 → 720, BECAUSE THE CARD CHANGED. The deck now draws the brand card
+ * (`brand-card.tsx`, the hero phone's card, on the client's word) instead of `<CardPageThumb>`.
+ * Its header — cover, badge, wordmark, name, role, bio and the Send to Phone pill — is 472px,
+ * so 560 would show one row; the rows are what tell the three cards apart, and the client asked
+ * that each card keep its own subset visible. 720 shows the Family card whole (653px) and the
+ * first two groups of Work and CV before the veil. The deck is ~128px taller at `lg` as a
+ * result; nothing else in the section moves.
  */
-const CARD_CROP_HEIGHT = 560;
+const CARD_CROP_HEIGHT = 630;
 
 const TOTAL_FIELDS = solution.profile.length;
 const PROFILE_LABEL_ID = "solution-profile-label";
@@ -89,15 +88,17 @@ const CARDS_LABEL_ID = "solution-cards-label";
 interface CardSkin {
   readonly ground: string;
   readonly ink: string;
+  /** The same colour as `ground`, as a value — the brand card's cover tone (2026-10-06). */
+  readonly tone: string;
 }
 
 const CARD_SKIN: Record<string, CardSkin> = {
-  sapphire: { ground: "bg-mk-sapphire", ink: "text-mk-white" },
-  clay: { ground: "bg-mk-clay", ink: "text-mk-ink" },
-  onyx: { ground: "bg-mk-ink", ink: "text-mk-white" },
+  sapphire: { ground: "bg-mk-sapphire", ink: "text-mk-white", tone: "var(--mk-sapphire)" },
+  clay: { ground: "bg-mk-clay", ink: "text-mk-ink", tone: "var(--mk-clay)" },
+  onyx: { ground: "bg-mk-ink", ink: "text-mk-white", tone: "var(--mk-ink)" },
 };
 
-const FALLBACK_SKIN: CardSkin = { ground: "bg-mk-ink", ink: "text-mk-white" };
+const FALLBACK_SKIN: CardSkin = { ground: "bg-mk-ink", ink: "text-mk-white", tone: "var(--mk-ink)" };
 
 function cardSkin(paletteId: string): CardSkin {
   return CARD_SKIN[paletteId] ?? FALLBACK_SKIN;
@@ -178,28 +179,47 @@ function ProfileChips() {
 /* ── the deck ───────────────────────────────────────────────────────────────────────────── */
 
 /**
- * One card of the deck, as the product draws it.
+ * One card of the deck — the brand card, the hero phone's design (2026-10-06).
  *
- * `<CardPageThumb>` renders its whole subtree `inert`, so the card's own row actions and links
- * are out of the tab order and the accessibility tree; the names list beside the deck is what
- * a screen reader gets. `paletteVars` on the frame is for the veil only: it fades to
- * `--c-sheet`, the paper this card is printed on, which a sibling overlay cannot otherwise see.
+ * The client: these cards "don't look like our actual card", with the hero's card as the
+ * reference. So each is now `<BrandCard layout="flow">`, carrying exactly its fixture fields
+ * (`brand-card-content.ts` turns the field ids into rows), cropped by the same window and veil
+ * the deck always used, at the same `--card-thumb-scale` steps (applied as `zoom`, as the hero
+ * does, so the card is re-rasterised rather than resampled).
+ *
+ * ⚠ THE COVER IS THE PORTRAIT, TINTED IN EACH CARD'S OWN COLOUR — 2026-10-06 (LATER). The client:
+ * the cards "should look good and give us the feel of the actual card that we have in the hero",
+ * with the person's image rendered in them. So every card wears Maya's portrait, as the hero's
+ * does. A bare identical portrait on all three would make the cards indistinguishable at the one
+ * place they differ at a glance, and the colour is what ties a card to the chips it lights and
+ * the swatch beside its name — so `tint` lays the card's colour over the photo's top edge, solid
+ * at the rim and gone a third of the way down. The back cards show only that rim, so the stack
+ * still reads as three colours; the front card shows a clean face.
+ *
+ * The card is `inert` and the deck `aria-hidden`; the names list beside the deck is what a
+ * screen reader gets. The veil fades to the card's own sheet cream (`--c-sheet`).
  *
  * `data-mk-walk-col` is the card's place on the one clock (see the stylesheet); its resting
  * pose — front, first behind, second behind — is the same number.
  */
 function DeckCard({ card, index }: { card: (typeof solution.cards)[number]; index: number }) {
-  const resolved = resolveCard(
-    exampleCardFor(card.id),
-    marketingUser,
-    mayaProfile.groups,
-    mayaProfile.fields,
-  );
-
   return (
     <div data-solution-card={card.id} data-mk-walk-col={index} className="mk-sol-deck__card">
-      <span className="mk-sol-card__frame" style={paletteVars(resolved.palette) as CSSProperties}>
-        <CardPageThumb resolved={resolved} height={CARD_CROP_HEIGHT} />
+      <span
+        className="mk-sol-card__frame"
+        style={{ ["--c-sheet" as string]: "var(--mk-phone-sheet)" } as CSSProperties}
+      >
+        <span
+          className="mk-sol-card__crop"
+          style={{ ["--mk-sol-crop" as string]: `${CARD_CROP_HEIGHT}px` } as CSSProperties}
+        >
+          <BrandCard
+            layout="flow"
+            cover={{ kind: "photo", x2: heroPhone.portrait.x2, x3: heroPhone.portrait.x3, tint: cardSkin(card.paletteId).tone }}
+            idPrefix={`mk-sol-${card.id}`}
+            {...brandCardContent(card.id)}
+          />
+        </span>
         <span className="mk-sol-card__veil" />
       </span>
     </div>
@@ -243,7 +263,7 @@ function SolutionExhibit() {
       data-mk-elevation="card"
       className={mkcn(
         HEAD_TO_BODY,
-        "overflow-hidden rounded-mk-block border border-mk-hairline bg-mk-white p-5 sm:p-8 md:p-10",
+        "overflow-hidden rounded-mk-block border border-mk-hairline bg-mk-white p-5 sm:p-8 md:px-10 md:py-7",
       )}
     >
       <p id={PROFILE_LABEL_ID} className={LABEL_CLASS}>
@@ -307,12 +327,9 @@ export function Solution() {
         ))}
       </div>
 
+      {/* 2026-10-06: the section ends on the exhibit. The sentence that sat under it was
+          removed on the client's instruction; see the note in `fixtures/marketing.ts`. */}
       <SolutionExhibit />
-
-      {/* The honesty line. See the fixture: it may not be cut. */}
-      <Prose size="small" className="mt-6 max-w-mk-measure">
-        {solution.honesty}
-      </Prose>
     </Section>
   );
 }

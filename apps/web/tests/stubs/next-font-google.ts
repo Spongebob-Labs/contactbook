@@ -65,12 +65,12 @@ export const Instrument_Serif = loader("instrument-serif");
  */
 
 /**
- * The hero phone card's four faces, loaded by `components/marketing/hero-card.tsx` itself
- * (2026-09-29) — the reference card's own type, identified by rendering candidates against the
- * reference and scoring them. Component-scoped, so only the route that renders the hero pays for
- * them; any test that renders `<Hero />` imports them.
+ * The hero phone card's three faces, loaded by `components/marketing/hero-card.tsx` and
+ * `hero-fonts.ts` (2026-09-29) — the reference card's own type, identified by rendering
+ * candidates against the reference and scoring them. Component-scoped, so only the route that
+ * renders the hero pays for them; any test that renders `<Hero />` imports them. (A fourth,
+ * Yellowtail, set the photo's handwritten overlay until that was removed on 2026-10-06.)
  */
 export const Libre_Caslon_Text = loader("hero-serif");
 export const Inter = loader("hero-sans");
 export const DM_Sans = loader("hero-caps");
-export const Yellowtail = loader("hero-script");

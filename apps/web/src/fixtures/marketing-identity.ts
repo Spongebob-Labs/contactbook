@@ -11,7 +11,7 @@
  * prints; the four cities are Maya Partners' offices.
  *
  * This file exists so every landing section draws the same person from one place. It holds the
- * facts (name, company, cities, numbers, addresses, emails, map coordinates) and nothing about
+ * facts (name, company, cities, numbers, addresses, emails) and nothing about
  * how a section presents them — beats, row order and copy stay in `fixtures/marketing.ts`.
  *
  * ⚠ NUMBERS. The UK numbers use Ofcom's drama ranges (`020 7946 0000–0999`, `07700 900000–
@@ -33,9 +33,6 @@ export interface MayaCity {
   readonly phone: string;
   /** The office, in one line, as it would sit in a card row. */
   readonly address: string;
-  /** For a map element — WGS84 degrees. */
-  readonly lat: number;
-  readonly lon: number;
 }
 
 export const MAYA = {
@@ -66,8 +63,6 @@ export const MAYA_CITIES: readonly MayaCity[] = [
     country: "United Kingdom",
     phone: "+44 20 7946 0958",
     address: "14 Wren Yard, London EC2A 4NE",
-    lat: 51.5074,
-    lon: -0.1278,
   },
   {
     id: "dubai",
@@ -75,8 +70,6 @@ export const MAYA_CITIES: readonly MayaCity[] = [
     country: "United Arab Emirates",
     phone: "+971 4 000 0147",
     address: "Level 21, Creek Harbour Tower, Dubai",
-    lat: 25.2048,
-    lon: 55.2708,
   },
   {
     id: "new-york",
@@ -84,8 +77,6 @@ export const MAYA_CITIES: readonly MayaCity[] = [
     country: "United States",
     phone: "+1 212 555 0147",
     address: "88 Hudson Row, New York, NY 10013",
-    lat: 40.7128,
-    lon: -74.006,
   },
   {
     id: "singapore",
@@ -93,8 +84,6 @@ export const MAYA_CITIES: readonly MayaCity[] = [
     country: "Singapore",
     phone: "+65 6000 0147",
     address: "8 Keppel Quay, #14-02, Singapore 098631",
-    lat: 1.3521,
-    lon: 103.8198,
   },
 ];
 
