@@ -185,13 +185,18 @@ export class GoogleWalletService implements OnModuleInit {
       .join(' ');
     const shareUrl = `${this.config.shareBaseUrl}/c/${card.publicToken}`;
 
+    const headerValue = ownerName || card.name;
+    const subheaderValue = card.headline?.trim() || null;
+
     const passObject = {
       id: objectId,
       classId,
       genericType: 'GENERIC_OTHER',
       state: card.archivedAt ? 'EXPIRED' : 'ACTIVE',
-      header: ownerName || card.name,
-      subheader: card.headline ?? '',
+      header: { defaultValue: { language: 'en-US', value: headerValue } },
+      ...(subheaderValue
+        ? { subheader: { defaultValue: { language: 'en-US', value: subheaderValue } } }
+        : {}),
       cardTitle: { defaultValue: { language: 'en-US', value: card.name } },
       hexBackgroundColor: card.groundHex ?? '#1a1a1a',
       barcode: {
