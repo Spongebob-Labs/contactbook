@@ -3,23 +3,16 @@
 import type { ReactElement } from "react";
 
 import { selectedLook, type CardLook } from "@/card/card-looks";
-import { FINISHES, TEXTURES, type Finish, type Texture, type TexturePresence, type TextureScale } from "@/card/card-surface";
-import type { PaletteId, TemplatePalette } from "@/card/template-palettes";
+import type { Finish } from "@/card/card-surface";
+import type { PaletteId } from "@/card/template-palettes";
 
 import { Input } from "@/components/primitives/input";
 import { TextArea } from "@/components/primitives/textarea";
 
-import { BackgroundPicker, groundLabel } from "./background-picker";
 import { CoverPicker } from "./cover-picker";
 import { LogoPicker } from "./logo-picker";
 import { LookPicker } from "./look-picker";
 import { PanelGroup, PanelRow } from "./panel-row";
-import {
-  FinishPicker,
-  TexturePicker,
-  TexturePresenceDial,
-  TextureScaleDial,
-} from "./surface-picker";
 
 /**
  * The **Design** section — the card's mark, its colour, and how that colour is painted.
@@ -87,17 +80,6 @@ export interface DesignPanelProps {
   paletteId: PaletteId;
   groundHex: string | undefined;
   finish: Finish;
-  texture: Texture;
-  texturePresence: TexturePresence;
-  textureScale: TextureScale;
-  /** ⚠ The card's palette from the one resolution. Never looked up from a preset table here. */
-  palette: TemplatePalette;
-  onPreset: (paletteId: PaletteId) => void;
-  onGround: (hex: string) => void;
-  onFinish: (finish: Finish) => void;
-  onTexture: (texture: Texture) => void;
-  onPresence: (presence: TexturePresence) => void;
-  onScale: (scale: TextureScale) => void;
   /** A curated look — palette and finish at once, clearing any custom colour. */
   onLook: (look: CardLook) => void;
 
@@ -146,23 +128,12 @@ export function DesignPanel({
   paletteId,
   groundHex,
   finish,
-  texture,
-  texturePresence,
-  textureScale,
-  palette,
-  onPreset,
-  onGround,
-  onFinish,
-  onTexture,
-  onPresence,
-  onScale,
   onLook,
   coverUrl,
   coverBusy,
   onCover,
   text,
 }: DesignPanelProps): ReactElement {
-  const textured = texture !== "none";
   const look = selectedLook(paletteId, finish, groundHex);
 
   return (
@@ -256,18 +227,8 @@ export function DesignPanel({
         )}
       </PanelGroup>
 
-      {/* ⚠ **Look comes before the dials, and the dials moved behind a disclosure.**
-
-          The panel used to open on Background and then ask for Finish, Texture, Strength and
-          Size. Four of those six ask the owner to art-direct a surface — how strong the grain,
-          how large the dots — which is a question somebody setting up a contact card has no
-          reason to hold an opinion about and the most likely way for them to make their own
-          card worse.
-
-          A look answers all of them at once, and picking one writes the SAME columns the dials
-          wrote, so nothing new is stored and no migration exists. The dials survive intact
-          underneath: an owner with brand colours has a real need the twelve cannot serve, and
-          this is a default rather than a cage. */}
+      {/* A look writes palette and finish together. The individual colour, finish and texture
+          dials were removed from the UI (2026-10-06); the columns they wrote are unchanged. */}
       <PanelGroup title="Look">
         <PanelRow
           label="Style"
@@ -284,92 +245,6 @@ export function DesignPanel({
           />
         </PanelRow>
       </PanelGroup>
-
-      {/* A native `details`, not a state-driven panel: it needs no JavaScript to open, it is
-          keyboard-operable and screen-reader-announced for free, and its open state is not
-          something the builder should be remembering across a save. */}
-      <details data-design-advanced="" className="group">
-        <summary
-          className="cursor-pointer list-none select-none text-sm text-ink-3 transition-colors hover:text-ink marker:content-none"
-          data-design-advanced-toggle=""
-        >
-          <span className="inline-flex items-center gap-2">
-            <span aria-hidden="true" className="transition-transform group-open:rotate-90">
-              ›
-            </span>
-            Advanced
-          </span>
-        </summary>
-
-        <div className="flex flex-col gap-8 pt-6">
-      <PanelGroup title="Colour">
-        <PanelRow
-          label="Background"
-          value={groundLabel(paletteId, groundHex)}
-          id="ground"
-          last
-        >
-          <BackgroundPicker
-            paletteId={paletteId}
-            groundHex={groundHex}
-            palette={palette}
-            finish={finish}
-            texture={texture}
-            onPreset={onPreset}
-            onGround={onGround}
-          />
-        </PanelRow>
-      </PanelGroup>
-
-      <PanelGroup title="Surface">
-        <PanelRow
-          label="Finish"
-          value={FINISHES[finish].name}
-          id="finish"
-        >
-          <FinishPicker
-            selected={finish}
-            palette={palette}
-            texture={texture}
-            texturePresence={texturePresence}
-            textureScale={textureScale}
-            onSelect={onFinish}
-          />
-        </PanelRow>
-
-        <PanelRow
-          label="Texture"
-          value={TEXTURES[texture].name}
-          id="texture"
-          last={!textured}
-        >
-          <TexturePicker
-            selected={texture}
-            palette={palette}
-            finish={finish}
-            texturePresence={texturePresence}
-            textureScale={textureScale}
-            onSelect={onTexture}
-          />
-        </PanelRow>
-
-        {/* ⚠ Absent, not disabled — see the note in `surface-picker.tsx`. With no texture there
-            is no strength or size to set, and a dial for a state you are not in is two tab
-            stops that answer nothing. Both rows go together: they are one idea in two axes, and
-            leaving one behind would read as a control that had failed to load. */}
-        {!textured ? null : (
-          <>
-            <PanelRow label="Strength" id="presence">
-              <TexturePresenceDial value={texturePresence} onSelect={onPresence} />
-            </PanelRow>
-            <PanelRow label="Size" id="scale" last>
-              <TextureScaleDial value={textureScale} onSelect={onScale} />
-            </PanelRow>
-          </>
-        )}
-      </PanelGroup>
-        </div>
-      </details>
     </div>
   );
 }

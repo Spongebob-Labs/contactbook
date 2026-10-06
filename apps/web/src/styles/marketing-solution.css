@@ -131,8 +131,8 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-top: 28px;
-  padding-top: 20px;
+  margin-top: 20px;
+  padding-top: 16px;
   border-top: 1px solid var(--mk-hairline);
 }
 
@@ -190,7 +190,7 @@
   grid-template-columns: minmax(0, 1fr);
   justify-items: center;
   gap: 28px;
-  margin-top: 24px;
+  margin-top: 16px;
 }
 
 /* All three cards share one grid cell, so the deck is exactly as large as its
@@ -232,14 +232,33 @@
   box-shadow: var(--mk-shadow-float);
 }
 
+/* The window (2026-10-06): the brand card at its 330px design width, zoomed by
+   the same `--card-thumb-scale` steps the product thumb used, and cut at
+   `--mk-sol-crop` design px (`CARD_CROP_HEIGHT` in `solution.tsx`). `zoom`,
+   never `scale(` — the hero's rule, so the card re-rasterises at size. A card
+   shorter than the window (Family) ends on its own sheet cream, not a hole. */
+.mk-sol-card__crop {
+  display: block;
+  width: calc(330px * var(--card-thumb-scale, 0.6));
+  height: calc(var(--mk-sol-crop) * var(--card-thumb-scale, 0.6));
+  overflow: hidden;
+  background-color: var(--mk-phone-sheet);
+}
+
+.mk-sol-card__crop > .mk-hc {
+  zoom: var(--card-thumb-scale, 0.6);
+}
+
 /* ⚠ THE CROP NEEDS A BOTTOM DRAWN UNDER IT, or the window cuts a field row in
    half and reads as broken. It fades to `--c-sheet`, the paper THAT card is
-   printed on — set by `paletteVars` on the frame in `solution.tsx`. */
+   printed on — set on the frame in `solution.tsx`. 30% → 18% on 2026-10-06:
+   the window is taller and the rows sit in its lower third, so the old fade
+   would have veiled the very rows that tell the cards apart. */
 .mk-sol-card__veil {
   position: absolute;
   inset-inline: 0;
   bottom: 0;
-  height: 30%;
+  height: 18%;
   background-image: linear-gradient(
     to bottom,
     transparent 0%,
@@ -319,7 +338,7 @@
 /* Side by side from `lg`: the deck on the left, its name beside it. */
 @media (min-width: 1024px) {
   [data-solution-exhibit] {
-    --card-thumb-scale: 0.8;
+    --card-thumb-scale: 0.88;
     --mk-sol-peek: 26px;
     --mk-sol-title: 2.5rem;
   }
@@ -332,7 +351,40 @@
     align-items: center;
     justify-items: start;
     column-gap: 80px;
-    margin-top: 32px;
+    margin-top: 16px;
+  }
+}
+
+/* ⚠ THE EXHIBIT MUST FIT ONE SCREEN — 2026-10-06 (LATER). Side by side, the exhibit is
+   about 270px of panel (padding, the two labels, the chips, the divide) plus the deck:
+   the front card's window (`CARD_CROP_HEIGHT` 630 design px x the scale) and the two
+   peeking edges above it (52px). So it is 322 + 600 x scale, and it has to be no taller
+   than the viewport less the 80px nav and a little air: scale <= (height - 426) / 630.
+   Each step below is that bound, rounded down to the nearest card the type still reads
+   at. It is the viewport's HEIGHT that decides, never its width: a wide short window is
+   the case that broke, and a tall one can afford a bigger card. Move any of the numbers
+   above (padding, divide, stage margin, crop) and re-derive these four. */
+@media (min-width: 1024px) and (max-height: 999px) {
+  [data-solution-exhibit] {
+    --card-thumb-scale: 0.74;
+  }
+}
+
+@media (min-width: 1024px) and (max-height: 899px) {
+  [data-solution-exhibit] {
+    --card-thumb-scale: 0.65;
+  }
+}
+
+@media (min-width: 1024px) and (max-height: 839px) {
+  [data-solution-exhibit] {
+    --card-thumb-scale: 0.55;
+  }
+}
+
+@media (min-width: 1024px) and (max-height: 779px) {
+  [data-solution-exhibit] {
+    --card-thumb-scale: 0.46;
   }
 }
 

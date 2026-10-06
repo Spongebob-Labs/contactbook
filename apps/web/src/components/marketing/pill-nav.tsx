@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 
 import { mkcn } from "./mk-cn";
+import { CONTENT_COLUMN } from "./section";
 import { MkButtonLink } from "./type";
 
 /**
@@ -22,60 +23,44 @@ export const BRAND_NAME = "ContactBook";
 const NAV_LOGO = { src: "/brand/contactbook-logo-nav.png", width: 408, height: 81 } as const;
 
 /**
- * The floating pill bar — the most visible single component in the build, and the one place
- * in `src/components/marketing/**` that leaves the flat plane.
+ * The site header — one `position: fixed`, full-width white bar, the same element at every width.
  *
- * The shape is design.md's: a rounded bar of pure white floating over the paper ground,
- * logo left and two controls right — a ghost "Log in" and a dark filled "Create your card".
- * The three section links that used to sit between them were removed on 2026-09-20; see
- * `SECTION_LINKS` below.
+ * Laid out on the page's content column (`CONTENT_COLUMN`, imported rather than restated), so the
+ * logo's left edge and the pill's right edge line up with every section beneath. Logo left, no
+ * box. Right, the white pill around "Log in" and "Get Started" — the client's 2026-10-06 ask:
+ * *"logo larger, top left, out of the box; the box only around Log in and Get Started."*
+ *
+ * NOTE — 2026-10-06, REBUILT AS ONE BAR. The first cut of that ask was two unrelated layers: from
+ * `md` the nav was `absolute`, so the logo scrolled away with the page, while only the pill was
+ * `fixed`. Scrolled down, the header was two buttons floating over the content with no logo —
+ * read, correctly, as a glitch. Now the bar is fixed and opaque, and everything in it stays.
+ *
+ * ── Height is a contract with the layout ─────────────────────────────────────────────
+ * `h-16` / `md:h-20` here ↔ `pt-16` / `md:pt-20` on `<main>` in `(marketing)/layout.tsx`, and the
+ * hero's `lg:min-h-[calc(100svh-5rem)]` assumes the 80px. Move all three together. Sections clear
+ * the bar on an anchor jump with their own `scroll-mt-28` (112px), in `section.tsx`.
  *
  * ── Why this may carry elevation when nothing else here can ──────────────────────────
- * The direction is flat-first: a surface in normal flow separates itself with a hairline, not
- * a shadow. This bar is `position: fixed` — it floats over the page content by construction —
- * so it is the exception the rule allows for.
- *
- * It claims that through `data-elevation="1"`, never a shadow declaration of its own.
- * That attribute's rule ships inside the overlay layer's hoisted stylesheet, which is why
- * `<OverlayStyles />` in `(marketing)/layout.tsx` is load-bearing rather than decorative —
- * without it this bar sits flat on the paper. **Nothing else in this directory may take this
- * as licence to elevate.**
+ * The direction is flat-first: a surface in normal flow separates itself with a hairline. This
+ * bar is `fixed` — content scrolls under it by construction — so it is the exception the rule
+ * allows, claimed through `data-elevation="1"` (whose rule `<OverlayStyles />` in the layout
+ * ships), never a declaration of its own. The pill inside it is flat: a second lift on a surface
+ * that already floats would be one surface stacked on another. **Nothing else in this directory
+ * may take this as licence to elevate.**
  *
  * ── No icons, at all ─────────────────────────────────────────────────────────────────
- * The marketing page uses no icons above the footer, and a test asserts zero `<svg>` inside
- * `<main>` outside a card. That is why the mobile layout *dropped* the three centre links
- * rather than folding them behind a hamburger — the glyph would be the first icon on the
- * page. They are gone at every width now (2026-09-20), and `SiteFooter` is the one place the
- * section routes stay reachable — which is why it carries the full list, not a token two.
+ * A test asserts zero `<svg>` inside `<main>` outside a card, and the nav holds to the same
+ * rule — which is why the centre links were dropped rather than folded behind a hamburger.
+ * `SiteFooter` is where the section routes stay reachable.
  *
- * ── NOTE — IT OVERFLOWED ITS OWN PILL BELOW 390px, AND THE FIX IS FOUR VALUES ─────────────
- * At 360px the bar needed roughly 380px of content and had 336px of room, so "Get started" ran
- * out past the pill's right edge and lost its last characters — the loudest chrome in the
- * product, clipped, on the width most visitors arrive at. It never showed up as a horizontal
- * scrollbar because the bar is `position: fixed`, so its overflow does not extend the document's
- * scroll width: the page's "never scrolls sideways" test was green the whole time it was broken.
- * `tests/e2e/marketing.spec.ts` now measures the controls against the bar's own padding box,
- * which is the thing that was actually wrong.
+ * ── The 360px budget ─────────────────────────────────────────────────────────────────
+ * Below `md` the row has 312px of content box. The logo drops to 24px tall (~121px wide) and the
+ * controls take narrower horizontal padding, so both fit with their full tap targets. Nothing
+ * here shrinks a tap target; `tests/e2e/marketing.spec.ts` measures the controls against the
+ * row's padding box, because a `fixed` bar's overflow never shows up as a sideways scroll.
  *
- * The fix spends nothing that matters at 360px and nothing at all above it:
- *
- *   · the wordmark drops from 24px to the 18px step — a name still set in the display face, and
- *     the single biggest line item at ~50px saved. It returns to 24px at `md`.
- *   · the bar's own inset and padding tighten from 12px to 8px, giving back 16px of viewport.
- *   · the gap between the wordmark and the controls goes 12px → 8px.
- *   · both buttons take narrower horizontal padding, and only below `md`.
- *
- * That leaves ~30px of slack at 360px rather than a 44px deficit, and the desktop bar is
- * byte-for-byte what it was. What was NOT done is worth recording: nothing here shrinks the
- * TAP TARGETS. Vertical padding, the two controls and their labels are untouched — a bar that
- * fits because its buttons became too small to hit is the same defect wearing a different hat.
- *
- * ── It is a server component again, and that is a real saving ────────────────────────
- * The previous version was `"use client"` for one reason: it called `buttonClassName` from
- * the product's `<Button>`, which lives in a client module, and a server component that calls
- * into one throws before rendering. It now uses `MkButtonLink` from `./type`, which is a
- * plain server-safe module — so the static links in the loudest chrome in the product no
- * longer ship a hydration payload to say nothing.
+ * It is a server component: `MkButtonLink` from `./type` is server-safe, so the loudest chrome
+ * in the product ships no hydration payload.
  */
 
 /*
@@ -84,7 +69,7 @@ const NAV_LOGO = { src: "/brand/contactbook-logo-nav.png", width: 408, height: 8
    bland nav bar."*
 
    It held three: `/#how-it-works`, `/templates` (labelled "Example cards") and `/corporate`.
-   The bar is now the logo, Log in, and "Create your card" — the one thing the page is asking for.
+   The bar is now the logo, Log in, and "Get Started" — the one thing the page is asking for.
 
    NOTE - THE ROUTES STILL EXIST. Only the nav entries are gone. The footer still links
    `/templates`. `/corporate` and `/waitlist` stay on disk, but since 2026-09-28 nothing on the
@@ -111,87 +96,90 @@ export function PillNav() {
       aria-label="Primary"
       data-pill-nav=""
       data-elevation="1"
-      className={mkcn(
-        /* NOTE — BELOW `md` THIS IS A BAR, NOT A PILL — 2026-09-24.
-           The floating pill left a 12px gap above it and open corners beside it, and on a phone
-           everything scrolled through that gap: the hero's own "Join the waitlist" poked out
-           above the nav, the phone frame showed around its rounded ends, and the strip behind it
-           was the layout's `mk-paper` while the hero under it was `mk-white` — a band of the wrong
-           colour across the top of every page. A solid, full-width bar exactly as tall as
-           `<main>`'s top padding (`h-16` ↔ `pt-16` in the layout) leaves no gap and no strip.
-           Everything from `md` up is the pill exactly as it was. */
-        "fixed inset-x-0 top-0 z-50 mx-auto flex h-16 max-w-mk-page items-center gap-2",
-        "border-b border-mk-hairline bg-mk-white px-4",
-        "md:inset-x-6 md:top-4 md:h-auto md:gap-6 md:rounded-mk-pill md:border md:px-4 md:py-2",
-      )}
+      className="fixed inset-x-0 top-0 z-50 h-16 border-b border-mk-hairline bg-mk-white md:h-20"
     >
-      {/*
-        The logo, top left, home. See `BRAND_NAME` above for why it is an image now.
-
-        NOTE — THE HEIGHT IS THE 360px BUDGET, NOT A TASTE CALL. Below `md` the bar holds the
-        logo, "Log in" and "Create your card" in 328px of content box; at 20px tall the lockup is
-        ~101px wide, which leaves the two controls their full tap targets. It returns to 28px at
-        `md`, where the pill has room. `preload` because it is above the fold on every marketing
-        page (it replaced `priority`, deprecated in Next 16).
-
-        Under 360px even that does not fit, so the same image is cropped to its CB mark
-        (`object-cover` + `object-left` on a 24px-wide box) — one file, no second request.
-      */}
-      <Link
-        href="/"
-        className={mkcn(
-          "flex shrink-0 items-center rounded-mk-control px-1 py-1 md:px-2",
-          "transition-opacity duration-[var(--dur-fast)] hover:opacity-80",
-        )}
+      <div
+        data-pill-nav-row=""
+        className={mkcn(CONTENT_COLUMN, "flex h-full items-center gap-2 md:gap-6")}
       >
-        <Image
-          src={NAV_LOGO.src}
-          width={NAV_LOGO.width}
-          height={NAV_LOGO.height}
-          alt={BRAND_NAME}
-          preload
-          className="h-5 w-auto max-[359px]:w-6 max-[359px]:object-cover max-[359px]:object-left md:h-7"
-        />
-      </Link>
+        {/*
+          The logo, top left, home — no box around it. `preload` because it is above the fold on
+          every marketing page (it replaced `priority`, deprecated in Next 16). 24px tall on a
+          phone (the 360px budget above), 44px from `md`. Under 360px even 24px does not fit, so
+          the same image is cropped to its CB mark (`object-cover` + `object-left` on a 28px-wide
+          box) — one file, no second request.
+        */}
+        <Link
+          href="/"
+          data-pill-nav-logo=""
+          className={mkcn(
+            "flex shrink-0 items-center rounded-mk-control py-1",
+            "transition-opacity duration-[var(--dur-fast)] hover:opacity-80",
+          )}
+        >
+          <Image
+            src={NAV_LOGO.src}
+            width={NAV_LOGO.width}
+            height={NAV_LOGO.height}
+            alt={BRAND_NAME}
+            preload
+            className="h-6 w-auto max-[359px]:w-7 max-[359px]:object-cover max-[359px]:object-left md:h-11"
+          />
+        </Link>
 
-      {/*
-        The `<ul>` renders only when there is something in it. An empty list is not the same
-        thing as no list: assistive tech announces "list, 0 items", and an empty `<ul>` is a
-        markup smell that outlives whatever emptied it.
+        {/*
+          The `<ul>` renders only when there is something in it: an empty list announces as
+          "list, 0 items". Otherwise a plain spacer pushes the controls right, and the list
+          takes that job back the moment a link is added.
+        */}
+        {SECTION_LINKS.length > 0 ? (
+          <ul className="mx-auto hidden items-center gap-2 md:flex">
+            {SECTION_LINKS.map((link) => (
+              <li key={link.href}>
+                <Link href={link.href} className={TAB_CLASS}>
+                  {link.label}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <span className="mx-auto" aria-hidden="true" />
+        )}
 
-        `mx-auto` is what pushed the controls to the right edge, so with the list gone a plain
-        spacer takes that job — the bar's geometry is unchanged either way, and it comes back
-        automatically the moment a link is added.
-      */}
-      {SECTION_LINKS.length > 0 ? (
-        <ul className="mx-auto hidden items-center gap-2 md:flex">
-          {SECTION_LINKS.map((link) => (
-            <li key={link.href}>
-              <Link href={link.href} className={TAB_CLASS}>
-                {link.label}
-              </Link>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <span className="mx-auto" aria-hidden="true" />
-      )}
+        {/* THE PILL — white, hairline, pill radius, around the two controls only. 2026-10-07: a
+            slimmer 52px capsule (it was 60px, which left 9px of dead white above and below the
+            42px buttons) and the buttons are pills too, so the inner radius matches the outer
+            one instead of two 8px-cornered buttons in a round box. The `py-2.5` both inherit
+            from `MkButtonLink`'s `md` size is their hittable height and is not touched. */}
+        <div
+          data-pill-nav-controls=""
+          className={mkcn(
+            "ml-auto flex shrink-0 items-center gap-1 rounded-mk-pill border border-mk-hairline bg-mk-white p-1",
+            "md:ml-0 md:h-[52px] md:gap-1 md:p-1",
+          )}
+        >
+          <MkButtonLink
+            href="/signin/phone"
+            variant="ghost"
+            className="rounded-mk-pill px-3 md:px-5"
+          >
+            Log in
+          </MkButtonLink>
+          {/* NOTE — 2026-09-28: was "Join the waitlist" → `/waitlist`, removed on the client's
+              word ("join the waitlist copy … need removing"). Phone sign-in is sign-up and log-in
+              at once, which is why both controls share a destination; "Log in" stays so a
+              returning user does not have to read the CTA as their way back.
 
-      {/* NOTE — Horizontal padding only. The `py-2.5` both controls inherit from `MkButtonLink`'s
-          `md` size is what gives them a hittable height, and shrinking a bar by shrinking its
-          tap targets is not a fix. */}
-      <div className="ml-auto flex shrink-0 items-center gap-1 md:ml-0 md:gap-2">
-        <MkButtonLink href="/signin/phone" variant="ghost" className="px-2.5 md:px-4">
-          Log in
-        </MkButtonLink>
-        {/* NOTE — 2026-09-28: was "Join the waitlist" → `/waitlist`, removed on the client's
-            word ("join the waitlist copy … need removing"). The product is open, so the bar's
-            one filled control is the front door the hero and the close also use. Phone sign-in
-            is sign-up and log-in at once, which is why both controls share a destination; "Log
-            in" stays so a returning user does not have to read "Create" as their way back. */}
-        <MkButtonLink href="/signin/phone" variant="dark" className="px-3 md:px-5">
-          Create your card
-        </MkButtonLink>
+              2026-10-06: "Create your card" → "Get Started" — a visitor has no account yet, so
+              they cannot create a card from here. Same label as `hero.primary` and `close.cta`. */}
+          <MkButtonLink
+            href="/signin/phone"
+            variant="dark"
+            className="rounded-mk-pill px-4 md:px-6"
+          >
+            Get Started
+          </MkButtonLink>
+        </div>
       </div>
     </nav>
   );

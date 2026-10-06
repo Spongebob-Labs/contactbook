@@ -110,8 +110,11 @@ export default function MarketingLayout({ children }: LayoutProps<"/">) {
         <SkinSwitch />
       </Suspense>
       <PillNav />
-      {/* `pt-16` on a phone is the mobile bar's own `h-16` — see `pill-nav.tsx`. Any other number
-          leaves a strip of `mk-paper` between the bar and the first section. */}
+      {/* `pt-16 md:pt-20` is the bar's own `h-16 md:h-20` — see `pill-nav.tsx`. The bar is
+          fixed, opaque and the hero's own white, so it covers this padding exactly; any other
+          number either hides the hero's top under the bar or leaves a strip of `mk-paper`
+          between them. (2026-10-06: a `before:` white band used to paint this strip while the
+          logo floated in it from `md`. The bar is solid at every width now, so it went.) */}
       <main id="main" className="flex-1 pt-16 md:pt-20">
         {children}
       </main>

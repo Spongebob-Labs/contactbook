@@ -10,37 +10,69 @@
    ============================================================================ */
 
 /* ── Section 4 — "How it works" ──────────────────────────────────────────────
-   REBUILT 2026-09-21. See `how-it-works.tsx`'s header for the measurements and
-   the survey behind this shape; the short version is that five columns at
-   1120px content is 205px each, and 205px is the width at which a real card
-   render becomes 98px wide and its 30px name paints at 9px.
+   SIXTH BUILD, 2026-10-06. `how-it-works.tsx`'s header has the why. In short:
+   one row of four from 64rem, four identical frames, one object per frame,
+   every card zoomed uniformly by `--mk-steps-zoom` to fit its column.
 
-   Three columns now, ~341px each — the measure Cal.com uses for the same job.
-   Every rule below is in service of two properties: one construction method
-   per row, and a window large enough that the type inside it is type.
+   ⚠ THE THREE NUMBERS PER BREAKPOINT ARE ONE BUDGET. A frame must hold the
+   card's 330 design px at `--mk-steps-zoom` plus `--mk-steps-pad` a side, in a
+   column of (content − 3 × `--mk-steps-gap`) / 4. Content is 1120px from
+   1280 up (`--mk-page-max` 1200 less `md:px-10`) and viewport − 80 below it.
+     · 80rem+:   (1120 − 72) / 4 = 262 ≥ 330 × 0.68 + 28 = 252.4
+     · 64–80rem: (944 − 48) / 4 = 224 ≥ 330 × 0.58 + 24 = 215.4 at 1024
+     · 48–64rem: two columns, (688 − 24) / 2 = 332 at 768
+   About 9px of slack each, so a 15px classic scrollbar still fits.
+   `tests/unit/marketing-steps.test.tsx` reads these values back and redoes
+   the sum, so moving one without the others fails before it ships.
    ──────────────────────────────────────────────────────────────────────── */
 
 @layer components {
   .mk-steps-rail {
+    --mk-steps-zoom: 0.68;
+    --mk-steps-pad: 14px;
+    --mk-steps-gap: 1.5rem;
     display: flex;
     flex-direction: column;
-    gap: 3.5rem;
+    gap: 3rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
   }
 
-  /* ⚠ 64rem, AND THE NUMBER IS DERIVED RATHER THAN PICKED. Three columns need
-     three frames plus 2 gaps to fit inside the content column, and each frame
-     must be wide enough to hold the deck (a 212px face plus its offsets) and the
-     hero face (252px) without cropping. At 1024px minus the page's gutters a
-     column is ~293px, which clears both; 768px does not. The previous version put
-     five 148px visuals into a 768px breakpoint and overflowed the viewport by
-     79px; deriving the breakpoint from the widest fixed child is what stops
-     that recurring, and `tests/unit/marketing-steps.test.tsx` recomputes it. */
-  @media (min-width: 64rem) {
+  /* Two columns at tablet. The steps share subgrid rows (below), so a
+     longer body never pushes its frame lower than its neighbour's. */
+  @media (min-width: 48rem) {
     .mk-steps-rail {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 2rem;
-      align-items: start;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      column-gap: var(--mk-steps-gap);
+      row-gap: 0;
+    }
+
+    .mk-steps-item:nth-child(n + 3) {
+      margin-top: 3rem;
+    }
+  }
+
+  /* ONE ROW OF FOUR from 1024px — never three plus an orphan. */
+  @media (min-width: 64rem) {
+    .mk-steps-rail {
+      --mk-steps-zoom: 0.58;
+      --mk-steps-pad: 12px;
+      --mk-steps-gap: 1rem;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .mk-steps-item:nth-child(n + 3) {
+      margin-top: 0;
+    }
+  }
+
+  @media (min-width: 80rem) {
+    .mk-steps-rail {
+      --mk-steps-zoom: 0.68;
+      --mk-steps-pad: 14px;
+      --mk-steps-gap: 1.5rem;
     }
   }
 
@@ -48,26 +80,43 @@
     position: relative;
     display: flex;
     flex-direction: column;
+    min-width: 0;
+  }
+
+  /* Each step spans four rows of the rail — disc, title, body, frame — and
+     takes them as a subgrid, so the four titles share a top, the four bodies
+     share a top, and the four frames share a top and a bottom. */
+  @media (min-width: 48rem) {
+    .mk-steps-item {
+      display: grid;
+      grid-row: span 4;
+      grid-template-rows: subgrid;
+      row-gap: 0;
+    }
+  }
+
+  .mk-steps-title {
+    margin-top: 1rem;
+    font-size: var(--mk-text-heading-sm);
+  }
+
+  .mk-steps-body {
+    margin-top: 0.5rem;
   }
 
   /* ── the frame ─────────────────────────────────────────────────────────────
-     ⚠ FIFTH BUILD, 2026-09-22. THE FRAME IS THE FIX, and it replaces the
-     "fragment window" four earlier builds tried to make work. That window was
-     an invisible 352×N box holding three different KINDS of object — a list, a
-     bare card, a navy face — cropped against nothing. Three unlike things in
-     identical columns never read as one row however precisely the columns are
-     aligned, and a crop with nothing to explain it reads as a bug.
-
-     So every column now holds the SAME visible object: this white panel, same
-     height, same hairline, same label register. What differs is only what sits
-     inside it — and inside, nothing is cropped, because every artefact is the
-     rigid 336×500 share face at a width chosen to fit. */
+     Identical in every column: one class, one height, one hairline, one
+     label, one window. The height is derived from the card's zoom — the label
+     line plus a window `600 × zoom` px tall (`CARD_WINDOW_H` in the
+     component) — so a frame is always exactly as tall as the crop it shows. */
   .mk-steps-frame {
-    --mk-steps-frame-h: 480px;
+    --mk-steps-label-h: 28px;
     position: relative;
+    align-self: start;
     width: 100%;
-    height: var(--mk-steps-frame-h);
-    padding: 20px 22px 22px;
+    height: calc(var(--mk-steps-pad) * 2 + var(--mk-steps-label-h) + 600px * var(--mk-steps-zoom));
+    margin-top: 1.25rem;
+    padding: var(--mk-steps-pad);
     border-radius: var(--mk-radius-block);
     border: 1px solid var(--mk-hairline);
     background-color: var(--mk-white);
@@ -83,24 +132,221 @@
   }
 
   .mk-steps-frame__label {
+    flex: 0 0 auto;
+    height: 16px;
     margin: 0 0 12px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
     font-family: var(--mk-font-sans);
     font-size: var(--mk-text-caption);
+    line-height: 16px;
     font-weight: var(--mk-weight-medium);
     letter-spacing: 0.1em;
     text-transform: uppercase;
     color: var(--mk-pebble);
   }
 
+  /* The window: the one crop. Whatever does not fit leaves through the foot,
+     under a fade — never through a side, never mid-glyph. Centred, so a card
+     narrower than the window sits in the middle of its frame. */
+  .mk-steps-window {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    overflow: hidden;
+    -webkit-mask-image: linear-gradient(to bottom, var(--mk-ink) calc(100% - 44px), transparent);
+    mask-image: linear-gradient(to bottom, var(--mk-ink) calc(100% - 44px), transparent);
+  }
+
+  /* The card and the pass are drawn at their design size and zoomed as one,
+     exactly as the hero's card is — re-rasterised, never resampled, and
+     never re-laid-out to fit. */
+  .mk-steps-card,
+  .mk-steps-window > .mk-pass {
+    flex: 0 0 auto;
+    zoom: var(--mk-steps-zoom);
+  }
+
+  /* The pass is shorter than the window and is never cropped, so it sits in
+     the middle of it rather than on a shelf above an empty band. */
+  .mk-steps-window > .mk-pass {
+    margin-block: auto;
+  }
+
+  /* The brand card's corners, which the hero gets from the phone's screen. A
+     1px ring rather than a drop shadow: a shadow would be cut by the window's
+     sides, and that cut is exactly the "dirt" this build removes. */
+  .mk-steps-card .mk-hc__card {
+    border-radius: 26px;
+    box-shadow: 0 0 0 1.5px var(--mk-hairline);
+  }
+
+  /* ── frame 02 — the card designer (2026-10-07) ────────────────────────────
+     The client saw 02 and 04 as the same picture. 02 is now the act of making
+     a card: tabs, the card in its own colour, then the two choices that make it
+     yours. Tabs and tools are fixed-size; the card's stage takes whatever the
+     window has left and crops at its own foot, so the frame's height is still
+     the one number every frame shares. */
+  [data-steps-card] .mk-steps-window {
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+
+  .mk-steps-design {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    align-self: stretch;
+    flex: 1 1 auto;
+    min-height: 0;
+    gap: 10px;
+  }
+
+  .mk-steps-design__tabs {
+    display: flex;
+    flex: 0 0 auto;
+    justify-content: center;
+    gap: 5px;
+  }
+
+  .mk-steps-tab {
+    padding: 6px 10px;
+    border: 1px solid var(--mk-hairline-strong);
+    border-radius: var(--mk-radius-pill);
+    font-family: var(--mk-font-sans);
+    font-size: 11px;
+    line-height: 1;
+    font-weight: var(--mk-weight-medium);
+    color: var(--mk-pebble);
+  }
+
+  .mk-steps-tab[data-active] {
+    border-color: var(--mk-ink);
+    background-color: var(--mk-ink);
+    color: var(--mk-white);
+  }
+
+  .mk-steps-tab--add {
+    border-style: dashed;
+    padding-inline: 9px;
+  }
+
+  /* The card, a step smaller than its siblings in 01-04 so its header, name and
+     first row read inside what is left of the window. */
+  .mk-steps-design__stage {
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    justify-content: center;
+    align-self: stretch;
+    overflow: hidden;
+    -webkit-mask-image: linear-gradient(to bottom, var(--mk-ink) calc(100% - 30px), transparent);
+    mask-image: linear-gradient(to bottom, var(--mk-ink) calc(100% - 30px), transparent);
+  }
+
+  .mk-steps-design .mk-steps-card {
+    zoom: calc(var(--mk-steps-zoom) * 0.72);
+  }
+
+  .mk-steps-design__tools {
+    display: flex;
+    flex: 0 0 auto;
+    flex-direction: column;
+    align-items: center;
+    gap: 9px;
+    padding-top: 2px;
+  }
+
+  .mk-steps-swatches {
+    display: flex;
+    gap: 9px;
+  }
+
+  .mk-steps-swatch {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background-color: var(--mk-steps-swatch);
+  }
+
+  .mk-steps-swatch[data-active] {
+    box-shadow:
+      0 0 0 2px var(--mk-white),
+      0 0 0 3px var(--mk-ink);
+  }
+
+  /* Capped so the four chips break two and two, not three and a stray one. */
+  .mk-steps-fchips {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 5px;
+    max-width: 160px;
+  }
+
+  .mk-steps-fchip {
+    padding: 4px 9px;
+    border: 1px solid var(--mk-hairline-strong);
+    border-radius: var(--mk-radius-pill);
+    font-family: var(--mk-font-sans);
+    font-size: 10.5px;
+    line-height: 1;
+    color: var(--mk-pebble);
+  }
+
+  .mk-steps-fchip[data-on] {
+    border-color: var(--mk-sapphire);
+    background-color: var(--mk-sapphire);
+    color: var(--mk-white);
+  }
+
+  /* ── frame 04 — the update arriving, on the recipient's side ───────────────
+     A banner over the card's cover, the way a notification sits over a screen. It
+     overlays rather than takes a row, so the card keeps every pixel it has. */
+  .mk-steps-toast {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    padding: 7px 12px;
+    translate: -50% 0;
+    white-space: nowrap;
+    border: 1px solid var(--mk-hairline);
+    border-radius: var(--mk-radius-pill);
+    background-color: var(--mk-white);
+    box-shadow: var(--mk-shadow-card);
+    font-family: var(--mk-font-sans);
+    font-size: 11px;
+    line-height: 1;
+    font-weight: var(--mk-weight-medium);
+    color: var(--mk-ink);
+  }
+
+  .mk-steps-toast__dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: var(--mk-phone-gold, var(--mk-accent-ink));
+  }
+
   /* ── frame 01 — the profile, in the card's own row grammar ─────────────── */
   .mk-steps-profile__rows {
+    align-self: stretch;
     margin: 0;
     padding: 0;
     list-style: none;
   }
 
-  /* 44px is the product's own row floor, kept so the redraw has the card's
-     rhythm rather than a rhythm invented for a picture of it. */
+  /* 44px, the product's own row floor. Label over value, so a long value
+     ends in an ellipsis on its own line instead of squeezing the label. */
   .mk-steps-profile__row {
     display: flex;
     align-items: center;
@@ -113,8 +359,6 @@
     border-top: 0;
   }
 
-  /* Holds a drawn icon. Five empty grey circles was the clearest tell that this
-     was a wireframe of a UI rather than a picture of one. */
   .mk-steps-profile__disc {
     display: flex;
     flex: 0 0 auto;
@@ -127,91 +371,216 @@
     color: var(--mk-accent-ink);
   }
 
-  .mk-steps-profile__name {
-    flex: 0 0 auto;
-    font-family: var(--mk-font-sans);
-    font-size: var(--mk-text-body-sm);
-    color: var(--mk-ink);
+  .mk-steps-profile__text {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
   }
 
-  /* The quiet tier, ellipsed rather than wrapped: a wrapped value makes one row
-     taller than the rest, and a ragged list inside a fixed frame reads as a
-     layout fault. */
+  .mk-steps-profile__name {
+    font-family: var(--mk-font-sans);
+    font-size: var(--mk-text-caption);
+    line-height: 1.3;
+    color: var(--mk-pebble);
+  }
+
   .mk-steps-profile__value {
-    flex: 1 1 auto;
-    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    text-align: right;
     font-family: var(--mk-font-sans);
-    font-size: var(--mk-text-caption);
-    color: var(--mk-pebble);
+    font-size: var(--mk-text-body-sm);
+    line-height: 1.35;
+    color: var(--mk-ink);
+  }
+
+  /* At 64–80rem a column's text is ~160px; the value steps down one size so
+     the work email fits whole rather than ending in an ellipsis. */
+  @media (min-width: 64rem) and (max-width: 79.999rem) {
+    .mk-steps-profile__row {
+      gap: 8px;
+    }
+
+    .mk-steps-profile__disc {
+      width: 24px;
+      height: 24px;
+    }
+
+    .mk-steps-profile__value {
+      font-size: var(--mk-text-caption);
+    }
   }
 
   .mk-steps-profile__more {
-    margin: 12px 0 0;
+    align-self: stretch;
+    margin: 10px 0 0;
     font-family: var(--mk-font-sans);
     font-size: var(--mk-text-caption);
     color: var(--mk-pebble);
   }
 
-  /* ── frame 02 — the deck ───────────────────────────────────────────────────
-     Three faces stacked with a diagonal offset. Not a fan: a fan overlaps two
-     cards' CONTENT and every fanned version of this step read as clutter. A deck
-     offsets whole cards so the two behind contribute exactly one thing each — a
-     strip of their own colour along the top and right edges — while only the
-     front card's content is read. */
-  .mk-steps-deck {
+  /* ── frame 03 — the Apple Wallet pass ─────────────────────────────────────
+     `wallet-pass.tsx` has the source of every value. Design px at a 330px
+     pass width, zoomed with the cards. Colours are the `--mk-pass-*` tokens,
+     copied from the API that signs the real pass. */
+  .mk-pass {
     position: relative;
-    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    width: 330px;
+    padding: 12px 16px 16px;
+    border-radius: 13px;
+    background-image: linear-gradient(155deg, var(--mk-pass-sapphire-from), var(--mk-pass-sapphire-to));
+    color: var(--mk-pass-sapphire-ink);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", var(--font-hero-sans), system-ui,
+      sans-serif;
+    text-align: left;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* The event ticket's notch: Wallet cuts a semicircle out of the top edge. */
+    -webkit-mask-image: radial-gradient(circle at 50% 0, transparent 15px, var(--mk-ink) 15.5px);
+    mask-image: radial-gradient(circle at 50% 0, transparent 15px, var(--mk-ink) 15.5px);
+  }
+
+  .mk-pass__header {
     display: flex;
     align-items: center;
-    justify-content: center;
-    min-height: 0;
+    gap: 8px;
+    height: 50px;
   }
 
-  .mk-steps-deck__card {
-    position: absolute;
-    /* Each card sits one step up and one step right of the one in front of it.
-       `--mk-steps-deck-i` is 0 for the front card; the (n − 1)/2 term recentres
-       the whole stack on the frame's own centre. */
-    transform: translate3d(
-      calc((var(--mk-steps-deck-i) - (var(--mk-steps-deck-n) - 1) / 2) * var(--mk-steps-deck-step)),
-      calc(((var(--mk-steps-deck-n) - 1) / 2 - var(--mk-steps-deck-i)) * var(--mk-steps-deck-step)),
-      0
-    );
-    border-radius: var(--mk-radius-block);
-    box-shadow: var(--mk-shadow-card);
-  }
-
-  /* ── frame 03 — one face, large ────────────────────────────────────────── */
-  .mk-steps-hero-face {
-    flex: 1 1 auto;
+  /* `logo.png`: a 160 × 50pt box, the mark fitted to its height at the left
+     and the rest transparent — so `logoText` starts after the full box. */
+  .mk-pass__logo {
     display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 0;
+    flex: 0 0 auto;
+    width: 160px;
+    height: 50px;
   }
 
-  .mk-steps-hero-face > * {
-    border-radius: var(--mk-radius-block);
-    box-shadow: var(--mk-shadow-card);
+  .mk-pass__mark {
+    width: 50px;
+    height: 50px;
+    background-color: var(--mk-pass-gold);
+    -webkit-mask: url("/marketing/pass-logo-mark.png") center / contain no-repeat;
+    mask: url("/marketing/pass-logo-mark.png") center / contain no-repeat;
+  }
+
+  .mk-pass__logo-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 20px;
+  }
+
+  .mk-pass__fields {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 90px;
+    column-gap: 12px;
+    row-gap: 12px;
+    align-items: start;
+    margin-top: 16px;
+  }
+
+  .mk-pass__field {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .mk-pass__field--primary {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .mk-pass__field--secondary {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .mk-pass__field--auxiliary {
+    grid-column: 1 / -1;
+    grid-row: 3;
+  }
+
+  /* `renderThumbnails`: the photo cut to a circle, a 35% ink ring inside it. */
+  .mk-pass__thumb {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    display: block;
+    width: 90px;
+    height: 90px;
+    border-radius: 50%;
+    object-fit: cover;
+    object-position: 22% 50%;
+    outline: 1.5px solid color-mix(in srgb, var(--mk-pass-sapphire-ink) 35%, transparent);
+    outline-offset: -1.5px;
+  }
+
+  .mk-pass__label {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 13px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--mk-pass-sapphire-label);
+  }
+
+  .mk-pass__value {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: 17px;
+    line-height: 21px;
+  }
+
+  .mk-pass__field--primary .mk-pass__value {
+    font-size: 26px;
+    line-height: 31px;
+  }
+
+  /* Wallet's white plate: the symbol, its quiet zone, and `altText` under it. */
+  .mk-pass__plate {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    align-self: center;
+    margin-top: 22px;
+    padding: 10px 10px 7px;
+    border-radius: 7px;
+    background-color: var(--mk-pass-plate);
+  }
+
+  .mk-pass__qr {
+    display: block;
+    width: 128px;
+    height: 128px;
+    fill: var(--mk-pass-module);
+  }
+
+  .mk-pass__alt {
+    font-size: 11px;
+    line-height: 13px;
+    color: var(--mk-pass-alt);
   }
 
   /* ── the rail, and the discs it runs through ──────────────────────────────
-     ⚠ IT SITS BETWEEN THE PICTURE AND ITS WORDS NOW. It used to be a separate
-     strip above the whole row, with the entire visual shelf between a marker
-     and the text it numbered — at that distance it read as unrelated
-     furniture, which is most of why the flow was called confusing. Here the
-     rule passes through the disc directly under each fragment, so picture,
-     number and sentence are one object. */
+     Along the top of each column, through the disc that numbers it. */
   .mk-steps-track {
     position: relative;
     display: flex;
     align-items: center;
     height: 2.75rem;
-    margin-top: 1.25rem;
   }
 
   .mk-steps-seg {
@@ -222,47 +591,46 @@
     opacity: 0.16;
   }
 
-  /* Below `lg` the rail is a vertical stack, so a horizontal rule between
-     steps would connect nothing. The segments only exist as a rule at the
-     width where the three steps are actually side by side. */
+  /* Stacked, the steps are not side by side, so a horizontal rule between
+     them would connect nothing. */
   .mk-steps-seg[data-edge="before"],
   .mk-steps-seg[data-edge="after"] {
     display: none;
   }
 
-  /* ⚠ BOUNDED BY `left`/`right`, NEVER BY `width: 100vw` — AND THAT IS A FIX, NOT
-     A STYLE. The first cut of this rule gave each segment `width: 100vw` and
-     relied on nothing to clip it: an absolutely positioned child of a
-     `position: relative` column, 1440px wide, starting at the column's own
-     left edge, pushed `document.scrollWidth` to **2020px against a 1440px
-     viewport** — a 580px horizontal scroll on every desktop, which is the
-     exact defect `tests/e2e/marketing.spec.ts`'s "never scrolls sideways"
-     exists to catch.
-
-     Each segment now reaches from its own disc to 1rem past its column's
-     edge — half of the 2rem grid gap — so the segment leaving one step meets
-     the segment entering the next in the middle of the gap and the rule reads
-     as continuous. The two outer ends draw nothing (the component omits them),
-     so the rail cannot extend past the rail. */
-  @media (min-width: 64rem) {
+  /* ⚠ BOUNDED BY `left`/`right`, NEVER BY `width: 100vw` — that once pushed
+     `scrollWidth` to 2020px on a 1440px viewport. Each segment reaches half
+     the column gap past its own column, so the one leaving a step meets the
+     one entering the next in the middle of the gap. The outer ends are not
+     rendered, so nothing hangs past 01 or 04. */
+  @media (min-width: 48rem) {
     .mk-steps-seg[data-edge="before"] {
       display: block;
+      left: calc(var(--mk-steps-gap) / -2);
       right: calc(100% - 1.375rem);
-      left: -1rem;
     }
 
     .mk-steps-seg[data-edge="after"] {
       display: block;
       left: 2.75rem;
-      right: -1rem;
+      right: calc(var(--mk-steps-gap) / -2);
+    }
+
+    /* Two per row: the rule ends at 02 and starts again at 03. */
+    .mk-steps-item:nth-child(2n) .mk-steps-seg[data-edge="after"],
+    .mk-steps-item:nth-child(2n + 1) .mk-steps-seg[data-edge="before"] {
+      display: none;
     }
   }
 
-  /* 44px, not a 14px numeral. The survey's finding: an ordinal set as small
-     grey type reads as a footnote, and every site that makes a numbered rail
-     work draws the number inside a real disc — HiHello's are 40px and fill
-     solid on the active step. This is that, at the size the page's own type
-     scale supports. */
+  /* Four in one row: one rule through all four discs. */
+  @media (min-width: 64rem) {
+    .mk-steps-item:nth-child(2n) .mk-steps-seg[data-edge="after"],
+    .mk-steps-item:nth-child(2n + 1) .mk-steps-seg[data-edge="before"] {
+      display: block;
+    }
+  }
+
   .mk-steps-marker {
     position: relative;
     z-index: 1;
@@ -283,40 +651,12 @@
     color: var(--mk-accent-ink);
   }
 
-
-  .mk-steps-title {
-    margin-top: 1rem;
-    font-size: var(--mk-text-heading-sm);
-  }
-
-  /* ── the two properties, under the three actions ──────────────────────────
-     Quieter by construction: no fragment, no disc, no ordinal. The hierarchy
-     is the argument — three things you do, then two things that stay true. */
-  .mk-steps-after {
-    margin: 3.5rem 0 0;
-    padding: 2rem 0 0;
-    list-style: none;
-    display: grid;
-    gap: 2rem;
-    border-top: 1px solid var(--mk-hairline);
-  }
-
-  @media (min-width: 48rem) {
-    .mk-steps-after {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 3rem;
-    }
-  }
-
-  .mk-steps-after__title {
-    font-size: var(--mk-text-subheading);
-  }
-
-  /* ── the map band — Maya's four cities ────────────────────────────────────
-     2026-09-28. `world-map.tsx` has the why. The panel is the frames' own
+  /* ── the globe band ──────────────────────────────────────────────────────
+     2026-09-28; the four-city list beside the globe became the logo and one
+     statement on 2026-10-06. `world-map.tsx` has the why. The panel is the frames' own
      grammar (white, hairline, card shadow, uppercase label) so it reads as the
-     same system, but it is NOT `.mk-steps-frame`: the three frames are held
-     identical by test, and this one is a band, not a fourth column. */
+     same system, but it is NOT `.mk-steps-frame`: the four frames are held
+     identical by test, and this one is a band, not a fifth column. */
   .mk-map {
     margin-top: 3.5rem;
     padding: 20px 22px 24px;
@@ -341,18 +681,23 @@
     gap: 20px;
   }
 
+  /* 2026-10-06: the four-city grid was 1fr beside a 1.75fr map box, and the
+     sphere sat small in the middle of that wide box. The statement needs more
+     room than the list did and the globe less dead air, so beside each other
+     the columns are near-even and the stage goes near-square (below), which
+     makes the sphere larger and brings it toward the copy. */
   @media (min-width: 64rem) {
     .mk-map__body {
-      grid-template-columns: minmax(0, 1.75fr) minmax(0, 1fr);
+      grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
       align-items: center;
-      gap: 40px;
+      gap: 48px;
     }
   }
 
   /* ── the globe — 2026-09-29 ─────────────────────────────────────────────
-     `world-globe.tsx` has the why and the a11y/perf contract. The stage keeps
-     the flat map's box on desktop, so the card keeps its proportions; a phone
-     column is too short for a sphere at that ratio, so there it is near-square.
+     `world-globe.tsx` has the why and the a11y/perf contract. The stage is
+     near-square on a phone and beside the statement (64rem up), and keeps the
+     flat map's wide box on a tablet, where it spans the card above the copy.
      The canvas and the still share one geometry: the sphere's radius is
      `GLOBE_RADIUS` of the stage's height and the still's square frame is
      sized from the same constants inline. */
@@ -368,6 +713,12 @@
   @media (min-width: 48rem) {
     .mk-globe__stage {
       aspect-ratio: 97.5 / 53.96;
+    }
+  }
+
+  @media (min-width: 64rem) {
+    .mk-globe__stage {
+      aspect-ratio: 1 / 0.86;
     }
   }
 
@@ -394,15 +745,9 @@
     overflow: visible;
   }
 
-  /* Once the canvas has drawn its first frame the still steps aside; the pins
-     stay, and the loop moves them. */
+  /* Once the canvas has drawn its first frame the still steps aside. */
   .mk-globe__stage[data-globe="live"] .mk-globe__still {
     display: none;
-  }
-
-  .mk-globe__stage[data-globe="live"] .mk-map__pin,
-  .mk-globe__stage[data-globe="live"] .mk-globe__name {
-    will-change: transform, opacity;
   }
 
   /* Each dot is a round-capped segment — zero-length, or short and tangential
@@ -468,230 +813,90 @@
     display: inline-flex;
   }
 
-  /* Each pin is a zero-size anchor on the city's point; its parts centre on it. */
-  .mk-map__pin {
-    position: absolute;
-    width: 0;
-    height: 0;
+  /* The still's city markers — the canvas draws the same dot once it is live
+     (`GLOBE_MARKER` of a radius, a white keyline under it). The keyline is
+     the stroke, painted beneath the fill so only its outer half shows. */
+  .mk-globe__markers circle {
+    fill: var(--mk-accent-deep);
+    stroke: var(--mk-white);
+    stroke-width: 2.5;
+    paint-order: stroke;
+    vector-effect: non-scaling-stroke;
   }
 
-  .mk-map__dot,
-  .mk-map__halo {
-    position: absolute;
-    left: 0;
-    top: 0;
-    border-radius: var(--mk-radius-pill);
-    transform: translate(-50%, -50%);
-  }
-
-  .mk-map__dot {
-    width: 8px;
-    height: 8px;
-    background-color: var(--mk-accent-deep);
-    box-shadow: 0 0 0 2px var(--mk-white);
-  }
-
-  .mk-map__halo {
-    width: 20px;
-    height: 20px;
-    background-color: var(--mk-accent-tint);
-    opacity: 0.35;
-  }
-
-  @media (min-width: 48rem) {
-    .mk-map__dot {
-      width: 10px;
-      height: 10px;
-    }
-
-    .mk-map__halo {
-      width: 26px;
-      height: 26px;
-    }
-  }
-
-  /* A city's name, under its pin. Its horizontal shift (`labelShift`) and, while
-     the globe turns, its opacity are inline: centred mid-disc, sliding inward
-     toward either limb so a name never leaves the sphere's side of the card. */
-  .mk-globe__name {
-    position: absolute;
-    left: 0;
-    top: 10px;
-    font-family: var(--mk-font-sans);
-    font-size: var(--mk-text-caption);
-    font-weight: var(--mk-weight-medium);
-    line-height: 1.2;
-    white-space: nowrap;
-    color: var(--mk-ink);
-    text-shadow:
-      0 0 2px var(--mk-white),
-      0 0 6px var(--mk-white);
-  }
-
-  .mk-map__legend {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 16px 20px;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-  }
-
-  @media (min-width: 48rem) {
-    .mk-map__legend {
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-    }
+  /* ── the statement beside the globe — 2026-10-06 ─────────────────────────
+     The logo, then the client's two sentences in the section headings' serif,
+     the second on its own line in the accent so it lands as the punchline.
+     Centred against the globe by the body grid's `align-items`; under it on a
+     phone and a tablet, where the body is one column. The accent is the
+     display rung, which clears 3:1 for text this large on white. */
+  .mk-map__statement {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 20px;
+    padding: 4px 2px 8px;
   }
 
   @media (min-width: 64rem) {
-    .mk-map__legend {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 22px 24px;
+    .mk-map__statement {
+      gap: 28px;
+      padding: 0 12px 0 0;
     }
   }
 
-  .mk-map__place {
-    position: relative;
-    min-width: 0;
-    padding-top: 10px;
-    border-top: 1px solid var(--mk-hairline);
-  }
-
-  /* The city the globe is showing: the accent draws along the cell's own
-     hairline. A transform on a pseudo-element, so nothing reflows, and an
-     attribute rather than focus or a live region, so nothing is announced. */
-  .mk-map__place::before {
-    content: "";
-    position: absolute;
-    left: 0;
-    right: 0;
-    top: -1px;
-    height: 1px;
-    background-color: var(--mk-accent-display);
-    transform: scaleX(0);
-    transform-origin: left center;
-    transition: transform var(--mk-dur-settle) var(--mk-ease);
-  }
-
-  .mk-map__place[data-active]::before {
-    transform: scaleX(1);
-  }
-
-  .mk-map__city {
+  .mk-map__copy {
+    max-width: 22ch;
     font-family: var(--mk-font-display);
-    font-size: var(--mk-text-subheading);
-    line-height: 1.25;
+    font-size: var(--mk-text-heading-lg);
+    font-weight: var(--mk-weight-display);
+    line-height: var(--mk-text-heading-lg-lh);
+    letter-spacing: var(--mk-text-heading-lg-tracking);
     color: var(--mk-ink);
+    text-wrap: balance;
   }
 
-  .mk-map__phone {
-    margin-top: 2px;
-    font-family: var(--mk-font-sans);
-    font-size: var(--mk-text-body-sm);
-    font-variant-numeric: tabular-nums;
-    color: var(--mk-ink);
-  }
-
-  .mk-map__address {
-    margin-top: 2px;
-    font-family: var(--mk-font-sans);
-    font-size: var(--mk-text-caption);
-    line-height: 1.45;
-    color: var(--mk-pebble);
+  .mk-map__punchline {
+    display: block;
+    margin-top: 0.4em;
+    color: var(--mk-accent-display);
   }
 }
 
 /* ── The rail's motion ────────────────────────────────────────────────────
-   ⚠ THE 9s INFINITE WALK IS DELETED, 2026-09-22, AND IT WAS A DEFECT RATHER
-   THAN A TASTE CALL. It was added because the client asked for the section to
-   feel lively. It made three things worse, and a survey of thirteen shipped
-   marketing sites (Linear, Stripe, Cal.com, Raycast, Attio, Vercel, Dub,
-   Framer, Resend, Mercury, HiHello, Blinq, Duolingo) named all three:
+   ONE staggered sequence, played once, ending at rest — and played when the
+   SECTION is scrolled into view, not when the page loads. The 9s infinite
+   walk this replaced (2026-09-22) failed WCAG 2.2.2 (Level A: auto-starting,
+   longer than 5s, beside other content, no pause) and moved the product
+   rather than the ground; see this file's history for the survey.
 
-     1. **WCAG 2.2.2 Pause, Stop, Hide — Level A, normative.** Motion that
-        starts automatically, runs longer than five seconds and sits beside
-        other content must offer a way to pause, stop or hide it. The walk met
-        all three conditions and offered none. A one-shot entrance is not
-        merely nicer here; it removes the obligation entirely.
-     2. **It sat in an empirically empty band.** Of every infinite loop
-        measured across those sites, all were either under ~2s (a caret, a
-        spinner — a living detail carrying no message) or over ~10s (ambient
-        drift). Nothing loops a multi-beat MESSAGE in the 5–12s band, which is
-        where a loop reads as an advertisement repeating itself. NN/g's
-        auto-forwarding work is explicit that self-starting motion gets
-        filtered out as an ad — a plausible reason the client's eye never
-        rested on this row at all.
-     3. **It moved the product instead of the ground.** Every site measured
-        animates the surroundings and leaves the artefact still: Linear's dot
-        matrix moves, its issue panels do not; Stripe's gradient moves, its
-        checkout does not. A screenshot that bobs 4px reads as a rendering
-        bug — and it was one, measurably: it left the lifted panel's top edge
-        4px out of line with the other two at all times.
-
-   What is left is ONE staggered sequence, played once, ending at rest — and,
-   as of the block below, played when the SECTION is scrolled into view rather
-   than when the page loads. */
-/* ── the sequence is keyed on the SECTION'S OWN REVEAL, not on page load ───
-   ⚠ 2026-09-22. The client: *"whenever the website is loaded I see the hero
-   animate — when I scroll, each section should show its animation again … as
-   the user scrolls, the animation should load."* Correct diagnosis. Every rule
-   below used to be a plain `animation … both` under the reduced-motion guard,
-   which means it started on the DOCUMENT clock the instant the stylesheet
-   applied. The whole ~1.4s sequence had finished before anyone could possibly
-   have scrolled this far, so a visitor arrived at a finished still and the
-   work read as if it did not exist.
-
-   `how-it-works.tsx` already wraps this rail in `<MkReveal>`, which stamps
-   `data-mk-reveal="armed"` on it while it sits below the fold and flips it to
-   `"in"` — once — the moment it enters the viewport (`mk-reveal.tsx`,
-   `marketing.css`). So the rules are now keyed on that attribute, and the
-   sequence begins the moment the reader can see it. Three properties of the
-   existing contract are kept on purpose and each is load-bearing:
+   `how-it-works.tsx` wraps the rail in `<MkReveal>`, which stamps
+   `data-mk-reveal="armed"` while it sits below the fold and flips it to
+   `"in"` — once — when it enters the viewport. Three parts of that contract
+   are load-bearing:
 
      · **Armed is displaced, never hidden.** `marketing.spec.ts` fails any
-       armed element whose opacity is under 1 — a page that lands mid-scroll
-       must never show a screen of invisible content. While armed, the inner
-       items sit a few pixels low at full opacity, exactly like `mk-reveal`.
-     · **The fill is `backwards`, not `both`.** `both` would hold the keyframe's
-       `from` (opacity 0) on the element from load until `in` arrived, which is
-       the hidden state above by another route. `backwards` shows the `from`
-       only during the animation's own delay AFTER `in` — the stagger window,
-       under a second, on-screen.
-     · **No attribute at all is the resting state.** With scripting off, under
-       reduced motion, or if the rail is already on screen at load (MkReveal
-       does not arm on-screen content, so nothing above the fold ever jumps),
-       the attribute is never set and everything below simply sits finished.
+       armed element under opacity 1. While armed, the inner items sit a few
+       pixels low at full opacity.
+     · **The fill is `backwards`, not `both`.** `both` would hold the
+       keyframe's `from` (opacity 0) from load until `in`.
+     · **No attribute is the resting state.** Scripting off, reduced motion,
+       or on screen at load: nothing plays and everything sits finished.
 
-   The failsafe in `mk-reveal.tsx` releases `armed → in` after 12s regardless,
-   so even a broken observer cannot leave the sequence unplayed. */
+   `mk-reveal.tsx` releases `armed → in` after 12s regardless. */
 @media (prefers-reduced-motion: no-preference) {
   /* While the section waits below the fold: displaced, visible. */
   [data-steps-rail][data-mk-reveal="armed"] .mk-steps-item,
-  [data-steps-rail][data-mk-reveal="armed"] .mk-steps-after__item,
   [data-steps-rail][data-mk-reveal="armed"] .mk-steps-profile__row,
-  [data-steps-rail][data-mk-reveal="armed"] .mk-steps-hero-face {
+  [data-steps-rail][data-mk-reveal="armed"] .mk-steps-window > :not(ul, p) {
     transform: translate3d(0, 14px, 0);
   }
 
-  /* The deck's cards carry a resting transform of their own (the diagonal
-     offset), so their armed displacement is a further step along that same
-     diagonal — never a competing axis. */
-  [data-steps-rail][data-mk-reveal="armed"] .mk-steps-deck__card {
-    transform: translate3d(
-      calc((var(--mk-steps-deck-i) - (var(--mk-steps-deck-n) - 1) / 2) * var(--mk-steps-deck-step) + 26px),
-      calc(((var(--mk-steps-deck-n) - 1) / 2 - var(--mk-steps-deck-i)) * var(--mk-steps-deck-step) - 26px),
-      0
-    );
-  }
-
-  /* The moment it is on screen: the frames land, then what is inside them
-     appears in the order the steps happen — rows, then the deck deals
-     front-to-back, then the face — one shot, ~1.4s, ending on the thing a
-     reader would scan. `--mk-steps-i` (the column) is the base offset so a
-     column's contents cannot arrive before its own frame. Nothing repeats, so
-     nothing ever needs a pause control (WCAG 2.2.2). */
-  [data-steps-rail][data-mk-reveal="in"] .mk-steps-item,
-  [data-steps-rail][data-mk-reveal="in"] .mk-steps-after__item {
+  /* The moment it is on screen: the columns arrive, then the profile rows,
+     then each frame's card or pass lands, then the one updated row lights —
+     once, about 1.5s. `--mk-steps-i` (the column) is the base offset so a
+     column's contents never arrive before the column. */
+  [data-steps-rail][data-mk-reveal="in"] .mk-steps-item {
     animation: mk-steps-arrive 620ms var(--mk-ease) backwards;
     animation-delay: calc(var(--mk-steps-i, 0) * 60ms);
   }
@@ -701,78 +906,15 @@
     animation-delay: calc(var(--mk-steps-i, 0) * 60ms + 320ms + var(--mk-steps-row-i, 0) * 45ms);
   }
 
-  [data-steps-rail][data-mk-reveal="in"] .mk-steps-deck__card {
-    animation: mk-steps-deal 560ms var(--mk-ease) backwards;
-    animation-delay: calc(var(--mk-steps-i, 0) * 60ms + 420ms + (var(--mk-steps-deck-n) - 1 - var(--mk-steps-deck-i)) * 90ms);
-  }
-
-  [data-steps-rail][data-mk-reveal="in"] .mk-steps-hero-face {
+  [data-steps-rail][data-mk-reveal="in"] .mk-steps-window > :not(ul, p) {
     animation: mk-steps-land 620ms var(--mk-ease) backwards;
-    animation-delay: calc(var(--mk-steps-i, 0) * 60ms + 700ms);
+    animation-delay: calc(var(--mk-steps-i, 0) * 60ms + 480ms);
   }
 
-  /* The map's one shot, keyed on the band's OWN reveal (it sits a screen below
-     the rail's): each pin lands in turn and its halo swells once and settles,
-     ~1s, once, ending at rest. The names no longer rise here — since the globe
-     (2026-09-29) the loop fades each one in as its city comes round. */
-  [data-steps-map][data-mk-reveal="in"] .mk-map__dot {
-    animation: mk-map-drop 520ms var(--mk-ease) backwards;
-    animation-delay: calc(260ms + var(--mk-map-i, 0) * 150ms);
-  }
-
-  [data-steps-map][data-mk-reveal="in"] .mk-map__halo {
-    animation: mk-map-halo 900ms var(--mk-ease) backwards;
-    animation-delay: calc(380ms + var(--mk-map-i, 0) * 150ms);
-  }
-}
-
-/* Every map keyframe keeps the element's resting centring translate as its
-   first term, so the pin lands ON its point rather than beside it. */
-@keyframes mk-map-drop {
-  from {
-    opacity: 0;
-    transform: translate(-50%, -50%) translate3d(0, -12px, 0) scale(0.4);
-  }
-
-  to {
-    opacity: 1;
-    transform: translate(-50%, -50%);
-  }
-}
-
-/* No `to`: it settles on the halo's own resting opacity and size. */
-@keyframes mk-map-halo {
-  from {
-    opacity: 0;
-    transform: translate(-50%, -50%) scale(0.2);
-  }
-
-  55% {
-    opacity: 0.6;
-    transform: translate(-50%, -50%) scale(1.6);
-  }
-}
-
-/* The deal keeps each card's resting diagonal offset as its END state — the
-   offset is composition, not motion — and starts a little further along the
-   same diagonal, so each card slides into place from where the next will sit. */
-@keyframes mk-steps-deal {
-  from {
-    opacity: 0;
-    transform: translate3d(
-      calc((var(--mk-steps-deck-i) - (var(--mk-steps-deck-n) - 1) / 2) * var(--mk-steps-deck-step) + 26px),
-      calc(((var(--mk-steps-deck-n) - 1) / 2 - var(--mk-steps-deck-i)) * var(--mk-steps-deck-step) - 26px),
-      0
-    );
-  }
-
-  to {
-    opacity: 1;
-    transform: translate3d(
-      calc((var(--mk-steps-deck-i) - (var(--mk-steps-deck-n) - 1) / 2) * var(--mk-steps-deck-step)),
-      calc(((var(--mk-steps-deck-n) - 1) / 2 - var(--mk-steps-deck-i)) * var(--mk-steps-deck-step)),
-      0
-    );
+  [data-steps-rail][data-mk-reveal="in"] .mk-hc__row[data-updated]::before,
+  [data-steps-rail][data-mk-reveal="in"] .mk-hc__row[data-updated] .mk-hc__updated {
+    animation: mk-steps-light 520ms var(--mk-ease) backwards;
+    animation-delay: calc(var(--mk-steps-i, 0) * 60ms + 1000ms);
   }
 }
 
@@ -780,6 +922,19 @@
   from {
     opacity: 0;
     transform: translate3d(0, 10px, 0) scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* The "Updated" mark arriving on the row it changed. */
+@keyframes mk-steps-light {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
   }
 
   to {

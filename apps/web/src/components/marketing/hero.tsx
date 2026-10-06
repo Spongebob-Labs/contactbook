@@ -10,13 +10,22 @@ import {
 import { hero } from "@/fixtures/marketing";
 
 import { HeroCard } from "./hero-card";
+import { heroSerif } from "./hero-fonts";
 import { mkcn } from "./mk-cn";
 import { Arrival } from "./mk-motion";
 import { CONTENT_COLUMN, Section } from "./section";
-import { accented, Display, Eyebrow, MkButtonLink, Prose } from "./type";
+import { accented, Display, MkButtonLink, Prose } from "./type";
 
 /**
  * The first viewport.
+ *
+ * ## 2026-10-06 — the client's copy and proof-row pass
+ *
+ * The eyebrow is gone; the headline is "Your network on your terms." (ink clause over accent
+ * clause, same `<Display>` treatment); the subhead and lead became one client paragraph
+ * (`hero.lead`); the controls read "Get Started" and "How it works"; and the proof row's titles
+ * and captions were re-set to the client's reference crops (see the note above the `<ul>`).
+ * Where the history below names the old copy, this wins.
  *
  * ## 2026-09-29 — the phone is the client's reference, measured
  *
@@ -250,7 +259,9 @@ import { accented, Display, Eyebrow, MkButtonLink, Prose } from "./type";
  * find. Passed `(HEADLINE_ACCENT, HEADLINE_ACCENT)` — the clause as both its own "heading" and
  * its own "accent" — it wraps the whole clause, which is what a single-clause line needs.
  */
-const HEADLINE_ACCENT = "contact.";
+/* 2026-10-06: the client's new headline, "Your network on your terms.", breaks as "Your network"
+   in ink over "on your terms." in the accent — so the accent clause is the second line whole. */
+const HEADLINE_ACCENT = "on your terms.";
 const HEADLINE_ACCENT_AT = hero.headline.lastIndexOf(HEADLINE_ACCENT);
 const HEADLINE_LEAD =
   HEADLINE_ACCENT_AT >= 0 ? hero.headline.slice(0, HEADLINE_ACCENT_AT).trim() : hero.headline;
@@ -378,21 +389,11 @@ export function Hero() {
             column exactly as before. */}
         <div className="max-lg:contents lg:col-span-7">
           {/*
-            ⚠ THIS IS A KICKER OVER A HEADLINE, WHICH `type.tsx`'S `Eyebrow` DOCUMENTS AS BANNED
-            — READ WITH THAT CONTEXT, NOT AS AN OVERSIGHT.
-
-            `Eyebrow`'s own comment forbids exactly this shape above a SECTION heading, because a
-            kicker over a mid-page `<h2>` reads as the page apologising for it before it argues
-            anything. The hero is not a section, it is the page's masthead, and "Contact Book"
-            set above the one `<h1>` on the page is naming the product rather than introducing a
-            claim — the same distinction that comment draws for the footer's nav labels. The
-            client's reference draws the eyebrow here explicitly, and the fixture already carries
-            `hero.eyebrow` for exactly this use. Treat this as a scoped, deliberate exception; the
-            rule stays intact for every section below this one.
+            NOTE — 2026-10-06: THE "CONTACT BOOK" EYEBROW IS GONE, ON THE CLIENT'S WORD. It was
+            the one documented exception to `type.tsx`'s no-kicker rule (the masthead naming the
+            product above the page's `<h1>`); with it removed the rule now holds on this file too.
+            `hero.eyebrow` stays in the fixture because the intro curtain uses it as its wordmark.
           */}
-          <Arrival index={0} className="mb-4 md:mb-5">
-            <Eyebrow as="p">{hero.eyebrow}</Eyebrow>
-          </Arrival>
 
           {/*
             ⚠ EVERY MEASURE STAYS ON THE TYPE ELEMENT, NEVER ON THE `<Arrival>` AROUND IT.
@@ -470,20 +471,20 @@ export function Hero() {
                 step darker and one step down in size: the reference draws these two sentences
                 as a single sans paragraph, not a tagline over a caption, and `mt-2` (not the
                 previous `mt-4`) closes the gap between them to match. */}
+            {/* 2026-10-06: ONE PARAGRAPH, THE CLIENT'S, VERBATIM — it replaces the subhead/lead
+                pair and keeps their exact treatment (`size="lead" tone="stone"`, same top margin
+                as the first of them). Three sentences where there were two short lines, so the
+                measure tightens from `mk-measure` (68ch ≈ 75 characters of running text in this
+                face) to 60ch, which sets ~65 characters a line — the comfortable band the client
+                asked for — and is still narrower than the type column at every width. */}
             <Arrival index={0} className="mt-6 md:mt-8 lg:[@media(max-height:820px)]:mt-5">
-              <Prose size="lead" tone="stone" className="max-w-mk-measure">
-                {hero.subhead}
-              </Prose>
-            </Arrival>
-
-            <Arrival index={1} className="mt-2">
-              <Prose size="lead" tone="stone" className="max-w-mk-measure">
+              <Prose size="lead" tone="stone" className="max-w-[60ch]">
                 {hero.lead}
               </Prose>
             </Arrival>
 
             <Arrival
-              index={2}
+              index={1}
               /* Stacked full-width on a phone: two buttons of different widths, one under the
                  other, read as a layout that ran out of room rather than a pair. */
               className="mt-9 flex flex-wrap items-center gap-3 max-sm:flex-col max-sm:items-stretch md:mt-11 md:gap-4 lg:[@media(max-height:820px)]:mt-7"
@@ -510,7 +511,7 @@ export function Hero() {
               {/* ⚠ NOT A PLAY BUTTON. The reference's own secondary control is a circled play
                   glyph plus a label — "Watch Video" — and this page has no video to open
                   (`public/hero/` holds a 5MB loop nothing in `src/` references; a control that
-                  opens nothing is worse than none). `hero.secondary` ("See how it works", an
+                  opens nothing is worse than none). `hero.secondary` ("How it works", an
                   in-page link since 2026-09-28) keeps this slot instead, and `variant="line"` is
                   already the reference's REGISTER for it: no fill, a hairline ring, beside the
                   pill rather than a second one of it.
@@ -568,9 +569,31 @@ export function Hero() {
             "captions, eyebrows" specifically, and `--mk-stone` next to it is "secondary body
             copy" — the reference's own two greys (body vs. caption) are exactly this pair.
           */}
+          {/*
+            ⚠ 2026-10-06 — THE TITLES LEAD NOW, ON THE CLIENT'S REFERENCE CROPS.
+            The client sent crops of the row they want: a dark navy book serif title, clearly
+            larger and heavier than the caption, over a mid-dark slate sans caption that does not
+            fade into the ground. Three changes, all on the two text lines (badge, grid, gaps and
+            icons untouched):
+              · the title's face moves from the display serif (Instrument Serif — condensed, one
+                hairline weight, so it can be made bigger but never heavier) to Libre Caslon
+                Text, the book serif `hero-card.tsx` already matched to the client's reference
+                render for the phone card's name. Same file, same request: `hero-fonts.ts` is
+                the one loader both read, and its variable is set on this list so the titles can
+                resolve it. 18px → 20px, `leading-snug`, `text-balance` so a title that has to
+                wrap in a 140px cell breaks into two even lines rather than leaving one word.
+              · the title's ink moves from `--mk-ink` to `--mk-accent-deep` (`mk-green-deep`
+                under its compat name) — #0D1C25 under atelier, the reference's own near-black
+                navy, 17.4:1 on white.
+              · the caption moves from 14px `--mk-pebble` (#6D6A64, 5.18:1) to 15px `--mk-slate`
+                (#4B5563, 7.56:1 on this section's white, 7.32:1 on paper).
+          */}
           <ul
             data-hero-proof=""
-            className="mt-10 grid grid-cols-2 gap-x-6 gap-y-10 max-lg:order-2 lg:mt-14 lg:grid-cols-4 lg:gap-8 lg:[@media(max-height:820px)]:mt-9"
+            className={mkcn(
+              heroSerif.variable,
+              "mt-10 grid grid-cols-2 gap-x-6 gap-y-10 max-lg:order-2 lg:mt-14 lg:grid-cols-4 lg:gap-8 lg:[@media(max-height:820px)]:mt-9",
+            )}
             style={{ ["--mk-arrive-offset" as string]: "900ms" }}
           >
             {hero.proof.map((item, i) => {
@@ -606,7 +629,10 @@ export function Hero() {
                         title and caption read as one block; at the two pinch widths a single
                         title wraps and carries its own caption down with it, which is a far
                         smaller defect than a permanent gap. */}
-                    <p className="mt-3.5 max-w-mk-measure-xs-head font-mk-display font-mk-editorial text-mk-subheading text-mk-ink">
+                    <p
+                      data-hero-proof-title=""
+                      className="mt-3.5 max-w-mk-measure-xs-head font-[family-name:var(--font-hero-serif),Georgia,serif] text-[1.25rem] leading-snug text-balance text-mk-green-deep"
+                    >
                       {item.title}
                     </p>
                     {/* The caption's own 3-line reservation is gone for the same reason. It aligned
@@ -617,7 +643,7 @@ export function Hero() {
                     <Prose
                       as="p"
                       size="small"
-                      className="mt-2 max-w-mk-measure-xs text-mk-pebble"
+                      className="mt-2 max-w-mk-measure-xs text-[0.9375rem] leading-normal text-mk-slate"
                     >
                       {item.body}
                     </Prose>

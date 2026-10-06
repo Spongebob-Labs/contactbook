@@ -1149,19 +1149,6 @@ function Workspace({
                   paletteId={designState.paletteId}
                   groundHex={designState.groundHex}
                   finish={designState.finish}
-                  texture={designState.texture}
-                  texturePresence={designState.texturePresence}
-                  textureScale={designState.textureScale}
-                  /* I-5: the palette off the workspace's one resolution, never a second lookup. */
-                  palette={resolved.palette}
-                  onPreset={(paletteId) => designDispatch({ kind: "palette", paletteId })}
-                  onGround={(hex) => designDispatch({ kind: "ground", hex })}
-                  onFinish={(finish) => designDispatch({ kind: "finish", finish })}
-                  onTexture={(texture) => designDispatch({ kind: "texture", texture })}
-                  onPresence={(texturePresence) =>
-                    designDispatch({ kind: "presence", texturePresence })
-                  }
-                  onScale={(textureScale) => designDispatch({ kind: "scale", textureScale })}
                   onLook={(look) => {
                     /* The builder's two transitions: `palette` clears a custom colour first. */
                     designDispatch({ kind: "palette", paletteId: look.paletteId });

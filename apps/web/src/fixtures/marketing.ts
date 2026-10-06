@@ -94,9 +94,7 @@ export interface MarketingLink {
 export interface HeroCopy {
   readonly eyebrow: string;
   readonly headline: string;
-  /** The functional explainer, set one step down from the headline. */
-  readonly subhead: string;
-  /** One short paragraph under the explainer. See the note on `hero` before lengthening it. */
+  /** The one paragraph under the headline (2026-10-06: replaced the subhead + lead pair). */
   readonly lead: string;
   readonly primary: MarketingLink;
   readonly secondary: MarketingLink;
@@ -137,24 +135,36 @@ export interface HeroCopy {
  * So the promise is split rather than dropped: this line claims only what the card does, and
  * the Solution section carries the full distinction. Raised with the client as an open
  * question; if they insist on "automatically", that is their call to make knowingly.
+ *
+ * ⚠ 2026-10-06 — SUPERSEDED BY THE CLIENT. They supplied a new headline and one paragraph
+ * (see `headline` / `lead` below), which says "let update happen automatically", and removed
+ * the Solution section's qualifying sentence. Both are their call, made knowingly.
  */
 export const hero = {
+  /* NOTE — 2026-10-06: the hero no longer renders this (the client removed the "CONTACT BOOK"
+     label above the headline). It stays because the intro curtain sets it as its wordmark. */
   eyebrow: "Contact Book",
-  headline: "Never lose contact.",
-  subhead: "The address book that updates itself.",
-  /* Deliberately two short sentences rather than the previous 46-word paragraph. The client's
-     note on the old page was that it is "so text-heavy"; the hero now carries one idea and the
-     card beside it carries the demonstration. */
-  lead: "Your details change. The card you handed out changes with them.",
+  /* ⚠ 2026-10-06 — THE CLIENT REPLACED THE HEADLINE AND BOTH LINES UNDER IT, VERBATIM.
+     Was "Never lose contact." over "The address book that updates itself." and "Your details
+     change. The card you handed out changes with them." `hero.tsx` splits the headline on its
+     accent clause, "on your terms.", so changing the words here means checking that constant.
+     "let update happen automatically" is the client's wording exactly; it is not ours to fix. */
+  headline: "Your network on your terms.",
+  lead:
+    "ContactBook is the address book that updates itself. Create cards with as much or as little as you wish, share to whom you choose, and let update happen automatically. Keep your information current, your privacy protected, and your global network within reach.",
   /* ⚠ 2026-09-28 — THE WAITLIST AND "FOR COMPANIES" ARE OFF THE HOMEPAGE, ON THE CLIENT'S
      WORD: *"Still showing old version: 'join the waitlist' copy and 'for companies' tag need
      removing."* The product is open, so the primary is the real front door — phone sign-in,
      which is both sign-up and log-in (`/signin/phone` → OTP → onboarding for a new number).
      The secondary stays on the page instead of sending a reader to a second one.
      `/waitlist` and `/corporate` still exist as routes; nothing on the homepage or its chrome
-     links to them any more. */
-  primary: { href: "/signin/phone", label: "Create your card" },
-  secondary: { href: "#how-it-works", label: "See how it works" },
+     links to them any more.
+
+     2026-10-06: "Create your card" → "Get Started" (a visitor has no account yet, so they cannot
+     create a card from here) and "See how it works" → "How it works", on the client's word. The
+     nav's filled control and the close's CTA carry the same label. */
+  primary: { href: "/signin/phone", label: "Get Started" },
+  secondary: { href: "#how-it-works", label: "How it works" },
   /* ⚠ NOT RENDERED SINCE 2026-09-19, AND DELIBERATELY KEPT ANYWAY.
      `proof[2]` ("Nothing to install" / "They tap a link. It opens in their browser.") now makes
      this exact claim, with an icon and a heading, a few rows below where this used to sit — the
@@ -179,16 +189,21 @@ export const hero = {
 
      Each one is a promise the product actually keeps. "Take it back" in particular is not
      decoration: revocation is a real capability and, since the `cards` section was cut, this
-     is now the only place above the fold that mentions it. */
+     is now the only place above the fold that mentions it.
+
+     2026-10-06: three titles renamed on the client's word ("Always current" → "Always Updated",
+     "You choose the fields" → "Protect Your Privacy", "Take it back" → "Multiple Cards"), in
+     their capitalisation. The bodies and icons were deliberately left as they were; whether
+     they follow the new titles is an open question with the client. */
   proof: [
     {
       icon: "RefreshCw",
-      title: "Always current",
+      title: "Always Updated",
       body: "Edit once. Everyone holding your card sees it.",
     },
     {
       icon: "SlidersHorizontal",
-      title: "You choose the fields",
+      title: "Protect Your Privacy",
       body: "Each card shows only what you put on it.",
     },
     {
@@ -198,7 +213,7 @@ export const hero = {
     },
     {
       icon: "Undo2",
-      title: "Take it back",
+      title: "Multiple Cards",
       body: "Revoke a card and it stops resolving.",
     },
   ],
@@ -355,8 +370,6 @@ export interface SolutionCopy {
   readonly accent: string;
   readonly lead: string;
   readonly paragraphs: readonly string[];
-  /** Plain sentences under the exhibit. No headed block — see the note on the value. */
-  readonly honesty: string;
   readonly profileLabel: string;
   readonly cardsLabel: string;
   readonly privateTag: string;
@@ -375,18 +388,11 @@ export const solution = {
   paragraphs: [
     "Share it as a link. When a detail changes, everyone you sent it to sees the new one.",
   ],
-  /* ⚠ THIS MAY NOT BE CUT, AND IT IS THE ONE PLACE THIS PAGE ARGUES WITH ITS OWN BRIEF. The
-     brief says, twice, that recipients "receive the updated information automatically". The
-     product deliberately does not do that. The claim is split rather than dropped: the *card*
-     is always current, because the page resolves from live data at request time; the copy
-     *inside someone's address book* changes when you send an update and they accept it. Raised
-     with the client as an open question — if they insist on "automatically", that is theirs to
-     decide knowingly.
-
-     2026-09-28: kept, but as two plain sentences under the exhibit rather than a headed block
-     ("What that does not mean" + three sentences). Same two facts, a third of the words. */
-  honesty:
-    "No app can edit a contact already saved in someone else's phone. Your link is always current, and when you send an update, they save it with one tap.",
+  /* NOTE — 2026-10-06: the `honesty` line under the exhibit ("No app can edit a contact already
+     saved in someone else's phone. Your link is always current, and when you send an update,
+     they save it with one tap.") was removed on the client's instruction. The product fact it
+     stated is unchanged: an address-book copy only changes when the recipient accepts an
+     update; the shared link is what is always current. */
   profileLabel: "Your profile",
   cardsLabel: "Your cards",
   privateTag: "Private",
@@ -468,49 +474,111 @@ export interface HowItWorksCopy {
   readonly heading: string;
   readonly accent: string;
   readonly steps: readonly Step[];
-  /** The world-map band under the three frames. `label` sits in the frames' own label
-   *  register; `alt` is the map's accessible name. The cities come from
-   *  `fixtures/marketing-identity.ts`, never from here. */
-  readonly map: { readonly label: string; readonly alt: string };
+  /** Step 04's panel: the same card with one field changed (2026-10-06). The value is in
+   *  Ofcom's drama range, like every number here, so `fixture-hygiene.test.ts` sweeps it. */
+  readonly update: {
+    readonly field: "mobile";
+    readonly value: string;
+    readonly mark: string;
+    /** The banner over frame 04's card: the update arriving on the recipient's side. */
+    readonly toast: string;
+  };
+  /** Frame 02's designer view: the three card tabs come from `solution.cards`; these are the
+   *  fields shown as on/off chips (ids from `solution.profile`) and the palettes offered. */
+  readonly design: {
+    readonly fieldIds: readonly string[];
+    readonly palettes: readonly { readonly id: string; readonly colour: string }[];
+    readonly addTab: string;
+  };
+  /** The small uppercase label at the top of each step's frame, 01–04 (2026-10-06). */
+  readonly panels: {
+    readonly profile: string;
+    readonly card: string;
+    readonly pass: string;
+    readonly update: string;
+  };
+  /** The globe band under the four frames. `label` sits in the frames' own label register.
+   *  `alt` is not rendered — the globe is decorative and `statement` is the band's content —
+   *  but `how-it-works.tsx` still passes it. `statement` is the copy beside the globe, its
+   *  `punchline` set apart in the accent; `control` is the WCAG 2.2.2 pause button's words. */
+  readonly map: {
+    readonly label: string;
+    readonly alt: string;
+    readonly statement: { readonly lead: string; readonly punchline: string };
+    readonly control: { readonly pause: string; readonly play: string; readonly subject: string };
+  };
 }
 
 export const howItWorks = {
   heading: "How it works.",
   accent: "works.",
+  /* ⚠ 2026-10-06 — THE CLIENT'S FOUR STEPS, VERBATIM. They replace all five previous entries:
+     01–03 ("Create your details", "Build your cards", "Share the right one") were rewritten, and
+     the old 04 "Stay current" and 05 "Stay in control" — which sat under a hairline below the
+     rail as unnumbered properties — are gone, because the new 04 "Automatic updates" takes the
+     04 slot as a fourth numbered step with its own panel. "Stay in control" (revoking) is not
+     restated anywhere in the new copy; flagged to the client rather than kept as a fifth. */
   steps: [
     {
       ordinal: "01",
-      title: "Create your details",
-      /* 2026-09-28: the em-dash aside became a colon (the client's "strip AI filler" pass).
-         Same words otherwise. */
-      body: "Add your contact information once: personal, professional, digital, and anything custom you need.",
+      title: "Create your profile",
+      body: "Add your contact information: personal, professional, side hustle, and anything custom you want.",
     },
     {
       ordinal: "02",
-      title: "Build your cards",
-      body: "Choose which fields appear on each card, and give it a colour.",
+      title: "Create your cards",
+      body: "Choose which fields go on the card and then design it. Make as many cards as you want.",
     },
     {
       ordinal: "03",
-      title: "Share the right one",
-      body: "Send the link, or let them scan the code. There is nothing for them to install.",
+      title: "Share to your network",
+      body: "Send a link or scan a QR and they receive all your details, without anything to install.",
     },
     {
       ordinal: "04",
-      title: "Stay current",
-      body: "Change a field and everyone holding that card sees the new version. Send them a notification when it matters.",
-    },
-    {
-      ordinal: "05",
-      title: "Stay in control",
-      body: "Expand, restrict or revoke what any one person can see, whenever you want.",
+      title: "Automatic updates",
+      body: "As your details change, you update your profile and your network is informed and instantly has your latest information.",
     },
   ],
+  /* Step 04's picture: Maya's work card, the same object as frames 02 and 03, with her mobile
+     changed from +44 7700 900123 to this one and the row marked. */
+  update: { field: "mobile", value: "+44 7700 900456", mark: "Updated", toast: "Maya updated her card" },
+  /* 02, "Create your cards": choose which fields go on the card, then design it, and make as many as
+     you want. The tabs are the three example cards; the chips are four profile fields, two on the
+     Work card and two not; the swatches are the product's own card palettes (`--mk-*` tokens). */
+  design: {
+    fieldIds: ["mobile", "work-email", "home", "birthday"],
+    palettes: [
+      { id: "sapphire", colour: "var(--mk-sapphire)" },
+      { id: "clay", colour: "var(--mk-clay)" },
+      { id: "onyx", colour: "var(--mk-ink)" },
+      { id: "emerald", colour: "var(--mk-emerald)" },
+    ],
+    addTab: "+",
+  },
+  /* The frames' labels. 03 names the object it shows: the Apple Wallet pass the product signs for
+     the Work card (`apps/api/src/wallet/pass-builder.ts`), not the in-app card. */
+  panels: {
+    profile: "Your profile",
+    card: "Your work card",
+    pass: "Apple Wallet",
+    update: "What they see",
+  },
   /* 2026-09-28, the client: *"Consider adding a global map element to reinforce international
-     feel."* The map is Maya's four cities; the label says so in four words, no sentence. */
+     feel."* 2026-10-06: *"The globe can stay, but remove the details on the right … Where the
+     text currently is, let's just add the logo and 'it's time you use ContactBook to manage your
+     global network. It's not what you know, it's who you know.'"* The statement is that copy
+     verbatim, with only the sentence-start capital added.
+     ⚠ OPEN WITH THE CLIENT: "It's time you use" (vs "used" / "time to use"), and the label still
+     says "four cities" although the globe now marks ~55. Both kept as written until confirmed. */
   map: {
     label: "One profile, four cities",
-    alt: "World map marking London, Dubai, New York and Singapore",
+    alt: "A turning globe with a dot on every major city",
+    statement: {
+      lead: "It's time you use ContactBook to manage your global network.",
+      punchline: "It's not what you know, it's who you know.",
+    },
+    control: { pause: "Pause", play: "Play", subject: "the globe" },
   },
 } as const satisfies HowItWorksCopy;
 /* ════════════════════════════════════════════════════════════════════════════════════════
@@ -648,8 +716,8 @@ export const close = {
   body: "Make one card, hand it over, and keep it true for as long as you need it.",
   /* ⚠ 2026-09-28: was "Join the waitlist" → `/waitlist`, plus an inline waitlist form. Both
      went with the client's "join the waitlist copy … need removing"; the close now sends a
-     reader to the same front door as the hero and the nav. */
-  cta: { href: "/signin/phone", label: "Create your card" },
+     reader to the same front door as the hero and the nav. 2026-10-06: relabelled with them. */
+  cta: { href: "/signin/phone", label: "Get Started" },
 } as const satisfies CloseCopy;
 
 export const pageMeta = {
@@ -908,7 +976,9 @@ export const marketingUser: User = {
    ════════════════════════════════════════════════════════════════════════════════════════ */
 
 /** The row glyphs the reference draws, in the order it draws them. */
-export type HeroPhoneIcon = "phone" | "mail" | "pin" | "building" | "link";
+/* "calendar" and "briefcase" (2026-10-06) are for the brand card's other uses — the Solution
+   deck and the How-it-works panels; the hero's own rows never use them. */
+export type HeroPhoneIcon = "phone" | "mail" | "pin" | "building" | "link" | "calendar" | "briefcase";
 
 /** The four social marks under SOCIAL. */
 export type HeroPhoneSocial = "linkedin" | "instagram" | "x" | "youtube";
@@ -928,8 +998,6 @@ export interface HeroPhoneCopy {
   readonly caption: string;
   /** The cover photograph, at 2× and 3× the card's 330px design width. */
   readonly portrait: { readonly x2: string; readonly x3: string };
-  /** The handwritten lines over the photograph, one per line. */
-  readonly script: readonly string[];
   readonly brand: string;
   readonly name: string;
   readonly role: string;
@@ -950,7 +1018,6 @@ export const heroPhone = {
     x2: "/marketing/hero-portrait-2x.webp",
     x3: "/marketing/hero-portrait-3x.webp",
   },
-  script: ["Privacy", "Relationships", "Ideas"],
   brand: "ContactBook",
   name: MAYA.fullName,
   role: MAYA.role,

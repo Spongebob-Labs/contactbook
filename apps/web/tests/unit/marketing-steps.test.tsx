@@ -2,9 +2,11 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { renderWithProviders, screen } from "../helpers/render";
+import { renderWithProviders, screen, within } from "../helpers/render";
+import { brandCardContent } from "@/components/marketing/brand-card-content";
 import { Close } from "@/components/marketing/close";
-import { HowItWorks } from "@/components/marketing/how-it-works";
+import { CARD_DESIGN_W, CARD_WINDOW_H, HowItWorks } from "@/components/marketing/how-it-works";
+import { PASS_ALT_TEXT } from "@/components/marketing/wallet-pass";
 import {
   close,
   exampleCardSpecs,
@@ -72,85 +74,98 @@ function expectedVoice(value: string): string {
 }
 
 /**
- * ⚠ REWRITTEN 2026-09-21 WITH THE SECTION'S THIRD BUILD. The suite this replaces asserted a
- * five-column rail, three authored SVG diagrams and a `scale={0.24}` card thumbnail — and it
- * was green throughout the two client rejections, because every one of those assertions was
- * about a mechanism EXISTING rather than about the mechanism producing a legible result. The
- * two properties the old suite could not see are the two that actually failed:
+ * ⚠ REWRITTEN 2026-10-06 WITH THE SECTION'S SIXTH BUILD — FOUR STEPS IN ONE ROW.
  *
- *   · a visual can be present and still be sub-legible (98px wide, a 30px name painting at
- *     ~9px);
- *   · a row can be consistent in code and incoherent on screen, if its members are built three
- *     different ways.
+ * The client replaced the five steps with four (`howItWorks.steps`, verbatim) and rejected the
+ * first four-step build as *"very big, a lot of dirt in the UI"*: step 04 wrapped onto its own
+ * row, frame 01 was taller than the others, frame 02 was a stack of three overlapping cards, and
+ * frame 03 showed the in-app card instead of the Apple Wallet pass the product actually issues.
  *
- * happy-dom has no layout engine, so neither can be measured here. What CAN be pinned is the
- * construction that produced them, and that is what the tests below do: the column COUNT, the
- * crop-not-shrink mechanism, and the one-construction-per-row rule. See `how-it-works.tsx`'s
- * header for the survey and the numbers.
+ * The suite this replaces asserted three steps in the rail with two "properties" under a
+ * hairline, a three-card deck, a `ShareFace` in every card frame and a three-column breakpoint.
+ * Every one of those premises is gone on the client's word, so each test below is the
+ * equivalent guard for what exists now, at the same strength: exact counts, exact order, the
+ * same object in every frame, and the breakpoint re-derived from the frame's contents.
+ *
+ * happy-dom has no layout engine, so the row and the frame sizes are asserted from the CSS
+ * source (below) and measured in a real browser separately; what is pinned here is the
+ * construction that produces them.
  */
-describe("HowItWorks — the three-step rail", () => {
-  const RAIL_COUNT = 3;
+describe("HowItWorks — the four-step rail", () => {
+  const STEP_COUNT = 4;
 
-  it("puts the three actions in the rail and the two properties beneath it", () => {
+  it("puts all four of the client's steps in the rail, in order, and nothing under it", () => {
     const { container } = renderWithProviders(<HowItWorks />);
 
+    expect(howItWorks.steps).toHaveLength(STEP_COUNT);
     expect(container.querySelectorAll(".mk-steps-rail")).toHaveLength(1);
-    expect(container.querySelectorAll(".mk-steps-item")).toHaveLength(RAIL_COUNT);
-    expect(container.querySelectorAll(".mk-steps-marker")).toHaveLength(RAIL_COUNT);
+    const items = [...container.querySelectorAll(".mk-steps-rail > .mk-steps-item")];
+    expect(items).toHaveLength(STEP_COUNT);
+    expect(container.querySelectorAll(".mk-steps-marker")).toHaveLength(STEP_COUNT);
 
-    /* ⚠ NOT ONE WORD OF THE CLIENT'S COPY IS DROPPED — the split is about hierarchy, not about
-       cutting. Every step in the fixture still renders its title and its body somewhere in the
-       section; the first three get a column, a numbered disc and a product fragment, and the
-       last two get quieter type under a hairline because they are properties rather than
-       actions. A future edit that "simplifies" by deleting a step fails here. */
-    for (const step of howItWorks.steps) {
-      expect(screen.getByRole("heading", { level: 3, name: step.title })).toBeInTheDocument();
-      expect(screen.getByText(step.body)).toBeInTheDocument();
-    }
+    /* ⚠ NOT ONE WORD OF THE CLIENT'S COPY IS DROPPED, AND EACH STEP STAYS IN ITS OWN COLUMN. */
+    howItWorks.steps.forEach((step, i) => {
+      const heading = screen.getByRole("heading", { level: 3, name: step.title });
+      expect(heading.closest("li")).toBe(items[i]);
+      expect(within(items[i] as HTMLElement).getByText(step.body)).toBeInTheDocument();
+    });
 
-    expect(container.querySelectorAll(".mk-steps-after__item")).toHaveLength(
-      howItWorks.steps.length - RAIL_COUNT,
-    );
+    // The old "two properties under a hairline" are gone; 04 is a numbered step with a frame.
+    expect(container.querySelectorAll(".mk-steps-after, .mk-steps-after__item")).toHaveLength(0);
   });
 
-  it("prints an ordinal inside every marker, and only for the rail's own steps", () => {
+  it("prints every step's ordinal inside its marker, 01 to 04", () => {
     const { container } = renderWithProviders(<HowItWorks />);
     const printed = [...container.querySelectorAll(".mk-steps-marker__n")].map((n) =>
       n.textContent?.trim(),
     );
-    expect(printed).toEqual(howItWorks.steps.slice(0, RAIL_COUNT).map((s) => s.ordinal));
+    expect(printed).toEqual(["01", "02", "03", "04"]);
+    expect(printed).toEqual(howItWorks.steps.map((s) => s.ordinal));
   });
 
   it("draws one rule through the markers, with no end hanging off either outer edge", () => {
     const { container } = renderWithProviders(<HowItWorks />);
     /* Each interior boundary draws two halves — the step before it draws "after", the step
-       after it draws "before" — and the two outer ends draw none. Derived, so it survives a
-       change to RAIL_COUNT. */
-    expect(container.querySelectorAll("[data-edge]")).toHaveLength(2 * (RAIL_COUNT - 1));
+       after it draws "before" — and the two outer ends draw none. */
+    expect(container.querySelectorAll("[data-edge]")).toHaveLength(2 * (STEP_COUNT - 1));
+    const items = [...container.querySelectorAll(".mk-steps-item")];
+    expect(items[0]!.querySelector('[data-edge="before"]')).toBeNull();
+    expect(items[STEP_COUNT - 1]!.querySelector('[data-edge="after"]')).toBeNull();
+  });
+
+  it("sets every step's words above its frame — disc, title, body, frame, in that order", () => {
+    const { container } = renderWithProviders(<HowItWorks />);
+    for (const item of container.querySelectorAll(".mk-steps-item")) {
+      const order = [...item.children].map((child) =>
+        ["mk-steps-track", "mk-steps-title", "mk-steps-body", "mk-steps-frame"].find((c) =>
+          child.classList.contains(c),
+        ),
+      );
+      // Exactly four children, so the four subgrid rows line up across the row.
+      expect(order).toEqual(["mk-steps-track", "mk-steps-title", "mk-steps-body", "mk-steps-frame"]);
+    }
   });
 
   /**
-   * ⚠ REPLACED THE `data-swatch` ASSERTION, 2026-09-22. A static navy fill on step 02's disc
-   * marked "the step that claims a colour" — and once the walk started filling each disc in
-   * turn, a permanently filled one read as "this step is always active". Two signals, one
-   * slot. The claim still lands, through the fragment rather than the dot: step 02 renders two
-   * cards in two different palettes, which is what "give it a colour" actually looks like.
+   * ⚠ REPLACED "two real palettes" (2026-10-06). That guarded step 02's old copy — "give it a
+   * colour" — by requiring two palettes in its frame. The copy is now "Choose which fields go
+   * on the card and then design it", so the claim to prove is the choice: the card in frame 02
+   * carries a real subset of the profile, row for row, not the whole thing.
    */
-  it("marks the colour claim with two real palettes, not a permanently lit disc", () => {
+  it("shows the design step as a designed card carrying a chosen subset of the profile", () => {
     const { container } = renderWithProviders(<HowItWorks />);
-    expect(container.querySelectorAll("[data-swatch]")).toHaveLength(0);
+    const card = container.querySelector("[data-steps-card] .mk-hc__card");
+    expect(card, "frame 02 should hold the brand card").not.toBeNull();
 
-    const colourStep = howItWorks.steps.find((s) => /colour/i.test(s.body));
-    expect(colourStep, "the fixture should carry a step that claims a colour").toBeTruthy();
-    const item = screen.getByRole("heading", { level: 3, name: colourStep!.title }).closest("li")!;
-
-    const palettes = new Set(
-      [...item.querySelectorAll("[data-palette-id]")].map((n) => n.getAttribute("data-palette-id")),
+    const work = exampleCardSpecs.find((c) => c.id === "work")!.card;
+    const content = brandCardContent("work");
+    const rows = [...card!.querySelectorAll(".mk-hc__row .mk-hc__value")].map((n) => n.textContent);
+    expect(rows).toEqual(content.sections.flatMap((s) => s.rows.map((r) => r.value)));
+    expect(rows.length).toBeGreaterThan(0);
+    expect(work.fieldIds.length, "the card must carry fewer fields than the profile").toBeLessThan(
+      mayaProfile.fields.length,
     );
-    expect(palettes.size, "the colour step should show more than one palette").toBeGreaterThan(1);
   });
-
-
 
   it("rides the one closed reveal vocabulary — never a third `data-mk-reveal-move`", () => {
     const { container } = renderWithProviders(<HowItWorks />);
@@ -166,71 +181,138 @@ describe("HowItWorks — the three-step rail", () => {
   });
 });
 
-describe("HowItWorks — the frames, and the rule that finally made the row cohere", () => {
+describe("HowItWorks — four identical frames, one object in each", () => {
   /**
-   * ⚠ FIFTH BUILD, 2026-09-22. The suite this replaces pinned a "fragment window", a card
-   * `scale`, a `height` crop and a fanned pair — the exact mechanisms of the four builds the
-   * client rejected. Every one of those tests was green on every one of those rejections,
-   * because each guarded a mechanism's presence and none guarded the property that failed:
-   * three different KINDS of object in three identical columns never read as one row.
-   *
-   * What is pinned now is the construction that fixed it — every column holds the same visible
-   * frame, and every artefact inside one is the same product component, complete.
+   * ⚠ SIXTH BUILD, 2026-10-06. The fifth build's frames were identical in class but not in
+   * content: frame 02 dealt a deck of three cards, and its back cards showed as black and peach
+   * slivers clipped by the frame — the "dirt". What is pinned now is one window per frame and
+   * one object per window, and the same card running through 02, 03 and 04.
    */
-  it("gives every rail step the identical frame", () => {
+  it("gives every step the identical frame — one class, one label, one window", () => {
     const { container } = renderWithProviders(<HowItWorks />);
     const frames = [...container.querySelectorAll(".mk-steps-frame")];
-    expect(frames).toHaveLength(3);
-    for (const frame of frames) {
-      // One class, so one size, one hairline, one ground. A per-step variant is how the old row
-      // went ragged.
+    expect(frames).toHaveLength(4);
+    const labels = [howItWorks.panels.profile, howItWorks.panels.card, howItWorks.panels.pass, howItWorks.panels.update];
+    frames.forEach((frame, i) => {
+      // One class, so one size, one hairline, one ground. A per-step variant is how rows go ragged.
       expect(frame.className.trim()).toBe("mk-steps-frame");
-      expect(frame.querySelector(".mk-steps-frame__label"), "every frame carries a label").not.toBeNull();
-    }
+      expect(frame).toHaveAttribute("aria-hidden", "true");
+      expect(frame.querySelectorAll(".mk-steps-frame__label")).toHaveLength(1);
+      expect(frame.querySelector(".mk-steps-frame__label")!.textContent).toBe(labels[i]);
+      expect(frame.querySelectorAll(".mk-steps-window")).toHaveLength(1);
+    });
   });
 
-  it("puts the same artefact in every frame that shows a card — the share face, complete", () => {
+  it("puts exactly one card or pass in each card frame — no deck, no stack, no fan", () => {
+    const { container } = renderWithProviders(<HowItWorks />);
+    expect(container.querySelector(".mk-steps-deck, .mk-steps-deck__card")).toBeNull();
+
+    // 02 is the designer's view (one object: the designer, holding one card); 04 is one card plus
+    // the banner that says an update arrived. Neither holds a second card or a pass.
+    const designer = container.querySelector("[data-steps-card]")!;
+    expect(designer.querySelectorAll(".mk-hc__card"), "02 must hold one card").toHaveLength(1);
+    expect(designer.querySelectorAll("[data-wallet-pass]")).toHaveLength(0);
+    expect(designer.querySelector(".mk-steps-window")!.children).toHaveLength(1);
+    expect(designer.querySelector(".mk-steps-window")!.firstElementChild).toHaveAttribute("data-steps-designer");
+
+    const update = container.querySelector("[data-steps-update]")!;
+    expect(update.querySelectorAll(".mk-hc__card"), "04 must hold one card").toHaveLength(1);
+    expect(update.querySelectorAll("[data-wallet-pass]")).toHaveLength(0);
+    expect(update.querySelectorAll(".mk-steps-window > .mk-steps-toast")).toHaveLength(1);
+    expect(update.querySelector(".mk-steps-window")!.children).toHaveLength(2);
+
+    const pass = container.querySelector("[data-steps-pass]")!;
+    expect(pass.querySelectorAll("[data-wallet-pass]"), "frame 03 must hold the wallet pass").toHaveLength(1);
+    expect(pass.querySelectorAll(".mk-hc__card"), "frame 03 is the pass, not the in-app card").toHaveLength(0);
+    expect(pass.querySelector(".mk-steps-window")!.children).toHaveLength(1);
+
+    // Four frames, four objects, and nothing else that draws a card anywhere in the rail.
+    expect(container.querySelectorAll(".mk-steps-rail .mk-hc__card")).toHaveLength(2);
+    expect(container.querySelectorAll(".mk-steps-rail [data-wallet-pass]")).toHaveLength(1);
+  });
+
+  it("makes frame 02 a designer's view and frame 04 an arrival — two different pictures", () => {
+    const { container } = renderWithProviders(<HowItWorks />);
+    const designer = container.querySelector("[data-steps-designer]")!;
+
+    // "Make as many cards as you want": the three example cards as tabs, Work active, and a "+".
+    const tabs = [...designer.querySelectorAll(".mk-steps-tab")];
+    expect(tabs.map((t) => t.textContent)).toEqual(["Work", "Family", "CV", "+"]);
+    expect(designer.querySelectorAll(".mk-steps-tab[data-active]")).toHaveLength(1);
+    expect(designer.querySelector(".mk-steps-tab[data-active]")!.textContent).toBe("Work");
+
+    // "Design it": the palettes on offer with exactly one chosen, and the card wears a tint.
+    expect(designer.querySelectorAll(".mk-steps-swatch")).toHaveLength(4);
+    expect(designer.querySelectorAll(".mk-steps-swatch[data-active]")).toHaveLength(1);
+    expect(designer.querySelectorAll(".mk-hc__tint")).toHaveLength(1);
+
+    // "Choose which fields go on the card": four chips, two on and two off, the on ones being the
+    // fields the Work card carries.
+    const chips = [...designer.querySelectorAll(".mk-steps-fchip")];
+    expect(chips).toHaveLength(4);
+    expect(chips.filter((c) => c.hasAttribute("data-on")).map((c) => c.textContent)).toEqual([
+      "Mobile",
+      "Work email",
+    ]);
+    // All drawn: nothing in the designer can be focused or typed into.
+    expect(designer.querySelectorAll("input, button, a, select, textarea, [tabindex]")).toHaveLength(0);
+
+    // 04 is not 02: no designer furniture, the update banner instead, one row marked Updated.
+    const update = container.querySelector("[data-steps-update]")!;
+    expect(update.querySelector("[data-steps-designer], .mk-steps-tab, .mk-steps-swatch, .mk-steps-fchip")).toBeNull();
+    expect(update.querySelector(".mk-steps-toast")!.textContent).toBe("Maya updated her card");
+    expect(update.querySelectorAll(".mk-hc__row[data-updated]")).toHaveLength(1);
+    expect(designer.querySelectorAll(".mk-hc__row[data-updated]")).toHaveLength(0);
+    expect(update.querySelector(".mk-hc__tint")).toBeNull();
+  });
+
+  it("builds every card frame from the brand card and the wallet pass — never the product's face", () => {
     const src = code("components/marketing/how-it-works.tsx");
-    // The one renderer. `CardPageThumb` is gone from this file on purpose: it is fluid and had
-    // to be cropped, and a crop with no frame to explain it was the recurring "glitch".
-    expect(src).toContain("ShareFace");
+    expect(src).toContain("<BrandCard");
+    expect(src).toContain("<WalletPass");
+    expect(src).not.toContain("ShareFace");
     expect(src).not.toContain("CardPageThumb");
+    expect(src).not.toMatch(/\bCardPage\b/);
     // No authored linework, no glyph standing in for a verb.
     expect(src).not.toMatch(/function\s+\w*(Diagram|Annotation)\s*\(/);
     expect(src).not.toContain("<path");
+    // The card's size comes from the stylesheet's one zoom, never a per-frame inline value.
+    expect(src).not.toMatch(/zoom\s*:/);
   });
 
-  it("deals a deck of three faces in three different palettes behind one readable front card", () => {
+  it("runs the same card through frames 02, 03 and 04 — built, handed over, updated", () => {
     const { container } = renderWithProviders(<HowItWorks />);
-    const deck = container.querySelector("[data-steps-deck] .mk-steps-deck");
-    expect(deck, "expected the deck in frame 02").not.toBeNull();
-
-    const cards = [...deck!.querySelectorAll(".mk-steps-deck__card")];
-    expect(cards).toHaveLength(3);
-
-    // Every card carries its position; the stylesheet turns it into the diagonal offset and
-    // the deal order, so a missing index collapses the whole deck onto one spot.
-    const indices = cards.map((c) => c.getAttribute("style") ?? "");
-    for (const i of [0, 1, 2]) {
-      expect(indices.some((st) => st.includes(`--mk-steps-deck-i: ${i}`)), `no card at deck index ${i}`).toBe(true);
+    const built = container.querySelector("[data-steps-card] [data-card-id]");
+    const pass = container.querySelector("[data-steps-pass] [data-wallet-pass]");
+    const updated = container.querySelector("[data-steps-update] [data-card-id]");
+    for (const [name, node] of [["built", built], ["pass", pass], ["updated", updated]] as const) {
+      expect(node, `no ${name} object`).not.toBeNull();
+      expect(node!.getAttribute("data-card-id"), name).toBe("work");
     }
-
-    // Three palettes, not one card thrice — "give it a colour" is the claim.
-    const palettes = new Set(
-      [...deck!.querySelectorAll("[data-palette-id]")].map((n) => n.getAttribute("data-palette-id")),
+    // The pass's barcode is that card's own public link.
+    const work = exampleCardSpecs.find((c) => c.id === "work")!.card;
+    expect(pass!.querySelector("[data-pass-barcode]")).toHaveAttribute("data-qr-payload", work.publicUrl!);
+    // And the same person on both.
+    expect(built!.querySelector(".mk-hc__name")!.textContent).toBe(
+      pass!.querySelector('[data-pass-field="primary"] .mk-pass__value')!.textContent,
     );
-    expect(palettes.size).toBe(3);
   });
 
-  it("makes the shared face in frame 03 the front card of frame 02's deck", () => {
+  it("marks exactly one changed field in frame 04, and none in frame 02", () => {
     const { container } = renderWithProviders(<HowItWorks />);
-    const front = container.querySelector('[data-steps-deck] .mk-steps-deck__card[style*="--mk-steps-deck-i: 0"] [data-palette-id]');
-    const hero = container.querySelector("[data-steps-share] [data-palette-id]");
-    expect(front, "no front card").not.toBeNull();
-    expect(hero, "no hero face").not.toBeNull();
-    // Same palette AND same card root identity: the object the reader watches get built is the
-    // object they watch get shared. This is the survey's "panels must share an object" rule.
-    expect(hero!.getAttribute("data-palette-id")).toBe(front!.getAttribute("data-palette-id"));
+    const marked = [...container.querySelectorAll("[data-steps-update] .mk-hc__row[data-updated]")];
+    expect(marked).toHaveLength(1);
+    expect(marked[0]!.querySelector(".mk-hc__value")!.textContent).toBe(howItWorks.update.value);
+    expect(marked[0]!.querySelector(".mk-hc__updated")!.textContent).toBe(howItWorks.update.mark);
+    expect(container.querySelectorAll("[data-steps-card] .mk-hc__row[data-updated]")).toHaveLength(0);
+
+    // The two cards are otherwise the same rows: one field changed, nothing else.
+    const rowsOf = (hook: string) =>
+      [...container.querySelectorAll(`${hook} .mk-hc__value`)].map((n) => n.textContent);
+    const before = rowsOf("[data-steps-card]");
+    const after = rowsOf("[data-steps-update]");
+    expect(after).toHaveLength(before.length);
+    expect(after.filter((value, i) => value !== before[i])).toEqual([howItWorks.update.value]);
   });
 
   /** 2026-09-28: the records are Maya's (`mayaProfile`), not the app fixture user's. */
@@ -240,7 +322,10 @@ describe("HowItWorks — the frames, and the rule that finally made the row cohe
     expect(panel, "expected the profile frame body").not.toBeNull();
 
     const rows = [...panel!.querySelectorAll(".mk-steps-profile__row")];
-    expect(rows.length).toBeGreaterThan(5);
+    // 2026-10-06: six rows, so frame 01 is the same height as the card frames (client: "make
+    // all four frames one identical height … shorten panel 01's list to fit").
+    expect(rows).toHaveLength(6);
+    expect(panel!.querySelector(".mk-steps-profile__more")).not.toBeNull();
 
     rows.forEach((row, i) => {
       // The stagger index the stylesheet reads.
@@ -260,9 +345,9 @@ describe("HowItWorks — the frames, and the rule that finally made the row cohe
   /**
    * The survey's actual diagnosis, made testable: the profile must list the fields the card
    * beside it carries, plus at least one it does not — so a reader can match values row for
-   * row AND see the filter working. If the business card's `fieldIds` drift, this fails.
+   * row AND see the filter working. If the work card's `fieldIds` drift, this fails.
    */
-  it("lists the fields the front card actually carries, plus one it leaves off", () => {
+  it("lists the fields the card actually carries, plus one it leaves off", () => {
     renderWithProviders(<HowItWorks />);
     const work = exampleCardSpecs.find((c) => c.id === "work")!.card;
     const onCard = new Set<string>(work.fieldIds);
@@ -279,6 +364,74 @@ describe("HowItWorks — the frames, and the rule that finally made the row cohe
 });
 
 /**
+ * Frame 03, 2026-10-06. The client: *"this is not the actual card that we are making for the
+ * Apple Wallet … no disparity."* The pass is drawn from `apps/api/src/wallet/pass-builder.ts`'s
+ * own rules, and these tests pin those rules against the same fixture, so the drawing cannot
+ * quietly say something the real pass would not.
+ */
+describe("HowItWorks — frame 03 is the Apple Wallet pass the API signs", () => {
+  it("says exactly what `selectPassContent` / `buildPassJson` put on the pass", () => {
+    const { container } = renderWithProviders(<HowItWorks />);
+    const pass = container.querySelector("[data-steps-pass] [data-wallet-pass]")!;
+    expect(pass).toHaveAttribute("data-pass-style", "eventTicket");
+    expect(pass).toHaveAttribute("data-palette-id", "sapphire");
+
+    const fieldValue = (id: string) => mayaProfile.fields.find((f) => f.id === id)!.value;
+    // logoText = the card's COMPANY value, upper-cased.
+    expect(pass.querySelector(".mk-pass__logo-text")!.textContent).toBe(fieldValue("field_company").toUpperCase());
+    // Primary field: label = JOB_TITLE, value = the owner's name.
+    const primary = pass.querySelector('[data-pass-field="primary"]')!;
+    expect(primary.querySelector(".mk-pass__label")!.textContent).toBe(fieldValue("field_job_title"));
+    expect(primary.querySelector(".mk-pass__value")!.textContent).toBe("Maya Laurent");
+    // Two details, a PHONE before an EMAIL, each with its own label and its value AS STORED.
+    const detail = (slot: string) => {
+      const node = pass.querySelector(`[data-pass-field="${slot}"]`)!;
+      return [node.querySelector(".mk-pass__label")!.textContent, node.querySelector(".mk-pass__value")!.textContent];
+    };
+    expect(detail("secondary")).toEqual(["Mobile", fieldValue("field_mobile")]);
+    expect(detail("auxiliary")).toEqual(["Work email", fieldValue("field_work_email")]);
+    // The barcode's alt text, verbatim from the builder.
+    expect(pass.querySelector(".mk-pass__alt")!.textContent).toBe(PASS_ALT_TEXT);
+    expect(PASS_ALT_TEXT).toBe("Scan to open card");
+  });
+
+  it("matches the builder's own source, so a change there is a change here", () => {
+    const builder = readFileSync(resolve(__dirname, "../../../api/src/wallet/pass-builder.ts"), "utf8");
+    expect(builder).toMatch(/altText:\s*'Scan to open card'/);
+    expect(builder).toMatch(/const DETAIL_PREFERENCE = \['PHONE', 'EMAIL', 'URL'\]/);
+    expect(builder).toMatch(/const MAX_DETAIL_PAIRS = 2;/);
+    expect(builder).toMatch(/eventTicket:\s*\{/);
+    expect(builder).toMatch(/logoText:\s*\(company \?\? config\.orgName\)\.toUpperCase\(\)/);
+
+    // The colours are the API's sapphire palette and its logo gold, byte for byte.
+    const colors = readFileSync(resolve(__dirname, "../../../api/src/wallet/pass-colors.util.ts"), "utf8");
+    const sapphire = /sapphire:\s*\{([^}]*)\}/.exec(colors)![1]!;
+    const hex = (key: string) => new RegExp(`${key}:\\s*'(#[0-9A-Fa-f]{6})'`).exec(sapphire)![1]!.toLowerCase();
+    const tokens = source("styles/marketing.css");
+    const token = (name: string) => new RegExp(`--mk-pass-${name}:\\s*(#[0-9a-f]{6})`).exec(tokens)![1];
+    expect(token("sapphire-from")).toBe(hex("from"));
+    expect(token("sapphire-to")).toBe(hex("to"));
+    expect(token("sapphire-ink")).toBe(hex("ink"));
+    expect(token("sapphire-label")).toBe(hex("inkSoft"));
+    const images = readFileSync(resolve(__dirname, "../../../api/src/wallet/pass-images.ts"), "utf8");
+    expect(token("gold")).toBe(/BRAND_GOLD = '(#[0-9A-Fa-f]{6})'/.exec(images)![1]!.toLowerCase());
+  });
+
+  it("carries no address, no link text and nothing the card does not share", () => {
+    const { container } = renderWithProviders(<HowItWorks />);
+    const pass = container.querySelector("[data-steps-pass] [data-wallet-pass]")!;
+    const text = pass.textContent ?? "";
+    expect(text).not.toContain("card.example");
+    expect(text).not.toMatch(/Wren Yard|Lisbon/);
+    const work = exampleCardSpecs.find((c) => c.id === "work")!.card;
+    for (const field of mayaProfile.fields) {
+      if (work.fieldIds.includes(field.id)) continue;
+      expect(text, `${field.label} is not on the work card`).not.toContain(field.value);
+    }
+  });
+});
+
+/**
  * The client, 2026-09-28: *"'How it works' section: replace Indian numbers with London, Dubai,
  * New York, Singapore addresses and numbers. Consider adding a global map element to
  * reinforce international feel."*
@@ -290,46 +443,33 @@ describe("HowItWorks — Maya's four cities, and the map", () => {
     expect(text).not.toMatch(/\+91|Mumbai|Maharashtra|India\b/);
   });
 
-  it("shows all four cities' numbers in the profile and on the map", () => {
+  /* ⚠ CHANGED 2026-10-06. This required all four cities' numbers in frame 01 as well as on the
+     map. The client then asked for frame 01 to be shortened to the card frames' height ("fewer
+     rows, e.g. five plus + anything custom"), and four office rows alone would fill it. So frame 01 keeps Maya's own base, London, with its number exactly as the identity writes it. */
+  it("keeps Maya's London base in the profile, and the globe band as its own decorative picture beside one statement", () => {
     const { container } = renderWithProviders(<HowItWorks />);
     const profile = container.querySelector("[data-steps-profile]")!.textContent ?? "";
-    for (const city of MAYA_CITIES) {
-      expect(profile, `${city.city}'s number is not in the profile`).toContain(city.phone);
-    }
+    const london = MAYA_CITIES.find((city) => city.city === "London");
+    expect(london, "the identity file should carry London").toBeTruthy();
+    expect(profile, "London's number is not in the profile").toContain(london!.phone);
 
     const map = container.querySelector("[data-steps-map]");
     expect(map, "no map band").not.toBeNull();
-    /* ⚠ CHANGED 2026-09-29 WITH THE GLOBE. This asserted the flat map's `svg[role="img"]` carried
-       `howItWorks.map.alt`. The globe is decorative by design — its whole stage is `aria-hidden`
-       and the list below is the accessible content — so an image name would only read the list
-       out twice. What must hold now is that the picture is hidden and the list is not. */
+    /* ⚠ CHANGED 2026-10-07. The band used to carry a list of Maya's four cities with their numbers,
+       and this asserted it. The client removed that list ("remove the details on the right") and the
+       band now carries one statement beside the globe. What must hold: the picture is hidden from
+       assistive tech (it is decorative), the statement is not, and the city list is really gone. */
     expect(map!.querySelector(".mk-globe__stage")).toHaveAttribute("aria-hidden", "true");
-    expect(map!.querySelector(".mk-map__legend")!.closest("[aria-hidden]")).toBeNull();
-    expect(map!.querySelectorAll(".mk-map__pin")).toHaveLength(MAYA_CITIES.length);
-
-    const legend = [...map!.querySelectorAll(".mk-map__place")];
-    expect(legend).toHaveLength(MAYA_CITIES.length);
-    MAYA_CITIES.forEach((city, i) => {
-      expect(legend[i]!.textContent).toContain(city.city);
-      expect(legend[i]!.textContent).toContain(city.phone);
-      expect(legend[i]!.textContent).toContain(city.address);
-    });
+    const statement = map!.querySelector(".mk-map__statement")!;
+    expect(statement.closest("[aria-hidden]")).toBeNull();
+    expect(statement.textContent).toContain(howItWorks.map.statement.lead);
+    expect(statement.textContent).toContain(howItWorks.map.statement.punchline);
+    expect(map!.querySelector(".mk-map__legend, .mk-map__place, .mk-map__pin")).toBeNull();
+    expect(map!.textContent).not.toContain(london!.address);
   });
 
   /* Still true of the globe: its server-rendered still places each pin by percentage inside the
      still's own square frame, the way the flat map placed them inside its box. */
-  it("places every pin inside the map's own box", () => {
-    const { container } = renderWithProviders(<HowItWorks />);
-    for (const pin of container.querySelectorAll<HTMLElement>(".mk-map__pin")) {
-      const left = Number.parseFloat(pin.style.left);
-      const top = Number.parseFloat(pin.style.top);
-      expect(left, pin.dataset.city).toBeGreaterThan(0);
-      expect(left, pin.dataset.city).toBeLessThan(100);
-      expect(top, pin.dataset.city).toBeGreaterThan(0);
-      expect(top, pin.dataset.city).toBeLessThan(100);
-    }
-  });
-
   /**
    * ⚠ REWRITTEN 2026-09-29. This pinned "a static inline SVG" — true of the flat map, and no longer
    * the design: the globe turns, so it is a client island. What it guarded is unchanged and is
@@ -367,33 +507,80 @@ describe("HowItWorks — the CSS contracts", () => {
   const css = code("styles/marketing-steps.css");
 
   /**
-   * ⚠ RE-DERIVED 2026-09-22. The fragment stopped having a fixed `--mk-steps-frag-w` when it
-   * became the column's full width (the alignment fix), so the old arithmetic lost its input.
-   * The constraint it was protecting is unchanged and is now expressed against the thing that
-   * IS still fixed: a card render is `336 × scale` px wide and does not reflow, so a column
-   * narrower than one card clips the fan on both edges. Naming a breakpoint without checking
-   * this is exactly how the five-column version shipped a 79px viewport overflow with a green
-   * suite.
+   * ⚠ RE-DERIVED 2026-10-06 FOR FOUR COLUMNS, AND STILL DERIVED RATHER THAN NAMED. Naming a
+   * breakpoint without checking its contents is how the five-column version shipped a 79px
+   * overflow with a green suite. The card is drawn at its 330px design width and zoomed by
+   * `--mk-steps-zoom`; a frame needs that plus `--mk-steps-pad` a side. Each of those, and the
+   * column gap, is set per breakpoint on `.mk-steps-rail` — this reads them back from the
+   * stylesheet and redoes the sum at the narrowest viewport each breakpoint covers, with a 15px
+   * classic scrollbar taken off. The client's requirement is one row of four at ≥1024px, never
+   * three plus an orphan, so the four-column query must be exactly 64rem.
    */
-  it("stacks by default and only goes to three columns where the frame's contents fit", () => {
+  it("stacks by default, pairs at tablet, and is one row of four from 1024px wherever the card fits", () => {
     expect(css).toMatch(/\.mk-steps-rail\s*\{[^}]*flex-direction:\s*column/);
+    // No three-column layout anywhere: that is the shape that left 04 as an orphan.
+    expect(css).not.toMatch(/grid-template-columns:\s*repeat\(3/);
 
-    const breakpoint = /@media \(min-width: ([\d.]+)rem\)[\s\S]*?grid-template-columns:\s*repeat\(3/.exec(css);
-    expect(breakpoint, "no media query puts the rail into three columns").not.toBeNull();
+    const four = /@media \(min-width: ([\d.]+)rem\)\s*\{\s*\.mk-steps-rail\s*\{([^}]*)\}/g;
+    const blocks = [...css.matchAll(four)].map((m) => ({ rem: Number(m[1]), body: m[2]! }));
+    const fourAt = blocks.find((b) => /grid-template-columns:\s*repeat\(4/.test(b.body));
+    expect(fourAt, "no media query puts the rail into four columns").toBeTruthy();
+    expect(fourAt!.rem * 16, "one row of four must start at exactly 1024px").toBe(1024);
+    const twoAt = blocks.find((b) => /grid-template-columns:\s*repeat\(2/.test(b.body));
+    expect(twoAt, "no two-column tablet step").toBeTruthy();
+    expect(twoAt!.rem).toBeLessThan(fourAt!.rem);
 
-    const viewport = Number(breakpoint![1]) * 16;
-    const gap = 32;
-    const column = (viewport - 80 - 2 * gap) / 3;
+    const base = /\.mk-steps-rail\s*\{([^}]*)\}/.exec(css)![1]!;
+    const read = (body: string, name: string, fallback?: string): number => {
+      const m = new RegExp(`--mk-steps-${name}:\\s*([\\d.]+)(px|rem)?`).exec(body);
+      if (!m) return fallback === undefined ? Number.NaN : read(fallback, name);
+      return Number(m[1]) * (m[2] === "rem" ? 16 : 1);
+    };
 
-    /* The widest thing a frame must hold, read from the component: the hero face, or the deck's
-       face plus its diagonal offsets — whichever is wider — plus the frame's own side padding.
-       Derived, so moving any of those numbers recomputes this instead of silently overflowing. */
-    const src = code("components/marketing/how-it-works.tsx");
-    const num = (name: string) => Number(new RegExp(`${name}\\s*=\\s*(\\d+)`).exec(src)![1]);
-    const heroW = num("HERO_FACE_W");
-    const deckW = num("DECK_FACE_W") + 2 * num("DECK_STEP");
-    const widest = Math.max(heroW, deckW) + 2 * 22;
-    expect(column, `a column is ${Math.round(column)}px at the breakpoint; a frame needs ${widest}px`).toBeGreaterThan(widest);
+    const PAGE_MAX = 1200; // `--mk-page-max`
+    const GUTTERS = 80; // `md:px-10`
+    const SCROLLBAR = 15;
+    const content = (viewport: number) => Math.min(viewport - SCROLLBAR, PAGE_MAX) - GUTTERS;
+
+    // Every breakpoint from the four-column one up, each checked at its own lower edge.
+    const upward = blocks.filter((b) => b.rem >= fourAt!.rem).sort((a, b) => a.rem - b.rem);
+    let inherited = fourAt!.body;
+    for (const block of upward) {
+      inherited = block.body + inherited;
+      const zoom = read(inherited, "zoom", base);
+      const pad = read(inherited, "pad", base);
+      const gap = read(inherited, "gap", base);
+      const viewport = block.rem * 16;
+      const column = (content(viewport) - 3 * gap) / 4;
+      const needs = CARD_DESIGN_W * zoom + 2 * pad;
+      expect(column, `at ${viewport}px a column is ${column.toFixed(1)}px; a frame needs ${needs.toFixed(1)}px`).toBeGreaterThanOrEqual(needs);
+      // And never shrunk past legibility: the card's 30px name stays at least 17px.
+      expect(30 * zoom, `the card's name paints at ${(30 * zoom).toFixed(1)}px at ${viewport}px`).toBeGreaterThanOrEqual(17);
+    }
+
+    // Tablet pairs, and the stack, at their own narrowest widths.
+    const tabletZoom = read(twoAt!.body, "zoom", base);
+    const tabletColumn = (content(twoAt!.rem * 16) - read(twoAt!.body, "gap", base)) / 2;
+    expect(tabletColumn).toBeGreaterThanOrEqual(CARD_DESIGN_W * tabletZoom + 2 * read(twoAt!.body, "pad", base));
+    expect(320 - 48).toBeGreaterThanOrEqual(CARD_DESIGN_W * read(base, "zoom") + 2 * read(base, "pad"));
+  });
+
+  it("makes the four steps share subgrid rows, so titles, bodies and frames line up", () => {
+    expect(css).toMatch(/\.mk-steps-item\s*\{[^}]*grid-row:\s*span 4[^}]*grid-template-rows:\s*subgrid/);
+  });
+
+  it("sizes every frame from the card's own zoom, so frames are identical and fit their crop", () => {
+    const frame = /\.mk-steps-frame\s*\{([^}]*)\}/.exec(css)![1]!;
+    const height = /height:\s*calc\(([^;]*)\);/.exec(frame);
+    expect(height, "the frame's height must be one calc for all four").not.toBeNull();
+    expect(height![1]).toContain(`${CARD_WINDOW_H}px * var(--mk-steps-zoom)`);
+    expect(frame).toMatch(/overflow:\s*hidden/);
+    // The one crop is the window's foot, under a fade.
+    expect(css).toMatch(/\.mk-steps-window\s*\{[^}]*mask-image:\s*linear-gradient\(to bottom/);
+    // The card and the pass are zoomed by the same variable, in the stylesheet.
+    expect(css).toMatch(/\.mk-steps-card,\s*\.mk-steps-window > \.mk-pass\s*\{[^}]*zoom:\s*var\(--mk-steps-zoom\)/);
+    // No deck machinery survives.
+    expect(css).not.toMatch(/mk-steps-deck/);
   });
 
   /**
@@ -529,7 +716,7 @@ describe("HowItWorks — the CSS contracts", () => {
 /* ⚠ REWRITTEN 2026-09-28 (L1). The close carried an inline waitlist capture — a name-and-email
    `<LeadForm>` — and three of the four tests here drove it end to end against a stubbed
    `/api/leads`. The client asked for the waitlist to come off the homepage, so the form went and
-   the close is one "Create your card" link. The lead pipeline is still covered where it still
+   the close is one link (now "Get Started"). The lead pipeline is still covered where it still
    lives: `/waitlist` (`tests/e2e/marketing-pages.spec.ts`). */
 describe("Close — the deep ground and one call to action", () => {
   it("renders the headline, the body, and exactly one link — the front door", () => {

@@ -76,10 +76,12 @@ function reducedMotionBlock(css: string): string {
 }
 
 describe("Hero — structure", () => {
-  it("renders the eyebrow, both headline clauses, and the copy block", () => {
+  it("renders both headline clauses and the one paragraph, with no eyebrow above them", () => {
     renderWithProviders(<Hero />);
 
-    expect(screen.getByText(hero.eyebrow)).toBeInTheDocument();
+    /* 2026-10-06: the client removed the "CONTACT BOOK" label above the headline. The fixture
+       keeps `hero.eyebrow` for the intro curtain, so the hero must not render it. */
+    expect(screen.queryByText(hero.eyebrow)).not.toBeInTheDocument();
 
     const heading = document.getElementById("hero-headline");
     expect(heading, "expected #hero-headline (the <Display> h1)").not.toBeNull();
@@ -88,10 +90,10 @@ describe("Hero — structure", () => {
     // NODE holding a space between them — `textContent` legitimately concatenates them, and a
     // test asserting the literal, space-joined sentence would be wrong about the DOM it reads.
     const headingText = heading!.textContent ?? "";
-    expect(headingText).toContain("Never lose");
-    expect(headingText).toContain("contact.");
+    expect(headingText).toContain("Your network");
+    expect(headingText).toContain("on your terms.");
+    expect(heading!.querySelector("[data-accent]")?.textContent).toBe("on your terms.");
 
-    expect(screen.getByText(hero.subhead)).toBeInTheDocument();
     expect(screen.getByText(hero.lead)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: hero.primary.label })).toHaveAttribute(
       "href",
@@ -124,13 +126,19 @@ describe("Hero — structure", () => {
     });
   });
 
-  it("sets each proof item's title in the display serif, and keeps its caption sans", () => {
-    // The reference's whole "editorial, not a feature grid" read comes from this contrast
-    // (`hero.tsx`'s 2026-09-20 note) — a regression here is invisible in a plain text diff, so
-    // it is asserted on the rendered className rather than left to a screenshot.
+  /**
+   * 2026-10-06: the titles moved from the display serif to the hero's book serif (Libre Caslon
+   * Text, `hero-fonts.ts`) on the client's reference crops, in the reference's navy, with the
+   * caption a darker slate. The serif-over-sans contrast is still the claim; what changed is
+   * which serif, and that its variable must be declared on the list for the titles to resolve.
+   */
+  it("sets each proof title in the hero's book serif, in navy, over a slate sans caption", () => {
     renderWithProviders(<Hero />);
 
     const list = document.querySelector("[data-hero-proof]") as HTMLElement;
+    expect(list.className, "the list must carry the serif's next/font variable").toMatch(
+      /\bfont-hero-serif\b/,
+    );
     const items = within(list).getAllByRole("listitem");
 
     hero.proof.forEach((claim, i) => {
@@ -138,14 +146,23 @@ describe("Hero — structure", () => {
       const title = within(item).getByText(claim.title);
       const caption = within(item).getByText(claim.body);
 
-      expect(title.className, `"${claim.title}" should be set in the display face`).toMatch(
-        /\bfont-mk-display\b/,
+      expect(title.className, `"${claim.title}" should be set in the hero serif`).toContain(
+        "var(--font-hero-serif)",
       );
-      expect(
-        caption.className,
-        `"${claim.body}" should stay sans, not follow the title into the serif`,
-      ).not.toMatch(/\bfont-mk-display\b/);
+      expect(title.className).toMatch(/\btext-mk-green-deep\b/);
+      expect(caption.className).toMatch(/\bfont-mk-sans\b/);
+      expect(caption.className).not.toContain("var(--font-hero-serif)");
+      expect(caption.className).toMatch(/\btext-mk-slate\b/);
     });
+  });
+
+  it("carries the client's proof titles, in their capitalisation", () => {
+    expect(hero.proof.map((p) => p.title)).toEqual([
+      "Always Updated",
+      "Protect Your Privacy",
+      "Nothing to install",
+      "Multiple Cards",
+    ]);
   });
 
   /**
@@ -202,15 +219,11 @@ describe("Hero — structure", () => {
     expect(captionClasses.size, "the four proof captions must share one class string").toBe(1);
   });
 
-  it("gives the subhead and the lead the same treatment, and the primary control a trailing icon", () => {
-    // 2026-09-20: the two sentences under the headline read as one sans paragraph in the
-    // reference, not a tagline over a caption — so they must carry the identical className,
-    // not merely the same visible colour by coincidence.
+  it("labels the controls as the client asked, and gives the primary a trailing icon", () => {
+    /* 2026-10-06: "Create your card" → "Get Started", "See how it works" → "How it works". */
+    expect(hero.primary.label).toBe("Get Started");
+    expect(hero.secondary.label).toBe("How it works");
     renderWithProviders(<Hero />);
-
-    const subhead = screen.getByText(hero.subhead);
-    const lead = screen.getByText(hero.lead);
-    expect(subhead.className).toBe(lead.className);
 
     const primary = screen.getByRole("link", { name: hero.primary.label });
     expect(
@@ -454,7 +467,6 @@ describe("the hero card — the client's reference, word for word", () => {
     renderWithProviders(<Hero />);
     const text = document.querySelector("[data-hero-card]")!.textContent ?? "";
     const lines = [
-      ...heroPhone.script,
       heroPhone.brand,
       heroPhone.name,
       heroPhone.role,
@@ -470,6 +482,28 @@ describe("the hero card — the client's reference, word for word", () => {
       expect(found, `"${line}" is missing or out of order`).toBeGreaterThanOrEqual(0);
       at = found + line.length;
     }
+  });
+
+  /* 2026-10-06: the client removed the handwritten "Privacy / Relationships / Ideas" overlay
+     from the photo. It was live DOM (Yellowtail text + an SVG flourish) over a clean portrait. */
+  it("draws no handwritten overlay on the cover photo", () => {
+    renderWithProviders(<Hero />);
+    const card = document.querySelector("[data-hero-card]")!;
+    for (const word of ["Privacy", "Relationships", "Ideas"]) {
+      expect(card.textContent).not.toContain(word);
+    }
+    expect(card.querySelector(".mk-hc__script, .mk-hc__flourish")).toBeNull();
+    expect(source(HERO_CSS)).not.toMatch(/mk-hc__script|mk-hc__flourish|font-hero-script/);
+  });
+
+  /* 2026-10-06: the badge carries the brand mark file (the gold C with two dots), placed and
+     never redrawn — not the traced "CB" monogram the client called the wrong logo. */
+  it("puts the brand mark asset in the badge, not a drawn monogram", () => {
+    renderWithProviders(<Hero />);
+    const badge = document.querySelector("[data-hero-card] .mk-hc__medallion")!;
+    expect(badge.querySelector("circle.mk-hc-medallion__disc")).not.toBeNull();
+    expect(badge.querySelector("image")?.getAttribute("href")).toBe("/brand/contactbook-mark.png");
+    expect(badge.querySelectorAll("path"), "no hand-drawn letterforms").toHaveLength(0);
   });
 
   /**

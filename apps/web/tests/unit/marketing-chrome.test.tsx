@@ -206,15 +206,102 @@ describe("PillNav — the floating pill bar (spec §8D.6, §8.7)", () => {
     }
   });
 
+  /* ⚠ 2026-10-06, REWRITTEN WITH THE BAR. This used to pin the two-layer cut of the client's
+     "logo out of the box" ask — an `md:absolute` nav, an `md:fixed` pill and two backdrop spans
+     each hidden at one width. That shipped a header whose logo scrolled away while the controls
+     stayed, so these now pin the opposite: one fixed bar that carries the logo AND the controls,
+     with no width at which either leaves it. */
+  it("is one fixed, opaque, full-width bar at every width — no responsive escape", () => {
+    renderWithProviders(<PillNav />);
+
+    const nav = screen.getByRole("navigation", { name: /primary/i });
+    expect(nav).toHaveAttribute("data-pill-nav", "");
+    const classes = nav.className.split(/\s+/);
+
+    // Fixed to the top, edge to edge, above the page.
+    for (const token of ["fixed", "inset-x-0", "top-0", "z-50"]) {
+      expect(classes, `the bar lost \`${token}\``).toContain(token);
+    }
+    // Nothing may re-position it at a breakpoint: that is exactly how the logo scrolled away.
+    expect(
+      classes.filter((c) => /^(?:[a-z0-9[\]-]+:)+(?:absolute|relative|static|sticky|fixed)$/.test(c)),
+      "the bar changes its positioning at some width",
+    ).toEqual([]);
+
+    // Its own ground: the hero's white, with a hairline under it, so content scrolling beneath
+    // never collides with the logo or the controls. No transparent ground at any width.
+    expect(classes).toContain("bg-mk-white");
+    expect(classes).toContain("border-b");
+    expect(classes).toContain("border-mk-hairline");
+    expect(classes.filter((c) => /bg-transparent|bg-mk-white\/|opacity-/.test(c))).toEqual([]);
+
+    // The height is the layout's `<main>` padding — see the layout block below.
+    expect(classes).toContain("h-16");
+    expect(classes).toContain("md:h-20");
+
+    // The two-layer hack's parts are gone for good.
+    expect(nav.querySelector("[data-pill-nav-bar]"), "a backdrop span came back").toBeNull();
+    for (const el of [nav, ...nav.querySelectorAll<HTMLElement>("*")]) {
+      expect(el.getAttribute("class") ?? "").not.toMatch(/(?:^|\s)(?:md|max-md):(?:hidden|fixed|absolute)\b/);
+    }
+  });
+
   it("claims elevation through the §13.2 attribute, never a declaration of its own", () => {
     renderWithProviders(<PillNav />);
 
-    const bar = document.querySelector("[data-pill-nav]");
-    expect(bar).not.toBeNull();
+    const nav = document.querySelector("[data-pill-nav]");
+    expect(nav).not.toBeNull();
     // §8.7: elevation is permitted here ONLY because the bar is fixed. The value comes
     // from T08's attribute rule; F-09 forbids this directory declaring one itself.
-    expect(bar).toHaveAttribute("data-elevation", "1");
-    expect(bar?.className).toMatch(/\bfixed\b/);
+    expect(nav?.className).toMatch(/\bfixed\b/);
+    expect(nav).toHaveAttribute("data-elevation", "1");
+    // Exactly one lifted surface: the pill sits flat inside the bar that already floats.
+    expect(nav!.querySelectorAll("[data-elevation]")).toHaveLength(0);
+  });
+
+  it("holds the logo, unboxed, inside the fixed bar — it cannot scroll away", () => {
+    renderWithProviders(<PillNav />);
+    const nav = screen.getByRole("navigation", { name: /primary/i });
+
+    const home = within(nav).getByRole("link", { name: BRAND_NAME });
+    expect(home).toHaveAttribute("href", "/");
+    expect(within(home).getByRole("img", { name: BRAND_NAME })).toBeInTheDocument();
+
+    // No box, border or ground around the logo itself — and none on anything between the
+    // logo and the bar either, which would be a box by another name.
+    for (let el: HTMLElement | null = home; el && el !== nav; el = el.parentElement) {
+      const cls = el.getAttribute("class") ?? "";
+      expect(cls, "something boxes the logo").not.toMatch(/(?:^|\s)(?:[a-z-]+:)*(?:bg-|border\b|border-|ring-|outline-)/);
+      expect(el, "something lifts the logo").not.toHaveAttribute("data-elevation");
+      expect(cls, "the logo sits in its own positioning layer").not.toMatch(/(?:^|\s)(?:[a-z-]+:)*(?:fixed|absolute|sticky)\b/);
+    }
+
+    // The logo and the controls share one row, laid out on the page's content column.
+    const pill = nav.querySelector<HTMLElement>("[data-pill-nav-controls]")!;
+    const row = nav.querySelector<HTMLElement>("[data-pill-nav-row]")!;
+    expect(row).not.toBeNull();
+    expect(row.contains(home) && row.contains(pill)).toBe(true);
+    expect(row.className).toMatch(/\bmax-w-mk-page\b/);
+  });
+
+  it("wraps only Log in and the primary CTA in the pill — the logo sits outside it", () => {
+    renderWithProviders(<PillNav />);
+    const nav = screen.getByRole("navigation", { name: /primary/i });
+    const pill = nav.querySelector("[data-pill-nav-controls]") as HTMLElement;
+    expect(pill).not.toBeNull();
+    expect(within(pill).getAllByRole("link").map((l) => l.textContent?.trim())).toEqual([
+      "Log in",
+      hero.primary.label,
+    ]);
+    expect(within(pill).queryByRole("link", { name: BRAND_NAME })).toBeNull();
+    expect(pill.contains(within(nav).getByRole("link", { name: BRAND_NAME }))).toBe(false);
+
+    // The pill is the box the client asked for, and it rides in the bar rather than on its own.
+    const cls = pill.className.split(/\s+/);
+    for (const token of ["rounded-mk-pill", "border", "border-mk-hairline", "bg-mk-white"]) {
+      expect(cls, `the pill lost \`${token}\``).toContain(token);
+    }
+    expect(pill.className).not.toMatch(/(?:^|\s)(?:[a-z-]+:)*(?:fixed|absolute|sticky)\b/);
   });
 
   it("renders no icon at all — §8.8 bans them above the footer", () => {
@@ -498,6 +585,26 @@ describe("(marketing)/layout.tsx — the shared chrome (spec §8D.6)", () => {
     // The bar is fixed and therefore out of flow; if the layout did not pad `<main>`,
     // T19's first row and T26's hero would start underneath it.
     expect(screen.getByRole("main").className).toMatch(/\bpt-\d+\b/);
+  });
+
+  it("pads <main> by exactly the bar's height at every width, so there is no strip", () => {
+    /* Read off both class lists rather than restated: the bar's `h-*` per breakpoint must equal
+       `<main>`'s `pt-*` at the same breakpoint. Too little and the hero's top sits under the bar;
+       too much and a band of the layout's `mk-paper` shows between the bar and the hero. */
+    renderLayout();
+    const nav = screen.getByRole("navigation", { name: /primary/i });
+    const main = screen.getByRole("main");
+
+    const steps = (cls: string, prop: "h" | "pt") =>
+      Object.fromEntries(
+        [...cls.matchAll(new RegExp(`(?:^|\\s)((?:[a-z]+:)?)${prop}-(\\d+)(?=\\s|$)`, "g"))].map(
+          (m) => [m[1] || "base", m[2]],
+        ),
+      );
+
+    const bar = steps(nav.className, "h");
+    expect(bar.base, "the bar has no base height").toBeTruthy();
+    expect(steps(main.className, "pt")).toEqual(bar);
   });
 
   it("stays independent of the page it wraps (§3.5 cut order)", () => {
