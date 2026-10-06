@@ -122,6 +122,28 @@ export class AppConfigService {
   }
 
   /**
+   * Google Wallet pass config. Returns `undefined` when no GOOGLE_WALLET_* vars
+   * are set (feature off). When set, the all-or-none superRefine in
+   * env.schema.ts guarantees every required field is present.
+   */
+  get googleWallet():
+    | {
+        issuerId: string;
+        serviceAccountEmail: string;
+        serviceAccountKeyB64: string;
+        classSuffix: string;
+      }
+    | undefined {
+    if (!this.env.GOOGLE_WALLET_ISSUER_ID) return undefined;
+    return {
+      issuerId: this.env.GOOGLE_WALLET_ISSUER_ID!,
+      serviceAccountEmail: this.env.GOOGLE_WALLET_SERVICE_ACCOUNT_EMAIL!,
+      serviceAccountKeyB64: this.env.GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_B64!,
+      classSuffix: this.env.GOOGLE_WALLET_CLASS_SUFFIX!,
+    };
+  }
+
+  /**
    * Apple Wallet pass config. Returns `undefined` when no WALLET_* vars are
    * set (feature off). When set, the all-or-none superRefine in env.schema.ts
    * guarantees every required field is present, so the non-null assertions
