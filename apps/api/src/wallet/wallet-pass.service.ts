@@ -3,7 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AppConfigService } from '../config/app-config.service';
 import { AppLogger } from '../common/logging/app-logger.service';
 import { ApiError } from '../common/errors/api-error';
-import { buildPass } from './pass-builder';
+import { buildPass, type PassCardField } from './pass-builder';
 import { verifyAuthToken } from './pass-auth.util';
 import { sendApnsPush } from './apns-client';
 
@@ -51,6 +51,48 @@ export class WalletPassService {
     }
   }
 
+  /**
+   * The card's shared fields in the shape the pass needs. Encrypted rows (the financial types)
+   * are dropped HERE, before anything can print them: their `value` is ciphertext, and they are
+   * not eligible for the pass anyway.
+   */
+  private passFields(
+    rows: Array<{
+      labelOverride: string | null;
+      field: {
+        type: string;
+        label: string;
+        value: string;
+        isEncrypted: boolean;
+      };
+    }>,
+  ): PassCardField[] {
+    return rows
+      .filter((row) => !row.field.isEncrypted)
+      .map((row) => ({
+        type: row.field.type,
+        label: row.labelOverride ?? row.field.label,
+        value: row.field.value,
+      }));
+  }
+
+  /**
+   * The owner's profile photo, for the pass's round portrait. `PHOTO` is a profile field whose
+   * value is the public GCS URL the API wrote, so it is read as stored (never decrypted — only
+   * the financial types are encrypted).
+   */
+  private async ownerPhoto(
+    userId: string,
+  ): Promise<{ url: string; updatedAt: Date } | null> {
+    const photo = await this.prisma.profileField.findFirst({
+      where: { userId, type: 'PHOTO', archivedAt: null },
+      select: { value: true, updatedAt: true },
+    });
+    return photo && photo.value
+      ? { url: photo.value, updatedAt: photo.updatedAt }
+      : null;
+  }
+
   /** Builds a signed .pkpass for a card the caller owns. */
   async buildPassForCard(userId: string, cardId: string): Promise<Buffer> {
     if (!this.walletConfig) {
@@ -71,6 +113,22 @@ export class WalletPassService {
         templateId: true,
         paletteId: true,
         groundHex: true,
+        kind: true,
+        fields: {
+          where: { visible: true, field: { archivedAt: null } },
+          orderBy: { position: 'asc' },
+          select: {
+            labelOverride: true,
+            field: {
+              select: {
+                type: true,
+                label: true,
+                value: true,
+                isEncrypted: true,
+              },
+            },
+          },
+        },
         user: { select: { firstName: true, lastName: true } },
       },
     });
@@ -81,18 +139,24 @@ export class WalletPassService {
       throw ApiError.notFound('CARD_NOT_FOUND', 'Card not found.');
     }
 
-    const buffer = buildPass(card, card.user, {
-      passTypeId: this.walletConfig.passTypeId,
-      teamId: this.walletConfig.teamId,
-      orgName: this.walletConfig.orgName,
-      webServiceUrl: this.walletConfig.webServiceUrl,
-      signerCertPem: this.signerCertPem,
-      signerKeyPem: this.signerKeyPem,
-      signerKeyPassphrase: this.walletConfig.signerKeyPassphrase,
-      wwdrCertPem: this.wwdrCertPem,
-      authSecret: this.walletConfig.authSecret,
-      shareBaseUrl: this.config.shareBaseUrl,
-    });
+    const photo = await this.ownerPhoto(userId);
+    const buffer = await buildPass(
+      card,
+      { ...card.user, photoUrl: photo?.url ?? null },
+      {
+        passTypeId: this.walletConfig.passTypeId,
+        teamId: this.walletConfig.teamId,
+        orgName: this.walletConfig.orgName,
+        webServiceUrl: this.walletConfig.webServiceUrl,
+        signerCertPem: this.signerCertPem,
+        signerKeyPem: this.signerKeyPem,
+        signerKeyPassphrase: this.walletConfig.signerKeyPassphrase,
+        wwdrCertPem: this.wwdrCertPem,
+        authSecret: this.walletConfig.authSecret,
+        shareBaseUrl: this.config.shareBaseUrl,
+      },
+      this.passFields(card.fields),
+    );
 
     this.logger.info('wallet.pass_issued', { userId, cardId });
     return buffer;
@@ -107,7 +171,9 @@ export class WalletPassService {
     if (!this.walletConfig) return null;
     if (passTypeId !== this.walletConfig.passTypeId) return null;
 
-    if (!verifyAuthToken(this.walletConfig.authSecret, serialNumber, authToken)) {
+    if (
+      !verifyAuthToken(this.walletConfig.authSecret, serialNumber, authToken)
+    ) {
       return null;
     }
 
@@ -115,6 +181,7 @@ export class WalletPassService {
       where: { id: serialNumber },
       select: {
         id: true,
+        userId: true,
         name: true,
         headline: true,
         publicToken: true,
@@ -122,6 +189,22 @@ export class WalletPassService {
         templateId: true,
         paletteId: true,
         groundHex: true,
+        kind: true,
+        fields: {
+          where: { visible: true, field: { archivedAt: null } },
+          orderBy: { position: 'asc' },
+          select: {
+            labelOverride: true,
+            field: {
+              select: {
+                type: true,
+                label: true,
+                value: true,
+                isEncrypted: true,
+              },
+            },
+          },
+        },
         updatedAt: true,
         user: {
           select: {
@@ -135,23 +218,30 @@ export class WalletPassService {
 
     if (!card) return null;
 
-    const buffer = buildPass(card, card.user, {
-      passTypeId: this.walletConfig.passTypeId,
-      teamId: this.walletConfig.teamId,
-      orgName: this.walletConfig.orgName,
-      webServiceUrl: this.walletConfig.webServiceUrl,
-      signerCertPem: this.signerCertPem,
-      signerKeyPem: this.signerKeyPem,
-      signerKeyPassphrase: this.walletConfig.signerKeyPassphrase,
-      wwdrCertPem: this.wwdrCertPem,
-      authSecret: this.walletConfig.authSecret,
-      shareBaseUrl: this.config.shareBaseUrl,
-    });
+    const photo = await this.ownerPhoto(card.userId);
+    const buffer = await buildPass(
+      card,
+      { ...card.user, photoUrl: photo?.url ?? null },
+      {
+        passTypeId: this.walletConfig.passTypeId,
+        teamId: this.walletConfig.teamId,
+        orgName: this.walletConfig.orgName,
+        webServiceUrl: this.walletConfig.webServiceUrl,
+        signerCertPem: this.signerCertPem,
+        signerKeyPem: this.signerKeyPem,
+        signerKeyPassphrase: this.walletConfig.signerKeyPassphrase,
+        wwdrCertPem: this.wwdrCertPem,
+        authSecret: this.walletConfig.authSecret,
+        shareBaseUrl: this.config.shareBaseUrl,
+      },
+      this.passFields(card.fields),
+    );
 
     const lastModifiedTag = String(
       Math.max(
         card.updatedAt.getTime(),
         card.user.updatedAt.getTime(),
+        photo?.updatedAt.getTime() ?? 0,
       ),
     );
 
@@ -171,7 +261,9 @@ export class WalletPassService {
   ): Promise<'created' | 'updated' | 'unauthorized'> {
     if (!this.walletConfig) return 'unauthorized';
     if (passTypeId !== this.walletConfig.passTypeId) return 'unauthorized';
-    if (!verifyAuthToken(this.walletConfig.authSecret, serialNumber, authToken)) {
+    if (
+      !verifyAuthToken(this.walletConfig.authSecret, serialNumber, authToken)
+    ) {
       return 'unauthorized';
     }
 
@@ -212,7 +304,9 @@ export class WalletPassService {
   ): Promise<boolean> {
     if (!this.walletConfig) return false;
     if (passTypeId !== this.walletConfig.passTypeId) return false;
-    if (!verifyAuthToken(this.walletConfig.authSecret, serialNumber, authToken)) {
+    if (
+      !verifyAuthToken(this.walletConfig.authSecret, serialNumber, authToken)
+    ) {
       return false;
     }
 
@@ -268,7 +362,10 @@ export class WalletPassService {
         reg.card.user.updatedAt.getTime(),
       );
       if (tag > maxTag) maxTag = tag;
-      if (reg.card.updatedAt > sinceDate || reg.card.user.updatedAt > sinceDate) {
+      if (
+        reg.card.updatedAt > sinceDate ||
+        reg.card.user.updatedAt > sinceDate
+      ) {
         updated.push(reg.cardId);
       }
     }
@@ -311,7 +408,9 @@ export class WalletPassService {
           status: result.status,
           body: result.body,
         });
-        throw new Error(`APNs push failed: status ${result.status} — ${result.body}`);
+        throw new Error(
+          `APNs push failed: status ${result.status} — ${result.body}`,
+        );
       } else {
         this.logger.info('wallet.push_sent', { cardId });
       }
