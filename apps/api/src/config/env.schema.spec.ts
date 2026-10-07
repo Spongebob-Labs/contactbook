@@ -73,4 +73,88 @@ describe('envSchema', () => {
     });
     expect(res.success).toBe(false);
   });
+
+  // Google Wallet: all four or none, in any environment — the same rule as
+  // WALLET_*. A half-configured server must fail the boot, not half-work.
+  describe('GOOGLE_WALLET_* (all-or-none)', () => {
+    const GOOGLE_WALLET = {
+      GOOGLE_WALLET_ISSUER_ID: '3388000000022000000',
+      GOOGLE_WALLET_SERVICE_ACCOUNT_EMAIL:
+        'wallet@contactbook-test.iam.gserviceaccount.com',
+      GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_B64:
+        Buffer.from('not-a-real-key').toString('base64'),
+      GOOGLE_WALLET_CLASS_SUFFIX: 'card',
+    };
+
+    it('accepts none of them — the feature is simply off', () => {
+      expect(envSchema.safeParse({ NODE_ENV: 'development' }).success).toBe(
+        true,
+      );
+      expect(envSchema.safeParse(PROD_BASE).success).toBe(true);
+    });
+
+    it('accepts all four together, in development and in production', () => {
+      expect(
+        envSchema.safeParse({ NODE_ENV: 'development', ...GOOGLE_WALLET })
+          .success,
+      ).toBe(true);
+      expect(
+        envSchema.safeParse({ ...PROD_BASE, ...GOOGLE_WALLET }).success,
+      ).toBe(true);
+    });
+
+    it.each(Object.keys(GOOGLE_WALLET))(
+      'rejects a partial set and names the missing var (%s)',
+      (missing) => {
+        const partial: Record<string, unknown> = {
+          NODE_ENV: 'development',
+          ...GOOGLE_WALLET,
+        };
+        delete partial[missing];
+        const res = envSchema.safeParse(partial);
+        expect(res.success).toBe(false);
+        const paths = res.success
+          ? []
+          : res.error.issues.map((i) => i.path.join('.'));
+        expect(paths).toEqual([missing]);
+      },
+    );
+
+    it('names every missing var at once when only one is set', () => {
+      const res = envSchema.safeParse({
+        NODE_ENV: 'development',
+        GOOGLE_WALLET_CLASS_SUFFIX: 'card',
+      });
+      expect(res.success).toBe(false);
+      const paths = res.success
+        ? []
+        : res.error.issues.map((i) => i.path.join('.')).sort();
+      expect(paths).toEqual([
+        'GOOGLE_WALLET_ISSUER_ID',
+        'GOOGLE_WALLET_SERVICE_ACCOUNT_EMAIL',
+        'GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_B64',
+      ]);
+    });
+
+    it('treats blank values as unset, so an empty rendered .env stays off', () => {
+      const env = loadEnv({
+        NODE_ENV: 'development',
+        GOOGLE_WALLET_ISSUER_ID: '',
+        GOOGLE_WALLET_SERVICE_ACCOUNT_EMAIL: '',
+        GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_B64: '',
+        GOOGLE_WALLET_CLASS_SUFFIX: '',
+      });
+      expect(env.GOOGLE_WALLET_ISSUER_ID).toBeUndefined();
+      expect(env.GOOGLE_WALLET_CLASS_SUFFIX).toBeUndefined();
+    });
+
+    it('rejects a class suffix Google would refuse as part of an ID', () => {
+      const res = envSchema.safeParse({
+        NODE_ENV: 'development',
+        ...GOOGLE_WALLET,
+        GOOGLE_WALLET_CLASS_SUFFIX: 'my card/1',
+      });
+      expect(res.success).toBe(false);
+    });
+  });
 });

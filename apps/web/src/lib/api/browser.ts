@@ -36,6 +36,7 @@ import type {
   CreateProfileFieldDto,
   CreateProfileFieldGroupDto,
   DashboardResponseDto,
+  GoogleWalletSaveUrlResponseDto,
   ImportContactsDto,
   ImportContactsResponseDto,
   MeResponseDto,
@@ -432,6 +433,22 @@ export const cards = {
   /** 204, no body. `COVER_NOT_FOUND` when there was nothing to remove. */
   removeCover: (cardId: string) =>
     cb<void>({ method: "DELETE", path: `/cards/${id(cardId)}/cover` }),
+  /**
+   * The card's "Save to Google Wallet" link. The API creates or refreshes the pass on Google's
+   * side from the card's current data, then answers `{ url }` for the browser to navigate to.
+   *
+   * `409 GOOGLE_WALLET_NOT_CONFIGURED` when the server has no Google credentials — a state of the
+   * deployment, not a failure of this call. See `<WalletActions>` for what the owner is shown.
+   *
+   * ⚠ Unlike the Apple pass (`applePassHref`, a plain link because iOS needs the response to BE
+   * the navigation), this one is JSON and goes through `cb()` like every other call — so it gets
+   * the same single refresh-and-retry on a stale session.
+   */
+  googleWalletPass: (cardId: string) =>
+    cb<GoogleWalletSaveUrlResponseDto>({
+      method: "GET",
+      path: `/cards/${id(cardId)}/google-wallet-pass`,
+    }),
 };
 
 /* ── public connect (2) — anonymous, and deliberately not in `endpoints/` ───────────── */

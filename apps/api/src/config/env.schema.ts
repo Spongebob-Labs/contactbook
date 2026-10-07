@@ -118,6 +118,23 @@ const base = z.object({
   // ≥32 random chars. Derives authenticationToken = base64url(HMAC-SHA256(secret, serialNumber)).
   // Non-rotatable once passes ship: rotating strands every installed pass.
   WALLET_AUTH_SECRET: z.string().min(32).optional(),
+
+  // Google Wallet passes. All optional, all-or-none (superRefine below), the
+  // same contract as WALLET_*: none set = feature off, no network call, and
+  // GET /cards/:id/google-wallet-pass answers 409 GOOGLE_WALLET_NOT_CONFIGURED.
+  // Issuer ID from pay.google.com/business/console (a long number).
+  GOOGLE_WALLET_ISSUER_ID: z.string().optional(),
+  // `client_email` of the service account holding the Wallet Object Issuer role.
+  GOOGLE_WALLET_SERVICE_ACCOUNT_EMAIL: z.string().email().optional(),
+  // base64(private_key PEM from the service account JSON key) — base64 for the
+  // same reason as the Apple certs: GitHub secrets mangle multi-line PEMs.
+  GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_B64: z.string().optional(),
+  // Class ID = `${issuerId}.${suffix}`, e.g. "card". Google allows only
+  // alphanumerics, '.', '_' and '-' in an ID.
+  GOOGLE_WALLET_CLASS_SUFFIX: z
+    .string()
+    .regex(/^[A-Za-z0-9._-]+$/)
+    .optional(),
 });
 
 /** Required once NODE_ENV=production — absence is a boot failure, not a runtime 500. */
@@ -162,6 +179,26 @@ export const envSchema = base.superRefine((env, ctx) => {
           code: z.ZodIssueCode.custom,
           path: [key],
           message: `${key} is required when any WALLET_* var is set (all-or-none)`,
+        });
+      }
+    }
+  }
+
+  // Google Wallet: the same all-or-none rule, for the same reason.
+  const GOOGLE_WALLET_REQUIRED = [
+    'GOOGLE_WALLET_ISSUER_ID',
+    'GOOGLE_WALLET_SERVICE_ACCOUNT_EMAIL',
+    'GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_B64',
+    'GOOGLE_WALLET_CLASS_SUFFIX',
+  ] as const;
+  const anyGoogleWalletSet = GOOGLE_WALLET_REQUIRED.some((k) => !!env[k]);
+  if (anyGoogleWalletSet) {
+    for (const key of GOOGLE_WALLET_REQUIRED) {
+      if (!env[key]) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [key],
+          message: `${key} is required when any GOOGLE_WALLET_* var is set (all-or-none)`,
         });
       }
     }

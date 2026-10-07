@@ -14,6 +14,7 @@ import { SharingModule } from './sharing/sharing.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { WalletModule } from './wallet/wallet.module';
+import { GoogleWalletModule } from './google-wallet/google-wallet.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { WalletModule } from './wallet/wallet.module';
     WebhooksModule,
     DashboardModule,
     WalletModule,
+    GoogleWalletModule,
   ],
   providers: [
     {

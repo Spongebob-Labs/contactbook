@@ -143,7 +143,7 @@ export class AppConfigService {
     | undefined {
     if (!this.env.WALLET_PASS_TYPE_ID) return undefined;
     return {
-      passTypeId: this.env.WALLET_PASS_TYPE_ID!,
+      passTypeId: this.env.WALLET_PASS_TYPE_ID,
       teamId: this.env.WALLET_TEAM_ID!,
       orgName: this.env.WALLET_ORG_NAME!,
       webServiceUrl: this.env.WALLET_WEB_SERVICE_URL!,
@@ -152,6 +152,28 @@ export class AppConfigService {
       signerKeyPassphrase: this.env.WALLET_SIGNER_KEY_PASSPHRASE,
       wwdrCertB64: this.env.WALLET_WWDR_CERT_B64!,
       authSecret: this.env.WALLET_AUTH_SECRET!,
+    };
+  }
+
+  /**
+   * Google Wallet config. `undefined` when no GOOGLE_WALLET_* var is set
+   * (feature off). When set, the all-or-none superRefine in env.schema.ts
+   * guarantees all four are present, so the non-null assertions are safe.
+   */
+  get googleWallet():
+    | {
+        issuerId: string;
+        serviceAccountEmail: string;
+        serviceAccountKeyB64: string;
+        classSuffix: string;
+      }
+    | undefined {
+    if (!this.env.GOOGLE_WALLET_ISSUER_ID) return undefined;
+    return {
+      issuerId: this.env.GOOGLE_WALLET_ISSUER_ID,
+      serviceAccountEmail: this.env.GOOGLE_WALLET_SERVICE_ACCOUNT_EMAIL!,
+      serviceAccountKeyB64: this.env.GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_B64!,
+      classSuffix: this.env.GOOGLE_WALLET_CLASS_SUFFIX!,
     };
   }
 }

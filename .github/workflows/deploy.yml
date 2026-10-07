@@ -152,6 +152,10 @@ jobs:
           WALLET_SIGNER_KEY_PASSPHRASE: ${{ secrets.WALLET_SIGNER_KEY_PASSPHRASE }}
           WALLET_WWDR_CERT_B64: ${{ secrets.WALLET_WWDR_CERT_B64 }}
           WALLET_AUTH_SECRET: ${{ secrets.WALLET_AUTH_SECRET }}
+          GOOGLE_WALLET_ISSUER_ID: ${{ secrets.GOOGLE_WALLET_ISSUER_ID }}
+          GOOGLE_WALLET_SERVICE_ACCOUNT_EMAIL: ${{ secrets.GOOGLE_WALLET_SERVICE_ACCOUNT_EMAIL }}
+          GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_B64: ${{ secrets.GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_B64 }}
+          GOOGLE_WALLET_CLASS_SUFFIX: ${{ secrets.GOOGLE_WALLET_CLASS_SUFFIX }}
         run: OUTPUT_PATH=./rendered.env bash scripts/render-api-env.sh
 
       - name: Append container-internal sslrootcert paths

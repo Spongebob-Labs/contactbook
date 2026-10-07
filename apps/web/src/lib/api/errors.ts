@@ -57,6 +57,12 @@ export type ApiErrorCode =
   | "PHOTO_NOT_A_CARD_FIELD"
   | "CARD_SHARE_TEMPLATE_NOT_CONFIGURED"
   /**
+   * `GET /cards/{id}/google-wallet-pass` on a server with no Google Wallet credentials. A state of
+   * the deployment rather than a failure — `<WalletActions>` renders it as a disabled button with
+   * one line, never as an error.
+   */
+  | "GOOGLE_WALLET_NOT_CONFIGURED"
+  /**
    * The card logo quartet. Deliberately *not* folded into the `PHOTO_*` codes above even though
    * three of the four say something almost identical: they are different uploads against
    * different endpoints, and a card's logo failing must never render copy about the owner's
@@ -177,6 +183,7 @@ const KNOWN_CODES = new Set<string>([
   "DUPLICATE_FIELD_IN_CARD",
   "PHOTO_NOT_A_CARD_FIELD",
   "CARD_SHARE_TEMPLATE_NOT_CONFIGURED",
+  "GOOGLE_WALLET_NOT_CONFIGURED",
   "LOGO_STORAGE_NOT_CONFIGURED",
   "LOGO_TOO_LARGE",
   "LOGO_TYPE_UNSUPPORTED",
@@ -384,6 +391,12 @@ const COPY: Readonly<Record<ApiErrorCode, Copy>> = {
     kind: "unknown",
     title: "We couldn't send the WhatsApp message",
     detail: "The link below is live — copy it and send it yourself for now.",
+    retryable: false,
+  },
+  GOOGLE_WALLET_NOT_CONFIGURED: {
+    kind: "unknown",
+    title: "Google Wallet isn't available yet",
+    detail: "This is being set up on our side. Try again later.",
     retryable: false,
   },
   LOGO_STORAGE_NOT_CONFIGURED: {
