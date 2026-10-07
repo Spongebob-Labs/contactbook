@@ -160,8 +160,9 @@ describe("Hero — structure", () => {
     expect(hero.proof.map((p) => p.title)).toEqual([
       "Always Updated",
       "Protect Your Privacy",
-      "Nothing to install",
+      // 2026-10-07, the client: "Multiple Cards" third, "Nothing to install" last.
       "Multiple Cards",
+      "Nothing to install",
     ]);
   });
 

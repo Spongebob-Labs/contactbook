@@ -529,7 +529,7 @@ export function Hero() {
                 RESOLVED 2026-09-19 — `hero.aside` IS NO LONGER RENDERED HERE.
 
                 It read "Nothing to install for the person you hand it to. It opens in their
-                browser," which is near-verbatim what `hero.proof[2]` now says one row below it,
+                browser," which is near-verbatim what `hero.proof[3]` now says one row below it,
                 on the same screen. The duplication is ours, not the client's: the aside is the
                 original line and the proof row was added around it, so the row is what gives
                 way — except the row also carries an icon, a heading and three siblings making
@@ -537,7 +537,7 @@ export function Hero() {
                 buttons would be the worse page.
 
                 The client's words are NOT deleted. `hero.aside` stays in the fixture with a
-                note recording that this claim now reaches the reader through `proof[2]`, so
+                note recording that this claim now reaches the reader through `proof[3]`, so
                 nothing of theirs is lost and the page stops saying it twice. */}
           </div>
 
