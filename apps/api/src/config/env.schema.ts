@@ -118,6 +118,14 @@ const base = z.object({
   // ≥32 random chars. Derives authenticationToken = base64url(HMAC-SHA256(secret, serialNumber)).
   // Non-rotatable once passes ship: rotating strands every installed pass.
   WALLET_AUTH_SECRET: z.string().min(32).optional(),
+
+  // Google Wallet pass issuing. All optional, all-or-none (superRefine below).
+  // Service account key extracted from the JSON key file and base64-encoded:
+  //   cat key.json | jq -r '.private_key' | base64
+  GOOGLE_WALLET_ISSUER_ID: z.string().optional(),
+  GOOGLE_WALLET_SERVICE_ACCOUNT_EMAIL: z.string().optional(),
+  GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_B64: z.string().optional(),
+  GOOGLE_WALLET_CLASS_SUFFIX: z.string().optional(),
 });
 
 /** Required once NODE_ENV=production — absence is a boot failure, not a runtime 500. */
@@ -162,6 +170,26 @@ export const envSchema = base.superRefine((env, ctx) => {
           code: z.ZodIssueCode.custom,
           path: [key],
           message: `${key} is required when any WALLET_* var is set (all-or-none)`,
+        });
+      }
+    }
+  }
+
+  // Google Wallet: same all-or-none pattern as Apple Wallet.
+  const GOOGLE_WALLET_REQUIRED = [
+    'GOOGLE_WALLET_ISSUER_ID',
+    'GOOGLE_WALLET_SERVICE_ACCOUNT_EMAIL',
+    'GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_B64',
+    'GOOGLE_WALLET_CLASS_SUFFIX',
+  ] as const;
+  const anyGoogleWalletSet = GOOGLE_WALLET_REQUIRED.some((k) => !!env[k]);
+  if (anyGoogleWalletSet) {
+    for (const key of GOOGLE_WALLET_REQUIRED) {
+      if (!env[key]) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [key],
+          message: `${key} is required when any GOOGLE_WALLET_* var is set (all-or-none)`,
         });
       }
     }
