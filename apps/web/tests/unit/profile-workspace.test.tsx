@@ -1,13 +1,25 @@
 /**
  * The `/profile` workspace (client, 2026-09-28): the suggested blank fields, the rows each
  * section lists, what a new card carries over, the body `PUT /cards/{id}/fields` is sent, the
- * click-to-edit row and the debounced "on this card" sync.
+ * click-to-edit row, and the card draft that **Save changes** commits (client, 2026-10-07: card
+ * edits are no longer saved as they are made).
  *
  * Every expectation is derived from the modules' own tables (`PROFILE_SECTIONS`, the fixture
  * profile) rather than restated, so adding a suggestion does not mean editing a list here.
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { builderInitialState } from "@/components/builder/builder-reducer";
+import {
+  changedDesignKeys,
+  designPayload,
+  fieldChangeCount,
+  sameIds,
+  withField,
+} from "@/components/profile/card-draft-model";
+import { useCardDrafts } from "@/components/profile/use-card-drafts";
+import { ApiError } from "@/lib/api/errors";
 
 import { act, fireEvent, renderHook, renderWithProviders, screen, userEvent } from "../helpers/render";
 import {
@@ -32,8 +44,12 @@ import { fixtureFields, fixtureGroups } from "@/fixtures/profile";
 import type { ContactCard, FieldGroup, ProfileField } from "@/types/domain";
 
 const setFields = vi.fn();
+const update = vi.fn();
 vi.mock("@/lib/api/browser", () => ({
-  cards: { setFields: (...args: unknown[]) => setFields(...args) },
+  cards: {
+    setFields: (...args: unknown[]) => setFields(...args),
+    update: (...args: unknown[]) => update(...args),
+  },
 }));
 
 function field(partial: Partial<ProfileField> & Pick<ProfileField, "id" | "type">): ProfileField {
@@ -384,67 +400,274 @@ describe("WorkspaceFieldRow — click to edit", () => {
   });
 });
 
-/* ── the sync ─────────────────────────────────────────────────────────────────────────── */
+/* ── the card draft (Save changes) ──────────────────────────────────────────────────── */
 
-describe("useCardFieldSync", () => {
-  const card = { id: "card_1", fieldIds: ["a"] } as unknown as ContactCard;
-  const fields = [field({ id: "a", type: "PHONE" }), field({ id: "b", type: "EMAIL" }), field({ id: "c", type: "URL" })];
-
-  beforeEach(() => {
-    setFields.mockReset();
-    vi.useFakeTimers();
+describe("card-draft-model", () => {
+  it("puts a field the saved card had back where it was, so remove-then-add is no change", () => {
+    const saved = ["a", "b", "c"];
+    const off = withField(saved, saved, "b", false);
+    expect(off).toEqual(["a", "c"]);
+    const back = withField(off, saved, "b", true);
+    expect(back).toEqual(["a", "b", "c"]);
+    expect(sameIds(back, saved)).toBe(true);
   });
 
-  async function load() {
-    const { useCardFieldSync, SYNC_DELAY_MS } = await import("@/components/profile/use-card-field-sync");
-    const onError = vi.fn();
-    const hook = renderHook(() => useCardFieldSync({ fields, onError }));
-    return { hook, onError, delay: SYNC_DELAY_MS };
+  it("appends a field the saved card never had, and add-then-remove is no change", () => {
+    const saved = ["a"];
+    const on = withField(saved, saved, "z", true);
+    expect(on).toEqual(["a", "z"]);
+    expect(sameIds(withField(on, saved, "z", false), saved)).toBe(true);
+  });
+
+  it("returns the same array when the tick does not change anything", () => {
+    const current = ["a"];
+    expect(withField(current, current, "a", true)).toBe(current);
+    expect(withField(current, current, "b", false)).toBe(current);
+  });
+
+  it("counts fields added or removed, not taps", () => {
+    expect(fieldChangeCount(["a", "z"], ["a", "b"])).toBe(2);
+    expect(fieldChangeCount(["a", "b"], ["a", "b"])).toBe(0);
+  });
+
+  it("compares the design as it would be stored — trimmed, colour case-insensitive", () => {
+    const card = { ...fixtureCardBase(), groundHex: "#C2410C", name: "Work" };
+    const saved = builderInitialState({ card, userId: card.userId, seed: [] });
+    expect(changedDesignKeys({ ...saved, name: "  Work " }, saved)).toEqual([]);
+    expect(changedDesignKeys({ ...saved, groundHex: "#c2410c" }, saved)).toEqual([]);
+    expect(changedDesignKeys({ ...saved, name: "Studio", bio: "Hi" }, saved)).toEqual([
+      "name",
+      "bio",
+    ]);
+  });
+
+  it("never puts coverUrl in the PATCH body, and sends a cleared bio as null", () => {
+    const card = fixtureCardBase();
+    const state = { ...builderInitialState({ card, userId: card.userId, seed: [] }), bio: "  " };
+    const body = designPayload(state);
+    expect(body).not.toHaveProperty("coverUrl");
+    expect(body.bio).toBeNull();
+  });
+});
+
+function fixtureCardBase(): ContactCard {
+  return {
+    id: "card_1",
+    userId: "user_1",
+    name: "Work",
+    type: "BUSINESS",
+    isSensitive: false,
+    publicUrl: null,
+    templateId: "meridian",
+    fieldIds: ["a"],
+    updatedAt: "2026-10-01T00:00:00.000Z",
+  };
+}
+
+describe("useCardDrafts", () => {
+  const card = fixtureCardBase();
+  const fields = [
+    field({ id: "a", type: "PHONE" }),
+    field({ id: "b", type: "EMAIL" }),
+    field({ id: "c", type: "URL" }),
+  ];
+
+  beforeEach(() => {
+    setFields.mockReset().mockResolvedValue({});
+    update.mockReset().mockResolvedValue({});
+  });
+
+  function mount(initialFields: readonly ProfileField[] = fields) {
+    return renderHook(({ list }) => useCardDrafts({ fields: list }), {
+      initialProps: { list: initialFields },
+    });
   }
 
-  it("shows a toggle at once and folds a burst of taps into one full-set write", async () => {
-    setFields.mockResolvedValue({});
-    const { hook, delay } = await load();
+  it("changes the draft at once and sends nothing for ticks or design edits", () => {
+    const hook = mount();
+    act(() => hook.result.current.toggleField(card, "b", true));
+    act(() => hook.result.current.toggleField(card, "a", false));
+    act(() => hook.result.current.dispatchDesign(card, { kind: "palette", paletteId: "emerald" }));
+    act(() => hook.result.current.dispatchDesign(card, { kind: "bio", bio: "Partnerships" }));
 
-    act(() => hook.result.current.toggle(card, "b", true));
-    act(() => hook.result.current.toggle(card, "c", true));
-    act(() => hook.result.current.toggle(card, "a", false));
-    expect(hook.result.current.fieldIdsFor(card)).toEqual(["b", "c"]);
-    expect(hook.result.current.statusFor(card.id)).toBe("pending");
+    expect(hook.result.current.fieldIdsFor(card)).toEqual(["b"]);
+    expect(hook.result.current.designFor(card).paletteId).toBe("emerald");
+    expect(hook.result.current.apply(card).bio).toBe("Partnerships");
+    expect(hook.result.current.isDirty(card)).toBe(true);
     expect(setFields).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalled();
+  });
 
+  it("is clean again when an edit is undone — dirty is a comparison, not a count", () => {
+    const hook = mount();
+    act(() => hook.result.current.toggleField(card, "b", true));
+    expect(hook.result.current.isDirty(card)).toBe(true);
+    act(() => hook.result.current.toggleField(card, "b", false));
+    expect(hook.result.current.isDirty(card)).toBe(false);
+
+    act(() => hook.result.current.dispatchDesign(card, { kind: "rename", name: "Studio" }));
+    expect(hook.result.current.isDirty(card)).toBe(true);
+    act(() => hook.result.current.dispatchDesign(card, { kind: "rename", name: "Work" }));
+    expect(hook.result.current.isDirty(card)).toBe(false);
+  });
+
+  it("sends exactly the pending changes once — PATCH, then the whole field set — and is clean after", async () => {
+    const hook = mount();
+    act(() => hook.result.current.toggleField(card, "c", true));
+    act(() => hook.result.current.dispatchDesign(card, { kind: "headline", headline: "Founder" }));
+    expect(hook.result.current.changeCount(card)).toBe(2);
+
+    let result: Awaited<ReturnType<typeof hook.result.current.save>> | undefined;
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(delay);
+      result = await hook.result.current.save(card);
     });
+
+    expect(result?.kind).toBe("saved");
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(update.mock.calls[0]?.[0]).toBe("card_1");
+    expect(update.mock.calls[0]?.[1]).toMatchObject({ name: "Work", headline: "Founder" });
+    expect(update.mock.calls[0]?.[1]).not.toHaveProperty("coverUrl");
     expect(setFields).toHaveBeenCalledTimes(1);
     expect(setFields).toHaveBeenCalledWith("card_1", {
       fields: [
-        { fieldId: "b", visible: true },
+        { fieldId: "a", visible: true },
         { fieldId: "c", visible: true },
       ],
     });
-    expect(hook.result.current.statusFor(card.id)).toBe("saved");
-    vi.useRealTimers();
+    /* Deterministic order: the card's own columns first, then the field set. */
+    expect(update.mock.invocationCallOrder[0]).toBeLessThan(setFields.mock.invocationCallOrder[0] ?? 0);
+    /* Clean before any re-read has landed — the save is the saved state until one does. */
+    expect(hook.result.current.isDirty(card)).toBe(false);
+    expect(hook.result.current.saveStateFor(card.id).kind).toBe("saved");
+
+    /* Nothing left to send: a second press sends nothing. */
+    await act(async () => {
+      await hook.result.current.save(card);
+    });
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(setFields).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps the set and offers a retry when the write fails", async () => {
-    setFields.mockRejectedValueOnce(new Error("offline")).mockResolvedValue({});
-    const { hook, onError, delay } = await load();
-
-    act(() => hook.result.current.toggle(card, "b", true));
+  it("sends only the request the change needs", async () => {
+    const hook = mount();
+    act(() => hook.result.current.toggleField(card, "b", true));
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(delay);
+      await hook.result.current.save(card);
     });
-    expect(onError).toHaveBeenCalled();
-    expect(hook.result.current.statusFor(card.id)).toBe("error");
-    expect(hook.result.current.fieldIdsFor(card), "the toggle was not lost").toEqual(["a", "b"]);
+    expect(setFields).toHaveBeenCalledTimes(1);
+    expect(update).not.toHaveBeenCalled();
+  });
 
+  it("keeps the draft and reports the API's message and request id when the save fails", async () => {
+    setFields.mockRejectedValueOnce(
+      new ApiError({ status: 409, code: "DUPLICATE_FIELD_IN_CARD", rawMessage: "dup", requestId: "req-42" }),
+    );
+    const hook = mount();
+    act(() => hook.result.current.toggleField(card, "b", true));
     await act(async () => {
-      hook.result.current.retry(card.id);
-      await vi.runAllTimersAsync();
+      await hook.result.current.save(card);
+    });
+
+    const state = hook.result.current.saveStateFor(card.id);
+    expect(state).toMatchObject({
+      kind: "error",
+      title: "That field is already on this card",
+      requestId: "req-42",
+      partial: false,
+    });
+    expect(hook.result.current.fieldIdsFor(card), "the draft was not lost").toEqual(["a", "b"]);
+    expect(hook.result.current.isDirty(card)).toBe(true);
+
+    /* Retry sends it again, and succeeds. */
+    await act(async () => {
+      await hook.result.current.save(card);
     });
     expect(setFields).toHaveBeenCalledTimes(2);
-    expect(hook.result.current.statusFor(card.id)).toBe("saved");
-    vi.useRealTimers();
+    expect(hook.result.current.isDirty(card)).toBe(false);
+  });
+
+  it("on a partial failure keeps only the unsent part unsaved, and a retry sends only that part", async () => {
+    setFields.mockRejectedValueOnce(new ApiError({ status: 0, code: "NETWORK", rawMessage: "down" }));
+    const hook = mount();
+    act(() => hook.result.current.dispatchDesign(card, { kind: "rename", name: "Studio" }));
+    act(() => hook.result.current.toggleField(card, "b", true));
+    await act(async () => {
+      await hook.result.current.save(card);
+    });
+
+    expect(hook.result.current.saveStateFor(card.id)).toMatchObject({ kind: "error", partial: true });
+    /* The rename landed and is the saved name now; the field set did not. */
+    expect(hook.result.current.changeCount(card)).toBe(1);
+    expect(hook.result.current.isDirty(card)).toBe(true);
+
+    await act(async () => {
+      await hook.result.current.save(card);
+    });
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(setFields).toHaveBeenCalledTimes(2);
+    expect(hook.result.current.isDirty(card)).toBe(false);
+  });
+
+  it("refuses to save an emptied name, without a request", async () => {
+    const hook = mount();
+    act(() => hook.result.current.dispatchDesign(card, { kind: "rename", name: "  " }));
+    await act(async () => {
+      await hook.result.current.save(card);
+    });
+    expect(update).not.toHaveBeenCalled();
+    expect(hook.result.current.saveStateFor(card.id)).toMatchObject({
+      kind: "error",
+      title: "Give the card a name",
+    });
+  });
+
+  it("Discard puts the card back to how it was saved", () => {
+    const hook = mount();
+    act(() => hook.result.current.toggleField(card, "a", false));
+    act(() => hook.result.current.dispatchDesign(card, { kind: "palette", paletteId: "emerald" }));
+    act(() => hook.result.current.discard(card));
+    expect(hook.result.current.isDirty(card)).toBe(false);
+    expect(hook.result.current.fieldIdsFor(card)).toEqual(["a"]);
+    expect(hook.result.current.apply(card)).toBe(card);
+  });
+
+  it("trusts a newer read of the card over what it saved", async () => {
+    const hook = mount();
+    act(() => hook.result.current.toggleField(card, "b", true));
+    await act(async () => {
+      await hook.result.current.save(card);
+    });
+    /* The re-read: the server stored the set, with a new `updatedAt`. */
+    const reread = { ...card, fieldIds: ["a", "b"], updatedAt: "2026-10-02T00:00:00.000Z" };
+    expect(hook.result.current.isDirty(reread)).toBe(false);
+    /* Changed elsewhere since: the draft (still holding a, b) now differs from the server. */
+    const elsewhere = { ...card, fieldIds: ["a"], updatedAt: "2026-10-03T00:00:00.000Z" };
+    expect(hook.result.current.isDirty(elsewhere)).toBe(true);
+  });
+
+  it("leaves out an id the API would refuse, and that does not leave the card unsaved", async () => {
+    const hook = mount([field({ id: "a", type: "PHONE" })]);
+    act(() => hook.result.current.toggleField(card, "ghost", true));
+    await act(async () => {
+      await hook.result.current.save(card);
+    });
+    expect(setFields).toHaveBeenCalledWith("card_1", { fields: [{ fieldId: "a", visible: true }] });
+    expect(hook.result.current.isDirty(card)).toBe(false);
+  });
+
+  it("puts a field created a moment ago on the draft, and sends it before the profile knows it", async () => {
+    const hook = mount();
+    act(() => hook.result.current.tickCreated(card, "field_new"));
+    expect(hook.result.current.isDirty(card)).toBe(true);
+    expect(setFields).not.toHaveBeenCalled();
+    await act(async () => {
+      await hook.result.current.save(card);
+    });
+    expect(setFields).toHaveBeenCalledWith("card_1", {
+      fields: [
+        { fieldId: "a", visible: true },
+        { fieldId: "field_new", visible: true },
+      ],
+    });
   });
 });

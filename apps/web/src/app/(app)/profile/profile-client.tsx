@@ -25,15 +25,20 @@ import {
   resolveDataScreenState,
 } from "@/components/data";
 import { PageHeader, SplitView } from "@/components/layout";
-import { useToast } from "@/components/overlay";
+import { ConfirmDialog, useToast } from "@/components/overlay";
 import { Skeleton } from "@/components/primitives/skeleton";
 import type { NewFieldDraft } from "@/components/profile/add-field-dialog";
 import { isAlwaysMasked } from "@/components/profile/field-types";
 import { IdentityBlock } from "@/components/profile/identity-block";
+import {
+  SaveChangesControls,
+  UnsavedCardDialog,
+  saveAnnouncement,
+  saveControlsVisible,
+} from "@/components/profile/save-changes";
 import { SendUpdateButton } from "@/components/profile/send-update-button";
 import { useCardAudience } from "@/components/profile/use-card-audience";
-import { useCardDesign } from "@/components/profile/use-card-design";
-import { useCardFieldSync, type CardSyncStatus } from "@/components/profile/use-card-field-sync";
+import { useCardDrafts, type CardDrafts } from "@/components/profile/use-card-drafts";
 import type { RowCardToggle } from "@/components/profile/workspace-field-row";
 import {
   carryOverFieldIds,
@@ -60,6 +65,7 @@ import { isSyntheticGroupId, syntheticGroupId, toApiCardKind, toContactCard } fr
 import type { ApiFieldCategory } from "@/lib/api/schema";
 import { cn } from "@/lib/cn";
 import { useApiResource } from "@/lib/use-api";
+import { useUnsavedChangesGuard } from "@/lib/use-unsaved-changes-guard";
 import type {
   ContactCard,
   FieldCategory,
@@ -83,13 +89,26 @@ import type {
  * `SplitView`, the builder's own geometry: three panels on the left — **Fields, Design, Share** —
  * and on the right a card switcher over the live `<BuilderPreview>` of the selected card. Every
  * filled row carries a switch for "on this card"; flipping it changes the preview in the same
- * frame and is written with `PUT /cards/{id}/fields` a moment later (`useCardFieldSync`).
+ * frame.
+ *
+ * ⚠ **Card edits wait for Save changes** (client, 2026-10-07: *"The client doesn't want it
+ * auto-saved. He wants a Save Changes button"*). Which fields are on the card, its name, its
+ * position and bio, and its look all change a draft (`useCardDrafts`); the **Save changes** button
+ * appears beside Send update while the draft differs from the saved card and commits it. One
+ * draft per card, held above the panels, so switching between Fields, Design and Share neither
+ * saves nor loses it. Leaving with unsaved changes asks first — another card in the switcher
+ * (Save / Discard / Stay), a link, or closing the tab. Send update is disabled until the draft is
+ * saved, so it can never announce an edit nobody can see yet.
+ *
+ * What still writes at once, because it is not a card edit: a profile field's value (its row's
+ * own Save, Enter or leaving the row), creating a field, the photo and the company logo, the
+ * card's logo and cover (uploads, with their own endpoints), and creating a card.
  *
  * ⚠ **Design and Share are panels here, not links away** (client, 2026-09-30: *"There should be
  * no redirection"*). They used to open `/cards/{id}/edit?panel=design` and `/cards/{id}`. Now the
- * Design panel edits the selected card in place and writes itself (`useCardDesign`, the builder's
- * own reducer), and the Share panel sends, links and lists recipients for it. The card on the
- * right never moves. The open panel is `?panel=`, recorded the same way as `?card=`.
+ * Design panel edits the selected card's draft in place (the builder's own reducer), and the
+ * Share panel sends, links and lists recipients for it. The card on the right never moves. The
+ * open panel is `?panel=`, recorded the same way as `?card=`.
  *
  * ## The rules it keeps
  *
@@ -100,7 +119,8 @@ import type {
  * · **A new card starts with every filled-in field on it** (`carryOverFieldIds`): create, then
  *   one `PUT` with the lot. The two calls are not atomic; if the second fails the card exists
  *   empty and the owner can switch fields on by hand.
- * · **A field added here goes onto the selected card too**, so the preview answers the edit.
+ * · **A field added here goes onto the selected card's draft**, so the preview answers the edit
+ *   and Save changes keeps it there. The field itself is created in the profile at once.
  * · **The draft is an echo.** Every write is shown locally, sent, and then the profile is
  *   re-read, which replaces the echo with what the server stored — or removes it if the write
  *   was refused.
@@ -363,18 +383,16 @@ interface CardMedia {
 
 const NO_MEDIA: Readonly<Record<string, CardMedia>> = {};
 
-/** What the one status line says when two writers are saving the same card. */
-const STATUS_RANK: Record<CardSyncStatus, number> = {
-  idle: 0,
-  saved: 1,
-  pending: 2,
-  saving: 3,
-  error: 4,
-};
+/** Why Send update waits while the selected card has unsaved changes. */
+/** How long "All changes saved" stays in the action bar after a save. */
+export const SAVED_NOTICE_MS = 3000;
 
-export function worstStatus(a: CardSyncStatus, b: CardSyncStatus): CardSyncStatus {
-  return STATUS_RANK[a] >= STATUS_RANK[b] ? a : b;
-}
+export const SAVE_BEFORE_SENDING = "Save your changes first, then send the update.";
+
+/** Discarding this many changes or fewer is not worth a confirmation. */
+const DISCARD_WITHOUT_ASKING = 1;
+
+const NO_FIELDS: readonly ProfileField[] = [];
 
 /** Design and Share need a card. With none yet, say where the one control that makes one is. */
 function NoCardYet({ action }: { action: "design" | "share" }): ReactElement {
@@ -430,6 +448,9 @@ export function ProfileClient() {
   // `GET /profile/me`, `POST /auth/me`, `GET /profile/fields`, `GET /profile/groups` and
   // `GET /cards` — five rows in the Network tab, on this screen, every load.
   const result = useApiResource(fetchCardsData, emptyWorkspaceData);
+  /* Held here, above the keyed `Workspace`: a re-read that fails remounts it, and the owner's
+     unsaved card edits must survive that. */
+  const drafts = useCardDrafts({ fields: result.data?.fields ?? NO_FIELDS });
   return (
     <Workspace
       // Re-mounts when the `?state=` override changes which profile is in play.
@@ -438,6 +459,7 @@ export function ProfileClient() {
       data={result.data}
       error={result.error}
       reload={result.reload}
+      drafts={drafts}
     />
   );
 }
@@ -447,11 +469,13 @@ function Workspace({
   data,
   error,
   reload,
+  drafts,
 }: {
   state: ScreenState;
   data: WorkspaceData | null;
   error: FixtureError | null;
   reload: () => void;
+  drafts: CardDrafts;
 }) {
   const { toast } = useToast();
   const searchParams = useSearchParams();
@@ -490,7 +514,7 @@ function Workspace({
   const [selectedId, setSelectedId] = useState<string | null>(() => searchParams.get(CARD_PARAM));
   const selected = cards.find((card) => card.id === selectedId) ?? cards[0] ?? null;
 
-  const select = useCallback((cardId: string) => {
+  const showCard = useCallback((cardId: string) => {
     setSelectedId(cardId);
     /* `replaceState`, never `router.replace` — see the module note. Guarded for happy-dom. */
     try {
@@ -510,18 +534,89 @@ function Workspace({
     [toast],
   );
 
-  const sync = useCardFieldSync({ fields: draft.fields, onError: showError });
-  const design = useCardDesign({ onError: showError });
   const { panel, setPanel } = useWorkspacePanel();
 
   /* Who holds the selected card and has not been told it changed — read from the server, and
-     re-read whenever a field edit has landed (`data` is a fresh object after every write) or the
-     card's field selection finishes saving. It feeds the Send update button and nothing else. */
-  const audience = useCardAudience(
-    selected?.id ?? null,
-    data,
-    selected === null ? "idle" : sync.statusFor(selected.id),
+     re-read whenever the workspace re-reads (`data` is a fresh object after every write, Save
+     changes included). It feeds the Send update button and nothing else. */
+  const audience = useCardAudience(selected?.id ?? null, data);
+
+  /* ── the selected card's draft and its Save changes button ─────────────────────────── */
+
+  const dirty = selected !== null && drafts.isDirty(selected);
+  const saveState = selected === null ? null : drafts.saveStateFor(selected.id);
+  /* Any card, not only the selected one: a draft is per card and outlives a switch away from it
+     when its save failed. */
+  useUnsavedChangesGuard(cards.some((card) => drafts.isDirty(card)));
+
+  /** Another card asked for while this one has unsaved changes — answered by the dialog. */
+  const [pendingSwitch, setPendingSwitch] = useState<string | null>(null);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  /** The live region's sentence. A trailing no-break space alternates so a repeat is re-read. */
+  const [announcement, setAnnouncement] = useState("");
+
+  /* "All changes saved" shows in the action bar for a few seconds after a save, then goes. It used
+     to sit in the toolbar beside Send update; that widened the row until Send update wrapped under
+     the tabs the moment a save finished (client, 2026-10-07). The toolbar is now tabs + Send
+     update at every moment, so nothing in it can move. */
+  const justSaved = saveState?.kind === "saved" && !dirty;
+  const [savedVisible, setSavedVisible] = useState(false);
+  const savedCardId = selected?.id ?? null;
+  useEffect(() => {
+    if (!justSaved) {
+      setSavedVisible(false);
+      return;
+    }
+    setSavedVisible(true);
+    const timer = window.setTimeout(() => setSavedVisible(false), SAVED_NOTICE_MS);
+    return () => window.clearTimeout(timer);
+  }, [justSaved, savedCardId]);
+
+  const select = useCallback(
+    (cardId: string) => {
+      if (selected !== null && cardId !== selected.id && drafts.isDirty(selected)) {
+        setPendingSwitch(cardId);
+        return;
+      }
+      showCard(cardId);
+    },
+    [drafts, selected, showCard],
   );
+
+  /** Where the Save buttons live, so focus can be put somewhere sensible when they go away. */
+  const [toolbar, setToolbar] = useState<HTMLDivElement | null>(null);
+
+  async function saveSelected(): Promise<boolean> {
+    if (selected === null) return true;
+    const focused = document.activeElement;
+    const hadFocus = focused instanceof HTMLElement && focused.closest("[data-save-changes]") !== null;
+    const result = await drafts.save(selected);
+    const said = saveAnnouncement(result);
+    if (said !== "") {
+      setAnnouncement((current) => (current === said ? `${said}\u00a0` : said));
+    }
+    if (result.kind === "error" || result.kind === "saving") return false;
+    /* The server has the card now; read it back so everything else on the page — the card list,
+       the Send update count — reflects it. */
+    reload();
+    /* The button that had focus is gone. Send update is the next thing an owner does after
+       saving, and it is in the same row. */
+    if (hadFocus) {
+      toolbar
+        ?.querySelector<HTMLElement>("[data-send-update]")
+        ?.focus({ preventScroll: true });
+    }
+    return true;
+  }
+
+  function discardSelected() {
+    if (selected === null) return;
+    if (drafts.changeCount(selected) > DISCARD_WITHOUT_ASKING) {
+      setConfirmDiscard(true);
+      return;
+    }
+    drafts.discard(selected);
+  }
 
   /**
    * A logo or cover picked a moment ago, shown on the card while it uploads and until the re-read
@@ -617,7 +712,7 @@ function Workspace({
   /** The card as the owner sees it right now: the server's, plus design edits, plus uploads. */
   const present = useCallback(
     (card: ContactCard): ContactCard => {
-      const designed = design.apply(card);
+      const designed = drafts.apply(card);
       const picked = mediaNow[card.id];
       if (picked === undefined) return designed;
       return {
@@ -626,7 +721,7 @@ function Workspace({
         ...(picked.coverUrl === undefined ? {} : { coverUrl: picked.coverUrl }),
       };
     },
-    [design, mediaNow],
+    [drafts, mediaNow],
   );
   const shown = selected === null ? null : present(selected);
 
@@ -644,7 +739,7 @@ function Workspace({
     [draft.groups, draft.fields],
   );
 
-  const selectedIds = selected === null ? null : sync.fieldIdsFor(selected);
+  const selectedIds = selected === null ? null : drafts.fieldIdsFor(selected);
   const resolved = useMemo(() => {
     if (shown === null || selectedIds === null || draft.user === null) return null;
     return resolveCard({ ...shown, fieldIds: [...selectedIds] }, draft.user, draft.groups, draft.fields);
@@ -742,7 +837,7 @@ function Workspace({
     const card = selected;
     mutate(async () => {
       const id = await createUpstream(input);
-      if (card !== null) sync.tickCreated(card, id);
+      if (card !== null) drafts.tickCreated(card, id);
     });
   }
 
@@ -786,10 +881,10 @@ function Workspace({
     mutate(async () => {
       const created = await api.createGroup({ category: "FAMILY", tag: childName });
       const nameId = await createFieldInGroup(created.id, nameInput);
-      if (card !== null) sync.tickCreated(card, nameId);
+      if (card !== null) drafts.tickCreated(card, nameId);
       if (birthdayInput !== null) {
         const birthdayId = await createFieldInGroup(created.id, birthdayInput);
-        if (card !== null) sync.tickCreated(card, birthdayId);
+        if (card !== null) drafts.tickCreated(card, birthdayId);
       }
     });
   }
@@ -846,7 +941,7 @@ function Workspace({
       cardName: selected.name,
       on: selectedIds.includes(field.id),
       onChange: (next) => {
-        sync.toggle(selected, field.id, next);
+        drafts.toggleField(selected, field.id, next);
         if (next) setSpotlight((current) => ({ fieldId: field.id, nonce: (current?.nonce ?? 0) + 1 }));
       },
     };
@@ -977,6 +1072,13 @@ function Workspace({
 
   /* ── render ───────────────────────────────────────────────────────────────────────── */
 
+  /* Changes to save, a save under way, or a failure to retry — and, for a moment after a save, the
+     quiet "All changes saved". Otherwise the bar is not on screen. */
+  const showBar =
+    selected !== null &&
+    saveState !== null &&
+    (saveControlsVisible({ dirty, state: saveState }) || (justSaved && savedVisible));
+
   let body;
   if (screenState === "loading") {
     body = <WorkspaceBones />;
@@ -1001,9 +1103,9 @@ function Workspace({
     );
   } else {
     const user = draft.user;
-    const designState = selected === null ? null : design.stateFor(selected);
+    const designState = selected === null ? null : drafts.designFor(selected);
     const designDispatch = (action: BuilderAction) => {
-      if (selected !== null) design.dispatch(selected, action);
+      if (selected !== null) drafts.dispatchDesign(selected, action);
     };
     body = (
       <SplitView
@@ -1023,16 +1125,6 @@ function Workspace({
             onCreate={createCard}
             creating={creatingCard}
             resolved={resolved}
-            syncStatus={
-              selected === null
-                ? "idle"
-                : worstStatus(sync.statusFor(selected.id), design.statusFor(selected.id))
-            }
-            onRetrySync={() => {
-              if (selected === null) return;
-              if (sync.statusFor(selected.id) === "error") sync.retry(selected.id);
-              if (design.statusFor(selected.id) === "error") design.retry(selected.id);
-            }}
             spotlight={spotlight}
           />
         }
@@ -1043,25 +1135,31 @@ function Workspace({
           activationMode="automatic"
           className="flex min-w-0 flex-col gap-3 lg:gap-4"
         >
-          {/* The tabs, and — at the right end of the same row, on every panel — the Send update
-              button. It scrolls away with the row like anything else on the page: pinning it
-              made the fields slide under it and read as a glitch (client, 2026-10-03). Wrapping:
-              on a phone the tabs fill the row and the button drops under them at full width,
-              where a thumb reaches it. */}
+          {/* The tabs, and — at the right end of the same row, on every panel — Save changes
+              (while there is something to save) and the Send update button. The row scrolls away
+              with the page like anything else: pinning it made the fields slide under it and
+              read as a glitch (client, 2026-10-03); the bottom bar below stands in for its Save
+              when it is out of view. Wrapping: on a phone the tabs fill the row and Send update
+              drops under them at full width, where a thumb reaches it, and Save changes lives in
+              the bottom bar. */}
           <div
+            ref={setToolbar}
             data-workspace-toolbar=""
             className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2"
           >
             <WorkspaceTabList />
-            {selected === null ? null : (
-              <SendUpdateButton
-                key={selected.id}
-                cardId={selected.id}
-                targets={audience.targets}
-                ready={audience.ready}
-                nudge={audience.nudge}
-                onChanged={audience.reload}
-              />
+            {selected === null || saveState === null ? null : (
+              <div className="flex min-w-0 items-center gap-x-4 gap-y-2 max-sm:w-full">
+                <SendUpdateButton
+                  key={selected.id}
+                  cardId={selected.id}
+                  targets={audience.targets}
+                  ready={audience.ready}
+                  nudge={audience.nudge}
+                  onChanged={audience.reload}
+                  blockedReason={dirty ? SAVE_BEFORE_SENDING : null}
+                />
+              </div>
             )}
           </div>
 
@@ -1139,7 +1237,7 @@ function Workspace({
                   section="Design"
                   name={designState.name}
                   onRename={(name) => designDispatch({ kind: "rename", name })}
-                  intro="How this card looks to everyone who opens it. Changes save as you make them."
+                  intro="How this card looks to everyone who opens it."
                 />
                 <DesignPanel
                   logoUrl={shown.logoUrl ?? null}
@@ -1171,7 +1269,7 @@ function Workspace({
                   section="Share"
                   name={designState.name}
                   onRename={(name) => designDispatch({ kind: "rename", name })}
-                  intro="Send it to someone's WhatsApp, or share the link. Edits you make later reach them on their own."
+                  intro="Send it to someone's WhatsApp, or share the link. Changes you save later reach them on their own."
                 />
                 <WorkspaceSharePanel
                   key={selected.id}
@@ -1183,6 +1281,27 @@ function Workspace({
               </div>
             )}
           </TabsPrimitive.Content>
+          {/* Save changes / Discard — the editor column's own action bar. It floats at the foot of
+              the column (not the page) so it lines up with the cards it saves, stays in reach however
+              far down a long field list the owner has scrolled, and is not on screen at all when
+              there is nothing to save. `sticky` in the column's flow: no overlap, and it reserves its
+              own height at the end. On a phone it clears the app's bottom navigation. */}
+          {showBar && selected !== null && saveState !== null ? (
+            <div
+              data-save-bar=""
+              className={cn(
+                "sticky z-30 rounded-2xl border border-line bg-canvas px-4 py-3 shadow-[var(--elevation-2)]",
+                "bottom-[calc(var(--bottombar-height)+env(safe-area-inset-bottom,0px)+0.75rem)] md:bottom-4",
+              )}
+            >
+              <SaveChangesControls
+                dirty={dirty}
+                state={saveState}
+                onSave={() => void saveSelected()}
+                onDiscard={discardSelected}
+              />
+            </div>
+          ) : null}
         </TabsPrimitive.Root>
       </SplitView>
     );
@@ -1192,6 +1311,45 @@ function Workspace({
     <ScreenStateRoot state={screenState} as="section" aria-label="Profile and cards" className="pb-16">
       <PageHeader title="Profile & Cards" />
       {body}
+
+      {/* One announcement per save, whichever copy of the button was pressed. */}
+      <p data-save-announcer="" role="status" aria-live="polite" className="sr-only">
+        {announcement}
+      </p>
+
+      {selected === null ? null : (
+        <UnsavedCardDialog
+          open={pendingSwitch !== null}
+          cardName={present(selected).name.trim() || "this card"}
+          saving={saveState?.kind === "saving"}
+          onStay={() => setPendingSwitch(null)}
+          onDiscard={() => {
+            const next = pendingSwitch;
+            drafts.discard(selected);
+            setPendingSwitch(null);
+            if (next !== null) showCard(next);
+          }}
+          onSave={() => {
+            const next = pendingSwitch;
+            void saveSelected().then((saved) => {
+              setPendingSwitch(null);
+              if (saved && next !== null) showCard(next);
+            });
+          }}
+        />
+      )}
+
+      {selected === null ? null : (
+        <ConfirmDialog
+          open={confirmDiscard}
+          onOpenChange={setConfirmDiscard}
+          title="Discard unsaved changes?"
+          detail={`${present(selected).name.trim() || "This card"} goes back to how it was last saved.`}
+          consequence={`${drafts.changeCount(selected)} unsaved changes will be lost.`}
+          confirmLabel="Discard changes"
+          onConfirm={() => drafts.discard(selected)}
+        />
+      )}
     </ScreenStateRoot>
   );
 }

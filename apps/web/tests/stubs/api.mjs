@@ -72,6 +72,14 @@ import {
 } from "./state.mjs";
 
 const PORT = Number(process.env.STUB_API_PORT ?? 8788);
+
+/**
+ * `STUB_LOG_REQUESTS=1` prints one line per request — `METHOD /path` and nothing else, never a
+ * body or a header — so a manual check can see exactly which writes a screen sent and when (for
+ * example, that ticking a field on `/profile` sends nothing until Save changes). Off by default;
+ * the suite does not read it.
+ */
+const LOG_REQUESTS = process.env.STUB_LOG_REQUESTS === "1";
 const SNAPSHOT = resolve(process.cwd(), "tests/.tmp/api-fixtures.json");
 
 /** The synthetic field the public-link vocabulary builds a card out of. */
@@ -145,6 +153,7 @@ const server = createServer(async (req, res) => {
   /* The client prefixes `/api/v1`; match on the tail so this server does not care which. */
   const path = url.pathname.replace(/^\/api\/v1/, "").replace(/\/+$/, "") || "/";
   const method = req.method ?? "GET";
+  if (LOG_REQUESTS) process.stdout.write(`${new Date().toISOString()} ${method} ${path}\n`);
 
   /* `drain` returns what it read, as bytes. `rawBody` is the text view for the JSON routes;
      `rawBytes` is what the multipart parser needs — see the ⚠ on `drain`. */

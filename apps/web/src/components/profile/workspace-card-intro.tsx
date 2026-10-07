@@ -28,8 +28,10 @@ import { cn } from "@/lib/cn";
  *
  * `headline` and `bio` are `Card` columns: each card has its own, and there is nothing to tick.
  * The section says which card it is writing to where the other sections say "On card", the same
- * way the company logo row says it. A write goes through `useCardDesign` — one debounced
- * `PATCH /cards/{id}` — so it shares the one status line above the card.
+ * way the company logo row says it. Finishing a row (Done, Enter, or leaving it) puts the value in
+ * the card's draft (`useCardDrafts`) — nothing is sent until **Save changes**, which commits it
+ * with the rest of the card's edits in one `PATCH /cards/{id}`. That is why the row's button says
+ * Done rather than Save: one Save per card, not one per row.
  *
  * ## An empty row still says what the card shows
  *
@@ -114,7 +116,7 @@ export function WorkspaceCardIntro({
             fallbackNote="from your job title"
             placeholder={fallbackHeadline ?? "Founder & CEO"}
             maxLength={HEADLINE_MAX}
-            onSave={onHeadline}
+            onCommit={onHeadline}
           />
           <CardTextRow
             rowId="bio"
@@ -125,7 +127,7 @@ export function WorkspaceCardIntro({
             placeholder="Partnerships lead, based in Mumbai."
             maxLength={BIO_MAX}
             multiline
-            onSave={onBio}
+            onCommit={onBio}
           />
         </ul>
       </div>
@@ -134,9 +136,10 @@ export function WorkspaceCardIntro({
 }
 
 /**
- * One card-level text row. `WorkspaceFieldRow`'s shape — press to edit in place, Enter or Save
- * commits, Escape cancels, leaving commits — with the two differences a card column needs: it may
- * be emptied (that clears it and the card falls back), and the bio is a paragraph, not a line.
+ * One card-level text row. `WorkspaceFieldRow`'s shape — press to edit in place, Enter or Done
+ * puts it in the draft, Escape cancels, leaving keeps it — with the two differences a card column
+ * needs: it may be emptied (that clears it and the card falls back), and the bio is a paragraph,
+ * not a line.
  */
 function CardTextRow({
   rowId,
@@ -147,7 +150,7 @@ function CardTextRow({
   placeholder,
   maxLength,
   multiline = false,
-  onSave,
+  onCommit,
 }: {
   rowId: "headline" | "bio";
   label: string;
@@ -157,7 +160,7 @@ function CardTextRow({
   placeholder: string;
   maxLength: number;
   multiline?: boolean;
-  onSave: (value: string) => void;
+  onCommit: (value: string) => void;
 }): ReactElement {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
@@ -188,7 +191,7 @@ function CardTextRow({
   }
 
   function commit(refocus: boolean) {
-    if (draft.trim() !== own) onSave(draft.trim());
+    if (draft.trim() !== own) onCommit(draft.trim());
     stop(refocus);
   }
 
@@ -204,7 +207,7 @@ function CardTextRow({
       stop(true);
       return;
     }
-    /* A bio is a paragraph but not a document: Enter saves it, as it does every other row. */
+    /* A bio is a paragraph but not a document: Enter finishes it, as it does every other row. */
     if (multiline && event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       commit(true);
@@ -280,11 +283,11 @@ function CardTextRow({
             <div className="flex shrink-0 items-center gap-2">
               <Button
                 type="submit"
-                data-card-intro-save=""
+                data-card-intro-done=""
                 className={BUILDER_SCROLL_CLEAR}
                 onMouseDown={(event) => event.preventDefault()}
               >
-                Save
+                Done
               </Button>
               <Button
                 type="button"

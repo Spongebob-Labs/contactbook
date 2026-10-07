@@ -6,7 +6,6 @@ import { ToastProvider } from "@/components/overlay/toast";
 import { SendUpdateButton } from "@/components/profile/send-update-button";
 import { totalBehind, useCardAudience } from "@/components/profile/use-card-audience";
 import { initialSelection, type NotifyTarget } from "@/components/share/notify-recipients";
-import type { CardSyncStatus } from "@/components/profile/use-card-field-sync";
 
 /**
  * The workspace's **Send update** button, and the hook that decides when it lights up.
@@ -20,7 +19,9 @@ import type { CardSyncStatus } from "@/components/profile/use-card-field-sync";
  *   pressing it opens the picker
  *   with **only the people who are behind ticked**, so "Send 3 updates" never delivers one;
  * · it never opens or sends by itself — the jitter is a `data-nudge` attribute, nothing more;
- * · the jitter fires for a change that lands while the button is on screen, never on arrival.
+ * · the jitter fires for a change that lands while the button is on screen, never on arrival;
+ * · while the card has unsaved changes it is disabled and says to save first, so it can never
+ *   announce an edit that is not saved.
  */
 
 const notify = vi.fn();
@@ -67,7 +68,7 @@ beforeEach(() => {
 
 function mount(
   targets: readonly NotifyTarget[],
-  over: { nudge?: number; onChanged?: () => void; ready?: boolean } = {},
+  over: { nudge?: number; onChanged?: () => void; ready?: boolean; blockedReason?: string } = {},
 ) {
   return renderWithProviders(
     <ToastProvider>
@@ -78,6 +79,7 @@ function mount(
         nudge={over.nudge ?? 0}
         onChanged={over.onChanged ?? (() => {})}
         reconcileDelayMs={0}
+        blockedReason={over.blockedReason ?? null}
       />
     </ToastProvider>,
   );
@@ -153,6 +155,51 @@ describe("SendUpdateButton — what it shows", () => {
     mount([CAUGHT_UP]);
     await userEvent.click(screen.getByRole("button", { name: /all up to date/i }));
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+});
+
+describe("SendUpdateButton — unsaved changes", () => {
+  const SAVE_FIRST = "Save your changes first, then send the update.";
+
+  it("is disabled with the reason while the card has unsaved changes, even with people behind", () => {
+    mount([BEHIND_A, BEHIND_B], { blockedReason: SAVE_FIRST });
+    const button = slot();
+    expect(button?.getAttribute("data-send-update-state")).toBe("blocked");
+    expect(button?.getAttribute("aria-disabled")).toBe("true");
+    expect(button?.getAttribute("title")).toBe(SAVE_FIRST);
+    /* The reason is the button's description, not just a tooltip. */
+    const describedBy = button?.getAttribute("aria-describedby") ?? "";
+    expect(document.getElementById(describedBy)?.textContent).toBe(SAVE_FIRST);
+    /* No count: it is not offering to send anything. */
+    expect(button?.querySelector("[data-send-update-count]")).toBeNull();
+  });
+
+  it("does not open the picker or notify anyone when pressed while blocked", async () => {
+    mount([BEHIND_A], { blockedReason: SAVE_FIRST });
+    await userEvent.click(slot() as HTMLElement);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(notify).not.toHaveBeenCalled();
+  });
+
+  it("is the same element before and after the save, and live again once saved", () => {
+    const ui = (blockedReason: string | null) => (
+      <ToastProvider>
+        <SendUpdateButton
+          cardId={CARD_ID}
+          targets={[BEHIND_A]}
+          ready
+          nudge={0}
+          onChanged={() => {}}
+          blockedReason={blockedReason}
+        />
+      </ToastProvider>
+    );
+    const { rerender } = renderWithProviders(ui(SAVE_FIRST));
+    const before = slot();
+    expect(before?.getAttribute("data-send-update-state")).toBe("blocked");
+    rerender(ui(null));
+    expect(slot()).toBe(before);
+    expect(slot()?.getAttribute("data-send-update-state")).toBe("behind");
   });
 });
 
@@ -277,14 +324,20 @@ function recipient(id: string, versionsBehind: number) {
   };
 }
 
-function Probe({ cardId, status }: { cardId: string | null; status: CardSyncStatus }) {
-  /* A stand-in for the workspace's `data`: bumping it is "a field edit just landed". */
+function Probe({ cardId }: { cardId: string | null }) {
+  /* A stand-in for the workspace's `data`: bumping it is "a write landed and the workspace
+     re-read" — a profile field edit, or Save changes. */
   const [data, setData] = useState({});
-  const result = useCardAudience(cardId, data, status);
+  /* A stand-in for an unsaved card edit: local state that is not `data`. */
+  const [, setDraft] = useState(0);
+  const result = useCardAudience(cardId, data);
   return (
     <div>
       <button type="button" onClick={() => setData({})}>
         edit landed
+      </button>
+      <button type="button" onClick={() => setDraft((n) => n + 1)}>
+        unsaved edit
       </button>
       <output data-targets>{result.targets.map((t) => t.shareLinkId).join(",")}</output>
       <output data-nudge-count>{result.nudge}</output>
@@ -301,7 +354,7 @@ describe("useCardAudience", () => {
 
   it("does not nudge on the first read, then nudges only when the total GROWS", async () => {
     audience.mockResolvedValue({ currentVersion: 3, recipients: [recipient("a", 1)] });
-    renderWithProviders(<Probe cardId={CARD_ID} status="idle" />);
+    renderWithProviders(<Probe cardId={CARD_ID} />);
     await waitFor(() => expect(read("[data-targets]")).toBe("a"));
     expect(read("[data-nudge-count]")).toBe("0");
 
@@ -323,34 +376,37 @@ describe("useCardAudience", () => {
     expect(read("[data-nudge-count]")).toBe("1");
   });
 
-  it("waits while the card's field selection is still saving, and reads once it has saved", async () => {
+  it("does not re-read for an unsaved edit, and re-reads once the save has landed", async () => {
     audience.mockResolvedValue({ currentVersion: 3, recipients: [recipient("a", 1)] });
-    const { rerender } = renderWithProviders(<Probe cardId={CARD_ID} status="pending" />);
-    /* A read now would report the OLD version — the PUT has not landed. */
-    await act(async () => {});
-    expect(audience).not.toHaveBeenCalled();
-
-    rerender(<Probe cardId={CARD_ID} status="saving" />);
-    await act(async () => {});
-    expect(audience).not.toHaveBeenCalled();
-
-    rerender(<Probe cardId={CARD_ID} status="saved" />);
+    renderWithProviders(<Probe cardId={CARD_ID} />);
     await waitFor(() => expect(audience).toHaveBeenCalledTimes(1));
+
+    /* A draft edit has not moved the card's version — nothing is sent until Save changes. */
+    await userEvent.click(screen.getByText("unsaved edit"));
+    await userEvent.click(screen.getByText("unsaved edit"));
+    await act(async () => {});
+    expect(audience).toHaveBeenCalledTimes(1);
+
+    /* Saved: the workspace re-reads, and so does this. */
+    audience.mockResolvedValue({ currentVersion: 4, recipients: [recipient("a", 2)] });
+    await userEvent.click(screen.getByText("edit landed"));
+    await waitFor(() => expect(audience).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(read("[data-nudge-count]")).toBe("1"));
   });
 
   it("never shows another card's recipients while this card's read is in flight", async () => {
     audience.mockResolvedValue({ currentVersion: 3, recipients: [recipient("a", 1)] });
-    const { rerender } = renderWithProviders(<Probe cardId="card-1" status="idle" />);
+    const { rerender } = renderWithProviders(<Probe cardId="card-1" />);
     await waitFor(() => expect(read("[data-targets]")).toBe("a"));
 
     audience.mockReturnValue(new Promise(() => {})); // card-2's read never resolves
-    rerender(<Probe cardId="card-2" status="idle" />);
+    rerender(<Probe cardId="card-2" />);
     expect(read("[data-targets]")).toBe("");
   });
 
   it("swallows a failed read — the edit already saved, so no error and no button change", async () => {
     audience.mockRejectedValue(new Error("network"));
-    renderWithProviders(<Probe cardId={CARD_ID} status="idle" />);
+    renderWithProviders(<Probe cardId={CARD_ID} />);
     await waitFor(() => expect(audience).toHaveBeenCalled());
     expect(read("[data-targets]")).toBe("");
   });
