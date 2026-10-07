@@ -223,14 +223,13 @@ export class CardsService {
         include: CARD_WITH_FIELDS_INCLUDE,
       });
 
-      // Enqueue wallet push in the same transaction so it cannot be lost if
-      // the card update commits but the push never fires.
+      // Enqueue wallet pushes in the same transaction so they cannot be lost
+      // if the card update commits but a push never fires.
       await this.outbox.enqueue(tx, {
         dedupeKey: `wallet-push:${id}:${updated.updatedAt.getTime()}`,
         kind: 'wallet_push',
         payload: { cardId: id },
       });
-
       googleWalletOutboxId = await this.enqueueGoogleWalletPush(
         tx,
         id,
@@ -268,7 +267,7 @@ export class CardsService {
         where: { cardId: id, status: 'ACTIVE' },
         data: { status: 'REVOKED', revokedAt: archivedAt },
       });
-      // Wallet push so installed passes display as voided (greyed-out) in Wallet.
+      // Wallet pushes so installed passes display as voided/expired.
       await this.outbox.enqueue(tx, {
         dedupeKey: `wallet-push:${id}:${archivedAt.getTime()}`,
         kind: 'wallet_push',
