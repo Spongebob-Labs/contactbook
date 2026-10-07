@@ -55,7 +55,14 @@ export class GoogleWalletService implements OnModuleInit {
   async onModuleInit(): Promise<void> {
     const cfg = this.config.googleWallet;
     if (!cfg) return;
-    await this.upsertPassClass(cfg);
+    try {
+      await this.upsertPassClass(cfg);
+    } catch (err) {
+      // Non-fatal: log and continue — the class will be retried on first getSaveUrl call
+      this.logger.warn('google_wallet.class_provision_failed', {
+        error: String(err),
+      });
+    }
   }
 
   async getSaveUrl(userId: string, cardId: string): Promise<string> {
@@ -88,12 +95,17 @@ export class GoogleWalletService implements OnModuleInit {
 
     const objectId = `${cfg.issuerId}.${cardId}`;
     const classId = `${cfg.issuerId}.${cfg.classSuffix}`;
+    // origins must include every browser origin from which the Save button is shown
+    const origins = [
+      this.config.shareBaseUrl,
+      ...this.config.corsOrigins,
+    ].map((o) => o.replace(/\/+$/, ''));
     const claims = {
       iss: cfg.serviceAccountEmail,
       aud: 'google',
       typ: 'savetowallet',
       iat: Math.floor(Date.now() / 1000),
-      origins: [this.config.shareBaseUrl],
+      origins,
       payload: { genericObjects: [{ id: objectId, classId }] },
     };
 
@@ -130,39 +142,44 @@ export class GoogleWalletService implements OnModuleInit {
     const url = `${WALLET_API}/genericClass/${encodeURIComponent(classId)}`;
     try {
       await (client as any).request({ url, method: 'GET' });
-    } catch (err: any) {
-      if (err?.response?.status !== 404) throw err;
-      await (client as any).request({
-        url: `${WALLET_API}/genericClass`,
-        method: 'POST',
-        data: {
-          id: classId,
-          classTemplateInfo: {
-            cardTemplateOverride: {
-              cardRowTemplateInfos: [
-                {
-                  twoItems: {
-                    startItem: {
-                      firstValue: {
-                        fields: [
-                          { fieldPath: 'object.textModulesData["headline"]' },
-                        ],
+    } catch (getErr: any) {
+      if (getErr?.response?.status !== 404) throw getErr;
+      try {
+        await (client as any).request({
+          url: `${WALLET_API}/genericClass`,
+          method: 'POST',
+          data: {
+            id: classId,
+            classTemplateInfo: {
+              cardTemplateOverride: {
+                cardRowTemplateInfos: [
+                  {
+                    twoItems: {
+                      startItem: {
+                        firstValue: {
+                          fields: [
+                            { fieldPath: 'object.textModulesData["headline"]' },
+                          ],
+                        },
                       },
-                    },
-                    endItem: {
-                      firstValue: {
-                        fields: [
-                          { fieldPath: 'object.textModulesData["card"]' },
-                        ],
+                      endItem: {
+                        firstValue: {
+                          fields: [
+                            { fieldPath: 'object.textModulesData["card"]' },
+                          ],
+                        },
                       },
                     },
                   },
-                },
-              ],
+                ],
+              },
             },
           },
-        },
-      });
+        });
+      } catch (postErr: any) {
+        // 409 = another instance created it concurrently — that's fine
+        if (postErr?.response?.status !== 409) throw postErr;
+      }
     }
   }
 
@@ -183,7 +200,8 @@ export class GoogleWalletService implements OnModuleInit {
     const ownerName = [card.user.firstName, card.user.lastName]
       .filter(Boolean)
       .join(' ');
-    const shareUrl = `${this.config.shareBaseUrl}/c/${card.publicToken}`;
+    const baseUrl = this.config.shareBaseUrl.replace(/\/+$/, '');
+    const shareUrl = `${baseUrl}/c/${card.publicToken}`;
 
     const headerValue = ownerName || card.name;
     const subheaderValue = card.headline?.trim() || null;
@@ -216,13 +234,18 @@ export class GoogleWalletService implements OnModuleInit {
 
     try {
       await (client as any).request({ url, method: 'PUT', data: passObject });
-    } catch (err: any) {
-      if (err?.response?.status !== 404) throw err;
-      await (client as any).request({
-        url: `${WALLET_API}/genericObject`,
-        method: 'POST',
-        data: passObject,
-      });
+    } catch (putErr: any) {
+      if (putErr?.response?.status !== 404) throw putErr;
+      try {
+        await (client as any).request({
+          url: `${WALLET_API}/genericObject`,
+          method: 'POST',
+          data: passObject,
+        });
+      } catch (postErr: any) {
+        // 409 = another caller created it between our PUT 404 and this POST — treat as success
+        if (postErr?.response?.status !== 409) throw postErr;
+      }
     }
   }
 }
