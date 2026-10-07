@@ -15,6 +15,32 @@ type GoogleWalletCfg = {
   classSuffix: string;
 };
 
+/** Minimal interface for the Google Auth REST client we need. */
+type GWalletClient = {
+  request(opts: {
+    url: string;
+    method: string;
+    data?: unknown;
+  }): Promise<unknown>;
+};
+
+/** Extracts the HTTP status code from an unknown thrown value. */
+function httpStatus(err: unknown): number | undefined {
+  if (
+    typeof err !== 'object' ||
+    err === null ||
+    !('response' in err) ||
+    typeof (err as Record<string, unknown>).response !== 'object' ||
+    (err as Record<string, unknown>).response === null
+  ) {
+    return undefined;
+  }
+  const status = (err as { response: Record<string, unknown> }).response[
+    'status'
+  ];
+  return typeof status === 'number' ? status : undefined;
+}
+
 function signJwt(payload: object, privateKey: string): string {
   const header = Buffer.from(
     JSON.stringify({ alg: 'RS256', typ: 'JWT' }),
@@ -96,10 +122,9 @@ export class GoogleWalletService implements OnModuleInit {
     const objectId = `${cfg.issuerId}.${cardId}`;
     const classId = `${cfg.issuerId}.${cfg.classSuffix}`;
     // origins must include every browser origin from which the Save button is shown
-    const origins = [
-      this.config.shareBaseUrl,
-      ...this.config.corsOrigins,
-    ].map((o) => o.replace(/\/+$/, ''));
+    const origins = [this.config.shareBaseUrl, ...this.config.corsOrigins].map(
+      (o) => o.replace(/\/+$/, ''),
+    );
     const claims = {
       iss: cfg.serviceAccountEmail,
       aud: 'google',
@@ -138,14 +163,14 @@ export class GoogleWalletService implements OnModuleInit {
 
   private async upsertPassClass(cfg: GoogleWalletCfg): Promise<void> {
     const classId = `${cfg.issuerId}.${cfg.classSuffix}`;
-    const client = await this.auth!.getClient();
+    const client = (await this.auth!.getClient()) as unknown as GWalletClient;
     const url = `${WALLET_API}/genericClass/${encodeURIComponent(classId)}`;
     try {
-      await (client as any).request({ url, method: 'GET' });
-    } catch (getErr: any) {
-      if (getErr?.response?.status !== 404) throw getErr;
+      await client.request({ url, method: 'GET' });
+    } catch (getErr: unknown) {
+      if (httpStatus(getErr) !== 404) throw getErr;
       try {
-        await (client as any).request({
+        await client.request({
           url: `${WALLET_API}/genericClass`,
           method: 'POST',
           data: {
@@ -176,9 +201,9 @@ export class GoogleWalletService implements OnModuleInit {
             },
           },
         });
-      } catch (postErr: any) {
+      } catch (postErr: unknown) {
         // 409 = another instance created it concurrently — that's fine
-        if (postErr?.response?.status !== 409) throw postErr;
+        if (httpStatus(postErr) !== 409) throw postErr;
       }
     }
   }
@@ -213,7 +238,11 @@ export class GoogleWalletService implements OnModuleInit {
       state: card.archivedAt ? 'EXPIRED' : 'ACTIVE',
       header: { defaultValue: { language: 'en-US', value: headerValue } },
       ...(subheaderValue
-        ? { subheader: { defaultValue: { language: 'en-US', value: subheaderValue } } }
+        ? {
+            subheader: {
+              defaultValue: { language: 'en-US', value: subheaderValue },
+            },
+          }
         : {}),
       cardTitle: { defaultValue: { language: 'en-US', value: card.name } },
       hexBackgroundColor: card.groundHex ?? '#1a1a1a',
@@ -229,22 +258,22 @@ export class GoogleWalletService implements OnModuleInit {
       ],
     };
 
-    const client = await this.auth!.getClient();
+    const client = (await this.auth!.getClient()) as unknown as GWalletClient;
     const url = `${WALLET_API}/genericObject/${encodeURIComponent(objectId)}`;
 
     try {
-      await (client as any).request({ url, method: 'PUT', data: passObject });
-    } catch (putErr: any) {
-      if (putErr?.response?.status !== 404) throw putErr;
+      await client.request({ url, method: 'PUT', data: passObject });
+    } catch (putErr: unknown) {
+      if (httpStatus(putErr) !== 404) throw putErr;
       try {
-        await (client as any).request({
+        await client.request({
           url: `${WALLET_API}/genericObject`,
           method: 'POST',
           data: passObject,
         });
-      } catch (postErr: any) {
+      } catch (postErr: unknown) {
         // 409 = another caller created it between our PUT 404 and this POST — treat as success
-        if (postErr?.response?.status !== 409) throw postErr;
+        if (httpStatus(postErr) !== 409) throw postErr;
       }
     }
   }
