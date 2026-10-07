@@ -23,8 +23,8 @@ export class WalletPassController {
   @ApiOperation({
     summary: 'Download Apple Wallet pass for a card',
     description:
-      'Builds and returns a signed .pkpass file. The pass contains the owner\'s name, ' +
-      'card headline, and a QR code that encodes the card\'s live public URL — no field ' +
+      "Builds and returns a signed .pkpass file. The pass contains the owner's name, " +
+      "card headline, and a QR code that encodes the card's live public URL — no field " +
       'values are embedded. Returns 404 if the card does not belong to the caller or is ' +
       'archived; 409 if Apple Wallet signing is not configured on this server.',
   })
@@ -46,12 +46,14 @@ export class WalletPassController {
   })
   @ApiResponse({
     status: 404,
-    description: 'CARD_NOT_FOUND — card does not belong to the caller, or is archived.',
+    description:
+      'CARD_NOT_FOUND — card does not belong to the caller, or is archived.',
     type: ApiErrorResponseDto,
   })
   @ApiResponse({
     status: 409,
-    description: 'WALLET_NOT_CONFIGURED — Apple Wallet signing is not enabled on this server.',
+    description:
+      'WALLET_NOT_CONFIGURED — Apple Wallet signing is not enabled on this server.',
     type: ApiErrorResponseDto,
   })
   async downloadWalletPass(

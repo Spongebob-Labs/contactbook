@@ -136,7 +136,7 @@ export class AppConfigService {
     | undefined {
     if (!this.env.GOOGLE_WALLET_ISSUER_ID) return undefined;
     return {
-      issuerId: this.env.GOOGLE_WALLET_ISSUER_ID!,
+      issuerId: this.env.GOOGLE_WALLET_ISSUER_ID,
       serviceAccountEmail: this.env.GOOGLE_WALLET_SERVICE_ACCOUNT_EMAIL!,
       serviceAccountKeyB64: this.env.GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_B64!,
       classSuffix: this.env.GOOGLE_WALLET_CLASS_SUFFIX!,
@@ -165,7 +165,7 @@ export class AppConfigService {
     | undefined {
     if (!this.env.WALLET_PASS_TYPE_ID) return undefined;
     return {
-      passTypeId: this.env.WALLET_PASS_TYPE_ID!,
+      passTypeId: this.env.WALLET_PASS_TYPE_ID,
       teamId: this.env.WALLET_TEAM_ID!,
       orgName: this.env.WALLET_ORG_NAME!,
       webServiceUrl: this.env.WALLET_WEB_SERVICE_URL!,

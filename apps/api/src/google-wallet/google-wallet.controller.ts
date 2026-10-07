@@ -33,7 +33,8 @@ export class GoogleWalletController {
       properties: {
         url: {
           type: 'string',
-          example: 'https://pay.google.com/gp/v/save/eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...',
+          example:
+            'https://pay.google.com/gp/v/save/eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...',
         },
       },
     },
@@ -45,12 +46,14 @@ export class GoogleWalletController {
   })
   @ApiResponse({
     status: 404,
-    description: 'CARD_NOT_FOUND — card does not belong to the caller, or is archived.',
+    description:
+      'CARD_NOT_FOUND — card does not belong to the caller, or is archived.',
     type: ApiErrorResponseDto,
   })
   @ApiResponse({
     status: 409,
-    description: 'GOOGLE_WALLET_NOT_CONFIGURED — Google Wallet is not enabled on this server.',
+    description:
+      'GOOGLE_WALLET_NOT_CONFIGURED — Google Wallet is not enabled on this server.',
     type: ApiErrorResponseDto,
   })
   async getSaveUrl(
