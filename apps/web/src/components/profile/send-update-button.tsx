@@ -37,9 +37,18 @@ import {
  * | `idle` | everyone has been told about the current version | disabled "✓ All up to date" |
  * | `behind` | somebody has not | the primary button, a **count of unshared changes**, and the jitter |
  * | `sending` | a send was just accepted | "Sending…" until the audience is re-read |
+ * | `blocked` | the card has unsaved changes | a disabled "Send update" that says to save first |
  *
  * The badge counts *changes*, not people ({@link pendingChanges}); who they are is the picker's
  * job and its own description line.
+ *
+ * ## ⚠ `blocked` — it never tells anyone about an edit that is not saved
+ *
+ * Card edits wait for **Save changes** now (client, 2026-10-07), and an update tells recipients
+ * that the card they hold changed. With unsaved edits on screen, "Send update" would invite the
+ * owner to announce a change their recipients cannot see yet — so while the draft is dirty the
+ * button is disabled, says why (`blockedReason`, visible as a tooltip and read as its
+ * description), and the picker cannot open. It never saves on the owner's behalf.
  *
  * ## ⚠ `sending` is optimistic, and only for the ids that were sent
  *
@@ -69,6 +78,11 @@ export interface SendUpdateButtonProps {
   onChanged: () => void;
   /** Passed to the picker. A seam so a test can reconcile immediately; production leaves it. */
   reconcileDelayMs?: number;
+  /**
+   * Set while the card has unsaved changes: the button is disabled with this as its reason, so
+   * no update can go out about an edit that has not been saved.
+   */
+  blockedReason?: string | null;
 }
 
 /**
@@ -89,6 +103,7 @@ export function SendUpdateButton({
   nudge,
   onChanged,
   reconcileDelayMs,
+  blockedReason = null,
 }: SendUpdateButtonProps): ReactElement {
   const [open, setOpen] = useState(false);
   const [inFlight, setInFlight] = useState<ReadonlySet<string>>(() => new Set());
@@ -102,7 +117,10 @@ export function SendUpdateButton({
   const changes = pendingChanges(behind);
   const people = behind.length;
 
-  const state: SendUpdateState = !ready
+  const state: SendUpdateState =
+    blockedReason !== null
+      ? "blocked"
+      : !ready
     ? "loading"
     : behind.length > 0
       ? "behind"
@@ -134,10 +152,13 @@ export function SendUpdateButton({
             }
           : state === "sending"
             ? { loading: true, loadingLabel: "Sending…" }
-            : {
-                disabled: true,
-                disabledReason: state === "loading" ? "Checking who has this card…" : upToDateReason,
-              })}
+            : state === "blocked"
+              ? { disabled: true, disabledReason: blockedReason ?? "", title: blockedReason ?? "" }
+              : {
+                  disabled: true,
+                  disabledReason:
+                    state === "loading" ? "Checking who has this card…" : upToDateReason,
+                })}
         className="max-sm:w-full"
       >
         {state === "behind" ? (
@@ -161,7 +182,7 @@ export function SendUpdateButton({
 
       {/* Mounted only while open, so the picker's ticks start from "who is behind" every time
           rather than from whatever the first read looked like. */}
-      {open ? (
+      {open && state !== "blocked" ? (
         <NotifyRecipients
           cardId={cardId}
           shares={targets}
@@ -183,4 +204,4 @@ export function SendUpdateButton({
   );
 }
 
-type SendUpdateState = "loading" | "empty" | "idle" | "sending" | "behind";
+type SendUpdateState = "loading" | "empty" | "idle" | "sending" | "behind" | "blocked";

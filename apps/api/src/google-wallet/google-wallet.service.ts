@@ -1,99 +1,86 @@
-import { createSign } from 'node:crypto';
-import { Injectable, OnModuleInit } from '@nestjs/common';
-import { GoogleAuth } from 'google-auth-library';
-import { AppConfigService } from '../config/app-config.service';
+import { Inject, Injectable, type OnModuleInit } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
+import { AppConfigService } from '../config/app-config.service';
 import { AppLogger } from '../common/logging/app-logger.service';
 import { ApiError } from '../common/errors/api-error';
+import {
+  GOOGLE_WALLET_API,
+  GOOGLE_WALLET_HTTP,
+  GoogleWalletHttpError,
+  type GoogleWalletHttp,
+} from './google-wallet.client';
+import {
+  GOOGLE_WALLET_CARD_SELECT,
+  buildPassClass,
+  buildPassObject,
+  passClassId,
+  passObjectId,
+  type GoogleWalletCard,
+} from './google-wallet-pass.util';
 
-const WALLET_API = 'https://walletobjects.googleapis.com/walletobjects/v1';
+const SAVE_URL_BASE = 'https://pay.google.com/gp/v/save';
 
-type GoogleWalletCfg = {
-  issuerId: string;
-  serviceAccountEmail: string;
-  serviceAccountKeyB64: string;
-  classSuffix: string;
-};
-
-/** Minimal interface for the Google Auth REST client we need. */
-type GWalletClient = {
-  request(opts: {
-    url: string;
-    method: string;
-    data?: unknown;
-  }): Promise<unknown>;
-};
-
-/** Extracts the HTTP status code from an unknown thrown value. */
-function httpStatus(err: unknown): number | undefined {
-  if (
-    typeof err !== 'object' ||
-    err === null ||
-    !('response' in err) ||
-    typeof (err as Record<string, unknown>).response !== 'object' ||
-    (err as Record<string, unknown>).response === null
-  ) {
-    return undefined;
-  }
-  const status = (err as { response: Record<string, unknown> }).response[
-    'status'
-  ];
-  return typeof status === 'number' ? status : undefined;
+function statusOf(err: unknown): number | undefined {
+  return err instanceof GoogleWalletHttpError ? err.status : undefined;
 }
 
-function signJwt(payload: object, privateKey: string): string {
-  const header = Buffer.from(
-    JSON.stringify({ alg: 'RS256', typ: 'JWT' }),
-  ).toString('base64url');
-  const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
-  const data = `${header}.${body}`;
-  const sign = createSign('RSA-SHA256');
-  sign.update(data);
-  return `${data}.${sign.sign(privateKey, 'base64url')}`;
+function describe(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
+/**
+ * Google Wallet passes for cards.
+ *
+ * Fully inert when the four GOOGLE_WALLET_* vars are absent: no client is
+ * built, nothing is called at boot, the owner endpoint answers 409
+ * GOOGLE_WALLET_NOT_CONFIGURED and the outbox handler is a no-op.
+ *
+ * Google is called from exactly two places: the owner's GET save-url request
+ * (which must create the object before it can sign a JWT naming it), and the
+ * `google_wallet_push` outbox handler. Never from a card edit's request path.
+ */
 @Injectable()
 export class GoogleWalletService implements OnModuleInit {
-  private auth?: GoogleAuth;
-  private privateKey?: string;
+  private readonly cfg: AppConfigService['googleWallet'];
+  private readonly privateKeyPem: string;
+  /** Memoised so the class is checked/created once per process, not once per pass. */
+  private classReady: Promise<void> | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: AppConfigService,
     private readonly logger: AppLogger,
+    private readonly jwt: JwtService,
+    @Inject(GOOGLE_WALLET_HTTP) private readonly http: GoogleWalletHttp | null,
   ) {
-    const cfg = config.googleWallet;
-    if (cfg) {
-      this.privateKey = Buffer.from(
-        cfg.serviceAccountKeyB64,
-        'base64',
-      ).toString('utf8');
-      this.auth = new GoogleAuth({
-        credentials: {
-          client_email: cfg.serviceAccountEmail,
-          private_key: this.privateKey,
-        },
-        scopes: ['https://www.googleapis.com/auth/wallet_object.issuer'],
-      });
-    }
+    this.cfg = config.googleWallet;
+    this.privateKeyPem = this.cfg
+      ? Buffer.from(this.cfg.serviceAccountKeyB64, 'base64').toString('utf8')
+      : '';
   }
 
+  /**
+   * Creates the pass class ahead of the first save. A failure here (Google
+   * unreachable, bad credentials, API not enabled) must never take the API
+   * down: it is logged and boot continues. The class is retried lazily by the
+   * next call that needs it.
+   */
   async onModuleInit(): Promise<void> {
-    const cfg = this.config.googleWallet;
-    if (!cfg) return;
+    if (!this.cfg || !this.http) return;
     try {
-      await this.upsertPassClass(cfg);
+      await this.ensurePassClass();
     } catch (err) {
-      // Non-fatal: log and continue — the class will be retried on first getSaveUrl call
-      this.logger.warn('google_wallet.class_provision_failed', {
-        error: String(err),
+      this.logger.error('google_wallet.class_sync_failed', {
+        status: statusOf(err),
+        err: describe(err),
       });
     }
   }
 
+  /** Returns the Save to Google Wallet URL for a card the caller owns. */
   async getSaveUrl(userId: string, cardId: string): Promise<string> {
-    const cfg = this.config.googleWallet;
-    if (!cfg) {
+    if (!this.cfg || !this.http) {
       throw ApiError.conflict(
         'GOOGLE_WALLET_NOT_CONFIGURED',
         'Google Wallet is not configured on this server.',
@@ -102,179 +89,153 @@ export class GoogleWalletService implements OnModuleInit {
 
     const card = await this.prisma.card.findFirst({
       where: { id: cardId, userId },
-      select: {
-        id: true,
-        name: true,
-        headline: true,
-        publicToken: true,
-        archivedAt: true,
-        groundHex: true,
-        user: { select: { firstName: true, lastName: true } },
-      },
+      select: GOOGLE_WALLET_CARD_SELECT,
     });
 
+    // Archived is not-found from the owner's side, as on the Apple endpoint.
     if (!card || card.archivedAt) {
       throw ApiError.notFound('CARD_NOT_FOUND', 'Card not found.');
     }
 
-    await this.upsertPassObject(cfg, card);
+    // The object must exist before the JWT names it: the JWT carries IDs
+    // only, which keeps it far under Google's ~1800-char limit and keeps
+    // every piece of card data out of a URL.
+    await this.ensurePassClass();
+    await this.putPassObject(card, { createIfMissing: true });
 
-    const objectId = `${cfg.issuerId}.${cardId}`;
-    const classId = `${cfg.issuerId}.${cfg.classSuffix}`;
-    // origins must include every browser origin from which the Save button is shown
-    const origins = [this.config.shareBaseUrl, ...this.config.corsOrigins].map(
-      (o) => o.replace(/\/+$/, ''),
+    const token = this.jwt.sign(
+      {
+        iss: this.cfg.serviceAccountEmail,
+        aud: 'google',
+        typ: 'savetowallet',
+        origins: [new URL(this.config.shareBaseUrl).origin],
+        payload: {
+          genericObjects: [
+            {
+              id: passObjectId(this.cfg.issuerId, card.id),
+              classId: passClassId(this.cfg.issuerId, this.cfg.classSuffix),
+            },
+          ],
+        },
+      },
+      { privateKey: this.privateKeyPem, algorithm: 'RS256' },
     );
-    const claims = {
-      iss: cfg.serviceAccountEmail,
-      aud: 'google',
-      typ: 'savetowallet',
-      iat: Math.floor(Date.now() / 1000),
-      origins,
-      payload: { genericObjects: [{ id: objectId, classId }] },
-    };
 
-    const token = signJwt(claims, this.privateKey!);
     this.logger.info('google_wallet.url_issued', { userId, cardId });
-    return `https://pay.google.com/gp/v/save/${token}`;
+    return `${SAVE_URL_BASE}/${token}`;
   }
 
+  /**
+   * Brings a saved pass in line with the card's current data. Called by the
+   * `google_wallet_push` outbox handler after a card edit or archive; Google
+   * then propagates the change to every device holding the pass.
+   *
+   * Update-only: a card nobody has saved to Google Wallet has no object, and
+   * this does not create one. Creating is the owner's explicit act
+   * (`getSaveUrl`) — an edit must not send a card's name to Google on behalf
+   * of an owner who never asked for a pass.
+   *
+   * Throws on any other failure so the outbox keeps the row for a retry.
+   */
   async syncPassObject(cardId: string): Promise<void> {
-    const cfg = this.config.googleWallet;
-    if (!cfg) return;
+    if (!this.cfg || !this.http) return;
 
     const card = await this.prisma.card.findUnique({
       where: { id: cardId },
-      select: {
-        id: true,
-        name: true,
-        headline: true,
-        publicToken: true,
-        archivedAt: true,
-        groundHex: true,
-        user: { select: { firstName: true, lastName: true } },
-      },
+      select: GOOGLE_WALLET_CARD_SELECT,
     });
-
     if (!card) return;
-    await this.upsertPassObject(cfg, card);
-    this.logger.info('google_wallet.pass_synced', { cardId });
-  }
 
-  private async upsertPassClass(cfg: GoogleWalletCfg): Promise<void> {
-    const classId = `${cfg.issuerId}.${cfg.classSuffix}`;
-    const client = (await this.auth!.getClient()) as unknown as GWalletClient;
-    const url = `${WALLET_API}/genericClass/${encodeURIComponent(classId)}`;
-    try {
-      await client.request({ url, method: 'GET' });
-    } catch (getErr: unknown) {
-      if (httpStatus(getErr) !== 404) throw getErr;
-      try {
-        await client.request({
-          url: `${WALLET_API}/genericClass`,
-          method: 'POST',
-          data: {
-            id: classId,
-            classTemplateInfo: {
-              cardTemplateOverride: {
-                cardRowTemplateInfos: [
-                  {
-                    twoItems: {
-                      startItem: {
-                        firstValue: {
-                          fields: [
-                            { fieldPath: 'object.textModulesData["headline"]' },
-                          ],
-                        },
-                      },
-                      endItem: {
-                        firstValue: {
-                          fields: [
-                            { fieldPath: 'object.textModulesData["card"]' },
-                          ],
-                        },
-                      },
-                    },
-                  },
-                ],
-              },
-            },
-          },
-        });
-      } catch (postErr: unknown) {
-        // 409 = another instance created it concurrently — that's fine
-        if (httpStatus(postErr) !== 409) throw postErr;
-      }
-    }
-  }
-
-  private async upsertPassObject(
-    cfg: GoogleWalletCfg,
-    card: {
-      id: string;
-      name: string;
-      headline: string | null;
-      publicToken: string;
-      archivedAt: Date | null;
-      groundHex: string | null;
-      user: { firstName: string | null; lastName: string | null };
-    },
-  ): Promise<void> {
-    const objectId = `${cfg.issuerId}.${card.id}`;
-    const classId = `${cfg.issuerId}.${cfg.classSuffix}`;
-    const ownerName = [card.user.firstName, card.user.lastName]
-      .filter(Boolean)
-      .join(' ');
-    const baseUrl = this.config.shareBaseUrl.replace(/\/+$/, '');
-    const shareUrl = `${baseUrl}/c/${card.publicToken}`;
-
-    const headerValue = ownerName || card.name;
-    const subheaderValue = card.headline?.trim() || null;
-
-    const passObject = {
-      id: objectId,
-      classId,
-      genericType: 'GENERIC_OTHER',
-      state: card.archivedAt ? 'EXPIRED' : 'ACTIVE',
-      header: { defaultValue: { language: 'en-US', value: headerValue } },
-      ...(subheaderValue
-        ? {
-            subheader: {
-              defaultValue: { language: 'en-US', value: subheaderValue },
-            },
-          }
-        : {}),
-      cardTitle: { defaultValue: { language: 'en-US', value: card.name } },
-      hexBackgroundColor: card.groundHex ?? '#1a1a1a',
-      barcode: {
-        type: 'QR_CODE',
-        value: shareUrl,
-        alternateText: 'Scan to open card',
+    const updated = await this.putPassObject(card, { createIfMissing: false });
+    this.logger.info(
+      updated ? 'google_wallet.pass_synced' : 'google_wallet.pass_sync_skipped',
+      {
+        cardId,
+        ...(updated && { state: card.archivedAt ? 'EXPIRED' : 'ACTIVE' }),
       },
-      textModulesData: [
-        { id: 'headline', header: 'TITLE', body: card.headline ?? '' },
-        { id: 'card', header: 'CARD', body: card.name },
-        { id: 'link', header: 'CARD LINK', body: shareUrl },
-      ],
-    };
+    );
+  }
 
-    const client = (await this.auth!.getClient()) as unknown as GWalletClient;
-    const url = `${WALLET_API}/genericObject/${encodeURIComponent(objectId)}`;
+  /** GET the class; create it on 404. Shared by every caller in this process. */
+  private ensurePassClass(): Promise<void> {
+    this.classReady ??= this.createPassClassIfMissing().catch((err) => {
+      // Not cached: the next caller tries again rather than inheriting a
+      // failure from a moment when Google was unreachable.
+      this.classReady = null;
+      throw err;
+    });
+    return this.classReady;
+  }
+
+  private async createPassClassIfMissing(): Promise<void> {
+    const http = this.http!;
+    const classId = passClassId(this.cfg!.issuerId, this.cfg!.classSuffix);
+    try {
+      await http.request({
+        method: 'GET',
+        url: `${GOOGLE_WALLET_API}/genericClass/${encodeURIComponent(classId)}`,
+      });
+      return;
+    } catch (err) {
+      if (statusOf(err) !== 404) throw err;
+    }
 
     try {
-      await client.request({ url, method: 'PUT', data: passObject });
-    } catch (putErr: unknown) {
-      if (httpStatus(putErr) !== 404) throw putErr;
-      try {
-        await client.request({
-          url: `${WALLET_API}/genericObject`,
-          method: 'POST',
-          data: passObject,
-        });
-      } catch (postErr: unknown) {
-        // 409 = another caller created it between our PUT 404 and this POST — treat as success
-        if (httpStatus(postErr) !== 409) throw postErr;
-      }
+      await http.request({
+        method: 'POST',
+        url: `${GOOGLE_WALLET_API}/genericClass`,
+        data: buildPassClass(classId),
+      });
+      this.logger.info('google_wallet.class_created', { classId });
+    } catch (err) {
+      // 409: another container created it between our GET and POST (a deploy
+      // briefly runs two). It exists, which is all this needed.
+      if (statusOf(err) !== 409) throw err;
     }
+  }
+
+  /**
+   * PUT replaces the whole object, so a cleared headline is really cleared
+   * (PATCH would merge and leave the stale one). 404 means the object does
+   * not exist yet: POST it when asked to, otherwise report `false`.
+   */
+  private async putPassObject(
+    card: GoogleWalletCard,
+    { createIfMissing }: { createIfMissing: boolean },
+  ): Promise<boolean> {
+    const http = this.http!;
+    const ids = {
+      classId: passClassId(this.cfg!.issuerId, this.cfg!.classSuffix),
+      objectId: passObjectId(this.cfg!.issuerId, card.id),
+    };
+    const data = buildPassObject(card, ids, this.config.shareBaseUrl);
+    const put = () =>
+      http.request({
+        method: 'PUT',
+        url: `${GOOGLE_WALLET_API}/genericObject/${encodeURIComponent(ids.objectId)}`,
+        data,
+      });
+
+    try {
+      await put();
+      return true;
+    } catch (err) {
+      if (statusOf(err) !== 404) throw err;
+    }
+    if (!createIfMissing) return false;
+
+    try {
+      await http.request({
+        method: 'POST',
+        url: `${GOOGLE_WALLET_API}/genericObject`,
+        data,
+      });
+    } catch (err) {
+      // 409: a concurrent request created it first. Replace it so the object
+      // still ends up as this request's data.
+      if (statusOf(err) !== 409) throw err;
+      await put();
+    }
+    return true;
   }
 }

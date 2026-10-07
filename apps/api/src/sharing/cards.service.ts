@@ -196,6 +196,7 @@ export class CardsService {
   ): Promise<CardResponseDto> {
     const existing = await this.findOwned(userId, id);
 
+    let googleWalletOutboxId: string | null = null;
     const row = await this.prisma.$transaction(async (tx) => {
       const updated = await tx.card.update({
         where: { id },
@@ -229,14 +230,15 @@ export class CardsService {
         kind: 'wallet_push',
         payload: { cardId: id },
       });
-      await this.outbox.enqueue(tx, {
-        dedupeKey: `google-wallet-push:${id}:${updated.updatedAt.getTime()}`,
-        kind: 'google_wallet_push',
-        payload: { cardId: id },
-      });
+      googleWalletOutboxId = await this.enqueueGoogleWalletPush(
+        tx,
+        id,
+        updated.updatedAt,
+      );
 
       return updated;
     });
+    this.kickGoogleWalletPush(googleWalletOutboxId);
 
     if (dto.coverUrl === null && existing.coverUrl) {
       await this.coverStorage.deleteByUrl(existing.coverUrl);
@@ -256,7 +258,7 @@ export class CardsService {
   async archive(userId: string, id: string): Promise<void> {
     await this.findOwned(userId, id);
     const archivedAt = new Date();
-    await this.prisma.$transaction(async (tx) => {
+    const googleWalletOutboxId = await this.prisma.$transaction(async (tx) => {
       await tx.card.update({
         where: { id },
         data: { archivedAt },
@@ -271,12 +273,41 @@ export class CardsService {
         kind: 'wallet_push',
         payload: { cardId: id },
       });
-      await this.outbox.enqueue(tx, {
-        dedupeKey: `google-wallet-push:${id}:${archivedAt.getTime()}`,
-        kind: 'google_wallet_push',
-        payload: { cardId: id },
-      });
+      // And so a pass saved to Google Wallet shows as expired.
+      return this.enqueueGoogleWalletPush(tx, id, archivedAt);
     });
+    this.kickGoogleWalletPush(googleWalletOutboxId);
+  }
+
+  /**
+   * Writes the `google_wallet_push` outbox row inside the caller's
+   * transaction, so the push cannot be lost if the card change commits.
+   * Returns the row id for {@link kickGoogleWalletPush}, or `null` when Google
+   * Wallet is not configured — then no row is written at all, so the feature
+   * costs an unconfigured server nothing (the Design panel autosaves, and
+   * every autosave lands here).
+   */
+  private async enqueueGoogleWalletPush(
+    tx: Prisma.TransactionClient,
+    cardId: string,
+    at: Date,
+  ): Promise<string | null> {
+    if (!this.config.googleWallet) return null;
+    const row = await this.outbox.enqueue(tx, {
+      dedupeKey: `google-wallet-push:${cardId}:${at.getTime()}`,
+      kind: 'google_wallet_push',
+      payload: { cardId },
+    });
+    return row.id;
+  }
+
+  /**
+   * Hands a committed row to the transport. Only ever called AFTER the
+   * transaction has committed — the handler reads the card back, and must see
+   * the new data. Best-effort by contract (TaskEnqueuer never throws).
+   */
+  private kickGoogleWalletPush(outboxId: string | null): void {
+    if (outboxId !== null) this.enqueuer.enqueue(outboxId, 'outbound');
   }
 
   /**

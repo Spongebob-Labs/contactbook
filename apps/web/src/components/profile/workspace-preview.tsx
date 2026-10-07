@@ -9,7 +9,6 @@ import { cn } from "@/lib/cn";
 import type { ResolvedCard } from "@/types/domain";
 
 import { CardSwitcher, type SwitcherCard } from "./card-switcher";
-import type { CardSyncStatus } from "./use-card-field-sync";
 
 /**
  * The right-hand half of the workspace: which card, and how it looks right now.
@@ -23,7 +22,8 @@ import type { CardSyncStatus } from "./use-card-field-sync";
  *
  * `<BuilderPreview>` is the same card page in the same frame `/cards/{id}/edit` shows, fed the
  * one `ResolvedCard` the workspace resolves. A field edited on the left, or switched on for this
- * card, is on the preview in the same frame.
+ * card, is on the preview in the same frame — before it is saved, because the preview shows the
+ * draft the **Save changes** button would commit.
  *
  * ## On a phone it can fold away
  *
@@ -41,8 +41,6 @@ export interface WorkspacePreviewProps {
   creating: boolean;
   /** `null` when there is no card to show. */
   resolved: ResolvedCard | null;
-  syncStatus: CardSyncStatus;
-  onRetrySync: () => void;
   /**
    * A field just switched on. The preview scrolls its frame to that row, because on a phone the
    * frame shows little more than the card's top and the new row would land out of sight.
@@ -57,8 +55,6 @@ export function WorkspacePreview({
   onCreate,
   creating,
   resolved,
-  syncStatus,
-  onRetrySync,
   spotlight = null,
 }: WorkspacePreviewProps): ReactElement {
   const [folded, setFolded] = useState(false);
@@ -97,9 +93,10 @@ export function WorkspacePreview({
         startComposing={cards.length === 0}
       />
 
+      {/* Below `lg` only: the one control here is the fold, and from `lg` up there is nothing to
+          fold. (This row used to carry the autosave's "Saving… / Saved" line on every width.) */}
       {cardId === null ? null : (
-        <div className="flex min-h-8 items-center gap-1">
-          <SyncStatus status={syncStatus} onRetry={onRetrySync} />
+        <div className="flex min-h-8 items-center gap-1 lg:hidden">
           <div className="ms-auto flex items-center gap-1">
             <button
               type="button"
@@ -144,36 +141,5 @@ export function WorkspacePreview({
         </div>
       )}
     </div>
-  );
-}
-
-function SyncStatus({
-  status,
-  onRetry,
-}: {
-  status: CardSyncStatus;
-  onRetry: () => void;
-}): ReactElement {
-  return (
-    <p
-      data-workspace-sync={status}
-      role="status"
-      className="flex min-w-0 items-center gap-2 text-xs text-ink-3"
-    >
-      {status === "pending" || status === "saving" ? "Saving…" : null}
-      {status === "saved" ? "Saved" : null}
-      {status === "error" ? (
-        <>
-          <span className="text-danger">Not saved</span>
-          <button
-            type="button"
-            onClick={onRetry}
-            className="text-ink underline underline-offset-4"
-          >
-            Retry
-          </button>
-        </>
-      ) : null}
-    </p>
   );
 }

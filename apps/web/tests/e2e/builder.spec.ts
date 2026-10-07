@@ -2155,13 +2155,13 @@ test("an unknown cardId renders a panel rather than a stack trace (E-36)", async
  * the card it should be automatically been rendered."*
  *
  * The chain is `onToggle` → `toggleField` → `dispatch` → `state.fieldIds` → `builderCard` →
- * `resolveCard` → `<BuilderPreview>`, all synchronous. The API write that follows is
- * fire-and-forget and the UI never awaits it.
+ * `resolveCard` → `<BuilderPreview>`, all synchronous. **No API write follows**: a tick is an
+ * unsaved edit until Save (client, 2026-10-07 — *"the auto-save functionality should be
+ * removed"*). It used to fire `PUT /cards/:id/fields` per tick.
  *
- * ⚠ That last property is the one worth a test: if anybody ever makes the preview wait on
- * `PUT /cards/:id/fields`, the tick starts lagging the network and this fails. It is asserted
- * with **no network wait at all** — tick, then read the preview — so a regression to
- * await-then-render cannot pass.
+ * ⚠ Both halves are asserted. If anybody ever makes the preview wait on the network the tick
+ * starts lagging and the render assertion fails — it is made with **no network wait at all** —
+ * and if anybody brings the per-tick write back, the request log below is no longer empty.
  */
 test("ticking a field renders it on the card immediately, and unticking removes it", async ({
   page,
@@ -2179,6 +2179,13 @@ test("ticking a field renders it on the card immediately, and unticking removes 
   const onCard = page.locator(`[data-builder-preview] [data-card-field="${fieldId}"]`);
   const startCount = await onCard.count();
 
+  const writes: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() !== "GET" && /\/cards\//.test(request.url())) {
+      writes.push(`${request.method()} ${new URL(request.url()).pathname}`);
+    }
+  });
+
   await page.locator(`[data-field-tick="${fieldId}"]`).click();
 
   /* No `waitForResponse`, deliberately — see the ⚠ above. */
@@ -2187,6 +2194,10 @@ test("ticking a field renders it on the card immediately, and unticking removes 
 
   await page.locator(`[data-field-tick="${fieldId}"]`).click();
   await expect(onCard, `"${label}" stayed on the card after unticking`).toHaveCount(startCount);
+
+  /* Nothing was written by either tick — Save is the only thing that writes. */
+  await page.waitForTimeout(1500);
+  expect(writes).toEqual([]);
 });
 
 /**

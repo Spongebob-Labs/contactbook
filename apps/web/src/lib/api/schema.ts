@@ -719,6 +719,14 @@ export interface NotifyResultDto {
   status: "ENQUEUED";
 }
 
+/**
+ * `GET /cards/{id}/google-wallet-pass`. Google's own "Save to Google Wallet" link — the browser
+ * navigates to it. The JWT in its path names the pass by ID only and carries no card data.
+ */
+export interface GoogleWalletSaveUrlResponseDto {
+  url: string;
+}
+
 export interface CardFieldEntryDto {
   /** Must be one of your own non-archived, non-`PHOTO` profile fields. */
   fieldId: string;

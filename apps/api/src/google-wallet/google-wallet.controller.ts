@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, Header, Param, Req, UseGuards } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiCookieAuth,
@@ -10,6 +10,7 @@ import type { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ApiErrorResponseDto } from '../common/errors/api-error-response.dto';
 import { GoogleWalletService } from './google-wallet.service';
+import { GoogleWalletSaveUrlResponseDto } from './dto/google-wallet-save-url-response.dto';
 
 @ApiTags('wallet')
 @ApiBearerAuth('access-token')
@@ -20,24 +21,22 @@ export class GoogleWalletController {
   constructor(private readonly googleWallet: GoogleWalletService) {}
 
   @Get(':id/google-wallet-pass')
+  @Header('Cache-Control', 'no-store')
   @ApiOperation({
-    summary: 'Get a Save to Google Wallet URL for a card',
+    summary: 'Get a Save to Google Wallet link for a card',
     description:
-      'Creates or updates the pass object in Google Wallet and returns a signed Save URL. ' +
-      'The caller must own the card. Returns 409 if Google Wallet is not configured on this server.',
+      "Creates or refreshes the card's pass in Google Wallet from the card's current " +
+      'data, then returns a signed "Save to Google Wallet" link for the client to ' +
+      "navigate to. The pass carries the owner's name, the card name, the headline and " +
+      "a QR code of the card's live public URL — no field values and no phone numbers. " +
+      'Later edits and archives reach saved passes on their own. Returns 404 if the ' +
+      'card does not belong to the caller or is archived; 409 if Google Wallet is not ' +
+      'configured on this server.',
   })
   @ApiResponse({
     status: 200,
-    description: 'Signed Save to Google Wallet URL.',
-    schema: {
-      properties: {
-        url: {
-          type: 'string',
-          example:
-            'https://pay.google.com/gp/v/save/eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...',
-        },
-      },
-    },
+    description: 'The link to send the browser to.',
+    type: GoogleWalletSaveUrlResponseDto,
   })
   @ApiResponse({
     status: 401,
@@ -59,7 +58,7 @@ export class GoogleWalletController {
   async getSaveUrl(
     @Req() req: Request,
     @Param('id') cardId: string,
-  ): Promise<{ url: string }> {
+  ): Promise<GoogleWalletSaveUrlResponseDto> {
     const url = await this.googleWallet.getSaveUrl(req.user!.id, cardId);
     return { url };
   }

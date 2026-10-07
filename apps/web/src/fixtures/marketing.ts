@@ -166,7 +166,7 @@ export const hero = {
   primary: { href: "/signin/phone", label: "Get Started" },
   secondary: { href: "#how-it-works", label: "How it works" },
   /* ⚠ NOT RENDERED SINCE 2026-09-19, AND DELIBERATELY KEPT ANYWAY.
-     `proof[2]` ("Nothing to install" / "They tap a link. It opens in their browser.") now makes
+     `proof[3]` ("Nothing to install" / "They tap a link. It opens in their browser.") now makes
      this exact claim, with an icon and a heading, a few rows below where this used to sit — the
      page was saying the same sentence twice on one screen. The row is what a reader actually
      stops on, so the row won.
@@ -206,15 +206,17 @@ export const hero = {
       title: "Protect Your Privacy",
       body: "Each card shows only what you put on it.",
     },
-    {
-      icon: "Link2",
-      title: "Nothing to install",
-      body: "They tap a link. It opens in their browser.",
-    },
+    /* 2026-10-07, the client: "Multiple Cards" third, "Nothing to install" last. Each claim
+       moved whole — icon, title and caption together. */
     {
       icon: "Undo2",
       title: "Multiple Cards",
       body: "Revoke a card and it stops resolving.",
+    },
+    {
+      icon: "Link2",
+      title: "Nothing to install",
+      body: "They tap a link. It opens in their browser.",
     },
   ],
 } as const satisfies HeroCopy;

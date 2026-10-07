@@ -25,7 +25,8 @@ test.beforeEach(async ({ context, baseURL }) => {
  * 2. **Click-to-edit** — the row itself opens the editor; Enter saves, Escape cancels.
  * 3. **Blank suggested fields** are client-side rows; the first non-empty save creates the
  *    field (`POST /profile/fields`) and puts it on the selected card.
- * 4. **The card tick** changes the preview at once and writes the card's whole set.
+ * 4. **The card tick** changes the preview at once and sends nothing: card edits wait for
+ *    **Save changes** (client, 2026-10-07), which then writes the card's whole set.
  * 5. **A new card carries every filled field.**
  * 6. **E-41** — deleting a field states how many cards use it, first (group editor).
  *
@@ -103,6 +104,48 @@ function waitForWrite(page: Page, method: string, path: RegExp): Promise<Request
     (request) => request.method() === method && path.test(new URL(request.url()).pathname),
   );
 }
+
+/**
+ * Every request that could WRITE a card or the profile, from now on — `GET`s are not writes.
+ *
+ * The load-bearing assertion about **Save changes** is an absence ("nothing was sent"), so it has
+ * to read what the browser actually put on the wire rather than trust a screen. The returned
+ * array is live: it keeps filling as the page makes requests.
+ */
+function recordWrites(page: Page): string[] {
+  const writes: string[] = [];
+  page.on("request", (request) => {
+    const method = request.method();
+    if (method === "GET" || method === "HEAD" || method === "OPTIONS") return;
+    /* The browser talks to the same-origin proxy (`/api/cb/…`); the path that matters is what
+       follows it. */
+    const pathname = new URL(request.url()).pathname.replace(/^\/api\/(cb|v1)/, "");
+    if (/^\/(cards|profile)(\/|$)/.test(pathname)) writes.push(`${method} ${pathname}`);
+  });
+  return writes;
+}
+
+/**
+ * **Save changes** — the button a person would press. There is one: it lives in the action bar
+ * at the foot of the editor column (`[data-save-bar]`) at every width, and only while there is
+ * something to save, a save under way, or a failed save to retry.
+ */
+function saveChanges(page: Page): Locator {
+  return page.locator("[data-save-changes-button]:visible").last();
+}
+
+/** The quiet **Discard** beside it. */
+function discardChanges(page: Page): Locator {
+  return page.locator("[data-save-changes-discard]:visible").last();
+}
+
+/** The tick for a field on the selected card. */
+function tick(page: Page, fieldId: string): Locator {
+  return page.locator(`[data-workspace-row-toggle="${fieldId}"]`);
+}
+
+/** Give the page time to send something it should not — the absence has to be waited for. */
+const QUIET_MS = 1500;
 
 /* ── the `?state=` matrix on both routes (AC-24, E-34) ──────────────────────────────── */
 
@@ -441,8 +484,8 @@ test.describe("the workspace editor", () => {
     await blank.getByRole("button", { name: "Add business name" }).click();
     await blank.locator("[data-workspace-row-input]").fill("Fernwood Studio Pvt Ltd");
 
+    const writes = recordWrites(page);
     const created = waitForWrite(page, "POST", /\/profile\/fields$/);
-    const carded = waitForWrite(page, "PUT", new RegExp(`/cards/${FIRST_CARD}/fields$`));
     await page.keyboard.press("Enter");
 
     expect(bodyOf(await created)).toMatchObject({
@@ -452,8 +495,17 @@ test.describe("the workspace editor", () => {
       value: "Fernwood Studio Pvt Ltd",
       groupId: "group_business",
     });
-    /* The stub answers the create with the id `field_created_stub`; the card's whole set goes
-       out with it added. */
+
+    /* The field exists in the profile now, and is on this card's DRAFT: the card is unsaved, and
+       nothing has been written to it yet. */
+    await expect(saveChanges(page)).toBeVisible();
+    await page.waitForTimeout(QUIET_MS);
+    expect(writes.filter((write) => write.startsWith("PUT"))).toEqual([]);
+
+    /* The stub answers the create with the id `field_created_stub`; Save changes sends the
+       card's whole set with it added. */
+    const carded = waitForWrite(page, "PUT", new RegExp(`/cards/${FIRST_CARD}/fields$`));
+    await saveChanges(page).click();
     const fields = (bodyOf(await carded).fields as { fieldId: string }[]).map((f) => f.fieldId);
     expect(fields).toContain("field_created_stub");
   });
@@ -601,40 +653,56 @@ test.describe("Design and Share open beside the card", () => {
     await expect(page.locator("[data-send-to-phone]")).toBeVisible();
   });
 
-  test("a look lands on the preview at once and saves itself", async ({ page }) => {
+  test("a look lands on the preview at once and is sent only by Save changes", async ({ page }) => {
     await gotoProfile(page, "?panel=design");
     const summary = page.locator("[data-builder-preview-summary]");
     await expect(summary).not.toContainText("Emerald");
+    await expect(saveChanges(page)).toHaveCount(0);
+    const writes = recordWrites(page);
 
-    const patched = waitForWrite(page, "PATCH", new RegExp(`/cards/${FIRST_CARD}$`));
     await page.locator('[data-look-option="emerald-gradient"]').click();
 
-    // Same frame as the tap — not after the write.
+    // Same frame as the tap — and the card is now unsaved.
     await expect(summary).toContainText("Emerald");
-    const body = bodyOf(await patched);
-    expect(body.paletteId).toBe("emerald");
-    expect(body.finish).toBe("gradient");
-    /* PATCH takes only `null` for the cover; a design write must never carry it. */
-    expect(body).not.toHaveProperty("coverUrl");
-    await expect(page.locator('[data-workspace-sync="saved"]')).toBeVisible();
+    await expect(saveChanges(page)).toBeVisible();
+    await page.waitForTimeout(QUIET_MS);
+    expect(writes).toEqual([]);
 
-    /* The edit survives a trip to another panel and back. */
+    /* The edit survives a trip to another panel and back, still unsaved. */
     await page.locator('[data-workspace-tab="fields"]').click();
     await page.locator('[data-workspace-tab="design"]').click();
     await expect(page.locator("[data-look-picker]")).toHaveAttribute(
       "data-selected-look",
       "emerald-gradient",
     );
+    await expect(saveChanges(page)).toBeVisible();
+    expect(writes).toEqual([]);
+
+    const patched = waitForWrite(page, "PATCH", new RegExp(`/cards/${FIRST_CARD}$`));
+    await saveChanges(page).click();
+    const body = bodyOf(await patched);
+    expect(body.paletteId).toBe("emerald");
+    expect(body.finish).toBe("gradient");
+    /* PATCH takes only `null` for the cover; a design write must never carry it. */
+    expect(body).not.toHaveProperty("coverUrl");
+    await expect(saveChanges(page)).toHaveCount(0);
+    await expect(page.locator('[data-save-changes-state="saved"]:visible')).toBeVisible();
+    expect(writes.filter((write) => write.startsWith("PUT"))).toEqual([]);
   });
 
-  test("renaming the card in Design renames its switcher pill and saves the name", async ({
+  test("renaming the card in Design renames its switcher pill, and Save changes saves the name", async ({
     page,
   }) => {
     await gotoProfile(page, "?panel=design");
     const name = page.locator("[data-builder-name]");
-    const patched = waitForWrite(page, "PATCH", new RegExp(`/cards/${FIRST_CARD}$`));
+    const writes = recordWrites(page);
     await name.fill("Partnerships");
     await expect(page.locator(`[data-card-switch="${FIRST_CARD}"]`)).toContainText("Partnerships");
+    await page.waitForTimeout(QUIET_MS);
+    expect(writes).toEqual([]);
+
+    const patched = waitForWrite(page, "PATCH", new RegExp(`/cards/${FIRST_CARD}$`));
+    await saveChanges(page).click();
     expect(bodyOf(await patched).name).toBe("Partnerships");
   });
 
@@ -662,15 +730,15 @@ test.describe("Design and Share open beside the card", () => {
     await expect(page.locator("[data-headline-input], [data-bio-input]")).toHaveCount(0);
   });
 
-  test("a position typed in Fields replaces the job title on the card and saves to it", async ({
+  test("a position typed in Fields replaces the job title on the card, and Save changes saves it", async ({
     page,
   }) => {
     await gotoProfile(page);
     const fold = page.locator("[data-workspace-preview-fold]");
     const preview = page.locator("[data-builder-preview]");
+    const writes = recordWrites(page);
 
     await page.locator('[data-card-intro-open="headline"]').click();
-    const patched = waitForWrite(page, "PATCH", new RegExp(`/cards/${FIRST_CARD}$`));
     await page.locator('[data-card-intro-input="headline"]').fill("Founder & CEO");
     await page.keyboard.press("Enter");
 
@@ -679,6 +747,12 @@ test.describe("Design and Share open beside the card", () => {
     await expect(page.locator('[data-card-intro-row="headline"] [data-card-intro-value]')).toHaveText(
       "Founder & CEO",
     );
+    await expect(saveChanges(page)).toBeVisible();
+    await page.waitForTimeout(QUIET_MS);
+    expect(writes).toEqual([]);
+
+    const patched = waitForWrite(page, "PATCH", new RegExp(`/cards/${FIRST_CARD}$`));
+    await saveChanges(page).click();
     const body = bodyOf(await patched);
     expect(body.headline).toBe("Founder & CEO");
     expect(body).not.toHaveProperty("coverUrl");
@@ -714,27 +788,34 @@ test.describe("Design and Share open beside the card", () => {
 /* ── the card switcher, the tick and the preview ──────────────────────────────────── */
 
 test.describe("the card beside the fields", () => {
-  test("ticking a field shows it on the preview at once and writes the card's whole set", async ({
+  test("ticking a field shows it on the preview at once; Save changes writes the card's whole set", async ({
     page,
   }) => {
     await gotoProfile(page);
     const preview = page.locator("[data-builder-preview]");
-    await expect(page.locator(`[data-workspace-row-toggle="${PHONE_FIELD}"]`)).toBeVisible();
+    await expect(tick(page, PHONE_FIELD)).toBeVisible();
     await expect(preview.locator(`[data-card-field="${PHONE_FIELD}"]`)).toHaveCount(0);
+    await expect(saveChanges(page)).toHaveCount(0);
 
     const before = await page
       .locator("[data-workspace-row-toggle][data-state=checked]")
       .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-workspace-row-toggle")));
 
-    const put = waitForWrite(page, "PUT", new RegExp(`/cards/${FIRST_CARD}/fields$`));
-    await page.locator(`[data-workspace-row-toggle="${PHONE_FIELD}"]`).click();
+    const writes = recordWrites(page);
+    await tick(page, PHONE_FIELD).click();
 
-    // Same frame as the tick — not after the write.
+    // Same frame as the tick — not after a write, because there is none.
     await expect(preview.locator(`[data-card-field="${PHONE_FIELD}"]`)).toHaveCount(1);
+    await expect(saveChanges(page)).toBeVisible();
+    await page.waitForTimeout(QUIET_MS);
+    expect(writes).toEqual([]);
 
+    const put = waitForWrite(page, "PUT", new RegExp(`/cards/${FIRST_CARD}/fields$`));
+    await saveChanges(page).click();
     const sent = (bodyOf(await put).fields as { fieldId: string }[]).map((f) => f.fieldId);
     expect(sent.sort()).toEqual([...before, PHONE_FIELD].sort());
-    await expect(page.locator('[data-workspace-sync="saved"]')).toBeVisible();
+    await expect(saveChanges(page)).toHaveCount(0);
+    await expect(page.locator('[data-save-changes-state="saved"]:visible')).toBeVisible();
   });
 
   test("the selected card lives in ?card= and survives a reload", async ({ page }) => {
@@ -781,6 +862,279 @@ test.describe("the card beside the fields", () => {
     const pill = page.locator('[data-card-switch]:has-text("Weekend")');
     await expect(pill).toHaveAttribute("aria-checked", "true");
     await expect(page).toHaveURL(/[?&]card=card_stateful_/);
+  });
+});
+
+/* ── Save changes (client, 2026-10-07) ───────────────────────────────────────────────── */
+
+/**
+ * **Card edits are not saved as they are made.** *"Whenever the user is adding or removing a
+ * field on the card, that button should pop up, and the auto-save functionality should be
+ * removed."*
+ *
+ * Each test signs in with its own `e2e-state-*` sub, because the load-bearing assertions are
+ * round trips — "Save, reload, it is still there" — and the stateless stub discards writes.
+ *
+ * ⚠ What a pass proves: the client sends nothing until the button is pressed, sends the right
+ * request when it is, and re-reads from the server rather than trusting its own draft. It does
+ * not prove the server.
+ */
+test.describe("Save changes — the card is only written when the owner says so", () => {
+  test("adding then removing a field leaves nothing to save, and nothing is sent", async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await signIn(context, baseURL!, { sub: statefulSub("save-undo") });
+    await gotoProfile(page);
+    const preview = page.locator("[data-builder-preview]");
+    const writes = recordWrites(page);
+    await expect(saveChanges(page)).toHaveCount(0);
+
+    await tick(page, PHONE_FIELD).click();
+    await expect(saveChanges(page)).toBeVisible();
+    await expect(preview.locator(`[data-card-field="${PHONE_FIELD}"]`)).toHaveCount(1);
+
+    await tick(page, PHONE_FIELD).click();
+    await expect(saveChanges(page)).toHaveCount(0);
+    await expect(preview.locator(`[data-card-field="${PHONE_FIELD}"]`)).toHaveCount(0);
+
+    await page.waitForTimeout(QUIET_MS);
+    expect(writes).toEqual([]);
+  });
+
+  test("Save changes persists the card: it is still there after a reload, and the button is gone", async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await signIn(context, baseURL!, { sub: statefulSub("save-persist") });
+    await gotoProfile(page);
+    const writes = recordWrites(page);
+
+    await tick(page, PHONE_FIELD).click();
+    await saveChanges(page).click();
+    await expect(saveChanges(page)).toHaveCount(0);
+    await expect(page.locator('[data-save-changes-state="saved"]:visible')).toBeVisible();
+    await expect(page.locator("[data-save-announcer]")).toHaveText(/Changes saved\./);
+    /* Exactly the one write. A second Save, a retry or a stray PATCH would show here. */
+    expect(writes).toEqual([`PUT /cards/${FIRST_CARD}/fields`]);
+
+    await page.reload();
+    await expect(page.locator("[data-screen-state]")).toHaveCount(1);
+    await expect(tick(page, PHONE_FIELD)).toHaveAttribute("data-state", "checked");
+    await expect(
+      page.locator(`[data-builder-preview] [data-card-field="${PHONE_FIELD}"]`),
+    ).toHaveCount(1);
+    await expect(saveChanges(page)).toHaveCount(0);
+  });
+
+  test("a look and a position are saved together with the fields, as one PATCH and one PUT", async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await signIn(context, baseURL!, { sub: statefulSub("save-all") });
+    await gotoProfile(page);
+    const writes = recordWrites(page);
+
+    await tick(page, PHONE_FIELD).click();
+    await page.locator('[data-card-intro-open="headline"]').click();
+    await page.locator('[data-card-intro-input="headline"]').fill("Head of Partnerships");
+    await page.keyboard.press("Enter");
+    await page.locator('[data-workspace-tab="design"]').click();
+    await page.locator('[data-look-option="emerald-gradient"]').click();
+    await page.waitForTimeout(QUIET_MS);
+    expect(writes).toEqual([]);
+
+    await saveChanges(page).click();
+    await expect(saveChanges(page)).toHaveCount(0);
+    expect(writes.sort()).toEqual(
+      [`PATCH /cards/${FIRST_CARD}`, `PUT /cards/${FIRST_CARD}/fields`].sort(),
+    );
+
+    await page.reload();
+    await expect(page.locator("[data-screen-state]")).toHaveCount(1);
+    await expect(page.locator("[data-builder-preview-summary]")).toContainText("Emerald");
+    await expect(page.locator("[data-builder-preview]")).toContainText("Head of Partnerships");
+    await expect(page.locator(`[data-builder-preview] [data-card-field="${PHONE_FIELD}"]`)).toHaveCount(1);
+    await expect(saveChanges(page)).toHaveCount(0);
+  });
+
+  test("Discard puts the card back and sends nothing", async ({ page, context, baseURL }) => {
+    await signIn(context, baseURL!, { sub: statefulSub("save-discard") });
+    await gotoProfile(page);
+    const writes = recordWrites(page);
+
+    await tick(page, PHONE_FIELD).click();
+    await expect(
+      page.locator(`[data-builder-preview] [data-card-field="${PHONE_FIELD}"]`),
+    ).toHaveCount(1);
+    await discardChanges(page).click();
+
+    await expect(saveChanges(page)).toHaveCount(0);
+    await expect(tick(page, PHONE_FIELD)).toHaveAttribute("data-state", "unchecked");
+    await expect(
+      page.locator(`[data-builder-preview] [data-card-field="${PHONE_FIELD}"]`),
+    ).toHaveCount(0);
+    expect(writes).toEqual([]);
+  });
+
+  test("switching between Fields, Design and Share keeps the draft and saves nothing", async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await signIn(context, baseURL!, { sub: statefulSub("save-tabs") });
+    await gotoProfile(page);
+    const writes = recordWrites(page);
+
+    await tick(page, PHONE_FIELD).click();
+    for (const panel of ["design", "share", "fields"]) {
+      await page.locator(`[data-workspace-tab="${panel}"]`).click();
+      await expect(page.locator(`[data-workspace-panel="${panel}"]`)).toBeVisible();
+      await expect(saveChanges(page)).toBeVisible();
+    }
+    await expect(tick(page, PHONE_FIELD)).toHaveAttribute("data-state", "checked");
+    await page.waitForTimeout(QUIET_MS);
+    expect(writes).toEqual([]);
+  });
+
+  test("a failed save keeps the draft, says why with the reference, and can be retried", async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await signIn(context, baseURL!, { sub: statefulSub("save-error") });
+    await gotoProfile(page);
+
+    let refuse = true;
+    await page.route(new RegExp(`/cards/${FIRST_CARD}/fields$`), (route) => {
+      if (!refuse || route.request().method() !== "PUT") return route.fallback();
+      return route.fulfill({
+        status: 409,
+        contentType: "application/json",
+        body: JSON.stringify({
+          statusCode: 409,
+          code: "DUPLICATE_FIELD_IN_CARD",
+          message: "duplicate",
+          requestId: "req-e2e-save-1",
+        }),
+      });
+    });
+
+    await tick(page, PHONE_FIELD).click();
+    await saveChanges(page).click();
+
+    const error = page.locator("[data-save-changes-error]:visible");
+    await expect(error).toContainText("That field is already on this card");
+    await expect(error).toContainText("req-e2e-save-1");
+    await expect(page.locator("[data-save-announcer]")).toHaveText(/Changes not saved\./);
+    /* The draft is intact and the button is still there to try again. */
+    await expect(saveChanges(page)).toBeVisible();
+    await expect(
+      page.locator(`[data-builder-preview] [data-card-field="${PHONE_FIELD}"]`),
+    ).toHaveCount(1);
+
+    refuse = false;
+    await saveChanges(page).click();
+    await expect(saveChanges(page)).toHaveCount(0);
+    await page.reload();
+    await expect(page.locator("[data-screen-state]")).toHaveCount(1);
+    await expect(tick(page, PHONE_FIELD)).toHaveAttribute("data-state", "checked");
+  });
+
+  test("Send update waits, with its reason, until the card is saved", async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await signIn(context, baseURL!, { sub: statefulSub("save-send-update") });
+    await gotoProfile(page);
+    const send = page.locator("[data-send-update]:visible");
+    await expect(send).toBeVisible();
+    await expect(send).not.toHaveAttribute("data-send-update-state", "blocked");
+
+    await tick(page, PHONE_FIELD).click();
+    await expect(send).toHaveAttribute("data-send-update-state", "blocked");
+    await expect(send).toHaveAttribute("aria-disabled", "true");
+    await expect(send).toHaveAttribute("title", /Save your changes first/);
+
+    await saveChanges(page).click();
+    await expect(saveChanges(page)).toHaveCount(0);
+    await expect(send).not.toHaveAttribute("data-send-update-state", "blocked");
+  });
+
+  test("leaving is warned about only while there are unsaved changes", async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await signIn(context, baseURL!, { sub: statefulSub("save-leave") });
+    await gotoProfile(page);
+
+    /* The browser's own "leave site?" prompt is a `beforeunload` that calls preventDefault. */
+    const wouldWarn = () =>
+      page.evaluate(() => {
+        const event = new Event("beforeunload", { cancelable: true });
+        window.dispatchEvent(event);
+        return event.defaultPrevented;
+      });
+    expect(await wouldWarn()).toBe(false);
+
+    await tick(page, PHONE_FIELD).click();
+    await expect(saveChanges(page)).toBeVisible();
+    expect(await wouldWarn()).toBe(true);
+
+    /* Following a link inside the app asks first; Cancel keeps the owner here, with the draft. */
+    const asked: string[] = [];
+    page.once("dialog", (dialog) => {
+      asked.push(dialog.type());
+      void dialog.dismiss();
+    });
+    await page.locator('a[href="/dashboard"]:visible').first().click();
+    await expect.poll(() => asked).toEqual(["confirm"]);
+    await expect(page).toHaveURL(/\/profile/);
+    await expect(saveChanges(page)).toBeVisible();
+
+    /* Saved, nothing is in the way. */
+    await saveChanges(page).click();
+    await expect(saveChanges(page)).toHaveCount(0);
+    expect(await wouldWarn()).toBe(false);
+    await page.locator('a[href="/dashboard"]:visible').first().click();
+    await expect(page).toHaveURL(/\/dashboard/);
+    expect(asked).toEqual(["confirm"]);
+  });
+
+  test("switching to another card with unsaved changes asks first, and Stay keeps them", async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await signIn(context, baseURL!, { sub: statefulSub("save-switch") });
+    await gotoProfile(page);
+    const writes = recordWrites(page);
+
+    await tick(page, PHONE_FIELD).click();
+    await page.locator('[data-card-switch="card_forest_demo"]').click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toContainText("Unsaved changes");
+    await dialog.getByRole("button", { name: "Stay" }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.locator(`[data-card-switch="${FIRST_CARD}"]`)).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    await expect(saveChanges(page)).toBeVisible();
+    expect(writes).toEqual([]);
+
+    await page.locator('[data-card-switch="card_forest_demo"]').click();
+    await page.getByRole("dialog").getByRole("button", { name: "Save and switch" }).click();
+    await expect(page.locator('[data-card-switch="card_forest_demo"]')).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(writes).toEqual([`PUT /cards/${FIRST_CARD}/fields`]);
   });
 });
 

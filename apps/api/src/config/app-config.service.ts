@@ -176,4 +176,26 @@ export class AppConfigService {
       authSecret: this.env.WALLET_AUTH_SECRET!,
     };
   }
+
+  /**
+   * Google Wallet config. `undefined` when no GOOGLE_WALLET_* var is set
+   * (feature off). When set, the all-or-none superRefine in env.schema.ts
+   * guarantees all four are present, so the non-null assertions are safe.
+   */
+  get googleWallet():
+    | {
+        issuerId: string;
+        serviceAccountEmail: string;
+        serviceAccountKeyB64: string;
+        classSuffix: string;
+      }
+    | undefined {
+    if (!this.env.GOOGLE_WALLET_ISSUER_ID) return undefined;
+    return {
+      issuerId: this.env.GOOGLE_WALLET_ISSUER_ID,
+      serviceAccountEmail: this.env.GOOGLE_WALLET_SERVICE_ACCOUNT_EMAIL!,
+      serviceAccountKeyB64: this.env.GOOGLE_WALLET_SERVICE_ACCOUNT_KEY_B64!,
+      classSuffix: this.env.GOOGLE_WALLET_CLASS_SUFFIX!,
+    };
+  }
 }

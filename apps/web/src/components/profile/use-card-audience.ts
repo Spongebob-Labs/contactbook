@@ -5,8 +5,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { cards as cardsApi } from "@/lib/api/browser";
 import { toNotifyTargets, type NotifyTarget } from "@/components/share/notify-recipients";
 
-import type { CardSyncStatus } from "./use-card-field-sync";
-
 /**
  * Who holds the selected card, and who has not been told it changed.
  *
@@ -22,11 +20,11 @@ import type { CardSyncStatus } from "./use-card-field-sync";
  * ## When it re-reads
  *
  * · when the card changes (a different card has a different audience);
- * · whenever the profile is re-read (`profileData` is a fresh object after every write, which is
- *   exactly when a field edit has just landed — see `Workspace`'s `mutate`);
- * · when the card's field selection finishes saving (`syncStatus` reaching `saved`) — that is
- *   `PUT /cards/{id}/fields`, the other thing that moves the version. While it is `pending` or
- *   `saving` the write has not landed, so a read now would report the old version.
+ * · whenever the profile is re-read (`profileData` is a fresh object after every re-read). The
+ *   workspace re-reads after every write that can move the card's version — a profile field edit
+ *   (see `Workspace`'s `mutate`) and **Save changes**, which is the only thing that sends
+ *   `PUT /cards/{id}/fields`. A read made before such a write has landed would report the old
+ *   version, which is why it follows the re-read rather than the edit.
  *
  * ## `nudge`
  *
@@ -57,11 +55,7 @@ export function totalBehind(targets: readonly NotifyTarget[]): number {
   return targets.reduce((sum, target) => sum + Math.max(0, target.versionsBehind ?? 0), 0);
 }
 
-export function useCardAudience(
-  cardId: string | null,
-  profileData: unknown,
-  syncStatus: CardSyncStatus,
-): CardAudience {
+export function useCardAudience(cardId: string | null, profileData: unknown): CardAudience {
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [nudge, setNudge] = useState(0);
   const [tick, setTick] = useState(0);
@@ -73,9 +67,6 @@ export function useCardAudience(
 
   useEffect(() => {
     if (cardId === null) return;
-    /* A write that is still in flight has not changed the version yet. The status reaching
-       `saved` re-runs this effect, which is the read that matters. */
-    if (syncStatus === "pending" || syncStatus === "saving") return;
 
     const ticket = ++runId.current;
     void (async () => {
@@ -96,7 +87,7 @@ export function useCardAudience(
            stays as it was (or absent), and the Share panel's own list is the fallback. */
       }
     })();
-  }, [cardId, profileData, syncStatus, tick]);
+  }, [cardId, profileData, tick]);
 
   const reload = useCallback(() => setTick((count) => count + 1), []);
 

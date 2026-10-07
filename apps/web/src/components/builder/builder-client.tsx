@@ -32,6 +32,7 @@ import { toScreenError } from "@/lib/api/errors";
 import { toAppearanceDto } from "@/lib/api/card-appearance";
 import { toCardFieldEntries, toApiCardKind } from "@/lib/api/map";
 import { useApiResource } from "@/lib/use-api";
+import { useUnsavedChangesGuard } from "@/lib/use-unsaved-changes-guard";
 import type {
   ContactCard,
   FieldGroup,
@@ -417,23 +418,13 @@ function Builder({
   );
 
   /**
-   * Create a profile field and put it on this card, in one submit.
+   * Create a profile field and tick it onto this card, in one submit.
    *
-   * ## Two calls, and the order is not arbitrary
-   * 1. `POST /profile/fields` — the field has to exist in the profile first, because a card holds
-   *    *references*. §5.3: a card is a filter over the profile, never a copy, so there is no such
-   *    thing as a field that lives only on a card.
-   * 2. `PUT /cards/{id}/fields` — the full set plus the new id. A replace, so everything already
-   *    ticked goes with it.
-   *
-   * ⚠ If the second call fails the field still exists in the profile, unattached. That is not
-   * rolled back deliberately: there is no transaction across two endpoints, and deleting a field
-   * the owner just authored to tidy up a partial failure is the more destructive answer. It shows
-   * up in the picker on the next read, ready to tick.
-   *
-   * On `/cards/new` there is no id to attach to yet, so only step 1 runs and the reducer holds the
-   * tick until **Create card** does the pair. `createAndAddField` still reports success, because
-   * from the owner's side the field *was* created and *is* on the card.
+   * `POST /profile/fields` runs now — the field has to exist in the profile first, because a card
+   * holds *references* (§5.3: a card is a filter over the profile, never a copy). The tick is the
+   * reducer's and waits for **Save** like every other tick (client, 2026-10-07: card edits are no
+   * longer saved as they are made), so the header shows the card as unsaved until it is pressed.
+   * On `/cards/new` that Save is **Create card**.
    */
   async function createAndAddField(draft: FieldDraft): Promise<CreatedField | null> {
     setCreatingField(true);
@@ -451,12 +442,6 @@ function Builder({
       });
 
       dispatch({ kind: "field", fieldId: created.id, on: true });
-
-      if (state.cardId !== null) {
-        await cardsApi.setFields(state.cardId, {
-          fields: toCardFieldEntries([...state.fieldIds, created.id]),
-        });
-      }
 
       toast({ title: `Added ${created.label}` });
       /* ⚠ `reload`, not `router.refresh()`. See the prop's own note: this screen's profile is a
@@ -682,39 +667,16 @@ function Builder({
   }
 
   /**
-   * Tick or untick one field — **and persist it immediately.**
-   *
-   * ⚠ `PUT /cards/{id}/fields` **replaces** the whole curated set, so what goes out is the complete
-   * list after the change, not the one field that moved. Sending only the delta would silently
-   * strip everything else off the card.
-   *
-   * The next state is computed by running the reducer *before* dispatching, because `state` here is
-   * the render-time value and would still be the old one. That is also what makes the request
-   * correct on a rapid double-tick: each call sends a full set derived from the state it saw.
-   *
-   * On `/cards/new` there is no card to write to yet — `state.cardId` is `null` — so the change
-   * stays local until **Create card** does the `POST` + `PUT` pair. That is not a gap: there is no
-   * id to address until the card exists.
+   * Tick or untick one field. Local only: the reducer marks the card unsaved and **Save** sends
+   * the whole set with `PUT /cards/{id}/fields` (client, 2026-10-07: no card edit is saved until
+   * the owner saves it). It used to write each tick the moment it was made.
    */
   function toggleField(fieldId: string, on: boolean) {
-    const next = builderReducer(state, { kind: "field", fieldId, on });
     dispatch({ kind: "field", fieldId, on });
-
-    const cardId = state.cardId;
-    if (cardId === null) return;
-
-    startSaving(async () => {
-      try {
-        await cardsApi.setFields(cardId, { fields: toCardFieldEntries(next.fieldIds) });
-      } catch (thrown) {
-        const shown = toScreenError(thrown);
-        toast({ title: shown.title, description: shown.detail, tone: "danger" });
-        // Put the tick back where the server says it is, rather than leaving the UI claiming a
-        // change that did not land.
-        dispatch({ kind: "field", fieldId, on: !on });
-      }
-    });
   }
+
+  /* Ticks, values and the design are all unsaved until Save; leaving asks first. */
+  useUnsavedChangesGuard(state.dirty);
 
   /**
    * Save.
