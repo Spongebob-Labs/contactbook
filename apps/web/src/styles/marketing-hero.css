@@ -492,6 +492,11 @@
     letter-spacing: -0.041em;
   }
 
+  /* No role line (the CV card): the bio takes the middle of the gap the role leaves. */
+  .mk-hc__bio[data-rolesless] {
+    top: 346px;
+  }
+
   /* One line per span. Block, not flex: `text-box-trim` applies to block
      containers only, and a flex column silently drops the trim — which set
      both blocks 3px low against the reference before it was caught. */

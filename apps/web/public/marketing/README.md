@@ -39,3 +39,10 @@ card's photograph); giving the badge a portrait instead is a change to
 `public/portraits/*.png` are green silhouette placeholders and
 `public/templates/*.png` are blurred dark abstracts. Neither is a usable
 portrait, and both predate the warm palette.
+
+## Photographs from elsewhere
+
+- `family-portrait-2x.webp` / `-3x.webp` — the Solution deck's Family card cover. Cropped from
+  "Portrait Photo of Woman" by Vlada Karpovich, Pexels
+  (https://www.pexels.com/photo/portrait-photo-of-woman-4668513/), Pexels licence: free for
+  commercial use, no attribution required. 652×524 and 978×786, the same sizes as the hero portrait.

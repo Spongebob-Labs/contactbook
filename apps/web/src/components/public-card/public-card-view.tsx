@@ -11,7 +11,6 @@ import { resolveCard } from "@/card/resolve-card";
 import { ErrorPanel } from "@/components/data/error-panel";
 import { LoadingSkeleton } from "@/components/data/loading-skeleton";
 import { ScreenStateRoot, resolveDataScreenState } from "@/components/data/screen-state-root";
-import { useSaveToContacts } from "@/components/public-card/save-to-contacts-button";
 import { hasWhatsAppAction } from "@/components/public-card/whatsapp-button";
 import { useFixture } from "@/lib/fixture-gateway";
 import type { ContactCard } from "@/types/domain";
@@ -121,7 +120,6 @@ export function PublicCardView({ card }: PublicCardViewProps) {
   // The whole database, not a slice: `FIXTURE_DB` and `EMPTY_FIXTURE_DB` are module
   // constants, so `data` is referentially stable and the memo below actually memoises.
   const { state, data, error } = useFixture((db) => db);
-  const { savePending, onSaveToContacts } = useSaveToContacts();
 
   const resolved = useMemo(
     () => (data === null ? null : resolveCard(card, data.user, data.groups, data.fields)),
@@ -209,11 +207,7 @@ export function PublicCardView({ card }: PublicCardViewProps) {
             <CardPage
               resolved={resolved}
               actions={
-                <PublicCardActions
-                  resolved={resolved}
-                  onSaveToContacts={onSaveToContacts}
-                  savePending={savePending}
-                />
+                <PublicCardActions />
               }
             />
 

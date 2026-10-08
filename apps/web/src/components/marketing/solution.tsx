@@ -215,7 +215,7 @@ function DeckCard({ card, index }: { card: (typeof solution.cards)[number]; inde
         >
           <BrandCard
             layout="flow"
-            cover={{ kind: "photo", x2: heroPhone.portrait.x2, x3: heroPhone.portrait.x3, tint: cardSkin(card.paletteId).tone }}
+            cover={{ kind: "photo", ...(("portrait" in card ? card.portrait : null) ?? heroPhone.portrait), tint: cardSkin(card.paletteId).tone }}
             idPrefix={`mk-sol-${card.id}`}
             {...brandCardContent(card.id)}
           />
