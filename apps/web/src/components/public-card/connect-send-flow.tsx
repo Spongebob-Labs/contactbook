@@ -2,7 +2,7 @@
 
 import { useCallback, useState, type CSSProperties, type ReactElement } from "react";
 
-import { Check, Smartphone } from "lucide-react";
+import { ArrowRight, Check, SmartphoneNfc } from "lucide-react";
 
 import { CardActionButton } from "@/card/card-action-button";
 import { paletteVars } from "@/card/template-palettes";
@@ -137,10 +137,15 @@ export function ConnectSendFlow({ resolved, token }: ConnectSendFlowProps): Reac
           action="connect"
           paletteId={resolved.palette.id}
           palette={resolved.palette}
-          variant="secondary"
+          /* The page's ONE primary action. It was the quiet second button under a black
+             "Send to Phone" that downloaded a `.vcf`; that button is gone (client, 2026-10-08:
+             the file download is not offered right now), so this one takes its place, its
+             colour and its arrow. */
+          variant="primary"
           surface="canvas"
           shape={shape}
-          icon={<Smartphone size={16} strokeWidth={1.75} />}
+          icon={<SmartphoneNfc size={18} strokeWidth={1.75} />}
+          trailing={<ArrowRight size={18} strokeWidth={1.75} />}
           onClick={() => {
             setMessage(null);
             setStage("phone");
@@ -180,6 +185,12 @@ export function ConnectSendFlow({ resolved, token }: ConnectSendFlowProps): Reac
               /* Filtered on the way in, so what can be typed and what `validatePhone` accepts
                  cannot drift. */
               onChange={(event) => setPhone(digitsOnly(event.target.value))}
+              /* The reader just pressed the button to get here, so the keyboard should already
+                 be up, and Enter should send — they are typing one number into one box. */
+              autoFocus
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !pending) void sendCard();
+              }}
               disabled={pending}
               style={{ ...fieldStyle, flex: "1 1 auto", minWidth: 0 }}
             />

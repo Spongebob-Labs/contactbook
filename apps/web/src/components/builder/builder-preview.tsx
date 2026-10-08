@@ -238,7 +238,7 @@ export function BuilderPreview({ resolved }: BuilderPreviewProps): ReactElement 
                  card page centres its identity block and left-aligns its rows, so the
                  bottom-RIGHT is the one spot with no text under it at any field count. */
               /* ⚠ `lg` and up only. On a phone the frame is a ~250px window and this corner is
-                 wherever the card happens to be — the full-width "Send to Phone" button, or a
+                 wherever the card happens to be — the full-width "Send to my phone" button, or a
                  field row's own right-hand chevron — so below `lg` the nudge lives in the
                  caption row under the frame instead (`MobileNudge`, below). */
               "absolute bottom-2 right-2 z-10 flex h-9 w-9 items-center max-lg:hidden " +
@@ -350,7 +350,7 @@ function InertActions({ resolved }: { resolved: ResolvedCard }): ReactElement {
     >
       {!saveable ? null : (
         <CardActionButton
-          action="save"
+          action="connect"
           paletteId={resolved.palette.id}
           palette={resolved.palette}
           variant="primary"
@@ -359,7 +359,7 @@ function InertActions({ resolved }: { resolved: ResolvedCard }): ReactElement {
           icon={<SmartphoneNfc size={18} strokeWidth={1.75} />}
           trailing={<ArrowRight size={18} strokeWidth={1.75} />}
         >
-          Send to Phone
+          Send to my phone
         </CardActionButton>
       )}
     </div>
