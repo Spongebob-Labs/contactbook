@@ -399,7 +399,7 @@ test("renders exactly one action button, and keeps WhatsApp as a destination", a
 
   await expect(page.locator("[data-card-action]")).toHaveCount(1);
   await expect(page.locator("[data-card-actions]")).toHaveAttribute("data-card-action-count", "1");
-  await expect(page.locator('[data-card-action="save"]')).toHaveCount(1);
+  await expect(page.locator('[data-card-action="connect"]')).toHaveCount(1);
   await expect(page.locator('[data-card-action="whatsapp"]')).toHaveCount(0);
 
   // §6.9: the deep link is still a wa.me that leaves the app safely (§7.3, AC-32) — it is just
@@ -436,7 +436,7 @@ test("the card's own palette, not the template's default, paints the actions", a
   await expect(page.locator("[data-card-root]")).toHaveAttribute("data-palette-id", "periwinkle");
 
   const fill = await page
-    .locator('[data-card-action="save"]')
+    .locator('[data-card-action="connect"]')
     .evaluate((node) => getComputedStyle(node).backgroundColor);
 
   expect(fill).toBe(rgbOf(TEMPLATE_PALETTES.periwinkle.canvasActionBg));
@@ -445,22 +445,22 @@ test("the card's own palette, not the template's default, paints the actions", a
   );
 });
 
-test("Send to Phone downloads a vCard named after the contact (§6.9)", async ({ page }) => {
+/* The black "Send to Phone" button that wrote a `.vcf` is gone (client, 2026-10-08): the scanner
+   types their own number and the card goes to it over WhatsApp. This is the regression guard —
+   no file download control, and no second button with the old label. */
+test("offers no vCard download, only Send to my phone", async ({ page }) => {
   await gotoReady(page, CARD_WITH_PHONE);
 
-  const [download] = await Promise.all([
-    page.waitForEvent("download"),
-    page.locator('[data-card-action="save"]').click(),
-  ]);
-
-  expect(download.suggestedFilename()).toBe("Priyanka Raghunathan.vcf");
+  await expect(page.locator('[data-card-action="save"]')).toHaveCount(0);
+  await expect(page.getByText("Send to Phone", { exact: true })).toHaveCount(0);
+  await expect(page.locator('[data-card-action="connect"]')).toHaveText(/Send to my phone/);
 });
 
 test("omits the WhatsApp destination entirely when no PHONE is mapped (E-56)", async ({ page }) => {
   await gotoReady(page, CARD_WITHOUT_PHONE);
 
   await expect(page.locator("[data-card-action]")).toHaveCount(1);
-  await expect(page.locator('[data-card-action="save"]')).toHaveCount(1);
+  await expect(page.locator('[data-card-action="connect"]')).toHaveCount(1);
   /* Absent from the DOM, never rendered-and-disabled. E-56 is unchanged by the move: the disc
      is derived from the first mapped `PHONE`, so no phone means no disc, exactly as no phone
      used to mean no button. */
@@ -680,11 +680,11 @@ for (const state of STATE_QUERIES) {
     }
     if (state === "empty") {
       await expect(page.locator('[data-card-root][data-render-mode="full"]')).toHaveCount(1);
-      await expect(page.locator('[data-card-action="save"]')).toHaveCount(0);
+      await expect(page.locator('[data-card-action="connect"]')).toHaveCount(0);
       await expect(page.locator("[data-public-card-empty-note]")).toHaveCount(1);
     }
     if (state === "success") {
-      await expect(page.locator('[data-card-action="save"]')).toHaveCount(1);
+      await expect(page.locator('[data-card-action="connect"]')).toHaveCount(1);
     }
   });
 }

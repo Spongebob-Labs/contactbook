@@ -179,7 +179,7 @@ export function CardPageThumb({
           actions={
             <div data-card-actions="" data-card-action-count={1}>
               <CardActionButton
-                action="save"
+                action="connect"
                 paletteId={resolved.palette.id}
                 palette={resolved.palette}
                 variant="primary"
@@ -188,7 +188,7 @@ export function CardPageThumb({
                 icon={<SmartphoneNfc size={18} strokeWidth={1.75} />}
                 trailing={<ArrowRight size={18} strokeWidth={1.75} />}
               >
-                Send to Phone
+                Send to my phone
               </CardActionButton>
             </div>
           }

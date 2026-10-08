@@ -684,7 +684,7 @@ test("the previewed actions are inert look-alikes, not working controls", async 
      and therefore from its preview, which is the property actually under test here — the
      preview draws whatever the live page draws or it is not a preview. */
   await expect(actions).toHaveAttribute("data-card-action-count", "1");
-  await expect(actions.locator('[data-card-action="save"]')).toHaveCount(1);
+  await expect(actions.locator('[data-card-action="connect"]')).toHaveCount(1);
   await expect(actions.locator('[data-card-action="whatsapp"]')).toHaveCount(0);
 
   // Not links, and carrying no destination. A `wa.me` href in an editor is one mis-click from
@@ -702,7 +702,7 @@ test("the previewed actions are inert look-alikes, not working controls", async 
 
   // `inert` behaves: the element refuses focus, so it is not a tab stop.
   const focusable = await actions
-    .locator('[data-card-action="save"]')
+    .locator('[data-card-action="connect"]')
     .evaluate((node: HTMLElement) => {
       node.focus();
       return document.activeElement === node;
@@ -711,7 +711,7 @@ test("the previewed actions are inert look-alikes, not working controls", async 
 
   // …and pressing one does nothing at all — no download, no toast, no navigation.
   const url = page.url();
-  await actions.locator('[data-card-action="save"]').dispatchEvent("click");
+  await actions.locator('[data-card-action="connect"]').dispatchEvent("click");
   await page.waitForTimeout(300);
   await expect(page.locator("[data-overlay-toast]")).toHaveCount(0);
   expect(page.url()).toBe(url);

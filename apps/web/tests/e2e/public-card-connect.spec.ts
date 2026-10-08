@@ -39,7 +39,7 @@ async function sendTo(page: Page, national: string): Promise<void> {
   await sendButton(page).click();
 }
 
-test("the send action is present alongside save, starts idle, and is the only connect path", async ({
+test("the send action is the only button, starts idle, and is the only connect path", async ({
   page,
 }) => {
   await gotoReady(page, CARD);
@@ -53,7 +53,10 @@ test("the send action is present alongside save, starts idle, and is the only co
   const trigger = page.locator('[data-card-action="connect"]');
   await expect(trigger).toHaveCount(1);
   await expect(trigger).toHaveText(/Send to my phone/);
-  await expect(page.locator('[data-card-action="save"]')).toHaveCount(1);
+  /* The black "Send to Phone" `.vcf` download is gone (client, 2026-10-08): this is the page's one
+     action, so nothing sits beside it. */
+  await expect(page.locator('[data-card-action="save"]')).toHaveCount(0);
+  await expect(page.locator("[data-card-action]")).toHaveCount(1);
 
   // A tap, never an effect on page load: nothing is on screen to send with yet.
   await expect(sendButton(page)).toHaveCount(0);
