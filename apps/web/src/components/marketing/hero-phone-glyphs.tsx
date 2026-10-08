@@ -122,6 +122,15 @@ export const ROW_GLYPHS: Readonly<Record<HeroPhoneIcon, Glyph>> = {
       <path d="M3.2 12.6h17.6" strokeWidth="1.5" />
     </>,
   ),
+  /* A document: a sheet with a folded corner and two text lines — the CV card's row. */
+  document: frame(
+    "mk-hc-glyph mk-hc-glyph--line",
+    <>
+      <path d="M6.2 3h7.6l4.4 4.4V19.6a1.4 1.4 0 0 1-1.4 1.4H6.2a1.4 1.4 0 0 1-1.4-1.4V4.4A1.4 1.4 0 0 1 6.2 3Z" strokeWidth="1.8" />
+      <path d="M13.6 3.2v4.4h4.4" strokeWidth="1.5" />
+      <path d="M8.2 12.4h7.6M8.2 15.9h5.2" strokeWidth="1.5" />
+    </>,
+  ),
 };
 
 export const SOCIAL_MARKS: Readonly<Record<HeroPhoneSocial, Glyph>> = {

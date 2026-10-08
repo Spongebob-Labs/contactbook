@@ -232,10 +232,12 @@ describe("Solution", () => {
   it("computes every card's field count against the whole profile, never hand-typed", () => {
     renderWithProviders(<Solution />);
     for (const card of solution.cards) {
+      // Two cards may carry the same number of fields (Family and CV both carry four).
+      const same = solution.cards.filter((other) => other.fields.length === card.fields.length);
       expect(
-        screen.getByText(`${card.fields.length} of your ${solution.profile.length} details`),
+        screen.getAllByText(`${card.fields.length} of your ${solution.profile.length} details`),
         `no count rendered for ${card.name}`,
-      ).toBeInTheDocument();
+      ).toHaveLength(same.length);
     }
   });
 

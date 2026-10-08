@@ -1,4 +1,4 @@
-import { heroPhone, mayaProfile, solution } from "@/fixtures/marketing";
+import { heroPhone, mayaProfile, solution, type SolutionCard } from "@/fixtures/marketing";
 import { MAYA, mayaCity } from "@/fixtures/marketing-identity";
 
 import type { BrandCardProps, BrandCardRow, BrandCardSection } from "./brand-card";
@@ -23,6 +23,8 @@ type FieldId = (typeof solution.cards)[number]["fields"][number];
 
 const PERSONAL = heroPhone.sections[0]!.label;
 const BUSINESS = heroPhone.sections[1]!.label;
+/** The CV card's first group — what it is sent for goes above how to reach her. */
+const DOCUMENTS = "Documents";
 
 /** A row value is one line on the card (`white-space: nowrap`); longer copy is cut with "…". */
 const ROW_MAX = 34;
@@ -47,6 +49,11 @@ function birthday(): string {
   }).format(new Date(`${profileValue("field_dob")}T00:00:00Z`));
 }
 
+/** The CV's file name as the card shows it — the last path segment of the stored link. */
+function cvFileName(): string {
+  return new URL(profileValue("field_experience")).pathname.split("/").pop()!;
+}
+
 /** Every field a card can carry, as the row it draws. `social` is not a row — it is the disc. */
 const FIELD_ROWS: Readonly<Record<Exclude<FieldId, "social">, { group: string; row: BrandCardRow }>> = {
   mobile: { group: PERSONAL, row: { icon: "phone", value: MAYA.mobile } },
@@ -57,7 +64,7 @@ const FIELD_ROWS: Readonly<Record<Exclude<FieldId, "social">, { group: string; r
   title: { group: BUSINESS, row: { icon: "briefcase", value: MAYA.role } },
   company: { group: BUSINESS, row: { icon: "building", value: MAYA.company } },
   office: { group: BUSINESS, row: { icon: "pin", value: clip(mayaCity("london").address) } },
-  experience: { group: BUSINESS, row: { icon: "briefcase", value: clip(profileValue("field_experience")) } },
+  experience: { group: DOCUMENTS, row: { icon: "document", value: cvFileName() } },
 };
 
 export type BrandCardContent = Pick<
@@ -78,7 +85,10 @@ export function brandCardContent(cardId: CardId, options: BrandCardContentOption
   const card = solution.cards.find((c) => c.id === cardId);
   if (!card) throw new Error(`brand-card-content: no card "${cardId}"`);
 
+  const header = (card as SolutionCard).header;
+
   const groups = new Map<string, BrandCardRow[]>([
+    [DOCUMENTS, []],
     [PERSONAL, []],
     [BUSINESS, []],
   ]);
@@ -104,9 +114,9 @@ export function brandCardContent(cardId: CardId, options: BrandCardContentOption
   return {
     brand: heroPhone.brand,
     name: heroPhone.name,
-    role: heroPhone.role,
-    company: heroPhone.company,
-    bio: heroPhone.bio,
+    role: header ? header.role : heroPhone.role,
+    company: header ? header.company : heroPhone.company,
+    bio: header ? header.bio : heroPhone.bio,
     action: heroPhone.action,
     sections,
     ...(carriesSocial

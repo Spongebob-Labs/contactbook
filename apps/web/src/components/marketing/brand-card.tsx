@@ -75,8 +75,9 @@ export interface BrandCardProps {
   readonly cover: BrandCardCover;
   readonly brand: string;
   readonly name: string;
-  readonly role: string;
-  readonly company: string;
+  /** `null` for both drops the role line; the bio then moves up into its place. */
+  readonly role: string | null;
+  readonly company: string | null;
   readonly bio: readonly [string, string];
   readonly action: string;
   readonly sections: readonly BrandCardSection[];
@@ -248,11 +249,13 @@ export function BrandCard({
         <div className="mk-hc__body">
           <p className="mk-hc__brand">{brand}</p>
           <p className="mk-hc__name">{name}</p>
-          <p className="mk-hc__role">
-            <span>{role}</span>
-            <span>{company}</span>
-          </p>
-          <p className="mk-hc__bio">
+          {role !== null || company !== null ? (
+            <p className="mk-hc__role">
+              <span>{role}</span>
+              <span>{company}</span>
+            </p>
+          ) : null}
+          <p className="mk-hc__bio" data-rolesless={role === null && company === null ? "" : undefined}>
             <span>{bio[0]}</span>
             <span>{bio[1]}</span>
           </p>

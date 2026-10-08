@@ -148,10 +148,10 @@ export const hero = {
      Was "Never lose contact." over "The address book that updates itself." and "Your details
      change. The card you handed out changes with them." `hero.tsx` splits the headline on its
      accent clause, "on your terms.", so changing the words here means checking that constant.
-     "let update happen automatically" is the client's wording exactly; it is not ours to fix. */
+     2026-10-08: "let update happen" → "let updates happen", on the client's word. */
   headline: "Your network on your terms.",
   lead:
-    "ContactBook is the address book that updates itself. Create cards with as much or as little as you wish, share to whom you choose, and let update happen automatically. Keep your information current, your privacy protected, and your global network within reach.",
+    "ContactBook is the address book that updates itself. Create cards with as much or as little as you wish, share to whom you choose, and let updates happen automatically. Keep your information current, your privacy protected, and your global network within reach.",
   /* ⚠ 2026-09-28 — THE WAITLIST AND "FOR COMPANIES" ARE OFF THE HOMEPAGE, ON THE CLIENT'S
      WORD: *"Still showing old version: 'join the waitlist' copy and 'for companies' tag need
      removing."* The product is open, so the primary is the real front door — phone sign-in,
@@ -211,7 +211,7 @@ export const hero = {
     {
       icon: "Undo2",
       title: "Multiple Cards",
-      body: "Revoke a card and it stops resolving.",
+      body: "Create as many cards as you want.",
     },
     {
       icon: "Link2",
@@ -354,6 +354,14 @@ export interface ProfileField {
   readonly private?: boolean;
 }
 
+/** A card whose header is not Maya's own role line — see the CV card in `solution.cards`. */
+export interface SolutionCardHeader {
+  /** `null` drops the role and company lines; the bio then sits in their place. */
+  readonly role: string | null;
+  readonly company: string | null;
+  readonly bio: readonly [string, string];
+}
+
 export interface SolutionCard {
   readonly id: string;
   /** The card's own name, as the owner would call it. Used in the chips' screen-reader line. */
@@ -363,6 +371,10 @@ export interface SolutionCard {
   /** One line: what is on it, and who it is for. */
   readonly note: string;
   readonly paletteId: string;
+  /** Overrides the hero card's role / company / bio under the name. Absent = Maya's own. */
+  readonly header?: SolutionCardHeader;
+  /** The cover photograph, at 2× and 3× the card's 330px width. Absent = the hero portrait. */
+  readonly portrait?: { readonly x2: string; readonly x3: string };
   /** Ids from `profile`. A private field id here is a bug the component cannot express. */
   readonly fields: readonly string[];
 }
@@ -413,7 +425,7 @@ export const solution = {
     { id: "office", label: "Office address" },
     { id: "home", label: "Home address" },
     { id: "social", label: "LinkedIn" },
-    { id: "experience", label: "Experience" },
+    { id: "experience", label: "CV" },
     { id: "birthday", label: "Birthday" },
     { id: "site", label: "Website" },
     { id: "bank", label: "Bank account", private: true },
@@ -437,6 +449,19 @@ export const solution = {
       title: "Your Family Contact Card",
       note: "Your home address, birthday and mobile. For the people closest to you.",
       paletteId: "clay",
+      /* 2026-10-08: a relaxed, laughing photograph — Pexels, Vlada Karpovich, free to use
+         without attribution (README in `public/marketing/`). */
+      portrait: {
+        x2: "/marketing/family-portrait-2x.webp",
+        x3: "/marketing/family-portrait-3x.webp",
+      },
+      /* 2026-10-08, the client: the Family card is not the founder card — no role or company
+         under the name, and a bio that sounds like home. */
+      header: {
+        role: null,
+        company: null,
+        bio: ["Eat, love, pray.", "Repeat."],
+      },
       fields: ["mobile", "personal-email", "home", "birthday"],
     },
     {
@@ -445,7 +470,14 @@ export const solution = {
       title: "Your CV Contact Card",
       note: "Your experience, LinkedIn and personal email. For recruiters and headhunters.",
       paletteId: "onyx",
-      fields: ["mobile", "personal-email", "title", "social", "experience"],
+      /* 2026-10-08, the client: the CV card shows the CV being shared, not her founder role.
+         So no job title or company under the name, and a bio from someone looking for work. */
+      header: {
+        role: null,
+        company: null,
+        bio: ["Finance leader looking", "for my next role."],
+      },
+      fields: ["mobile", "personal-email", "social", "experience"],
     },
   ],
 } as const satisfies SolutionCopy;
@@ -980,7 +1012,7 @@ export const marketingUser: User = {
 /** The row glyphs the reference draws, in the order it draws them. */
 /* "calendar" and "briefcase" (2026-10-06) are for the brand card's other uses — the Solution
    deck and the How-it-works panels; the hero's own rows never use them. */
-export type HeroPhoneIcon = "phone" | "mail" | "pin" | "building" | "link" | "calendar" | "briefcase";
+export type HeroPhoneIcon = "phone" | "mail" | "pin" | "building" | "link" | "calendar" | "briefcase" | "document";
 
 /** The four social marks under SOCIAL. */
 export type HeroPhoneSocial = "linkedin" | "instagram" | "x" | "youtube";
@@ -1132,13 +1164,14 @@ export const mayaProfile: MayaProfile = {
     },
   ],
   fields: [
-    /* ── IDENTITY ── the first mapped TEXT field is a card's bio, so this is the CV card's. */
+    /* ── IDENTITY ── the CV: a document link, the one row the CV card exists to carry. The id
+       stays `field_experience` (the chip is "CV"; her experience is what it holds). */
     {
       id: "field_experience",
       groupId: "group_identity",
-      type: "TEXT",
-      label: "Experience",
-      value: "Twelve years connecting people, ideas and opportunities across Europe, the Gulf, the US and Asia.",
+      type: "URL",
+      label: "CV",
+      value: "https://www.mayalaurent.example/maya-laurent-cv.pdf",
       isSensitive: false,
     },
     {
@@ -1328,7 +1361,6 @@ export const exampleCardSpecs: readonly ExampleCardSpec[] = [
       paletteId: "onyx",
       fieldIds: [
         "field_experience",
-        "field_job_title",
         "field_mobile",
         "field_personal_email",
         "field_linkedin",
