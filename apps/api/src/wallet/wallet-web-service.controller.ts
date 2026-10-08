@@ -163,8 +163,10 @@ export class WalletWebServiceController {
     if (ifModifiedSince) {
       // Normalize to whole seconds: Last-Modified is second-precision, so
       // comparing raw ms would give false negatives when stored tag has sub-ms.
-      const sinceMs = Math.floor(new Date(ifModifiedSince).getTime() / 1000) * 1000;
-      const lastModifiedMs = Math.floor(parseInt(result.lastModifiedTag, 10) / 1000) * 1000;
+      const sinceMs =
+        Math.floor(new Date(ifModifiedSince).getTime() / 1000) * 1000;
+      const lastModifiedMs =
+        Math.floor(parseInt(result.lastModifiedTag, 10) / 1000) * 1000;
       if (
         !isNaN(sinceMs) &&
         !isNaN(lastModifiedMs) &&
