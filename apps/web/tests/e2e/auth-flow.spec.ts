@@ -23,7 +23,7 @@ const STEPS = [
   { index: 2, path: "/signin/otp", question: "Enter the code we sent" },
   { index: 3, path: "/signup/first-name", question: "What's your first name?" },
   { index: 4, path: "/signup/last-name", question: "And your last name?" },
-  { index: 5, path: "/signup/email", question: "Where can we reach you?" },
+  { index: 5, path: "/signup/email", question: "What's your email?" },
   { index: 6, path: "/signup/done", question: "Your card is ready" },
 ] as const;
 
@@ -114,8 +114,11 @@ test.describe("the six screens", () => {
 
     if (width >= 1280) {
       await expect(showcase).toBeVisible();
-      // §8D.2: the product, live — not a picture of it.
-      await expect(showcase.locator("[data-card-thumb]")).toHaveCount(1);
+      // Client, 2026-10-09: the website hero's card — Maya's — not a product thumbnail, with the
+      // line that says what comes after enrolling.
+      await expect(showcase.locator("[data-auth-hero-card]")).toHaveCount(1);
+      await expect(showcase.locator("[data-card-thumb]")).toHaveCount(0);
+      await expect(showcase).toContainText("Once you\u2019re enrolled, let\u2019s build your first card");
     } else {
       await expect(showcase).toBeHidden();
     }

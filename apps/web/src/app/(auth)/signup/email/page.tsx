@@ -14,7 +14,8 @@ import { AUTH_STEPS, useAuthFlow } from "@/lib/auth-flow-context";
 import { MAX_EMAIL_LENGTH, validateEmail } from "@/lib/auth-validation";
 
 /**
- * A-5 — "Where can we reach you?" (spec §8D.2, R-07).
+ * A-5 — "What's your email?" (spec §8D.2, R-07). Was "Where can we reach you?" until the client's
+ * 2026-10-09 wording.
  *
  * ## This is the screen that submits the profile
  * It is the last *question* of the flow, so it is where all three answers — first name, last
@@ -65,8 +66,8 @@ export default function EmailPage() {
   return (
     <AuthStepForm
       step={STEP}
-      question="Where can we reach you?"
-      helper="For receipts and sign-in help. It never appears on a card unless you add it as a field."
+      question="What's your email?"
+      helper="Used for sign-in and help desk, and added to a card if you choose."
       screenState={screenState}
       onSubmit={submit}
       submitLabel="Continue"
