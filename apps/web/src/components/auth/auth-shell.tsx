@@ -1,16 +1,15 @@
 "use client";
 
-import { Suspense, useMemo, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
-import { ShareFace } from "@/card/share-face";
-import { resolveCard } from "@/card/resolve-card";
+import { BrandCard } from "@/components/marketing/brand-card";
 import { buttonClassName } from "@/components/primitives";
 import { AUTH_STEP_COUNT, authStepFor } from "@/lib/auth-flow-context";
 import { cn } from "@/lib/cn";
-import { useFixture } from "@/lib/fixture-gateway";
+import { heroPhone } from "@/fixtures/marketing";
 import { AuthProgress } from "./auth-progress";
 
 /**
@@ -19,7 +18,7 @@ import { AuthProgress } from "./auth-progress";
  * `--canvas` ground · one centred column at `max-width: 420px` · vertically centred from
  * 768px up and top-aligned with `--space-16` below it · a `STEP n OF 6` progress indicator
  * on **every** screen · Back top-left on every screen except the first · and, from 1280px,
- * a `--surface-sunk` panel showing one live `<ShareFace mode="thumb">`.
+ * a `--surface-sunk` panel showing the website hero's card — Maya's.
  *
  * ## Why progress and Back live here and not in the pages
  * They are derived from the pathname, which means they cannot disagree with the route, and
@@ -34,12 +33,17 @@ import { AuthProgress } from "./auth-progress";
  * provider mounted by the layout above this component — the layout is not remounted by a
  * navigation between its own pages, so nothing is destroyed either way (E-46).
  *
- * ## The showcase is the product, not decoration
- * §8D.2 asks for a live card. It renders the first fixture card through the same
- * `<ShareFace>` `/c/[slug]` uses, so what someone sees while signing up is the thing they
- * are signing up to make. It deliberately does **not** import T04's card font class helper:
- * the two card-only typefaces must not appear in the `(auth)` bundle (AC-17 / N-3), and the
- * frame's font stacks already carry real fallbacks for exactly this surface.
+ * ## The showcase is the landing page's own card
+ * Client, 2026-10-09: the card beside the sign-in form should be the designed one of Maya from the
+ * website's hero, not a product thumbnail of a fixture card. So the panel draws `<BrandCard>` — the
+ * same component, the same `heroPhone` content, the same measured layout the hero's phone holds —
+ * just without the phone around it. It is a picture of a card (the card is `inert` and carries a
+ * text alternative), which is also all the hero is.
+ *
+ * `[data-mk-root]` on its wrapper is not decoration: the card's inks and faces are `--mk-phone-*`
+ * tokens declared on that attribute, and an app screen has no ancestor that carries it. It only
+ * scopes tokens and the two selection/tabular rules to the wrapper, so nothing marketing-shaped
+ * leaks onto the form beside it.
  */
 
 export interface AuthShellProps {
@@ -97,9 +101,7 @@ export function AuthShell({ children }: AuthShellProps) {
           aria-label="What you're building"
           className="hidden w-[420px] shrink-0 items-center justify-center border-l border-line bg-surface-sunk px-12 xl:flex"
         >
-          <Suspense fallback={null}>
-            <AuthShowcase />
-          </Suspense>
+          <AuthShowcase />
         </aside>
       )}
     </div>
@@ -107,51 +109,60 @@ export function AuthShell({ children }: AuthShellProps) {
 }
 
 /**
- * One live `thumb`, plus a sentence about what it is.
+ * The website hero's card — Maya's — plus a sentence about what comes next.
  *
- * Exported because `/signup/done` renders the same card in its own column (§8D.2 A-6), and
- * two copies of "resolve the first fixture card and render it" is two places for the auth
- * surface to start loading the card typefaces by accident.
+ * Exported because `/signup/done` once rendered the same card in its own column (§8D.2 A-6); it
+ * does not any more, but the export is the one place that decides what the auth surface shows.
  *
- * `?state=loading` and `?state=error` hand back no data, so it renders nothing rather than
- * a placeholder — the panel is supporting material, and a broken frame beside a sign-in
- * form would be worse than an empty one.
+ * ## Size
+ * `.mk-hc__card` is a fixed 330×793 box, and the panel is 420px with 48px of padding either side,
+ * so the card can never be wider than 0.98 of its design size. It is stepped down by viewport
+ * HEIGHT the way the hero's phone is (`hero.tsx`): at 0.98 it is 777px tall, which only fits a
+ * tall window, and `zoom` — not `transform: scale()` — keeps its text rasterised at the target
+ * size instead of resampled.
  *
- * The width is pinned to `400 × 0.5`: `THUMB_MAX_SCALE` is 0.5, so a wider box would leave
- * the scaled canvas parked in its top-left corner (the frame's `transform-origin`).
+ * ## Why the caption is `w-0 min-w-full`
+ * The wrapper is as wide as the zoomed card and no wider. A paragraph's own max-content width
+ * would otherwise be what sizes it, and the caption would push the panel's column out under a
+ * narrow card. `w-0 min-w-full` makes the caption take the card's width and wrap inside it.
  *
- * ⚠ **T04's card font class helper is deliberately not imported** — here or anywhere in
- * `(auth)`. AC-17 / N-3 assert that Archivo and Bricolage Grotesque never reach this bundle,
- * and the sweeps grep for the import by name; the frame's font stacks carry real fallbacks
- * for exactly this surface.
+ * ⚠ **The hero's three faces arrive with this component** (`BrandCard` sets their next/font
+ * classes), so the `(auth)` routes now load Libre Caslon, Inter and DM Sans. The old comment here
+ * was about Archivo and Bricolage Grotesque, the product's former card-only faces; neither is
+ * imported by this file.
  */
 export function AuthShowcase({
-  caption = "Pick what each card shares. Anyone who scans it sees only that.",
+  caption = "Once you\u2019re enrolled, let\u2019s build your first card",
   className,
 }: {
   caption?: ReactNode;
   className?: string;
 }) {
-  const { data } = useFixture((db) => db);
-
-  const resolved = useMemo(() => {
-    if (data === null) return null;
-    const card = data.cards[0];
-    return card === undefined
-      ? null
-      : resolveCard(card, data.user, data.groups, data.fields);
-  }, [data]);
-
-  if (resolved === null) return null;
+  const c = heroPhone;
 
   return (
-    <div data-auth-card="" className={cn("flex w-[200px] flex-col gap-6", className)}>
-      {/* ⚠ `thumbWidth` is a WIDTH IN PIXELS, not a ratio — `<ShareFace>` derives its scale as
-          `thumbWidth / FACE_WIDTH`. This read `0.5`, which is not "half size": it is half of
-          one pixel, a scale of 0.00149, and the showcase card rendered at 0×0 on every auth
-          screen. 200 matches the `w-[200px]` column it sits in. */}
-      <ShareFace resolved={resolved} mode="thumb" thumbWidth={200} />
-      {caption === null ? null : <p className="text-sm text-ink-3">{caption}</p>}
+    <div data-auth-card="" className={cn("flex w-fit flex-col gap-6", className)}>
+      <div
+        data-mk-root=""
+        data-auth-hero-card=""
+        className="overflow-hidden rounded-[28px] shadow-[0_18px_48px_-12px_rgb(0_0_0/0.28)] ring-1 ring-black/5 [zoom:0.7] [@media(min-height:820px)]:[zoom:0.8] [@media(min-height:900px)]:[zoom:0.9] [@media(min-height:1000px)]:[zoom:0.98]"
+      >
+        <BrandCard
+          layout="measured"
+          cover={{ kind: "photo", x2: c.portrait.x2, x3: c.portrait.x3 }}
+          brand={c.brand}
+          name={c.name}
+          role={c.role}
+          company={c.company}
+          bio={c.bio}
+          action={c.action}
+          sections={c.sections}
+          social={{ label: c.socialLabel, platforms: c.social }}
+          caption={c.caption}
+          idPrefix="mk-auth-hc"
+        />
+      </div>
+      {caption === null ? null : <p className="w-0 min-w-full text-sm text-ink-3">{caption}</p>}
     </div>
   );
 }

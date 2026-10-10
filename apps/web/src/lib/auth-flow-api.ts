@@ -23,6 +23,7 @@
 
 import { auth, profile } from "@/lib/api/browser";
 import { failFrom, failLocally, succeed, type ActionResult } from "@/lib/actions/result";
+import { isApiError } from "@/lib/api/errors";
 import {
   validateEmail,
   validateFirstName,
@@ -123,6 +124,16 @@ export async function submitOnboarding(input: {
     });
     return succeed(undefined);
   } catch (thrown) {
+    /* ⚠ "Already completed" is the API telling us this step's job is done, not that it failed.
+       Onboarding is one-shot, so a 409 here can only mean an earlier call landed — a double
+       submit, a retry after a dropped response, or an owner who was sent back into `/signup/*`.
+       Showing "Your profile is already set up" under the email field left them with no way
+       forward or back (client, 2026-10-09: "it was already saved so it said I needed a
+       different email"). Carrying on to the confirmation screen is the idempotent answer; the
+       names and email they just typed are NOT applied — edits go through the profile endpoints. */
+    if (isApiError(thrown) && thrown.code === "ONBOARDING_ALREADY_COMPLETED") {
+      return succeed(undefined);
+    }
     return failFrom(thrown);
   }
 }
