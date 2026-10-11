@@ -29,6 +29,14 @@ export class VerifyOtpResponseDto {
       'portability.',
   })
   accessToken!: string;
+
+  @ApiProperty({
+    example: false,
+    description:
+      'Whether POST /profile/onboarding has been completed. ' +
+      'false → new user, redirect to onboarding; true → returning user, proceed to the app.',
+  })
+  isOnboardingCompleted!: boolean;
 }
 
 export class RefreshResponseDto {
@@ -51,4 +59,10 @@ export class AuthMeResponseDto {
 
   @ApiProperty({ example: '+919347243575' })
   phoneE164!: string;
+
+  @ApiProperty({
+    example: false,
+    description: 'Whether POST /profile/onboarding has been completed.',
+  })
+  isOnboardingCompleted!: boolean;
 }

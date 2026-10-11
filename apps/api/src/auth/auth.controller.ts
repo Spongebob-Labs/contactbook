@@ -103,9 +103,16 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const { userId } = await this.otp.verify(dto.phoneE164, dto.code);
-    const issued = await this.tokens.issueForUser(userId, dto.phoneE164);
+    const [issued, user] = await Promise.all([
+      this.tokens.issueForUser(userId, dto.phoneE164),
+      this.prisma.user.findUniqueOrThrow({ where: { id: userId } }),
+    ]);
     setAuthCookies(res, this.config, issued);
-    return { userId, accessToken: issued.accessToken };
+    return {
+      userId,
+      accessToken: issued.accessToken,
+      isOnboardingCompleted: user.profileOnboardingCompletedAt !== null,
+    };
   }
 
   @Post('refresh')
@@ -186,6 +193,7 @@ export class AuthController {
     return {
       id: user.id,
       phoneE164: user.phoneE164,
+      isOnboardingCompleted: user.profileOnboardingCompletedAt !== null,
     };
   }
 }
