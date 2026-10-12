@@ -36,7 +36,7 @@ export const loadUser = cache(async (): Promise<User> => {
   // Concurrent because they are independent: `GET /profile/me` carries the profile but no user
   // id, and `POST /auth/me` carries the id and nothing else.
   const [me, identity] = await Promise.all([profile.profileMe(), auth.authMe()]);
-  return toUser(me, identity.id);
+  return toUser(me, identity.id, identity.isOnboardingCompleted);
 });
 
 /**

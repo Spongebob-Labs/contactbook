@@ -49,7 +49,7 @@ export async function fetchProfileData() {
     profile.listGroups(),
   ]);
 
-  const user = toUser(me, identity.id);
+  const user = toUser(me, identity.id, identity.isOnboardingCompleted);
   const mapped = toProfile(fields, groups, user.id);
   return { user, groups: mapped.groups, fields: mapped.fields };
 }
@@ -59,7 +59,7 @@ export async function fetchProfileData() {
 /** `GET /contacts` + `GET /share-links`, joined into a per-contact count. */
 export async function fetchContactsData() {
   const [me, identity, list] = await Promise.all([profile.me(), authMe(), contacts.list()]);
-  const user = toUser(me, identity.id);
+  const user = toUser(me, identity.id, identity.isOnboardingCompleted);
   const mapped = list.map((dto) => toContact(dto, user.id));
 
   let shareCounts: Record<string, number> = {};
@@ -80,7 +80,7 @@ export async function fetchContactsData() {
 export function fetchContactDetail(contactId: string) {
   return async (): Promise<{ contact: Contact; shares: ContactShare[] } | null> => {
     const [me, identity] = await Promise.all([profile.me(), authMe()]);
-    const user = toUser(me, identity.id);
+    const user = toUser(me, identity.id, identity.isOnboardingCompleted);
 
     let dto;
     try {

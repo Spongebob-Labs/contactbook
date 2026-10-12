@@ -173,16 +173,26 @@ export interface VerifyOtpResponseDto {
    * client can authenticate with no cookie jar — which is exactly what our BFF is.
    */
   accessToken: string;
+  /**
+   * Whether `POST /profile/onboarding` has completed — derived upstream from
+   * `User.profileOnboardingCompletedAt`. `false` is a new user, who goes into `/signup/*`.
+   *
+   * ⚠ Named with the `is` prefix here and on `AuthMeResponseDto`; `GET /profile/me` calls the same
+   * fact `onboardingCompleted`. Different DTOs, same column.
+   */
+  isOnboardingCompleted: boolean;
 }
 
 export interface RefreshResponseDto {
   accessToken: string;
 }
 
-/** Token claims only — `POST /auth/me`. For profile data use `GET /profile/me`. */
+/** Token claims plus the onboarding flag — `POST /auth/me`. For profile data use `GET /profile/me`. */
 export interface AuthMeResponseDto {
   id: string;
   phoneE164: string;
+  /** See `VerifyOtpResponseDto.isOnboardingCompleted`. What the `(app)` / `(onboarding)` gate reads. */
+  isOnboardingCompleted: boolean;
 }
 
 /* ── profile ─────────────────────────────────────────────────────────────────────────── */

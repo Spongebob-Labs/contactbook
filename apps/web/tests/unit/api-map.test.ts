@@ -68,6 +68,13 @@ describe("toUser", () => {
     expect(toUser(meResponse({}, false), "u1").onboardingCompleted).toBe(false);
   });
 
+  it("prefers POST /auth/me's isOnboardingCompleted over GET /profile/me's, and falls back to it when absent", () => {
+    // The gate's source of truth: a stale profile read must not send a finished user back to /signup.
+    expect(toUser(meResponse({}, false), "u1", true).onboardingCompleted).toBe(true);
+    expect(toUser(meResponse({}, true), "u1", false).onboardingCompleted).toBe(false);
+    expect(toUser(meResponse({}, true), "u1", undefined).onboardingCompleted).toBe(true);
+  });
+
   it("derives the dial prefix from the number, and yields empty for an unknown one", () => {
     expect(toUser(meResponse({ primaryPhone: "+442071234567" }), "u1").countryCode).toBe("+44");
     expect(toUser(meResponse({ primaryPhone: "+99900011122" }), "u1").countryCode).toBe("");
