@@ -488,6 +488,23 @@ async function stateful({ store, db, path, method, rawBody, rawBytes, req }) {
     return { status: 200, body: dashboard(store, db) };
   }
 
+  /* The onboarding gate's two sources, from one flag — the way the API derives both from
+     `profileOnboardingCompletedAt`. A spec for a brand-new account (`statefulSub("new-…")`)
+     starts with it `false`, and `POST /profile/onboarding` flips it, one-shot. */
+  if (path === "/auth/me") {
+    return { status: 200, body: { ...db.authMe, isOnboardingCompleted: store.onboarded } };
+  }
+  if (path === "/profile/me" && method === "GET") {
+    return { status: 200, body: { ...db.me, onboardingCompleted: store.onboarded } };
+  }
+  if (path === "/profile/onboarding" && method === "POST") {
+    if (store.onboarded) {
+      throw new Rejected(409, "ONBOARDING_ALREADY_COMPLETED", "Onboarding has already been completed.");
+    }
+    store.onboarded = true;
+    return { status: 200, body: { ...db.me, onboardingCompleted: true } };
+  }
+
   if (path === "/cards" && method === "GET") return { status: 200, body: store.cards };
   if (path === "/share-links" && method === "GET") return { status: 200, body: store.shareLinks };
 
