@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import {
   API_PREFIX,
+  ONBOARDING_DONE_COOKIE,
   SESSION_ACCESS_COOKIE,
   SESSION_REFRESH_COOKIE,
   UPSTREAM_REFRESH_COOKIE,
@@ -243,6 +244,9 @@ async function manageSession(
         maxAge: 60 * 60 * 24 * 30,
       });
     }
+    // A new OTP verify starts a fresh session — clear any onboarding cookie from a prior user so
+    // a shared device doesn't carry the previous owner's completed state forward.
+    response.cookies.delete(ONBOARDING_DONE_COOKIE);
     return;
   }
 
@@ -256,9 +260,21 @@ async function manageSession(
     return;
   }
 
+  // 200 = onboarding just completed; 409 = already completed (idempotent retry). Either way the
+  // owner's DB row has profileOnboardingCompletedAt set, but Supabase Supavisor can briefly serve
+  // a stale snapshot from a different pool connection. The cookie lets the gate pass immediately.
+  if (route === "profile/onboarding" && (upstream.status === 200 || upstream.status === 409)) {
+    response.cookies.set(ONBOARDING_DONE_COOKIE, "1", {
+      ...shared,
+      maxAge: 60 * 60 * 24 * 30,
+    });
+    return;
+  }
+
   if (route === "auth/logout") {
     response.cookies.delete(SESSION_ACCESS_COOKIE);
     response.cookies.delete(SESSION_REFRESH_COOKIE);
+    response.cookies.delete(ONBOARDING_DONE_COOKIE);
   }
 }
 

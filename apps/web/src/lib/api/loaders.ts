@@ -1,8 +1,10 @@
 import "server-only";
 
 import { cache } from "react";
+import { cookies } from "next/headers";
 
 import { auth, cards, contacts, profile, shareLinks } from "@/lib/api";
+import { ONBOARDING_DONE_COOKIE } from "@/lib/api/config";
 import { isApiError } from "@/lib/api/errors";
 import {
   groupSharesByContact,
@@ -42,14 +44,18 @@ export const loadUser = cache(async (): Promise<User> => {
 /**
  * Whether first-time setup is finished — what the `(app)` onboarding gate turns on.
  *
- * Reads it off `loadUser()` rather than calling `GET /profile/me` again. It used to do the latter,
- * which the API log made visible: two `GET /profile/me` lines per request, from `loadUser` and
- * from here. Next's request memoisation collapsed the actual round trip, so it cost nothing — but
- * a log that shows a call twice is a log that makes you doubt the one you are reading.
+ * **Fast path**: checks `cb_ob` first. The BFF proxy sets this cookie the moment
+ * `POST /profile/onboarding` returns 200 (or 409), bypassing the DB entirely. This exists
+ * because Supabase Supavisor (transaction-mode pooler) can briefly serve a stale snapshot from
+ * a different pool connection in the seconds after the onboarding transaction commits, causing
+ * the gate to redirect a freshly-onboarded user back to `/signup/first-name`.
  *
- * `User.onboardingCompleted` carries exactly this, so there is nothing to fetch.
+ * Falls back to `loadUser()` for all other navigations (returning users, page refreshes, etc.)
+ * where the cookie may not be present.
  */
 export const loadOnboardingCompleted = cache(async (): Promise<boolean> => {
+  const jar = await cookies();
+  if (jar.get(ONBOARDING_DONE_COOKIE)?.value === "1") return true;
   const user = await loadUser();
   return user.onboardingCompleted;
 });

@@ -33,6 +33,13 @@ export const UPSTREAM_REFRESH_COOKIE = "cb_refresh_token";
 /** Our first-party cookies on the web origin. Short names keep the header small. */
 export const SESSION_ACCESS_COOKIE = "cb_at";
 export const SESSION_REFRESH_COOKIE = "cb_rt";
+/**
+ * Set by the BFF proxy when POST /profile/onboarding succeeds, cleared on logout and on every
+ * new OTP verify. Lets server components skip the DB round-trip for the onboarding gate
+ * immediately after onboarding — Supabase Supavisor (transaction-mode pooler) can serve a stale
+ * snapshot from a different pool connection in the seconds after the transaction commits.
+ */
+export const ONBOARDING_DONE_COOKIE = "cb_ob";
 
 export function join(path: string): string {
   const suffix = path.startsWith("/") ? path : `/${path}`;
