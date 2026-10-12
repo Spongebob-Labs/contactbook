@@ -22,7 +22,7 @@ import { validateOtp } from "@/lib/auth-validation";
  * ## The branch that matters
  * Verifying is where signup and login stop being different things: the API creates the User on
  * first verification, so the only question left is whether that user has a profile yet.
- * `onboardingCompleted` answers it, and this screen is the only place in the flow that reads
+ * `isOnboardingCompleted` (on the verify response itself) answers it, and this screen is the only place in the flow that reads
  * it — a returning user finishes here, at step two of six, and a new one carries on to step
  * three.
  */
@@ -44,7 +44,7 @@ export default function OtpPage() {
     onSuccess: (outcome) => {
       // A session exists from this moment either way — the difference is only where it lands.
       router.push(
-        outcome.onboardingCompleted ? (next ?? "/dashboard") : "/signup/first-name",
+        outcome.isOnboardingCompleted ? (next ?? "/dashboard") : "/signup/first-name",
       );
     },
   });

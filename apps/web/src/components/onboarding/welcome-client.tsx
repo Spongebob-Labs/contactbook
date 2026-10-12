@@ -176,8 +176,10 @@ function Walkthrough({
     router.push(welcomeHref(next));
   }
 
+  /* The walkthrough ends at the dashboard (client, 2026-10-11) — the same place "Skip setup"
+     goes. It used to open this card's own page, which read as the flow not having ended. */
   function finish() {
-    router.push(`/cards/${encodeURIComponent(card.id)}`);
+    router.push("/dashboard");
   }
 
   /* ── the cover ──────────────────────────────────────────────────────────── */

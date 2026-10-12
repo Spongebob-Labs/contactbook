@@ -89,7 +89,7 @@ export interface VerifyOtpOutcome {
    * Where the flow goes next. `false` sends them into `/signup/*` to finish setup; `true`
    * means they are a returning user and the six-step flow is over at step two.
    */
-  onboardingCompleted: boolean;
+  isOnboardingCompleted: boolean;
 }
 
 export async function verifyOtpAction(
@@ -118,16 +118,20 @@ export async function verifyOtpAction(
     const refreshToken = findCookie(setCookies, UPSTREAM_REFRESH_COOKIE);
     await writeSession(data.accessToken, refreshToken);
 
-    // Read the profile with the token we just received rather than through `authed()`. Relying
-    // on `cookies().get()` seeing a value set moments earlier in the same request is the kind
-    // of assumption that works until it doesn't.
+    if (typeof data.isOnboardingCompleted === "boolean") {
+      return succeed({ isOnboardingCompleted: data.isOnboardingCompleted });
+    }
+
+    // An API build that predates the flag. Read the profile with the token we just received
+    // rather than through `authed()`: relying on `cookies().get()` seeing a value set moments
+    // earlier in the same request is the kind of assumption that works until it doesn't.
     const me = await transport<MeResponseDto>({
       method: "GET",
       path: "/profile/me",
       accessToken: data.accessToken,
     });
 
-    return succeed({ onboardingCompleted: me.onboardingCompleted });
+    return succeed({ isOnboardingCompleted: me.onboardingCompleted });
   } catch (thrown) {
     return failFrom(thrown);
   }

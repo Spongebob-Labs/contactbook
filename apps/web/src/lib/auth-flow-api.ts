@@ -65,15 +65,19 @@ export async function requestOtp(
 
 export interface VerifyOtpOutcome {
   /** `false` sends them into `/signup/*`; `true` means a returning user and the flow ends here. */
-  onboardingCompleted: boolean;
+  isOnboardingCompleted: boolean;
 }
 
 /**
- * `POST /auth/otp/verify`, then `GET /profile/me` to decide where next.
+ * `POST /auth/otp/verify` — one request, and its body answers where next.
  *
- * Two visible requests. The first mints the session (the proxy re-homes its cookies); the second
- * answers the only remaining question, because signup and login are the same operation upstream
- * and `onboardingCompleted` is what tells them apart.
+ * Signup and login are the same operation upstream, and `isOnboardingCompleted` on the verify
+ * response is what tells them apart. It used to take a second `GET /profile/me` for that.
+ *
+ * ⚠ The fallback to `GET /profile/me` is for an API build that predates the flag, where the
+ * field is simply absent. Reading `undefined` as "not completed" would send every returning user
+ * back through the name questions — the exact bug this flag exists to end — so a missing flag
+ * asks the profile instead of guessing.
  */
 export async function verifyOtp(
   country: string,
@@ -87,9 +91,12 @@ export async function verifyOtp(
   if (!codeCheck.valid) return failLocally(codeCheck.message ?? "Enter the 6-digit code.");
 
   try {
-    await auth.otpVerify({ phoneE164: toE164(country, phoneDigits), code });
+    const result = await auth.otpVerify({ phoneE164: toE164(country, phoneDigits), code });
+    if (typeof result.isOnboardingCompleted === "boolean") {
+      return succeed({ isOnboardingCompleted: result.isOnboardingCompleted });
+    }
     const me = await profile.me();
-    return succeed({ onboardingCompleted: me.onboardingCompleted });
+    return succeed({ isOnboardingCompleted: me.onboardingCompleted });
   } catch (thrown) {
     return failFrom(thrown);
   }

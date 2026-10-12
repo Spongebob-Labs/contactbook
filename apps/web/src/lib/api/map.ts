@@ -51,12 +51,14 @@ import { dialPrefixOf } from "@/lib/countries";
  *   phone is verified, which is before they have given a name) and non-nullable here. Empty
  *   string, not `"Unknown"` — the avatar's monogram derives from these, and a placeholder name
  *   would render as a confident `U`.
+ * · **`onboardingCompleted`** comes from `isOnboardingCompleted` (`POST /auth/me`) when the caller
+ *   passes it, and from `GET /profile/me` otherwise.
  * · **`isActive`** has no concept upstream. `true`: holding a valid session *is* being active,
  *   and there is no endpoint that could ever report otherwise.
  * · **`countryCode`** is the dial prefix, derived from the E.164 number by longest match —
  *   which is why `+1` being shared by the US and Canada does not matter here.
  */
-export function toUser(me: MeResponseDto, userId: string): User {
+export function toUser(me: MeResponseDto, userId: string, isOnboardingCompleted?: boolean): User {
   const { identity } = me;
   return {
     id: userId,
@@ -66,7 +68,11 @@ export function toUser(me: MeResponseDto, userId: string): User {
     firstName: identity.firstName ?? "",
     lastName: identity.lastName ?? "",
     isActive: true,
-    onboardingCompleted: me.onboardingCompleted,
+    /* `POST /auth/me`'s flag outranks `GET /profile/me`'s when the caller has it: it is the one the
+       API documents as the gate's source, and it costs no extra request because the loader
+       already makes that call for the id. `undefined` — an API build that predates the flag —
+       falls back to the profile read model, which derives from the same column. */
+    onboardingCompleted: isOnboardingCompleted ?? me.onboardingCompleted,
     avatarUrl: identity.profilePhoto,
   };
 }

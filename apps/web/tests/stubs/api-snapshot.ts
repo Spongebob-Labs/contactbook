@@ -175,7 +175,13 @@ export function buildApiSnapshot() {
   /* ⚠ `User` holds `phone` and `countryCode` separately, and `toUser` derives the country back
      out of a single E.164 string — so the fixture's phone is already the full number and must
      not be concatenated with its own prefix. */
-  const authMe: AuthMeResponseDto = { id: user.id, phoneE164: user.phone };
+  const authMe: AuthMeResponseDto = {
+    id: user.id,
+    phoneE164: user.phone,
+    /* The `(app)` gate's source — see `loaders.ts`. `false` would bounce every navigation to
+       `/signup/first-name`, same as `me.onboardingCompleted` below. */
+    isOnboardingCompleted: true,
+  };
 
   const byCategory = (category: string) => groupDtos.filter((g) => g.category === category);
 

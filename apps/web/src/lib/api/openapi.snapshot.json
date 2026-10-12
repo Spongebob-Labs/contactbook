@@ -2544,11 +2544,17 @@
             "type": "string",
             "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
             "description": "Same token as the cb_access_token cookie, returned here too so non-browser clients (mobile apps, scripts, Postman) can use it directly as an Authorization: Bearer header instead of relying on cookies. 15-minute lifetime. The refresh token is deliberately NOT included here — it is long-lived (30 days) and stays httpOnly-cookie-only to limit its exposure to XSS; only the short-lived access token trades that protection for portability."
+          },
+          "isOnboardingCompleted": {
+            "type": "boolean",
+            "example": false,
+            "description": "Whether POST /profile/onboarding has been completed. false → new user, redirect to onboarding; true → returning user, proceed to the app."
           }
         },
         "required": [
           "userId",
-          "accessToken"
+          "accessToken",
+          "isOnboardingCompleted"
         ]
       },
       "RefreshResponseDto": {
@@ -2586,11 +2592,17 @@
           "phoneE164": {
             "type": "string",
             "example": "+919347243575"
+          },
+          "isOnboardingCompleted": {
+            "type": "boolean",
+            "example": false,
+            "description": "Whether POST /profile/onboarding has been completed."
           }
         },
         "required": [
           "id",
-          "phoneE164"
+          "phoneE164",
+          "isOnboardingCompleted"
         ]
       },
       "MeIdentityDto": {
