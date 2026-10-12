@@ -72,6 +72,15 @@ export function AuthShell({ children }: AuthShellProps) {
               {step?.backHref == null ? null : (
                 <Link
                   href={step.backHref}
+                  /* ⚠ NOT PREFETCHED — and this line is the "sent back to /signup/first-name after
+                     Done" bug. A production build prefetches `<Link>` targets. Step 3's Back goes to
+                     `/signin/otp`, which the proxy bounces to `/dashboard` for anyone signed in, and
+                     `(app)/layout.tsx` — the owner not yet onboarded — bounces that to
+                     `/signup/first-name`. Next caches the redirect under `/dashboard`, so after
+                     onboarding "Done" → `router.push("/dashboard")` replays the stale redirect from the
+                     client router cache without ever asking the server. `next dev` never prefetches,
+                     which is why it worked locally. `tests/e2e/onboarding-gate.spec.ts`. */
+                  prefetch={false}
                   data-auth-back=""
                   className={buttonClassName({
                     variant: "text-link",

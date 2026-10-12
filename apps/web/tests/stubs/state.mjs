@@ -115,6 +115,11 @@ export function partitionFor(authorization, snapshot) {
       cards: structuredClone(snapshot.cards),
       shareLinks: [],
       seq: 0,
+      /* Whether `POST /profile/onboarding` has landed. A sub whose label begins `new-` is a brand
+         new account (`statefulSub("new-…")`) and starts `false`; every other partition is an
+         existing, onboarded user, which is what the specs written before this field assumed.
+         `api.mjs` answers `/auth/me` and `/profile/me` from this, and flips it on the POST. */
+      onboarded: !sub.startsWith(`${STATEFUL_SUB_PREFIX}new-`),
     };
     partitions.set(sub, partition);
   }
