@@ -15,6 +15,7 @@ import { WebhooksModule } from './webhooks/webhooks.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { WalletModule } from './wallet/wallet.module';
 import { GoogleWalletModule } from './google-wallet/google-wallet.module';
+import { AgentModule } from './agent/agent.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { GoogleWalletModule } from './google-wallet/google-wallet.module';
     DashboardModule,
     WalletModule,
     GoogleWalletModule,
+    AgentModule,
   ],
   providers: [
     {

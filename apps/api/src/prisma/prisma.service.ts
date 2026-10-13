@@ -31,11 +31,25 @@ import { AppConfigService } from '../config/app-config.service';
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleDestroy {
   private readonly pool: Pool;
+  private readonly connectionString: string | undefined;
 
   constructor(config: AppConfigService) {
     const pool = new Pool({ connectionString: config.databaseUrl, max: 10 });
     super({ adapter: new PrismaPg(pool) });
     this.pool = pool;
+    // Captured for the LangGraph checkpointer (PostgresSaver needs its
+    // OWN pool — it does not share a Prisma client. See checkpointer.ts.)
+    this.connectionString = config.databaseUrl;
+  }
+
+  /**
+   * The DATABASE_URL the running service is connected to. Returned
+   * (not the Pool) so the LangGraph checkpointer can build its own
+   * pg.Pool against the same Postgres — sharing Prisma's pool would
+   * couple the two lifecycles and cause subtle checkout/checkin bugs.
+   */
+  getConnectionString(): string | undefined {
+    return this.connectionString;
   }
 
   async onModuleDestroy(): Promise<void> {
