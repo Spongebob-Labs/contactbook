@@ -14,6 +14,13 @@ export class ApiError extends HttpException {
     super({ code, message, details }, status);
   }
 
+  static badRequest(
+    code: string,
+    message: string,
+    details?: Record<string, unknown>,
+  ) {
+    return new ApiError(code, message, HttpStatus.BAD_REQUEST, details);
+  }
   static notFound(
     code: string,
     message: string,

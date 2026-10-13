@@ -1,7 +1,7 @@
 import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
 import { interrupt } from '@langchain/langgraph';
-import { ReminderService } from '../../../reminders/reminder.service';
+import { ReminderService } from '../../reminders/reminder.service';
 import { getUserId, type ApprovalRequest } from './_shared';
 
 /**
@@ -26,12 +26,15 @@ import { getUserId, type ApprovalRequest } from './_shared';
  */
 export function buildSetReminderTool(reminders: ReminderService) {
   return tool(
-    async (args, config) => {
+    async (args: { text: string; whenIso: string }, config) => {
       const userId = getUserId(config);
 
       const scheduledFor = new Date(args.whenIso);
       if (isNaN(scheduledFor.getTime())) {
-        return JSON.stringify({ ok: false, error: 'whenIso is not a valid ISO 8601 timestamp' });
+        return JSON.stringify({
+          ok: false,
+          error: 'whenIso is not a valid ISO 8601 timestamp',
+        });
       }
 
       const summary = `Set a reminder for ${formatHumanTime(scheduledFor)}: "${args.text}"`;
@@ -51,7 +54,9 @@ export function buildSetReminderTool(reminders: ReminderService) {
 
       // Honour any edits the human made in the approval card.
       const finalText =
-        typeof decision.text === 'string' && decision.text.length > 0 ? decision.text : args.text;
+        typeof decision.text === 'string' && decision.text.length > 0
+          ? decision.text
+          : args.text;
       const finalWhen =
         typeof decision.whenIso === 'string' && decision.whenIso.length > 0
           ? new Date(decision.whenIso)
@@ -72,7 +77,11 @@ export function buildSetReminderTool(reminders: ReminderService) {
       description:
         "Set a reminder for the caller. Sends a WhatsApp message at the scheduled time. Requires the user to approve via a button card. `whenIso` MUST be UTC ISO 8601 (e.g. '2026-10-15T03:30:00Z' for tomorrow 9am IST).",
       schema: z.object({
-        text: z.string().min(1).max(500).describe('The reminder text, 1..500 chars.'),
+        text: z
+          .string()
+          .min(1)
+          .max(500)
+          .describe('The reminder text, 1..500 chars.'),
         whenIso: z
           .string()
           .min(10)
@@ -87,7 +96,7 @@ export function buildSetReminderTool(reminders: ReminderService) {
  */
 export function buildListRemindersTool(reminders: ReminderService) {
   return tool(
-    async (_args, config) => {
+    async (_args: Record<string, never>, config) => {
       const userId = getUserId(config);
       const rows = await reminders.listActive(userId);
       return JSON.stringify(
@@ -112,7 +121,7 @@ export function buildListRemindersTool(reminders: ReminderService) {
  */
 export function buildCancelReminderTool(reminders: ReminderService) {
   return tool(
-    async (args, config) => {
+    async (args: { reminderId: string }, config) => {
       const userId = getUserId(config);
 
       // Look the reminder up so the approval card can show a
@@ -130,7 +139,11 @@ export function buildCancelReminderTool(reminders: ReminderService) {
         kind: 'approval_required',
         action: 'cancel_reminder',
         summary,
-        payload: { reminderId: existing.id, text: existing.text, scheduledFor: existing.scheduledFor },
+        payload: {
+          reminderId: existing.id,
+          text: existing.text,
+          scheduledFor: existing.scheduledFor,
+        },
       } satisfies ApprovalRequest);
 
       if (!decision || decision.approved !== true) {
@@ -143,9 +156,12 @@ export function buildCancelReminderTool(reminders: ReminderService) {
     {
       name: 'cancel_reminder',
       description:
-        "Cancel a PENDING reminder by id. Requires the user to approve via a button card.",
+        'Cancel a PENDING reminder by id. Requires the user to approve via a button card.',
       schema: z.object({
-        reminderId: z.string().uuid().describe('The id of the reminder to cancel.'),
+        reminderId: z
+          .string()
+          .uuid()
+          .describe('The id of the reminder to cancel.'),
       }),
     },
   );

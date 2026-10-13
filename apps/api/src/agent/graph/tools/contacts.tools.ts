@@ -13,7 +13,7 @@ import { maskPhone } from '../../../common/logging/redact';
  */
 export function buildListMyContactsTool(contacts: ContactsService) {
   return tool(
-    async (_args, config) => {
+    async (_args: Record<string, never>, config) => {
       const userId = getUserId(config);
       const rows = await contacts.list(userId);
       return JSON.stringify(

@@ -13,7 +13,7 @@ import { getUserId } from './_shared';
  */
 export function buildGetMyProfileTool(profile: ProfileOnboardingService) {
   return tool(
-    async (_args, config) => {
+    async (_args: Record<string, never>, config) => {
       const userId = getUserId(config);
       const me = await profile.getMe(userId);
       return JSON.stringify(me);

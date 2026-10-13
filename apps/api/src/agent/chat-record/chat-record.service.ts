@@ -37,7 +37,9 @@ export class ChatRecordService {
     });
   }
 
-  async findThreadByLanggraphId(langgraphThreadId: string): Promise<ChatThread | null> {
+  async findThreadByLanggraphId(
+    langgraphThreadId: string,
+  ): Promise<ChatThread | null> {
     return this.prisma.chatThread.findUnique({ where: { langgraphThreadId } });
   }
 

@@ -44,7 +44,9 @@ export class GraphCheckpointer implements OnModuleInit, OnModuleDestroy {
       schema: this.cfg.checkpointerSchema,
     });
     await this.saver.setup();
-    this.logger.info('agent.checkpointer_ready', { schema: this.cfg.checkpointerSchema });
+    this.logger.info('agent.checkpointer_ready', {
+      schema: this.cfg.checkpointerSchema,
+    });
   }
 
   async onModuleDestroy(): Promise<void> {

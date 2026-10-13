@@ -1,4 +1,4 @@
-import { Annotation, MessagesValue } from '@langchain/langgraph';
+import { Annotation, messagesStateReducer } from '@langchain/langgraph';
 import type { BaseMessage } from '@langchain/core/messages';
 
 /**
@@ -11,7 +11,10 @@ import type { BaseMessage } from '@langchain/core/messages';
  * planner's system prompt. Empty string on the first turn of a thread.
  */
 export const AgentState = Annotation.Root({
-  messages: MessagesValue, // full history (BaseMessage[])
+  messages: Annotation<BaseMessage[]>({
+    reducer: messagesStateReducer,
+    default: () => [],
+  }),
   plannerContext: Annotation<BaseMessage[]>({
     reducer: (_left, right) => right ?? [],
     default: () => [] as BaseMessage[],
@@ -25,6 +28,19 @@ export const AgentState = Annotation.Root({
   synthesiserContext: Annotation<BaseMessage[]>({
     reducer: (_left, right) => right ?? [],
     default: () => [] as BaseMessage[],
+  }),
+  // Seeded by the handler on the initial input. The executor reads
+  // them from state; no other node writes to them. Kept as state
+  // channels (rather than only in `configurable`) so the executor
+  // node signature stays pure — no LangGraph-runtime leakage into
+  // node code.
+  userId: Annotation<string>({
+    reducer: (_left, right) => right ?? '',
+    default: () => '',
+  }),
+  threadId: Annotation<string>({
+    reducer: (_left, right) => right ?? '',
+    default: () => '',
   }),
   // Set by the planner/synthesiser when they produce a final reply
   // (no more tool calls). The handler reads this to format the WhatsApp

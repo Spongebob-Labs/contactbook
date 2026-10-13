@@ -1,7 +1,7 @@
 import type { StructuredTool } from '@langchain/core/tools';
 import { ProfileOnboardingService } from '../../../profile/profile-onboarding.service';
 import { ContactsService } from '../../../contacts/contacts.service';
-import { ReminderService } from '../../../reminders/reminder.service';
+import { ReminderService } from '../../reminders/reminder.service';
 import { buildGetMyProfileTool } from './profile.tools';
 import { buildListMyContactsTool } from './contacts.tools';
 import {

@@ -42,7 +42,11 @@ export class SendWhatsappReminderHandler {
       // Don't retry forever on a misconfig — mark FAILED and surface.
       await this.prisma.reminder.update({
         where: { id: reminderId },
-        data: { status: 'FAILED', failedAt: new Date(), errorMessage: 'REMINDER_TEMPLATE_NOT_REGISTERED' },
+        data: {
+          status: 'FAILED',
+          failedAt: new Date(),
+          errorMessage: 'REMINDER_TEMPLATE_NOT_REGISTERED',
+        },
       });
       throw new Error(
         'REMINDER_TEMPLATE_NOT_REGISTERED — register a `reminder_en` template with purpose=REMINDER and approvalStatus=APPROVED.',
@@ -59,7 +63,10 @@ export class SendWhatsappReminderHandler {
 
     if (!result.ok) {
       // Transient: push back to PENDING for the next tick.
-      await this.reminders.markRetry(reminderId, result.errorMessage ?? 'send failed');
+      await this.reminders.markRetry(
+        reminderId,
+        result.errorMessage ?? 'send failed',
+      );
       throw new Error(result.errorMessage ?? 'WhatsApp send failed');
     }
 

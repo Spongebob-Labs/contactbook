@@ -26,19 +26,18 @@ export async function synthesiserNode(
     `The user's timezone is ${cfg.defaultTimezone}.`,
     '',
     '## Output style',
-    'Respond in GitHub-flavored markdown — a deterministic formatter will convert it to WhatsApp formatting (bold via *bold*, italic via _italic_, bullet lists via •, etc.). Keep replies short. Use the user\'s own language.',
+    "Respond in GitHub-flavored markdown — a deterministic formatter will convert it to WhatsApp formatting (bold via *bold*, italic via _italic_, bullet lists via •, etc.). Keep replies short. Use the user's own language.",
     'Do NOT include any tool calls, JSON, or system-internal references. Just the answer.',
     'If the most recent turn was a tool result the user should know about, fold the result into a friendly reply. If the tool said "declined" (the user tapped ❌), acknowledge without re-asking.',
   ].join('\n');
 
-  const messages = [
-    new SystemMessage(systemText),
-    ...state.synthesiserContext,
-  ];
+  const messages = [new SystemMessage(systemText), ...state.synthesiserContext];
 
   const response = await model.invoke(messages);
   const finalAnswer =
-    typeof response.content === 'string' ? response.content : JSON.stringify(response.content);
+    typeof response.content === 'string'
+      ? response.content
+      : JSON.stringify(response.content);
 
   return {
     messages: [new AIMessage(finalAnswer)],

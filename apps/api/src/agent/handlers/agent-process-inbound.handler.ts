@@ -57,7 +57,9 @@ export class AgentProcessInboundHandler {
     //    verified yet. We can't run the agent on an unverified
     //    phone, so we ignore for now (a future "first message
     //    onboarding" flow would handle this — out of scope for v1).
-    const user = await this.prisma.user.findUnique({ where: { phoneE164: fromPhoneE164 } });
+    const user = await this.prisma.user.findUnique({
+      where: { phoneE164: fromPhoneE164 },
+    });
     if (!user) {
       this.logger.info('agent.inbound_unknown_user', {
         fromPhoneE164: maskPhone(fromPhoneE164),
@@ -93,13 +95,25 @@ export class AgentProcessInboundHandler {
 
     const preFilter = this.steward.preFilter(body);
     if (preFilter && !preFilter.allow) {
-      await this.handleReject(thread.id, user.id, preFilter, fromPhoneE164, user.phoneE164);
+      await this.handleReject(
+        thread.id,
+        user.id,
+        preFilter,
+        fromPhoneE164,
+        user.phoneE164,
+      );
       return;
     }
 
     const verdict = await this.steward.judge(prior, body);
     if (!verdict.allow) {
-      await this.handleReject(thread.id, user.id, verdict, fromPhoneE164, user.phoneE164);
+      await this.handleReject(
+        thread.id,
+        user.id,
+        verdict,
+        fromPhoneE164,
+        user.phoneE164,
+      );
       return;
     }
 
@@ -113,7 +127,9 @@ export class AgentProcessInboundHandler {
         threadId: thread.id,
         userId: user.id,
       },
-      { configurable: { thread_id: thread.langgraphThreadId, userId: user.id } },
+      {
+        configurable: { thread_id: thread.langgraphThreadId, userId: user.id },
+      },
     );
 
     // 6. Inspect the result. If the graph paused on an interrupt
@@ -124,7 +140,8 @@ export class AgentProcessInboundHandler {
       return;
     }
 
-    const finalAnswer: string | null = (result as { finalAnswer?: string | null }).finalAnswer ?? null;
+    const finalAnswer: string | null =
+      (result as { finalAnswer?: string | null }).finalAnswer ?? null;
     if (!finalAnswer) {
       this.logger.warn('agent.no_final_answer', { threadId: thread.id });
       return;
@@ -152,7 +169,9 @@ export class AgentProcessInboundHandler {
     threadId: string,
     body: string,
     buttonText: string | null,
-  ): Promise<'resumed' | 'resumed_no_text' | 'new_turn' | 'no_pending_approval'> {
+  ): Promise<
+    'resumed' | 'resumed_no_text' | 'new_turn' | 'no_pending_approval'
+  > {
     // The most recent APPROVAL_REQUEST for this thread, if any.
     const pending = await this.prisma.chatRecord.findFirst({
       where: { threadId, kind: 'APPROVAL_REQUEST' },
@@ -180,24 +199,34 @@ export class AgentProcessInboundHandler {
     await this.records.appendApprovalDecision(threadId, userId, decision);
 
     // Find the thread to get the langgraphThreadId.
-    const thread = await this.prisma.chatThread.findUnique({ where: { id: threadId } });
+    const thread = await this.prisma.chatThread.findUnique({
+      where: { id: threadId },
+    });
     if (!thread) return 'new_turn';
 
     // Resume the graph. The Command({ resume: decision }) returns
     // from the interrupt() call inside the tool.
-    const result = await this.graph.getGraph().invoke(
-      new Command({ resume: decision }),
-      { configurable: { thread_id: thread.langgraphThreadId, userId } },
-    );
+    const result = await this.graph
+      .getGraph()
+      .invoke(new Command({ resume: decision }), {
+        configurable: { thread_id: thread.langgraphThreadId, userId },
+      });
 
     if (this.hasInterrupt(result)) {
       // The resumed tool then called another interrupt (chained
       // approvals). Send the next approval template.
-      await this.handleInterrupt(threadId, userId, result, threadId /* unused */, true);
+      await this.handleInterrupt(
+        threadId,
+        userId,
+        result,
+        threadId /* unused */,
+        true,
+      );
       return 'resumed';
     }
 
-    const finalAnswer: string | null = (result as { finalAnswer?: string | null }).finalAnswer ?? null;
+    const finalAnswer: string | null =
+      (result as { finalAnswer?: string | null }).finalAnswer ?? null;
     if (!finalAnswer) {
       return 'resumed_no_text';
     }
@@ -220,10 +249,15 @@ export class AgentProcessInboundHandler {
     fromPhoneE164: string,
     _userPhone: string,
   ): Promise<void> {
-    await this.records.appendInterruptOther(threadId, userId, verdict.reason ?? 'rejected', {
-      topicCategory: verdict.topicCategory,
-      injectionRisk: verdict.injectionRisk,
-    });
+    await this.records.appendInterruptOther(
+      threadId,
+      userId,
+      verdict.reason ?? 'rejected',
+      {
+        topicCategory: verdict.topicCategory,
+        injectionRisk: verdict.injectionRisk,
+      },
+    );
     const reply = cannedReject(verdict);
     const chunks = this.format.format(reply);
     for (const chunk of chunks) {
@@ -240,8 +274,13 @@ export class AgentProcessInboundHandler {
   ): Promise<void> {
     // result.__interrupt__ is the array of interrupt payloads.
     // The most recent one is what we send.
-    const interrupts = (result as { __interrupt__?: Array<{ value?: unknown }> }).__interrupt__;
-    const last = interrupts && interrupts.length > 0 ? interrupts[interrupts.length - 1] : null;
+    const interrupts = (
+      result as { __interrupt__?: Array<{ value?: unknown }> }
+    ).__interrupt__;
+    const last =
+      interrupts && interrupts.length > 0
+        ? interrupts[interrupts.length - 1]
+        : null;
     const payload = (last?.value ?? {}) as {
       kind?: string;
       action?: string;
@@ -256,7 +295,7 @@ export class AgentProcessInboundHandler {
       threadId,
       userId,
       payload.summary,
-      (payload as Record<string, unknown>),
+      payload,
     );
     // Enqueue the approval-template send.
     const template = await this.templates.findActive('AGENT_APPROVAL');
@@ -272,7 +311,12 @@ export class AgentProcessInboundHandler {
     await this.enqueueApproval(userId, payload.summary, threadId);
   }
 
-  private async sendReply(threadId: string, userId: string, markdown: string, toPhoneE164: string): Promise<void> {
+  private async sendReply(
+    threadId: string,
+    userId: string,
+    markdown: string,
+    toPhoneE164: string,
+  ): Promise<void> {
     const chunks = this.format.format(markdown);
     for (const chunk of chunks) {
       await this.enqueueAgentReply(userId, chunk, threadId, toPhoneE164);
@@ -286,13 +330,21 @@ export class AgentProcessInboundHandler {
     toPhoneE164?: string,
   ): Promise<void> {
     const dedupeKey = `agent_reply:${threadId}:${Date.now()}:${nanoid(8)}`;
-    const phone = toPhoneE164 ?? (await this.prisma.user.findUnique({ where: { id: userId } }))?.phoneE164;
+    const phone =
+      toPhoneE164 ??
+      (await this.prisma.user.findUnique({ where: { id: userId } }))?.phoneE164;
     if (!phone) return;
     await this.prisma.$transaction(async (tx) => {
       await this.outbox.enqueue(tx, {
         dedupeKey,
         kind: 'send_whatsapp_agent_reply',
-        payload: { userId, threadId, toPhoneE164: phone, text, correlationId: threadId },
+        payload: {
+          userId,
+          threadId,
+          toPhoneE164: phone,
+          text,
+          correlationId: threadId,
+        },
       });
     });
   }
@@ -302,14 +354,21 @@ export class AgentProcessInboundHandler {
     summary: string,
     threadId: string,
   ): Promise<void> {
-    const phone = (await this.prisma.user.findUnique({ where: { id: userId } }))?.phoneE164;
+    const phone = (await this.prisma.user.findUnique({ where: { id: userId } }))
+      ?.phoneE164;
     if (!phone) return;
     const dedupeKey = `agent_approval:${threadId}:${nanoid(8)}`;
     await this.prisma.$transaction(async (tx) => {
       await this.outbox.enqueue(tx, {
         dedupeKey,
         kind: 'send_whatsapp_agent_approval',
-        payload: { userId, threadId, toPhoneE164: phone, summary, correlationId: threadId },
+        payload: {
+          userId,
+          threadId,
+          toPhoneE164: phone,
+          summary,
+          correlationId: threadId,
+        },
       });
     });
   }
@@ -324,7 +383,10 @@ export class AgentProcessInboundHandler {
 // Pure helpers (no DI).
 // -------------------------------------------------------------------------
 
-function interpretApprovalReply(buttonText: string | null, body: string): Record<string, unknown> {
+function interpretApprovalReply(
+  buttonText: string | null,
+  body: string,
+): Record<string, unknown> {
   // Twilio quick-reply buttons arrive with ButtonText set; freeform
   // replies arrive in Body. We map:
   //   ButtonText "✅ Approve"   -> { approved: true }
@@ -337,21 +399,33 @@ function interpretApprovalReply(buttonText: string | null, body: string): Record
     if (/decline/i.test(buttonText)) return { approved: false };
   }
   const trimmed = body.trim().toLowerCase();
-  if (trimmed === 'yes' || trimmed === 'y' || trimmed === 'ok' || trimmed === 'sure') {
+  if (
+    trimmed === 'yes' ||
+    trimmed === 'y' ||
+    trimmed === 'ok' ||
+    trimmed === 'sure'
+  ) {
     return { approved: true };
   }
-  if (trimmed === 'no' || trimmed === 'n' || trimmed === 'nope' || trimmed === 'cancel') {
+  if (
+    trimmed === 'no' ||
+    trimmed === 'n' ||
+    trimmed === 'nope' ||
+    trimmed === 'cancel'
+  ) {
     return { approved: false };
   }
   return { approved: false, correction: body };
 }
 
-function cannedReject(v: import('../guardrails/steward.schema').StewardVerdict): string {
+function cannedReject(
+  v: import('../guardrails/steward.schema').StewardVerdict,
+): string {
   if (v.injectionRisk === 'high') {
     return "I couldn't process that safely. Please rephrase and try again.";
   }
   if (v.topicCategory === 'off_topic') {
-    return "I can only help with your ContactBook data — your profile, contacts, cards, sharing, and reminders. Try one of those?";
+    return 'I can only help with your ContactBook data — your profile, contacts, cards, sharing, and reminders. Try one of those?';
   }
   return v.reason ?? "Sorry, I couldn't process that. Try rephrasing?";
 }

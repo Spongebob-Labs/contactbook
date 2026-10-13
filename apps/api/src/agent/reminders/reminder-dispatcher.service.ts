@@ -23,7 +23,9 @@ import { nanoid } from 'nanoid';
  * handler in AgentModule do the actual Twilio send.
  */
 @Injectable()
-export class ReminderDispatcherService implements OnModuleInit, OnModuleDestroy {
+export class ReminderDispatcherService
+  implements OnModuleInit, OnModuleDestroy
+{
   // Stable advisory-lock key, computed once. Any 64-bit int works; we
   // derive from a hash of the name so the lock is unique to this cron
   // and won't collide with any future advisory lock in the app.
@@ -97,7 +99,9 @@ export class ReminderDispatcherService implements OnModuleInit, OnModuleDestroy 
         },
       });
       // Pin the outboxId on the reminder for traceability.
-      const outboxRow = await tx.outboxMessage.findUnique({ where: { dedupeKey } });
+      const outboxRow = await tx.outboxMessage.findUnique({
+        where: { dedupeKey },
+      });
       if (outboxRow) {
         await tx.reminder.update({
           where: { id: r.id },

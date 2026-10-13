@@ -4,7 +4,6 @@ import { AgentConfig } from './agent.config';
 import { LLM_SERVICE, LlmService } from './llm/llm.service';
 import { GoogleLlmService } from './llm/google-llm.service';
 import { StewardService } from './guardrails/steward.service';
-import { StewardVerdictSchema } from './guardrails/steward.schema';
 import { ContextBuilder } from './guardrails/context.builder';
 import { WhatsappFormatService } from './whatsapp-format/whatsapp-format.service';
 import { ChatRecordService } from './chat-record/chat-record.service';
@@ -45,10 +44,6 @@ import { OutboxModule } from '../outbox/outbox.module';
     // LlmService is bound to the LLM_SERVICE token. Swapping
     // providers is a one-line change here (or per-env in tests).
     { provide: LLM_SERVICE, useClass: GoogleLlmService },
-    // StewardVerdictSchema is provided as a value so StewardService
-    // can inject it without importing the schema directly (keeps the
-    // schema swappable for tests).
-    { provide: StewardVerdictSchema, useValue: StewardVerdictSchema },
     StewardService,
     ContextBuilder,
     WhatsappFormatService,
@@ -80,9 +75,17 @@ export class AgentModule implements OnModuleInit {
     // Register outbox handlers. Same pattern as AuthModule's
     // `send_whatsapp_otp` — the registry is the only place that
     // knows what a given `kind` does.
-    this.registry.register('agent_process_inbound', (payload) => this.processInbound.handle(payload));
-    this.registry.register('send_whatsapp_agent_reply', (payload) => this.sendReply.handle(payload));
-    this.registry.register('send_whatsapp_agent_approval', (payload) => this.sendApproval.handle(payload));
-    this.registry.register('send_whatsapp_reminder', (payload) => this.sendReminder.handle(payload));
+    this.registry.register('agent_process_inbound', (payload) =>
+      this.processInbound.handle(payload),
+    );
+    this.registry.register('send_whatsapp_agent_reply', (payload) =>
+      this.sendReply.handle(payload),
+    );
+    this.registry.register('send_whatsapp_agent_approval', (payload) =>
+      this.sendApproval.handle(payload),
+    );
+    this.registry.register('send_whatsapp_reminder', (payload) =>
+      this.sendReminder.handle(payload),
+    );
   }
 }

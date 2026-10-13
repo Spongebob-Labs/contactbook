@@ -33,7 +33,10 @@ export class ContextBuilder {
    * Used by both the Steward (to format a transcript) and the planner
    * (to seed `plannerContext`).
    */
-  async findRecent(threadId: string, n = this.cfg.contextWindowMessages): Promise<ChatRecord[]> {
+  async findRecent(
+    threadId: string,
+    n = this.cfg.contextWindowMessages,
+  ): Promise<ChatRecord[]> {
     return this.records.findRecent(threadId, n);
   }
 

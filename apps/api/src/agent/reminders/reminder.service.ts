@@ -20,11 +20,17 @@ export class ReminderService {
     input: { text: string; scheduledFor: Date },
   ): Promise<Reminder> {
     if (input.text.length < 1 || input.text.length > 500) {
-      throw ApiError.badRequest('REMINDER_TEXT_INVALID', 'Reminder text must be 1..500 chars.');
+      throw ApiError.badRequest(
+        'REMINDER_TEXT_INVALID',
+        'Reminder text must be 1..500 chars.',
+      );
     }
     const now = new Date();
     if (input.scheduledFor.getTime() <= now.getTime()) {
-      throw ApiError.badRequest('REMINDER_IN_PAST', 'scheduledFor must be in the future.');
+      throw ApiError.badRequest(
+        'REMINDER_IN_PAST',
+        'scheduledFor must be in the future.',
+      );
     }
     const oneYear = 365 * 24 * 60 * 60 * 1000;
     if (input.scheduledFor.getTime() - now.getTime() > oneYear) {
@@ -60,7 +66,10 @@ export class ReminderService {
       where: { id: reminderId, userId },
     });
     if (!r) {
-      throw ApiError.notFound('REMINDER_NOT_FOUND', 'No reminder with that id for this user.');
+      throw ApiError.notFound(
+        'REMINDER_NOT_FOUND',
+        'No reminder with that id for this user.',
+      );
     }
     return r;
   }
@@ -116,7 +125,11 @@ export class ReminderService {
     });
   }
 
-  async markSent(id: string, twilioMessageId: string | null, outboxId: string | null): Promise<void> {
+  async markSent(
+    id: string,
+    twilioMessageId: string | null,
+    outboxId: string | null,
+  ): Promise<void> {
     await this.prisma.reminder.update({
       where: { id },
       data: {

@@ -23,7 +23,11 @@ export async function plannerNode(
   cfg: AgentConfig,
   tools: StructuredTool[],
 ): Promise<Partial<AgentStateType>> {
-  const model = llm.getPlannerModel().bindTools(tools);
+  // bindTools is optional on BaseChatModel but always present on the
+  // concrete providers LlmService exposes (Gemini, OpenAI, Anthropic,
+  // Google). Asserting here keeps the planner code free of `if (!...)`
+  // branches that the type system can't prove away.
+  const model = llm.getPlannerModel().bindTools!(tools);
 
   const systemText = [
     "You are the user's personal ContactBook assistant on WhatsApp.",
@@ -31,13 +35,14 @@ export async function plannerNode(
     `The user's timezone is ${cfg.defaultTimezone}. When the user gives a time, convert it to UTC ISO 8601 (e.g. '2026-10-15T03:30:00Z') before passing it to set_reminder.whenIso.`,
     '',
     '## Standing context from the Conversation Steward',
-    state.plannerBrief || '(no prior context — this is the first turn of the thread).',
+    state.plannerBrief ||
+      '(no prior context — this is the first turn of the thread).',
     '',
     '## Tools',
     'You have these tools. Prefer calling one over free-form answers whenever the user asks a question that a tool can answer. For mutating tools (set_reminder, cancel_reminder), the user will be shown an approval card; you do NOT need to ask for permission in your reply — the tool will pause and the orchestrator will handle the confirmation.',
     '',
     '## Output style',
-    'Respond in GitHub-flavored markdown (will be converted to WhatsApp by a deterministic formatter). Keep replies short — WhatsApp is a phone, not a dashboard. Use the user\'s own language.',
+    "Respond in GitHub-flavored markdown (will be converted to WhatsApp by a deterministic formatter). Keep replies short — WhatsApp is a phone, not a dashboard. Use the user's own language.",
   ].join('\n');
 
   const messages = [

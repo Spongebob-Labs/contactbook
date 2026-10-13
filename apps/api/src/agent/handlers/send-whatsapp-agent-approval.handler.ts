@@ -25,11 +25,14 @@ export class SendWhatsappAgentApprovalHandler {
   async handle(payload: Record<string, unknown>): Promise<void> {
     const toPhoneE164 = payload.toPhoneE164 as string;
     const summary = payload.summary as string;
-    const correlationId = (payload.correlationId as string) ?? (payload.threadId as string);
+    const correlationId =
+      (payload.correlationId as string) ?? (payload.threadId as string);
 
     const template = await this.templates.findActive('AGENT_APPROVAL');
     if (!template) {
-      this.logger.warn('agent.approval_template_not_registered', { threadId: correlationId });
+      this.logger.warn('agent.approval_template_not_registered', {
+        threadId: correlationId,
+      });
       throw new Error(
         'AGENT_APPROVAL_TEMPLATE_NOT_REGISTERED — register an `agent_approval_en` template with two quick-reply buttons and approvalStatus=APPROVED.',
       );

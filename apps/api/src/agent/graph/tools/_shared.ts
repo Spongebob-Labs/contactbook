@@ -13,7 +13,9 @@ import type { RunnableConfig } from '@langchain/core/runnables';
 export function getUserId(config: RunnableConfig): string {
   const uid = config?.configurable?.userId;
   if (typeof uid !== 'string' || !uid) {
-    throw new Error('userId missing from RunnableConfig.configurable — executor must inject it.');
+    throw new Error(
+      'userId missing from RunnableConfig.configurable — executor must inject it.',
+    );
   }
   return uid;
 }

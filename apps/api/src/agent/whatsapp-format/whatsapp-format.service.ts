@@ -99,26 +99,35 @@ export class WhatsappFormatService {
     });
 
     // 3. Tables (GFM): flatten to a bullet list of "Header: value" rows.
-    s = s.replace(/^\|(.+)\|\s*\n\|[-:\s|]+\|\s*\n((?:\|.*\|\s*\n?)*)/gm, (_m, headerRow: string, bodyRows: string) => {
-      const headers = headerRow.split('|').map((h) => h.trim()).filter(Boolean);
-      const rows = bodyRows.trim().split('\n').map((r) => r.split('|').map((c) => c.trim()));
-      const lines: string[] = [];
-      for (const r of rows) {
-        const pairs = headers
-          .map((h, i) => (r[i] ? `${h}: ${r[i]}` : null))
-          .filter((x): x is string => !!x);
-        if (pairs.length) lines.push('• ' + pairs.join(' · '));
-      }
-      return lines.join('\n');
-    });
+    s = s.replace(
+      /^\|(.+)\|\s*\n\|[-:\s|]+\|\s*\n((?:\|.*\|\s*\n?)*)/gm,
+      (_m, headerRow: string, bodyRows: string) => {
+        const headers = headerRow
+          .split('|')
+          .map((h) => h.trim())
+          .filter(Boolean);
+        const rows = bodyRows
+          .trim()
+          .split('\n')
+          .map((r) => r.split('|').map((c) => c.trim()));
+        const lines: string[] = [];
+        for (const r of rows) {
+          const pairs = headers
+            .map((h, i) => (r[i] ? `${h}: ${r[i]}` : null))
+            .filter((x): x is string => !!x);
+          if (pairs.length) lines.push('• ' + pairs.join(' · '));
+        }
+        return lines.join('\n');
+      },
+    );
 
     // 4. Headings → bold line.
     s = s.replace(/^#{1,6}\s+(.+)$/gm, (_m, t: string) => `*${t.trim()}*`);
 
     // 5. Bold + italic. Order matters: ** before *.
-    s = s.replace(/\*\*([^*\n]+)\*\*/g, '*$1*');     // **bold** → *bold*
+    s = s.replace(/\*\*([^*\n]+)\*\*/g, '*$1*'); // **bold** → *bold*
     s = s.replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1_$2_'); // *italic* → _italic_  (avoid **)
-    s = s.replace(/__([^_\n]+)__/g, '*$1*');         // __bold__ → *bold*
+    s = s.replace(/__([^_\n]+)__/g, '*$1*'); // __bold__ → *bold*
     s = s.replace(/(^|[^_])_([^_\n]+)_(?!_)/g, '$1_$2_'); // _italic_ stays _italic_
 
     // 6. Links: [text](url) → text (url)

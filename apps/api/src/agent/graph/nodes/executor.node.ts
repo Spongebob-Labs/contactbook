@@ -31,13 +31,21 @@ export async function executorNode(
   logger: AppLogger,
 ): Promise<Partial<AgentStateType>> {
   const lastMessage = state.messages[state.messages.length - 1];
-  if (!lastMessage || !('tool_calls' in lastMessage) || !Array.isArray((lastMessage as { tool_calls?: unknown[] }).tool_calls)) {
+  if (
+    !lastMessage ||
+    !('tool_calls' in lastMessage) ||
+    !Array.isArray((lastMessage as { tool_calls?: unknown[] }).tool_calls)
+  ) {
     // No tool calls — nothing to execute. The conditional edge will
     // route us to the synthesiser.
     return {};
   }
   const aiMsg = lastMessage as unknown as {
-    tool_calls: Array<{ id: string; name: string; args: Record<string, unknown> }>;
+    tool_calls: Array<{
+      id: string;
+      name: string;
+      args: Record<string, unknown>;
+    }>;
   };
   const toolByName = new Map(tools.map((t) => [t.name, t]));
 
@@ -61,7 +69,13 @@ export async function executorNode(
     // the graph; on resume, the tool returns and we write the
     // TOOL_RESULT row. The graph state checkpoint is the source of
     // truth for "did this complete"; the ChatRecord is for humans.
-    await records.appendToolCall(threadId, userId, call.name, call.id, call.args);
+    await records.appendToolCall(
+      threadId,
+      userId,
+      call.name,
+      call.id,
+      call.args,
+    );
     logger.info('agent.tool_call', {
       tool: call.name,
       mutating: MUTATING_TOOLS.has(call.name),
@@ -73,17 +87,28 @@ export async function executorNode(
         configurable: { userId, threadId },
       });
       const toolResult = serialiseToolResult(result);
-      await records.appendToolResult(threadId, userId, call.name, call.id, toolResult);
+      await records.appendToolResult(
+        threadId,
+        userId,
+        call.name,
+        call.id,
+        toolResult,
+      );
       toolMessages.push(
         new ToolMessage({
-          content: typeof result === 'string' ? result : JSON.stringify(toolResult),
+          content:
+            typeof result === 'string' ? result : JSON.stringify(toolResult),
           tool_call_id: call.id,
           name: call.name,
         }),
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      logger.warn('agent.tool_failed', { tool: call.name, err: message, threadId });
+      logger.warn('agent.tool_failed', {
+        tool: call.name,
+        err: message,
+        threadId,
+      });
       // ToolMessage with the error becomes part of the conversation;
       // the planner sees it and can adapt (or give up).
       toolMessages.push(

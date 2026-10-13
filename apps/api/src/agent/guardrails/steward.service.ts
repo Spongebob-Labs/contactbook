@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { AppLogger } from '../../common/logging/app-logger.service';
 import { AgentConfig } from '../agent.config';
@@ -26,7 +26,7 @@ import { maskPhone } from '../../common/logging/redact';
 @Injectable()
 export class StewardService {
   constructor(
-    @LLM_SERVICE private readonly llm: LlmService,
+    @Inject(LLM_SERVICE) private readonly llm: LlmService,
     private readonly context: ContextBuilder,
     private readonly cfg: AgentConfig,
     private readonly logger: AppLogger,
@@ -76,7 +76,9 @@ export class StewardService {
     rawUserMessage: string,
   ): Promise<StewardVerdict> {
     const transcript = this.context.formatTranscript(recent);
-    const model = this.llm.getStewardModel().withStructuredOutput(StewardVerdictSchema);
+    const model = this.llm
+      .getStewardModel()
+      .withStructuredOutput(StewardVerdictSchema);
 
     const userSide = [
       '## Recent conversation',
@@ -89,13 +91,14 @@ export class StewardService {
     this.logger.info('agent.steward_invoked', {
       recentCount: recent.length,
       messageLength: rawUserMessage.length,
-      fromPhoneHint: maskPhone(recent.find((r) => r.content)?.content ?? '') || undefined,
+      fromPhoneHint:
+        maskPhone(recent.find((r) => r.content)?.content ?? '') || undefined,
     });
 
-    const verdict = (await model.invoke([
+    const verdict = await model.invoke([
       new SystemMessage(STEWARD_SYSTEM_PROMPT),
       new HumanMessage(userSide),
-    ])) as StewardVerdict;
+    ]);
 
     // Defence-in-depth: even though the model is schema-bound, force
     // the two rules the prompt calls out (injection=high → reject,
