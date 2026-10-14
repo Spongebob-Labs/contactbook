@@ -56,6 +56,8 @@ model User {
   cards           Card[]
   contacts        Contact[]
   inboundMessages InboundMessage[]
+  chatThreads     ChatThread[]
+  reminders       Reminder[]
 
   @@map("users")
 }
@@ -546,6 +548,9 @@ enum MessagePurpose {
   CARD_SHARE
   CARD_UPDATE
   // SCAN_REPLY lands with QR scanning.
+  REMINDER
+  AGENT_REPLY
+  AGENT_APPROVAL
 }
 
 enum MessageStatus {
@@ -685,3 +690,133 @@ model InboundMessage {
   @@index([resolvedOwnerId])
   @@map("inbound_messages")
 }
+
+// ==========================================
+// AGENT (WhatsApp-native LangGraph agent)
+// ==========================================
+
+/// One active conversation per user (keyed implicitly by phone number —
+/// see AgentModule/agent-process-inbound.handler.ts). `langgraphThreadId`
+/// is 1:1 with this id; it is the LangGraph checkpointer's `thread_id`.
+model ChatThread {
+  id               String    @id @default(uuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Optional human-meaningful title, auto-set from the first user turn.
+  title            String?
+  langgraphThreadId String   @unique
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  /// Set when the user says "/new" or "start over" — the next inbound opens
+  /// a new thread. Phase 4 will add an idle-timeout cron that auto-archives.
+  archivedAt       DateTime?
+
+  records ChatRecord[]
+
+  @@index([userId, updatedAt(sort: Desc)])
+  @@index([userId, archivedAt])
+  @@map("chat_threads")
+}
+
+enum ChatRole {
+  USER
+  ASSISTANT
+  TOOL
+  SYSTEM
+}
+
+enum ChatRecordKind {
+  /// The user's inbound turn (text or voice-transcribed).
+  USER_MESSAGE
+  /// The synthesiser's final answer, written after streamEvents completes.
+  ASSISTANT_TEXT
+  /// The LLM chose a tool with these args.
+  TOOL_CALL
+  /// The tool returned this value.
+  TOOL_RESULT
+  /// An interrupt() fired (HITL) — payload is what the human sees.
+  APPROVAL_REQUEST
+  /// The human replied (approved/declined/edited) — payload is the resume value.
+  APPROVAL_DECISION
+  /// Reserved for non-approval interrupts and guardrail rejections.
+  INTERRUPT_OTHER
+}
+
+/// Append-only audit log for the agent. Distinct from InboundMessage
+/// (which is keyed on phone pair and tracks WhatsApp/scan provenance).
+model ChatRecord {
+  id          String         @id @default(uuid())
+  threadId    String
+  thread      ChatThread     @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  /// Denormalized for fast per-user queries.
+  userId      String
+  role        ChatRole
+  kind        ChatRecordKind
+
+  /// Free-form text; the user message (USER_MESSAGE), the final answer
+  /// (ASSISTANT_TEXT), the action summary (APPROVAL_REQUEST), etc.
+  content     String?
+
+  /// Voice (Phase 2; all nullable so text-only rows are valid).
+  audioUrl        String?
+  audioMime       String?
+  audioDurationMs Int?
+  /// STT result. For voice-driven USER_MESSAGE rows, mirrors `content`.
+  audioTranscript String?
+
+  /// Tooling.
+  toolName   String?
+  toolCallId String?
+  toolArgs   Json?
+  toolResult Json?
+
+  /// Approval.
+  approvalSummary  String?
+  approvalPayload  Json?
+  approvalDecision Json?
+
+  /// Provenance / debugging.
+  langgraphCheckpointId String?
+
+  createdAt DateTime @default(now())
+
+  @@index([threadId, createdAt])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([toolCallId])
+  @@index([threadId, kind])
+  @@map("chat_records")
+}
+
+enum ReminderStatus {
+  PENDING
+  SENT
+  CANCELLED
+  FAILED
+}
+
+/// User-set reminders. Scheduled-time delivery is driven by the per-minute
+/// `ReminderDispatcherService` cron, which claims due rows with
+/// SELECT ... FOR UPDATE SKIP LOCKED and enqueues a `send_whatsapp_reminder`
+/// outbox row. `scheduledFor` is UTC; the planner converts the user's
+/// local time using AGENT_DEFAULT_TIMEZONE (v1).
+model Reminder {
+  id           String         @id @default(uuid())
+  userId       String
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  text         String
+  scheduledFor DateTime
+  status       ReminderStatus @default(PENDING)
+  sentAt       DateTime?
+  failedAt     DateTime?
+  errorMessage String?
+  twilioMessageId String?
+  /// The outbox row that processed this reminder (for traceability).
+  outboxId     String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@index([status, scheduledFor])
+  @@index([userId, status, scheduledFor])
+  @@map("reminders")
+}
+

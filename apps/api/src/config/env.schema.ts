@@ -135,6 +135,57 @@ const base = z.object({
     .string()
     .regex(/^[A-Za-z0-9._-]+$/)
     .optional(),
+  // ==========================================
+  // Agent (WhatsApp-native LangGraph)
+  // ==========================================
+  // Google AI Studio key for Gemini. Wire up via LlmService in apps/api/src/agent/llm.
+  // Not required in development (the Steward + planner degrade gracefully and the
+  // agent handlers will return AGENT_LLM_NOT_CONFIGURED until it is), but the
+  // agent run path will fail-fast at the first LLM call. Production: see REQUIRED_IN_PRODUCTION.
+  GEMINI_API_KEY: z.string().optional(),
+  // LLM_PROVIDER is a swap-provider knob for the future (google today; openai /
+  // anthropic later). The LlmService abstraction in apps/api/src/agent/llm reads
+  // this to pick the concrete model factory — adding a new provider is a new
+  // LlmService implementation, not a graph change.
+  LLM_PROVIDER: z.enum(['google']).default('google'),
+  // Model strings. Confirmed working on the Google generateContent API (the one
+  // ChatGoogleGenerativeAI / @langchain/google-genai uses). Override per env.
+  // - PLANNER + STEWARD use Flash (cheap/fast; the Steward is a structured-
+  //   output call that benefits from Flash's low latency more than from Pro).
+  // - TOOLS + SYNTHESIS use Argon (the flagship reasoning model, 1M context,
+  //   best tool calling on the generateContent API as of Oct 2026).
+  GEMINI_MODEL_PLANNER:    z.string().default('gemini-3.8-flash'),
+  GEMINI_MODEL_STEWARD:    z.string().default('gemini-3.8-flash'),
+  // Tools-bound reasoning uses 3.1 Pro (handles tool calls well).
+  GEMINI_MODEL_TOOLS:      z.string().default('gemini-3.1-pro-preview'),
+  // Synth was on 4-argon → TypeError in the lib mapper, then 3.1-pro →
+  // 60+s thinking time and empty text output. Flash is fast, handles
+  // the summary task fine, and doesn't think. If we need higher
+  // quality later, try gemini-3.6-flash (the previous-gen Flash,
+  // stable).
+  GEMINI_MODEL_SYNTHESIS:  z.string().default('gemini-3.8-flash'),
+  // The last N messages of the active thread (any role) to pass to the
+  // Conversation Steward as the recent transcript, AND to seed the planner's
+  // `plannerContext` (the raw recent window). ~20 covers ~10 turns and is
+  // the sweet spot for cost vs. context fidelity for a WhatsApp assistant.
+  AGENT_CONTEXT_WINDOW_MESSAGES: z.coerce.number().int().positive().default(20),
+  // Hard cap on inbound body length, enforced BEFORE the LLM is called so a
+  // 100k-char prompt-stuffing payload can't burn tokens. WhatsApp's own limit
+  // is ~4096 chars; 4000 is a comfortable ceiling.
+  AGENT_MAX_INBOUND_CHARS: z.coerce.number().int().positive().default(4000),
+  // The user's timezone, used in the planner's system prompt for converting
+  // "tomorrow 9am" to UTC. Per-user TZ is a Phase 4 concern (User.timezone).
+  AGENT_DEFAULT_TIMEZONE:  z.string().default('Asia/Kolkata'),
+
+  // LangSmith observability. Wired but off. When LANGSMITH_TRACING=true and
+  // LANGSMITH_API_KEY is set, LlmService and the LangGraph runtime auto-trace
+  // every node and LLM call. Set false (or leave unset) for zero overhead.
+  LANGSMITH_TRACING: z
+    .enum(['true', 'false'])
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v === 'true')),
+  LANGSMITH_API_KEY: z.string().optional(),
+  LANGSMITH_PROJECT: z.string().default('contactbook-agent'),
 });
 
 /** Required once NODE_ENV=production — absence is a boot failure, not a runtime 500. */
@@ -155,6 +206,7 @@ const REQUIRED_IN_PRODUCTION = [
   'TASKS_INVOKER_SA',
   'TWILIO_OTP_CONTENT_SID',
   'GCS_PROFILE_PHOTOS_BUCKET',
+  'GEMINI_API_KEY',
 ] as const;
 
 export const envSchema = base.superRefine((env, ctx) => {
@@ -278,3 +330,5 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
 
   return parsed.data;
 }
+
+

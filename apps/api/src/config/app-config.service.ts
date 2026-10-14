@@ -176,4 +176,33 @@ export class AppConfigService {
       classSuffix: this.env.GOOGLE_WALLET_CLASS_SUFFIX!,
     };
   }
+
+  /**
+   * Typed view of the agent-specific env. Every agent module reads from
+   * here, never `process.env` directly, so the swap-provider knob
+   * (LLM_PROVIDER) and the four model strings live in one place.
+   */
+  get agent() {
+    return {
+      provider: this.env.LLM_PROVIDER,
+      geminiApiKey: this.env.GEMINI_API_KEY,
+      models: {
+        planner: this.env.GEMINI_MODEL_PLANNER,
+        steward: this.env.GEMINI_MODEL_STEWARD,
+        tools: this.env.GEMINI_MODEL_TOOLS,
+        synthesis: this.env.GEMINI_MODEL_SYNTHESIS,
+      },
+      contextWindowMessages: this.env.AGENT_CONTEXT_WINDOW_MESSAGES,
+      maxInboundChars: this.env.AGENT_MAX_INBOUND_CHARS,
+      defaultTimezone: this.env.AGENT_DEFAULT_TIMEZONE,
+      langsmith: {
+        tracing: this.env.LANGSMITH_TRACING ?? false,
+        apiKey: this.env.LANGSMITH_API_KEY,
+        project: this.env.LANGSMITH_PROJECT,
+      },
+      // The checkpointer connects to the same Postgres as the app, but in
+      // a dedicated `langgraph` schema (created by the agent migration).
+      checkpointerSchema: 'langgraph',
+    };
+  }
 }
