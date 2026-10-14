@@ -156,8 +156,14 @@ const base = z.object({
   //   best tool calling on the generateContent API as of Oct 2026).
   GEMINI_MODEL_PLANNER:    z.string().default('gemini-3.8-flash'),
   GEMINI_MODEL_STEWARD:    z.string().default('gemini-3.8-flash'),
-  GEMINI_MODEL_TOOLS:      z.string().default('gemini-4-argon'),
-  GEMINI_MODEL_SYNTHESIS:  z.string().default('gemini-4-argon'),
+  // Tools-bound reasoning uses 3.1 Pro (handles tool calls well).
+  GEMINI_MODEL_TOOLS:      z.string().default('gemini-3.1-pro-preview'),
+  // Synth was on 4-argon → TypeError in the lib mapper, then 3.1-pro →
+  // 60+s thinking time and empty text output. Flash is fast, handles
+  // the summary task fine, and doesn't think. If we need higher
+  // quality later, try gemini-3.6-flash (the previous-gen Flash,
+  // stable).
+  GEMINI_MODEL_SYNTHESIS:  z.string().default('gemini-3.8-flash'),
   // The last N messages of the active thread (any role) to pass to the
   // Conversation Steward as the recent transcript, AND to seed the planner's
   // `plannerContext` (the raw recent window). ~20 covers ~10 turns and is

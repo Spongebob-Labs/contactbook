@@ -120,7 +120,7 @@ export class AgentProcessInboundHandler {
     // 5. Invoke the graph. The userId + threadId are surfaced into
     //    state via the input — the executor reads them from there.
     //    The checkpointer persists per `thread_id` (= thread.langgraphThreadId).
-    const result = await this.graph.getGraph().invoke(
+    const result = await this.graph.run(
       {
         messages: [new HumanMessage(verdict.sanitizedMessage)],
         plannerBrief: verdict.plannerBrief,
@@ -207,8 +207,7 @@ export class AgentProcessInboundHandler {
     // Resume the graph. The Command({ resume: decision }) returns
     // from the interrupt() call inside the tool.
     const result = await this.graph
-      .getGraph()
-      .invoke(new Command({ resume: decision }), {
+      .run(new Command({ resume: decision }), {
         configurable: { thread_id: thread.langgraphThreadId, userId },
       });
 

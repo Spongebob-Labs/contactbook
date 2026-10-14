@@ -13,5 +13,10 @@ import { ProfileOnboardingService } from './profile-onboarding.service';
     ProfilePhotoStorageService,
     ProfileOnboardingService,
   ],
+  // The agent module (apps/api/src/agent) wraps these as LangGraph
+  // tools and needs them injectable across the module boundary.
+  // The HTTP controller is the only other consumer and doesn't mind
+  // sharing the export.
+  exports: [ProfileService, ProfileOnboardingService],
 })
 export class ProfileModule {}

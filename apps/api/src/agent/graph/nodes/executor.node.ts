@@ -49,6 +49,14 @@ export async function executorNode(
   };
   const toolByName = new Map(tools.map((t) => [t.name, t]));
 
+  // Per-execution tracking: signatures of tools already invoked in
+  // THIS executor call. Prevents within-turn duplicates (the planner
+  // sometimes emits 12 identical tool_calls in one message; we only
+  // want to run the first). Reset on every executor entry, so
+  // across-turn repeats are allowed.
+  const executedThisTurn = new Set<string>();
+  logger.info('agent.executor_entry', { userId, threadId, toolCount: tools.length });
+
   const toolMessages: ToolMessage[] = [];
   for (const call of aiMsg.tool_calls) {
     const tool = toolByName.get(call.name);
@@ -82,7 +90,43 @@ export async function executorNode(
       threadId,
     });
 
+    // --- Anti-loop guard ---
+    // The planner LLM has been observed to re-call the same read tool
+    // up to 12 times despite system prompt instructions not to loop.
+    // Force a hard cap: at most ONE invocation per (toolName, JSON-args)
+    // signature per executor entry. Subsequent identical calls in the
+    // same AIMessage get a synthetic "you already have the result"
+    // ToolMessage so the synth can write the final answer.
+    const signature = stableSignature(call.name, call.args);
+    const alreadyExecuted = executedThisTurn.has(signature);
+    if (alreadyExecuted) {
+      logger.warn('agent.tool_loop_suppressed', {
+        tool: call.name,
+        threadId,
+      });
+      toolMessages.push(
+        new ToolMessage({
+          content:
+            `Tool ${call.name} has already been called this turn with the same arguments. ` +
+            'You have the result. Do not call it again — write your final answer now based on the previous result.',
+          tool_call_id: call.id,
+          name: call.name,
+        }),
+      );
+      // Still write a TOOL_RESULT audit row so the record is consistent.
+      await records.appendToolResult(
+        threadId,
+        userId,
+        call.name,
+        call.id,
+        { loopSuppressed: true },
+      );
+      continue;
+    }
+    // --- end anti-loop guard ---
+
     try {
+      executedThisTurn.add(signature);
       const result = await tool.invoke(call.args, {
         configurable: { userId, threadId },
       });
@@ -122,6 +166,20 @@ export async function executorNode(
   }
 
   return { messages: toolMessages };
+}
+
+/**
+ * Stable signature for a tool call: tool name + JSON-stringified args.
+ * Used to detect repeat invocations within a single turn.
+ */
+function stableSignature(toolName: string, args: unknown): string {
+  let argsStr: string;
+  try {
+    argsStr = JSON.stringify(args ?? {}, Object.keys(args ?? {}).sort());
+  } catch {
+    argsStr = String(args);
+  }
+  return `${toolName}::${argsStr}`;
 }
 
 function serialiseToolResult(result: unknown): unknown {

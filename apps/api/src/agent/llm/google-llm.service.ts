@@ -67,7 +67,11 @@ export class GoogleLlmService extends LlmService implements OnModuleInit {
       apiKey: this.apiKey,
       // Gemini 3 thought signatures: langchain-google-genai >= 3.1.0 handles
       // these automatically. We pin via package.json — see the dev README note.
-      maxRetries: 2,
+      //
+      // maxRetries: 0 on purpose — a slow/throttled Gemini response must
+      // surface as ONE error, not a silent 3-attempt backoff that burns
+      // tokens and hangs the request for minutes.
+      maxRetries: 0,
     });
   }
 

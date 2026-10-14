@@ -95,10 +95,13 @@ export class StewardService {
         maskPhone(recent.find((r) => r.content)?.content ?? '') || undefined,
     });
 
-    const verdict = await model.invoke([
-      new SystemMessage(STEWARD_SYSTEM_PROMPT),
-      new HumanMessage(userSide),
-    ]);
+    const verdict = await model.invoke(
+      [
+        new SystemMessage(STEWARD_SYSTEM_PROMPT),
+        new HumanMessage(userSide),
+      ],
+      { signal: AbortSignal.timeout(25_000) },
+    );
 
     // Defence-in-depth: even though the model is schema-bound, force
     // the two rules the prompt calls out (injection=high → reject,

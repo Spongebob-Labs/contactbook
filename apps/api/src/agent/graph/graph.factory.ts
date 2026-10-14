@@ -3,7 +3,6 @@ import { StateGraph, END, START } from '@langchain/langgraph';
 import type { StructuredTool } from '@langchain/core/tools';
 import { AgentState, type AgentStateType } from './state';
 import { GraphCheckpointer } from './checkpointer';
-import { preprocessNode } from './nodes/preprocess.node';
 import { plannerNode } from './nodes/planner.node';
 import { executorNode } from './nodes/executor.node';
 import { synthesiserNode } from './nodes/synthesiser.node';
@@ -27,20 +26,19 @@ import { ReminderService } from '../reminders/reminder.service';
  *
  * Topology:
  *
- *   START -> preprocess -> planner
- *                           |
- *                  has tool_calls?
- *                  /            \
- *                yes             no
- *                 |              |
- *                 v              v
- *              executor     synthesiser
- *                 |              |
- *       (interrupt() inside    finalAnswer
- *        a mutating tool)         |
- *                 |              |
- *                 +-> planner    v
- *                              END
+ *   START -> planner
+ *                |
+ *       has tool_calls?
+ *       /            \
+ *     yes             no
+ *      |              |
+ *      v              v
+ *   executor     synthesiser
+ *      |              |
+ *      |          finalAnswer
+ *      |              |
+ *      +-> synthesiser v
+ *                     END
  */
 
 /** The dependencies `buildAgentGraph` needs to construct one graph. */
@@ -69,9 +67,6 @@ interface BuildDeps {
 function buildAgentGraph(deps: BuildDeps) {
   const { llm, cfg, checkpointer, tools, records, context, logger } = deps;
   const graph = new StateGraph(AgentState)
-    .addNode('preprocess', (s: AgentStateType) =>
-      preprocessNode(s, records, context),
-    )
     .addNode('planner', (s: AgentStateType) => plannerNode(s, llm, cfg, tools))
     .addNode('executor', (s: AgentStateType) => {
       // userId + threadId are pulled from configurable by the handler
@@ -95,23 +90,39 @@ function buildAgentGraph(deps: BuildDeps) {
       );
     })
     .addNode('synthesiser', (s: AgentStateType) => synthesiserNode(s, llm, cfg))
-    .addEdge(START, 'preprocess')
-    .addEdge('preprocess', 'planner')
+    .addEdge(START, 'planner')
     .addConditionalEdges('planner', (s: AgentStateType) => {
       const last = s.messages[s.messages.length - 1];
-      if (
+      const route =
         last &&
         'tool_calls' in last &&
         Array.isArray((last as { tool_calls?: unknown[] }).tool_calls) &&
         (last as { tool_calls: unknown[] }).tool_calls.length > 0
-      ) {
-        return 'executor';
-      }
-      return 'synthesiser';
+          ? 'executor'
+          : 'synthesiser';
+      console.log(`[agent.timing] planner routed to ${route}`);
+      return route;
     })
-    .addEdge('executor', 'planner') // loop: after tools, back to planner
+    // After the executor runs, go STRAIGHT to the synthesiser, not
+    // back to the planner. The planner-emit-tool-call / executor-run /
+    // planner-emit-tool-call-again loop is the bug we're avoiding: the
+    // LLM obediently keeps calling the tool because the system prompt
+    // told it to. For our current tool set (single read tool per
+    // question, or single mutate tool with HITL), one executor step
+    // is enough. If we ever need multi-tool chaining, the conditional
+    // edge below can be re-introduced with a "shouldChain" hint
+    // (e.g. only loop when the planner previously emitted a
+    // tool_calls result that itself needs further processing).
+    //
+    // For mutate tools the interrupt() inside the tool pauses the
+    // graph before this edge is reached, so the mutating flow is
+    // unaffected by this change.
+    .addEdge('executor', 'synthesiser')
     .addEdge('synthesiser', END);
 
+  // recursionLimit is NOT a compile option in @langchain/langgraph@0.3.x —
+  // it is a per-invoke runtime config. See GraphFactory.run() where it is
+  // baked in so callers can't forget it.
   return graph.compile({ checkpointer });
 }
 
@@ -132,7 +143,17 @@ export class GraphFactory implements OnModuleInit {
     private readonly reminders: ReminderService,
   ) {}
 
-  onModuleInit(): void {
+  async onModuleInit(): Promise<void> {
+    // Explicit synchronisation with the checkpointer's onModuleInit,
+    // which is async (it does an `await this.saver.setup()` against
+    // Postgres). Nest's onModuleInit ordering across providers is
+    // best-effort: a sync onModuleInit on a dependent can fire before
+    // the async onModuleInit on a dependency has resolved, which is
+    // exactly the bug we hit on first boot (GraphFactory.onModuleInit
+    // called .get() and got null). Awaiting whenReady() makes the
+    // ordering load-bearing at the call site.
+    await this.checkpointer.whenReady();
+
     const svcs: AgentServices = {
       profile: this.profile,
       contacts: this.contacts,
@@ -162,5 +183,26 @@ export class GraphFactory implements OnModuleInit {
       );
     }
     return this.compiled;
+  }
+
+  /**
+   * The single invoke entry point. Bakes in a recursion cap as
+   * insurance: the graph is a DAG (planner -> executor -> synthesiser
+   * -> END, no cycles), so a loop is topologically impossible, but the
+   * cap guards against future edits accidentally adding a cycle.
+   *
+   * Note: LangGraph counts one extra superstep for the END wrap-up,
+   * so the tool path (3 nodes) consumes 4 steps — 3 was too tight and
+   * broke the happy path. 10 leaves generous margin without meaningfully
+   * weakening the guard.
+   */
+  async run(
+    input: Parameters<ReturnType<typeof buildAgentGraph>['invoke']>[0],
+    config: { configurable: Record<string, unknown> },
+  ): Promise<unknown> {
+    return this.getGraph().invoke(input, {
+      ...config,
+      recursionLimit: 10,
+    });
   }
 }

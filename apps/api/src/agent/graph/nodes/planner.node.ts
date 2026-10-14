@@ -39,21 +39,38 @@ export async function plannerNode(
       '(no prior context — this is the first turn of the thread).',
     '',
     '## Tools',
-    'You have these tools. Prefer calling one over free-form answers whenever the user asks a question that a tool can answer. For mutating tools (set_reminder, cancel_reminder), the user will be shown an approval card; you do NOT need to ask for permission in your reply — the tool will pause and the orchestrator will handle the confirmation.',
+    "You have read tools (get_my_profile, list_my_contacts, list_reminders) and mutate tools (set_reminder, cancel_reminder). Call the tool that answers the user's CURRENT question — even if a previous turn used the same tool, call it again for fresh data. If the question needs no tool (a greeting, a follow-up remark), reply directly. For mutate tools: the user will be shown an approval card; do not ask for permission in your reply — the tool will pause and the orchestrator handles the confirmation.",
     '',
     '## Output style',
     "Respond in GitHub-flavored markdown (will be converted to WhatsApp by a deterministic formatter). Keep replies short — WhatsApp is a phone, not a dashboard. Use the user's own language.",
   ].join('\n');
 
-  const messages = [
-    new SystemMessage(systemText),
-    ...state.plannerContext,
-    // The current turn's HumanMessage is already in state.messages at
-    // the tail; LangGraph's MessagesValue reducer appended it. The
-    // model sees it there.
-  ];
+  // The planner sees the system prompt + the last 20 messages of the
+  // real conversation state. `state.messages` is maintained by
+  // LangGraph's reducer. Strip trailing AI messages defensively — the
+  // request must never end with a model turn (Gemini 400s otherwise).
+  // On a normal turn the tail is the user's new HumanMessage, so this
+  // is a no-op; it protects future flows (e.g. a resumed graph that
+  // re-enters the planner).
+  const history = [...state.messages.slice(-20)];
+  while (
+    history.length > 0 &&
+    history[history.length - 1].getType?.() === 'ai'
+  ) {
+    history.pop();
+  }
+  const messages = [new SystemMessage(systemText), ...history];
 
-  const response = await model.invoke(messages);
+  const plannerStart = Date.now();
+  const response = await model.invoke(messages, {
+    // `timeout` in RunnableConfig is ignored by invoke() in this
+    // LangChain version — an AbortSignal is the thing that actually
+    // races and throws "Aborted" after 25s.
+    signal: AbortSignal.timeout(25_000),
+  });
+  console.log(
+    `[agent.timing] planner took ${Date.now() - plannerStart}ms (${state.messages.length} messages in state)`,
+  );
   return { messages: [response] };
 }
 

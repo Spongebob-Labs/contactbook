@@ -22,26 +22,42 @@ ALTER TYPE "MessagePurpose" ADD VALUE IF NOT EXISTS 'AGENT_APPROVAL';
 -- ==========================================
 -- 3. New enums for chat_records + reminders
 -- ==========================================
-CREATE TYPE "ChatRole" AS ENUM ('USER', 'ASSISTANT', 'TOOL', 'SYSTEM');
+-- These three CREATE TYPE statements are wrapped in DO blocks with
+-- existence checks because the previous (failed) migration attempt
+-- may have committed them before failing at a later step. DO
+-- blocks make the migration safely re-runnable from any state.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'ChatRole') THEN
+    CREATE TYPE "ChatRole" AS ENUM ('USER', 'ASSISTANT', 'TOOL', 'SYSTEM');
+  END IF;
+END $$;
 
-CREATE TYPE "ChatRecordKind" AS ENUM (
-  'USER_MESSAGE',
-  'ASSISTANT_TEXT',
-  'TOOL_CALL',
-  'TOOL_RESULT',
-  'APPROVAL_REQUEST',
-  'APPROVAL_DECISION',
-  'INTERRUPT_OTHER'
-);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'ChatRecordKind') THEN
+    CREATE TYPE "ChatRecordKind" AS ENUM (
+      'USER_MESSAGE',
+      'ASSISTANT_TEXT',
+      'TOOL_CALL',
+      'TOOL_RESULT',
+      'APPROVAL_REQUEST',
+      'APPROVAL_DECISION',
+      'INTERRUPT_OTHER'
+    );
+  END IF;
+END $$;
 
-CREATE TYPE "ReminderStatus" AS ENUM ('PENDING', 'SENT', 'CANCELLED', 'FAILED');
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'ReminderStatus') THEN
+    CREATE TYPE "ReminderStatus" AS ENUM ('PENDING', 'SENT', 'CANCELLED', 'FAILED');
+  END IF;
+END $$;
 
 -- ==========================================
 -- 4. chat_threads
 -- ==========================================
 CREATE TABLE "chat_threads" (
     "id"                 UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    "userId"             UUID         NOT NULL,
+    "userId"             TEXT         NOT NULL,  -- TEXT, not UUID: matches users.id (text in Supabase)
     "title"              TEXT,
     "langgraphThreadId"  TEXT         NOT NULL,
     "createdAt"          TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -67,7 +83,7 @@ CREATE INDEX "chat_threads_userId_archivedAt_idx"
 CREATE TABLE "chat_records" (
     "id"                      UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
     "threadId"                UUID         NOT NULL,
-    "userId"                  UUID         NOT NULL,
+    "userId"                  TEXT         NOT NULL,  -- TEXT, not UUID: matches users.id (text in Supabase)
     "role"                    "ChatRole"   NOT NULL,
     "kind"                    "ChatRecordKind" NOT NULL,
     "content"                 TEXT,
@@ -113,7 +129,7 @@ CREATE INDEX "chat_records_threadId_kind_idx"
 -- ==========================================
 CREATE TABLE "reminders" (
     "id"               UUID              PRIMARY KEY DEFAULT gen_random_uuid(),
-    "userId"           UUID              NOT NULL,
+    "userId"           TEXT              NOT NULL,  -- TEXT, not UUID: matches users.id (text in Supabase)
     "text"             TEXT              NOT NULL,
     "scheduledFor"     TIMESTAMP(3)      NOT NULL,
     "status"           "ReminderStatus"  NOT NULL DEFAULT 'PENDING',

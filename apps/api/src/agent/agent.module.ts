@@ -16,6 +16,8 @@ import { SendWhatsappAgentReplyHandler } from './handlers/send-whatsapp-agent-re
 import { SendWhatsappAgentApprovalHandler } from './handlers/send-whatsapp-agent-approval.handler';
 import { SendWhatsappReminderHandler } from './handlers/send-whatsapp-reminder.handler';
 import { TaskHandlerRegistry } from '../outbox/task-handler.registry';
+import { AgentController } from './agent.controller';
+import { AuthModule } from '../auth/auth.module';
 import { MessagingModule } from '../messaging/messaging.module';
 import { ProfileModule } from '../profile/profile.module';
 import { ContactsModule } from '../contacts/contacts.module';
@@ -34,11 +36,18 @@ import { OutboxModule } from '../outbox/outbox.module';
 @Module({
   imports: [
     ScheduleModule.forRoot(),
+    // AuthModule re-exports both JwtModule and JwtAuthGuard, so
+    // importing it here is what lets the controller's @UseGuards
+    // resolve. Without this, the controller boots with
+    // UnknownDependenciesException on JwtService. See the
+    // AuthModule's own exports comment for the rationale.
+    AuthModule,
     OutboxModule,
     MessagingModule,
     ProfileModule,
     ContactsModule,
   ],
+  controllers: [AgentController],
   providers: [
     AgentConfig,
     // LlmService is bound to the LLM_SERVICE token. Swapping
