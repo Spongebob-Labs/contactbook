@@ -29,6 +29,13 @@ export class TwilioSignatureGuard implements CanActivate {
   constructor(private readonly config: AppConfigService) {}
 
   canActivate(context: ExecutionContext): boolean {
+    // Skip signature validation in local dev — lets you curl the endpoint
+    // without a real Twilio signature. Never runs in production because
+    // APP_ENV is validated to be 'production' | 'staging' there.
+    if (this.config.appEnv === 'local') {
+      return true;
+    }
+
     const req = context.switchToHttp().getRequest<Request>();
     const signature = req.header('x-twilio-signature');
     const { authToken } = this.config.twilio;

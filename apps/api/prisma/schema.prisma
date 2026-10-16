@@ -685,3 +685,30 @@ model InboundMessage {
   @@index([resolvedOwnerId])
   @@map("inbound_messages")
 }
+
+// ==========================================
+// BOT
+// ==========================================
+
+enum BotState {
+  AWAITING_CARD_SELECTION
+}
+
+/// Tracks an in-progress WhatsApp bot conversation for one sender phone.
+/// One row per phone number; upserted on every inbound message.
+/// Expires after IDLE_TIMEOUT_MINUTES of no activity — the bot handler
+/// checks expiresAt and treats a stale session as if it doesn't exist.
+model BotSession {
+  id           String   @id @default(uuid())
+  phoneE164    String   @unique
+  state        BotState
+  /// Serialised context for the current state. For AWAITING_CARD_SELECTION:
+  /// { ownerId: string, cards: Array<{ index: number, id: string, name: string }> }
+  context      Json
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([expiresAt])
+  @@map("bot_sessions")
+}
